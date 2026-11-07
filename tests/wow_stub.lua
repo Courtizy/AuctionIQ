@@ -63,6 +63,7 @@ TSM_API = {
 		if s == "crafting" then return p.crafting end
 		if s:sub(1, 4) == "min(" then return p.formula_value end
 		if s:sub(1, 4) == "max(" then return p.mat end
+		if s == "dbmarket" then return p.formula_value end
 		return nil, "unknown"
 	end,
 }
@@ -75,6 +76,8 @@ function GameTooltip:AddDoubleLine(a, b) table.insert(self.lines, a .. "=" .. b)
 TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) STUB.tooltipFn = fn end }
 
 -- Professions
+STUB.bags = { [201] = 9, [202] = 8, [203] = 20, [204] = 12, [205] = 3 }
+C_Item = { GetItemCount = function(id) return STUB.bags[id] or 0 end }
 C_CurrencyInfo = { GetCurrencyInfo = function() return { quantity = 400, maxQuantity = 1000 } end }
 C_TradeSkillUI = {
 	IsTradeSkillReady = function() return true end,

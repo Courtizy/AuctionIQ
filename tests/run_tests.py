@@ -81,6 +81,21 @@ check("advisor: best profit without Concentration is Q2", "BEST" in rows[2] and 
 check("advisor: Concentration value = profit / Concentration cost", "Q2 conc80" in rows[1] and "pp=27250" in rows[1] and rows[1].endswith("BESTCONC"))
 check("advisor: no Concentration row when the quality is already top", len(rows) == 3)
 check("advisor: picks the cheaper skill first", CH.Advisor.PicksText(res, res.best.picks).count("Q2") == 2)
+def plain(t): return re.sub(r"\|c\w{8}|\|r", "", letters(str(t)))
+best = res.best
+rl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 3).values()]
+check("reagent hover lists each reagent with rank, price each and total",
+      ("4x item 202 Q2", "15g ea  60g") in rl and ("2x item 205", "1g ea  2g") in rl and rl[-1] == ("Total", "212g"))
+sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
+check("sell hover shows realm and region prices", ("   Market value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and sl[-1] == ("After 5% auction cut", "285g"))
+pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
+check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on reagents", "34%") in pl)
+mx = CH.Advisor.MaxCraftable(res, best)
+check("max craftable is limited by the scarcest reagent", mx[0] == 1)  # 3 of item 205 at 2 each
+mq = CH.Advisor.MaxCraftable(res, res.rows[2], 50)
+check("with Concentration it is limited by points too", res.rows[2].concentration == 80 and mq[0] == 0)
+ml = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 7).values()]
+check("max hover lists have and need", ("item 204 Q2", "12 have, 5 each") in ml)
 run('Clearinghouse.db.settings.advisor.hide = false; STUB.Fire("TRADE_SKILL_SHOW")')
 check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
