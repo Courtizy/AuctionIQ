@@ -52,6 +52,9 @@ end
 -- TSM: prices keyed by item string; "crafting" costs separately. chvalue is not a custom source here,
 -- so Clearinghouse must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
+for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
+STUB.prices["i:301"] = { formula_value = 100 * 10000 }
+STUB.prices["i:302"] = { formula_value = 300 * 10000 }
 TSM_API = {
 	ToItemString = function(item) local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id) end,
 	IsCustomPriceValid = function(s) return s ~= "chvalue" and s ~= "chmat" end,
@@ -82,9 +85,33 @@ C_TradeSkillUI = {
 	GetConcentrationCurrencyID = function() return 3000 end,
 	GetAllRecipeIDs = function() return { 1, 2, 3 } end,
 	GetRecipeInfo = function(id)
+		if id == 10 then return { learned = true, name = "Test Flask", supportsQualities = true, qualityItemIDs = { 301, 302 } } end
 		if id == 1 then return { learned = true, name = "Phoenix Oil", qualityItemIDs = { 99, 100 } } end
 		if id == 2 then return { learned = false, name = "Unlearned", qualityItemIDs = { 100 } } end
 		return { learned = true, name = "No price", qualityItemIDs = { 555 } }
 	end,
-	GetRecipeSchematic = function() return { outputItemID = 555 } end,
+	GetRecipeSchematic = function(id)
+		if id == 10 then
+			return { outputItemID = 301, quantityMin = 1, quantityMax = 1, reagentSlotSchematics = {
+				{ reagentType = 1, required = true, dataSlotIndex = 1, quantityRequired = 4, reagents = { { itemID = 201 }, { itemID = 202 } } },
+				{ reagentType = 1, required = true, dataSlotIndex = 2, quantityRequired = 5, reagents = { { itemID = 203 }, { itemID = 204 } } },
+				{ reagentType = 1, required = true, dataSlotIndex = 3, quantityRequired = 2, reagents = { { itemID = 205 } } },
+				{ reagentType = 0, required = false, dataSlotIndex = 4, quantityRequired = 1, reagents = { { itemID = 999 } } },
+			} }
+		end
+		return { outputItemID = 555 }
+	end,
+	-- Skill 100 plus 5 per top-quality unit in slot 1 and 2 per unit in slot 2; quality 2 from 130.
+	-- Concentration always lands on quality 2 and costs 20 + 2 per missing skill point.
+	GetCraftingOperationInfo = function(_, infos, _, concentrate)
+		local bonus = 0
+		for _, r in ipairs(infos) do
+			local id = r.reagent and r.reagent.itemID
+			if id == 202 then bonus = bonus + 5 * r.quantity elseif id == 204 then bonus = bonus + 2 * r.quantity end
+		end
+		local skill = 100 + bonus
+		local q = skill >= 130 and 2 or 1
+		return { baseSkill = 100, bonusSkill = bonus, craftingQuality = concentrate and 2 or q,
+			concentrationCost = 20 + 2 * math.max(0, 130 - skill), bonusStats = {} }
+	end,
 }

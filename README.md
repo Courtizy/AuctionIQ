@@ -4,16 +4,26 @@ A World of Warcraft addon that puts crafting and auction advice in one place: wh
 it costs, and what it really sells for. It reads prices from TradeSkillMaster, and over time it
 takes over the jobs that today need both TSM and CraftSim.
 
-## What version 0.1 does
+## What it does
 
 - **Tooltips on every item:** the Clearinghouse value after the 5% auction cut, the price to buy it
-  as a reagent, and the profit or loss of crafting it.
-- **Briefing window** (`/ch`, or the addon compartment button on the minimap): gold on every
+  as a reagent, and the profit or loss of crafting it, with coin icons.
+- **Briefing window** (`/ch`, the minimap button, or the addon compartment): gold on every
   character, Concentration on every profession with when it will be full, and each profession's
   best crafts.
+- **Crafting advisor**, docked to the right of the profession window (drag it off to float it,
+  Dock puts it back): for the selected recipe, every result quality with its cheapest reagents, the
+  profit, and with Concentration the cost in points and the gold each point earns. It marks the best
+  profit and the best use of Concentration, worked out the same way CraftSim does.
 - Learns your characters and professions as you play. Open each profession window once.
 
-`/ch tooltip` turns the tooltip lines on or off.
+| Command | Does |
+|---|---|
+| `/ch` | open or close the briefing |
+| `/ch tooltip` | tooltip lines on or off |
+| `/ch coins` | coin icons or g/s/c text |
+| `/ch minimap` | hide or show the minimap button |
+| `/ch advisor` | crafting advisor on or off |
 
 ## Prices
 

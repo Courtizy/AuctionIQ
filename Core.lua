@@ -7,7 +7,7 @@ CH.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 CH.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 1, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 } }, characters = {} }
+local DEFAULTS = { version = 1, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -124,8 +124,10 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		CH.db.settings.minimap.hide = not CH.db.settings.minimap.hide
 		CH.UpdateMinimapButton()
 		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
+	elseif msg == "advisor" then
+		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button.")
+		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off.")
 	else
 		CH.UI.Toggle()
 	end
