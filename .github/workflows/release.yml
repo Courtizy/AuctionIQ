@@ -1,0 +1,23 @@
+name: Release
+
+# Push a tag like v0.1.0 to build the zip and upload it. Uploading to CurseForge and Wago needs
+# the CF_API_KEY and WAGO_API_TOKEN repository secrets plus the project IDs in Clearinghouse.toc
+# (## X-Curse-Project-ID and ## X-Wago-ID); without them the packager only makes a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: BigWigsMods/packager@v2
