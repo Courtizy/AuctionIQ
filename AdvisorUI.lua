@@ -43,6 +43,7 @@ end
 
 local function build()
 	local T = CH.Theme
+	T.Sync()
 	panel = CreateFrame("Frame", "ClearinghouseAdvisor", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
 	panel:SetSize(WIDTH, 330)
@@ -133,6 +134,7 @@ local function build()
 	notes:SetWidth(WIDTH - 24)
 	notes:SetJustifyH("LEFT")
 	notes:SetSpacing(3)
+	T.Fonts(panel)
 	AUI.Place()
 end
 

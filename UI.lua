@@ -74,6 +74,7 @@ end
 
 local function build()
 	local T = CH.Theme
+	T.Sync()
 	frame = CreateFrame("Frame", "ClearinghouseFrame", UIParent, "BackdropTemplate")
 	T.Panel(frame, "bg", 0.95)
 	frame:SetSize(560, 460)
@@ -143,6 +144,7 @@ local function build()
 	motto:SetPoint("BOTTOMRIGHT", -12, 9)
 	motto:SetText(T.Color("accent", "All trades settled in gold."))
 	frame:SetScript("OnShow", UI.Refresh)
+	T.Fonts(frame)
 end
 
 function UI.Refresh()
