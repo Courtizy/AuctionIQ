@@ -7,7 +7,7 @@ CH.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 CH.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 1, settings = { tooltip = true }, characters = {} }
+local DEFAULTS = { version = 1, settings = { tooltip = true, coins = true }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -24,9 +24,18 @@ function CH.Print(msg)
 	print("|cffe0a83aClearinghouse|r: " .. tostring(msg))
 end
 
--- "12,345g", "12g 50s", "75s", "9c": short enough for a tooltip line.
-function CH.FormatMoney(copper)
+local COIN = {
+	g = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t",
+	s = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t",
+	c = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t",
+}
+
+-- "12,345g", "12g 50s", "75s", "9c": short enough for a tooltip line. Shown with the game's coin
+-- icons, like TSM, unless coins are turned off (/ch coins) or plain is asked for.
+function CH.FormatMoney(copper, plain)
 	if not copper then return "-" end
+	local icons = not plain and not (CH.db and CH.db.settings.coins == false)
+	local function u(n, unit) return n .. (icons and COIN[unit] or unit) end
 	local neg = copper < 0
 	copper = math.floor(math.abs(copper) + 0.5)
 	local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
@@ -37,13 +46,13 @@ function CH.FormatMoney(copper)
 		repeat
 			str, k = str:gsub("^(%d+)(%d%d%d)", "%1,%2")
 		until k == 0
-		out = str .. "g"
+		out = u(str, "g")
 	elseif g > 0 then
-		out = s > 0 and string.format("%dg %ds", g, s) or (g .. "g")
+		out = s > 0 and (u(g, "g") .. " " .. u(s, "s")) or u(g, "g")
 	elseif s > 0 then
-		out = s .. "s"
+		out = u(s, "s")
 	else
-		out = c .. "c"
+		out = u(c, "c")
 	end
 	return (neg and "-" or "") .. out
 end
@@ -107,8 +116,12 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	if msg == "tooltip" then
 		CH.db.settings.tooltip = not CH.db.settings.tooltip
 		CH.Print("tooltip lines " .. (CH.db.settings.tooltip and "on" or "off"))
+	elseif msg == "coins" then
+		CH.db.settings.coins = not CH.db.settings.coins
+		CH.Print("coin icons " .. (CH.db.settings.coins and "on" or "off"))
+		if CH.UI.IsShown() then CH.UI.Refresh() end
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off.")
+		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c.")
 	else
 		CH.UI.Toggle()
 	end

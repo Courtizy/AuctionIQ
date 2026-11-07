@@ -26,13 +26,13 @@ function UI.BriefingText(now)
 	local chars, out = sortedCharacters(), {}
 	local total = 0
 	for _, c in ipairs(chars) do total = total + (c.gold or 0) end
-	table.insert(out, "|cffe0a83aGold|r  " .. CH.FormatMoney(total) .. " across " .. #chars .. " characters")
+	table.insert(out, CH.Theme.Color("accent", "Gold") .. "  " .. CH.FormatMoney(total) .. " across " .. #chars .. " characters")
 	for _, c in ipairs(chars) do
 		table.insert(out, "   " .. classColor(c.class) .. (c.name or c.key) .. "|r  " .. CH.FormatMoney(c.gold or 0))
 	end
 
 	table.insert(out, "")
-	table.insert(out, "|cffe0a83aConcentration|r")
+	table.insert(out, CH.Theme.Color("accent", "Concentration"))
 	local any, idle = false, 0
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
@@ -43,25 +43,25 @@ function UI.BriefingText(now)
 				if full then idle = idle + 1 end
 				local hours = full and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR)
 				table.insert(out, string.format("   %s%s|r %s  %d / %d  %s", classColor(c.class), c.name or c.key, p.name or "?", cur, max,
-					full and "|cffff5555FULL, spend it|r" or ("full in " .. hours .. "h")))
+					full and CH.Theme.Color("bad", "FULL, spend it") or ("full in " .. hours .. "h")))
 			end
 		end
 	end
 	if not any then
 		table.insert(out, "   Open each character's professions once to see Concentration here.")
 	elseif idle > 0 then
-		table.insert(out, "   |cffff5555" .. idle .. " at full: Concentration is being wasted.|r")
+		table.insert(out, "   " .. CH.Theme.Color("bad", idle .. " at full. Idle Concentration is gold left on the table."))
 	end
 
 	table.insert(out, "")
-	table.insert(out, "|cffe0a83aBest crafts|r  profit per craft after the 5% cut, top quality")
+	table.insert(out, CH.Theme.Color("accent", "Best crafts") .. CH.Theme.Color("muted", "  profit per craft after the 5% cut, top quality"))
 	local listed = false
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
 			for i, r in ipairs(p.crafts or {}) do
 				if i > 3 then break end
 				listed = true
-				table.insert(out, string.format("   %s%s|r %s: %s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?", CH.FormatMoney(r.profit)))
+				table.insert(out, string.format("   %s%s|r %s: %s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
 			end
 		end
 	end
@@ -73,10 +73,13 @@ function UI.BriefingText(now)
 end
 
 local function build()
-	frame = CreateFrame("Frame", "ClearinghouseFrame", UIParent, "BasicFrameTemplateWithInset")
+	local T = CH.Theme
+	frame = CreateFrame("Frame", "ClearinghouseFrame", UIParent, "BackdropTemplate")
+	T.Panel(frame, "bg", 0.95)
 	frame:SetSize(560, 460)
 	frame:SetPoint("CENTER")
 	frame:SetMovable(true)
+	frame:SetClampedToScreen(true)
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
 	frame:SetScript("OnDragStart", frame.StartMoving)
@@ -84,23 +87,57 @@ local function build()
 	frame:SetFrameStrata("HIGH")
 	frame:Hide()
 	table.insert(UISpecialFrames, "ClearinghouseFrame") -- Esc closes it
-	frame.TitleText:SetText("Clearinghouse · Briefing")
 
-	local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", 14, -32)
-	scroll:SetPoint("BOTTOMRIGHT", -32, 34)
+	-- Title bar: panel colour, gold rule underneath, name in gold, page in grey.
+	local bar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+	T.Panel(bar, "panel", 1)
+	bar:SetPoint("TOPLEFT", 0, 0)
+	bar:SetPoint("TOPRIGHT", 0, 0)
+	bar:SetHeight(26)
+	local rule = bar:CreateTexture(nil, "ARTWORK")
+	rule:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+	rule:SetPoint("BOTTOMLEFT", 1, 0)
+	rule:SetPoint("BOTTOMRIGHT", -1, 0)
+	rule:SetHeight(1)
+	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	title:SetPoint("LEFT", 10, 0)
+	title:SetText(T.Color("accent", "Clearinghouse") .. "  " .. T.Color("muted", "Briefing"))
+	frame.TitleText = title
+	local close = T.Button(bar, "x", 18, 18)
+	close:SetPoint("RIGHT", -4, 0)
+	close:SetScript("OnClick", function() frame:Hide() end)
+
+	-- Body: wheel scrolling, no Blizzard scroll bar.
+	local scroll = CreateFrame("ScrollFrame", nil, frame)
+	scroll:SetPoint("TOPLEFT", 14, -38)
+	scroll:SetPoint("BOTTOMRIGHT", -14, 34)
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		local y = math.max(0, math.min(self:GetVerticalScrollRange(), self:GetVerticalScroll() - delta * 40))
+		self:SetVerticalScroll(y)
+	end)
 	local child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(500, 10)
+	child:SetSize(530, 10)
 	scroll:SetScrollChild(child)
 	text = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	text:SetPoint("TOPLEFT")
-	text:SetWidth(500)
+	text:SetWidth(530)
 	text:SetJustifyH("LEFT")
-	text:SetSpacing(3)
+	text:SetSpacing(4)
+	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
 
+	local footRule = frame:CreateTexture(nil, "ARTWORK")
+	footRule:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
+	footRule:SetPoint("BOTTOMLEFT", 1, 26)
+	footRule:SetPoint("BOTTOMRIGHT", -1, 26)
+	footRule:SetHeight(1)
 	local foot = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	foot:SetPoint("BOTTOMLEFT", 16, 12)
-	foot:SetText("Coming next: Opportunities, Flip & Craft, Assets.  /ch tooltip turns tooltip lines on or off.")
+	foot:SetPoint("BOTTOMLEFT", 12, 9)
+	foot:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
+	foot:SetText("Coming next: Opportunities, Flip & Craft, Assets.   /ch help for commands")
+	local motto = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	motto:SetPoint("BOTTOMRIGHT", -12, 9)
+	motto:SetText(T.Color("accent", "All trades settled in gold."))
 	frame:SetScript("OnShow", UI.Refresh)
 end
 

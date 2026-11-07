@@ -29,12 +29,15 @@ local function newFrame()
 		setmetatable(fs, { __index = function() return function() end end })
 		return fs
 	end
+	function f:CreateTexture() return setmetatable({}, { __index = function() return function() end end }) end
 	f.TitleText = f:CreateFontString()
 	setmetatable(f, { __index = function() return function() end end })
 	return f
 end
 function CreateFrame() return newFrame() end
 UIParent = newFrame()
+function Mixin(t) return t end
+BackdropTemplateMixin = {}
 
 function STUB.Fire(event, ...)
 	for _, f in ipairs(events[event] or {}) do f.scripts.OnEvent(f, event, ...) end
