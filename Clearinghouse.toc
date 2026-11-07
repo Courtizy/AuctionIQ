@@ -11,6 +11,7 @@
 ## X-License: MIT
 
 Core.lua
+Theme.lua
 Prices.lua
 Tooltip.lua
 Professions.lua

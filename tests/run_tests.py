@@ -27,7 +27,9 @@ CH = L.globals().Clearinghouse
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
 
-fm = CH.FormatMoney
+fm = lambda c: CH.FormatMoney(c, True)
+COINS = {"Gold": "g", "Silver": "s", "Copper": "c"}
+def letters(t): return re.sub(r"\|TInterface\\MoneyFrame\\UI-(Gold|Silver|Copper)Icon[^|]*\|t", lambda m: COINS[m.group(1)], t)
 check("money format", (fm(123456789), fm(125000), fm(5000), fm(50), fm(-20000)) == ("12,345g", "12g 50s", "50s", "50c", "-2g"))
 
 check("chvalue falls back to the formula when the custom source is missing", CH.Prices.Get("chvalue", "i:100") == 5000000)
@@ -35,7 +37,11 @@ check("craft profit = value after cut - crafting cost", CH.Prices.CraftProfit("i
 check("no price for unknown item", CH.Prices.Get("chvalue", "i:7") is None)
 
 run('STUB.tooltipLink = "|cff|Hitem:100::|h[Potion]|h|r"; STUB.tooltipFn(GameTooltip)')
-lines = list(L.globals().GameTooltip.lines.values())
+lines = [letters(l) for l in L.globals().GameTooltip.lines.values()]
+check("money shows coin icons by default", "UI-GoldIcon" in CH.FormatMoney(125000) and "UI-SilverIcon" in CH.FormatMoney(125000))
+run('Clearinghouse.db.settings.coins = false')
+check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
+run('Clearinghouse.db.settings.coins = true')
 check("tooltip shows value, buy price and profit", lines == ["Clearinghouse value=475g after cut", "Clearinghouse buy price=450g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
@@ -50,7 +56,7 @@ run('STUB.now = STUB.now + 24 * 3600')  # a day later
 check("Concentration refills about 250 a day", CH.ConcentrationNow(p)[0] == 650)
 run('STUB.now = STUB.now + 48 * 3600')  # two more days
 check("Concentration stops at its cap", CH.ConcentrationNow(p)[0] == 1000)
-text = CH.UI.BriefingText()
+text = letters(CH.UI.BriefingText())
 check("briefing lists gold, Concentration and the best craft",
       "123g" in text and "Midnight Enchanting  1000 / 1000" in re.sub(r"\|c\w{8}|\|r", "", text) and "Phoenix Oil" in text and "FULL" in text)
 

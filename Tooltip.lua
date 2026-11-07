@@ -1,7 +1,6 @@
 -- Clearinghouse tooltip lines on every item.
 local _, CH = ...
 
-local GOLD = { 0.88, 0.66, 0.23 }
 
 function CH.TooltipLines(link)
 	local lines = {}
@@ -16,7 +15,7 @@ function CH.TooltipLines(link)
 	local profit = CH.Prices.CraftProfit(link)
 	if profit then
 		local word = profit >= 0 and "Craft profit" or "Craft loss"
-		table.insert(lines, { word, CH.FormatMoney(profit) })
+		table.insert(lines, { word, CH.FormatMoney(profit), profit >= 0 and "ok" or "bad" })
 	end
 	return lines
 end
@@ -28,7 +27,8 @@ local function onItemTooltip(tooltip)
 	if not link then return end
 	local lines = CH.TooltipLines(link)
 	for _, l in ipairs(lines) do
-		tooltip:AddDoubleLine(l[1], l[2], GOLD[1], GOLD[2], GOLD[3], 1, 1, 1)
+		local a, r = CH.Theme.accent, CH.Theme[l[3] or "fg"]
+		tooltip:AddDoubleLine(l[1], l[2], a[1], a[2], a[3], r[1], r[2], r[3])
 	end
 end
 
