@@ -247,3 +247,32 @@ function A.PriceSources(itemID)
 	end
 	return out
 end
+
+local function have(id)
+	if not C_Item or not C_Item.GetItemCount then return 0 end
+	-- bags, bank, reagent bank and warband bank
+	return C_Item.GetItemCount(id, true, false, true, true) or 0
+end
+
+--- How many times a row can be crafted from the reagents you own (and, with Concentration, the
+--- points you have now). Returns the count and a line per reagent: name, rank, have, need.
+function A.MaxCraftable(result, r, concNow)
+	local max, lines = math.huge, {}
+	local function use(id, rank, need)
+		local h = have(id)
+		max = math.min(max, math.floor(h / need))
+		table.insert(lines, { name = itemName(id), rank = rank, have = h, need = need })
+	end
+	for i, slot in ipairs(result.qual) do
+		for q = #slot.items, 1, -1 do
+			local n = r.picks[i][q] or 0
+			if n > 0 then use(slot.items[q], q, n) end
+		end
+	end
+	for _, slot in ipairs(result.fixed) do use(slot.items[1], nil, slot.qty) end
+	if r.concentration and concNow then
+		max = math.min(max, math.floor(concNow / r.concentration))
+	end
+	if max == math.huge then max = 0 end
+	return max, lines
+end

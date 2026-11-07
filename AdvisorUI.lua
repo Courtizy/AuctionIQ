@@ -6,7 +6,11 @@ local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
-local COLS = { { "Quality", 0, 58 }, { "Conc.", 58, 52 }, { "Reagents", 110, 82 }, { "Profit", 192, 82 }, { "Per point", 274, 76 } }
+-- name, x, width. Hover breakdowns on cost (3), sell (4), profit (5) and max (7).
+local COLS = { { "Quality", 0, 50 }, { "Conc.", 50, 40 }, { "Cost", 90, 72 }, { "Sells for", 162, 72 },
+	{ "Profit", 234, 104 }, { "Per pt", 338, 58 }, { "Max", 396, 34 } }
+local HOVER = { 3, 4, 5, 7 }
+local WIDTH = 454
 
 local function settings() return CH.db.settings.advisor end
 
@@ -41,7 +45,7 @@ local function build()
 	local T = CH.Theme
 	panel = CreateFrame("Frame", "ClearinghouseAdvisor", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
-	panel:SetSize(372, 330)
+	panel:SetSize(WIDTH, 330)
 	panel:SetFrameStrata("HIGH")
 	panel:SetMovable(true)
 	panel:SetClampedToScreen(true)
@@ -86,7 +90,7 @@ local function build()
 
 	panel.recipe = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	panel.recipe:SetPoint("TOPLEFT", 12, -34)
-	panel.recipe:SetWidth(348)
+	panel.recipe:SetWidth(WIDTH - 24)
 	panel.recipe:SetJustifyH("LEFT")
 
 	local y = -56
@@ -103,7 +107,7 @@ local function build()
 		local r = { cells = {} }
 		r.bg = panel:CreateTexture(nil, "BACKGROUND")
 		r.bg:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
-		r.bg:SetSize(360, 20)
+		r.bg:SetSize(WIDTH - 12, 20)
 		r.bg:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.12)
 		for j, c in ipairs(COLS) do
 			local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -113,7 +117,7 @@ local function build()
 			r.cells[j] = fs
 		end
 		r.hover = {}
-		for _, col in ipairs({ 3, 4 }) do
+		for _, col in ipairs(HOVER) do
 			local h = CreateFrame("Frame", nil, panel)
 			h:SetPoint("TOPLEFT", 12 + COLS[col][2], y - i * 20 + 3)
 			h:SetSize(COLS[col][3], 18)
@@ -126,13 +130,22 @@ local function build()
 	end
 	notes = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	notes:SetPoint("TOPLEFT", 12, y - (ROWS + 1) * 20 - 6)
-	notes:SetWidth(348)
+	notes:SetWidth(WIDTH - 24)
 	notes:SetJustifyH("LEFT")
 	notes:SetSpacing(3)
 	AUI.Place()
 end
 
 local shown -- the result on screen, for the hover breakdowns
+
+-- Concentration you have now for the open profession, if known.
+local function concNow()
+	local ui = C_TradeSkillUI
+	local info = ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	local id = info and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(info.professionID)
+	local c = id and id ~= 0 and C_CurrencyInfo.GetCurrencyInfo(id)
+	return c and c.quantity
+end
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "no price") end
@@ -161,9 +174,13 @@ function AUI.Render(result, reason)
 		local q = qualityIcon(r.quality) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc") or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
+		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""
+		r.max = CH.Advisor.MaxCraftable(result, r, concNow())
 		row.cells[3]:SetText(CH.FormatMoney(r.cost))
-		row.cells[4]:SetText(money(r.profit))
-		row.cells[5]:SetText(r.perPoint and money(r.perPoint) or "")
+		row.cells[4]:SetText(r.value and CH.FormatMoney(r.value) or CH.Theme.Color("muted", "no price"))
+		row.cells[5]:SetText(money(r.profit) .. (pct ~= "" and CH.Theme.Color(r.profit >= 0 and "ok" or "bad", pct) or ""))
+		row.cells[6]:SetText(r.perPoint and money(r.perPoint) or "")
+		row.cells[7]:SetText(r.max > 0 and tostring(r.max) or CH.Theme.Color("muted", "0"))
 		if r.recommended or r.bestConcentration then row.bg:Show() end
 		table.insert(out, string.format("Q%d %s cost=%s profit=%s pp=%s%s%s", r.quality, r.concentration and ("conc" .. r.concentration) or "plain",
 			tostring(r.cost and math.floor(r.cost)), tostring(r.profit and math.floor(r.profit)), tostring(r.perPoint and math.floor(r.perPoint)),
@@ -198,7 +215,7 @@ function AUI.BreakdownLines(result, r, col)
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
-	else
+	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
 		add(CH.Theme.Color("accent", name) .. rankText(r.quality))
 		for _, src in ipairs(CH.Advisor.PriceSources(r.item)) do
@@ -209,14 +226,27 @@ function AUI.BreakdownLines(result, r, col)
 				or CH.FormatMoney(v)
 			add("   " .. src.label, text)
 		end
-		local value = r.value and r.value / CH.AH_CUT / (result.made or 1)
-		add("Clearinghouse value (chvalue)", CH.FormatMoney(value))
+		add("Clearinghouse value (chvalue)", CH.FormatMoney(r.value and r.value / CH.AH_CUT / (result.made or 1)))
 		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), "") end
-		add("Less 5% auction cut", CH.FormatMoney(r.value and -(r.value / CH.AH_CUT * (1 - CH.AH_CUT))))
+		add("After 5% auction cut", CH.FormatMoney(r.value))
+	elseif col == 5 then
+		add(CH.Theme.Color("accent", "Profit"))
+		add("Sells for, after cut", CH.FormatMoney(r.value))
 		add("Less reagents", CH.FormatMoney(-r.cost))
 		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
+		if r.profit and r.cost and r.cost > 0 then add("Return on reagents", string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
 		if r.concentration then
 			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+		end
+	else
+		local max, have = CH.Advisor.MaxCraftable(result, r, concNow())
+		add(CH.Theme.Color("accent", "Can craft " .. max) .. CH.Theme.Color("muted", "  bags, banks and warband bank"))
+		for _, h in ipairs(have) do
+			local ok = h.have >= h.need
+			add(h.name .. rankText(h.rank), CH.Theme.Color(ok and "fg" or "bad", string.format("%d have, %d each", h.have, h.need)))
+		end
+		if r.concentration then
+			add("Concentration", string.format("%s have, %d each", tostring(concNow() or "?"), r.concentration))
 		end
 	end
 	return lines
