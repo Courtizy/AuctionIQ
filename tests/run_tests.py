@@ -101,6 +101,27 @@ check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
 check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
+# Craft queue and shopping list
+run('Clearinghouse.db.settings.advisor.hide = false; Clearinghouse.AdvisorUI.Show(10)')
+run('Clearinghouse.AdvisorUI.RowClick(3)')            # Q2 without Concentration, one
+run('STUB.shift = true; Clearinghouse.AdvisorUI.RowClick(3); STUB.shift = false')  # shift: as many as you can make (1)
+run('Clearinghouse.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentration
+q = list(CH.db.queue.values())
+check("queue: clicks add, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
+check("queue: Count adds up", CH.Queue.Count() == 3)
+lines = CH.QueueUI.Refresh()
+shop = list(lines.shop.values())
+# 2x Q2 craft (4x202, 5x204, 2x205) + 1x conc craft (4x201, 5x203, 2x205)
+check("shopping list: need across the queue, less what you have",
+      "item 202 need=8 have=8 buy=0" in shop and "item 204 need=10 have=12 buy=0" in shop and "item 205 need=6 have=3 buy=3" in shop)
+ok = CH.Queue.Craft(q[1], 1)
+c = L.eval("STUB.crafted")
+check("craft uses the queued reagents and Concentration", ok and c.id == 10 and c.conc == True and c.reagents[1].reagent.itemID == 201 and c.reagents[1].quantity == 4)
+run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
+check("a finished craft comes off the queue", CH.Queue.Count() == 2 and len(list(CH.db.queue.values())) == 1)
+run('Clearinghouse.Queue.Clear()')
+check("clear empties it", CH.Queue.Count() == 0)
+
 # ElvUI present: its colours, templates and skins are used
 run('''ElvUI = { { media = { rgbvaluecolor = { 0.2, 0.4, 0.6 }, bordercolor = { 0, 0, 0 }, backdropfadecolor = { 0.06, 0.06, 0.06 }, backdropcolor = { 0.1, 0.1, 0.1 } },
   GetModule = function() return { HandleCloseButton = function(_, b) b.skinned = "close" end, HandleButton = function(_, b) b.skinned = "button" end } end } }

@@ -15,6 +15,11 @@ takes over the jobs that today need both TSM and CraftSim.
   Dock puts it back): for the selected recipe, every result quality with its cheapest reagents, the
   profit, and with Concentration the cost in points and the gold each point earns. It marks the best
   profit and the best use of Concentration, worked out the same way CraftSim does.
+- **Craft queue and shopping list** (`/ch queue`, or Queue on the advisor): click an advisor row to
+  queue one, shift-click to queue as many as you can make. Fill queues the open profession's five best
+  crafts. Craft makes the queued crafts with the advisor's reagents and Concentration, and finished
+  crafts come off the queue. The shopping list totals the reagents for the whole warband's queue
+  against what you have and prices what's left to buy.
 - Learns your characters and professions as you play. Open each profession window once.
 
 | Command | Does |
@@ -24,6 +29,7 @@ takes over the jobs that today need both TSM and CraftSim.
 | `/ch coins` | coin icons or g/s/c text |
 | `/ch minimap` | hide or show the minimap button |
 | `/ch advisor` | crafting advisor on or off |
+| `/ch queue` | craft queue and shopping list |
 
 ## Prices
 
