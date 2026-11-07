@@ -10,6 +10,17 @@ The addon and the companion page are one product, so they share these rules. A c
 - Money uses the game's gold, silver and copper coin icons, as TSM does. `/ch coins` switches to `g s c` text.
 - Profit is green, loss and warnings are red, and labels are gold.
 
+## With ElvUI and ToxiUI
+
+When ElvUI is loaded, Clearinghouse uses it instead of its own look:
+
+- Windows use ElvUI's `Transparent` template and title bars its `Default` template. ToxiUI hooks those
+  templates, so its soft shadow, inner shadow and noise come along when its theme is on.
+- Fonts are ElvUI's (ToxiUI's, if ToxiUI set them). Buttons and the close button use ElvUI's skins.
+- The accent colour is ElvUI's value colour, and borders and backdrops are ElvUI's. Profit green,
+  loss red and coin icons stay as they are.
+- The minimap button turns square to match ElvUI's square minimap.
+
 ## Colours (dark)
 
 | Token  | Hex       | Used for |

@@ -101,5 +101,17 @@ check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
 check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
+# ElvUI present: its colours, templates and skins are used
+run('''ElvUI = { { media = { rgbvaluecolor = { 0.2, 0.4, 0.6 }, bordercolor = { 0, 0, 0 }, backdropfadecolor = { 0.06, 0.06, 0.06 }, backdropcolor = { 0.1, 0.1, 0.1 } },
+  GetModule = function() return { HandleCloseButton = function(_, b) b.skinned = "close" end, HandleButton = function(_, b) b.skinned = "button" end } end } }
+Clearinghouse.Theme.Sync()
+STUB.p = CreateFrame("Frame"); Clearinghouse.Theme.Panel(STUB.p, "bg")
+STUB.b = Clearinghouse.Theme.Button(STUB.p, "Dock"); STUB.x = Clearinghouse.Theme.Button(STUB.p, "x")''')
+T = CH.Theme
+check("ElvUI: value colour becomes the accent", T.hex.accent == "336699")
+check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
+check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
+run('ElvUI = nil')
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

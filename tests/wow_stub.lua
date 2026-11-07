@@ -19,6 +19,7 @@ local function newFrame()
 	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
 	function f:SetPoint(...) self.point = { ... } end
+	function f:SetTemplate(t) self.template = t end
 	function f:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
 	function f:Hide() self.shown = false end
 	function f:IsShown() return self.shown end

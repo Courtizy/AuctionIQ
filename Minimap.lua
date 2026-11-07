@@ -34,10 +34,20 @@ function CH.CreateMinimapButton()
 	icon:SetTexture(ICON)
 	icon:SetSize(20, 20)
 	icon:SetPoint("TOPLEFT", 6, -5)
-	local border = button:CreateTexture(nil, "OVERLAY")
-	border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-	border:SetSize(53, 53)
-	border:SetPoint("TOPLEFT")
+	if CH.Theme.Elv() and button.SetTemplate then
+		-- ElvUI's minimap is square: a square skinned button instead of the round ring
+		button:SetSize(24, 24)
+		button:SetTemplate("Default")
+		icon:ClearAllPoints()
+		icon:SetPoint("TOPLEFT", 1, -1)
+		icon:SetPoint("BOTTOMRIGHT", -1, 1)
+		icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	else
+		local border = button:CreateTexture(nil, "OVERLAY")
+		border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+		border:SetSize(53, 53)
+		border:SetPoint("TOPLEFT")
+	end
 
 	button:SetScript("OnClick", function() CH.UI.Toggle() end)
 	button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", onDrag) end)

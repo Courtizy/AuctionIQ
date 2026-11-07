@@ -6,7 +6,7 @@
 ## IconTexture: Interface\AddOns\Clearinghouse\Media\Icon
 ## Category-enUS: Auctions
 ## SavedVariables: ClearinghouseDB
-## OptionalDeps: TradeSkillMaster
+## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI
 ## AddonCompartmentFunc: Clearinghouse_OnAddonCompartmentClick
 ## X-License: MIT
 
