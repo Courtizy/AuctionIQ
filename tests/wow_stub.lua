@@ -63,6 +63,7 @@ TSM_API = {
 		if s == "crafting" then return p.crafting end
 		if s:sub(1, 4) == "min(" then return p.formula_value end
 		if s:sub(1, 4) == "max(" then return p.mat end
+		if s == "dbmarket" then return p.formula_value end
 		return nil, "unknown"
 	end,
 }

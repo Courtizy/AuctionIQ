@@ -112,6 +112,16 @@ local function build()
 			fs:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 			r.cells[j] = fs
 		end
+		r.hover = {}
+		for _, col in ipairs({ 3, 4 }) do
+			local h = CreateFrame("Frame", nil, panel)
+			h:SetPoint("TOPLEFT", 12 + COLS[col][2], y - i * 20 + 3)
+			h:SetSize(COLS[col][3], 18)
+			h:EnableMouse(true)
+			h:SetScript("OnEnter", function(self) AUI.ShowBreakdown(self, i, col) end)
+			h:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			r.hover[col] = h
+		end
 		rows[i] = r
 	end
 	notes = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -121,6 +131,8 @@ local function build()
 	notes:SetSpacing(3)
 	AUI.Place()
 end
+
+local shown -- the result on screen, for the hover breakdowns
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "no price") end
@@ -135,6 +147,7 @@ function AUI.Render(result, reason)
 		r.bg:Hide()
 		for _, fs in ipairs(r.cells) do fs:SetText("") end
 	end
+	shown = result
 	if not result then
 		panel.recipe:SetText(T.Color("muted", reason or "Select a recipe."))
 		notes:SetText("")
@@ -167,6 +180,56 @@ function AUI.Render(result, reason)
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
 	notes:SetText(table.concat(lines, "\n"))
 	return out
+end
+
+local function rankText(q)
+	if not q then return "" end
+	return CreateAtlasMarkup and (" " .. CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", 14, 14)) or (" Q" .. q)
+end
+
+--- Lines for a row's hover breakdown: col 3 reagents, col 4 profit. Also used by the tests.
+function AUI.BreakdownLines(result, r, col)
+	local lines = {}
+	local function add(l, rt) table.insert(lines, { l, rt }) end
+	if col == 3 then
+		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  bought at chmat"))
+		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks)) do
+			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank)),
+				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
+		end
+		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
+	else
+		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
+		add(CH.Theme.Color("accent", name) .. rankText(r.quality))
+		for _, src in ipairs(CH.Advisor.PriceSources(r.item)) do
+			local v = src.value
+			local text = not v and CH.Theme.Color("muted", "none")
+				or src.kind == "rate" and string.format("%.0f%%", v <= 1 and v * 100 or v / 10) -- TSM gives 0-1 or x1000
+				or src.kind == "count" and string.format(v % 1 == 0 and "%d" or "%.1f", v)
+				or CH.FormatMoney(v)
+			add("   " .. src.label, text)
+		end
+		local value = r.value and r.value / CH.AH_CUT / (result.made or 1)
+		add("Clearinghouse value (chvalue)", CH.FormatMoney(value))
+		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), "") end
+		add("Less 5% auction cut", CH.FormatMoney(r.value and -(r.value / CH.AH_CUT * (1 - CH.AH_CUT))))
+		add("Less reagents", CH.FormatMoney(-r.cost))
+		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
+		if r.concentration then
+			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+		end
+	end
+	return lines
+end
+
+function AUI.ShowBreakdown(owner, i, col)
+	local r = shown and shown.rows[i]
+	if not r then return end
+	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	for _, l in ipairs(AUI.BreakdownLines(shown, r, col)) do
+		if l[2] then GameTooltip:AddDoubleLine(l[1], l[2], 1, 1, 1, 1, 1, 1) else GameTooltip:AddLine(l[1]) end
+	end
+	GameTooltip:Show()
 end
 
 function AUI.Show(recipeID)

@@ -203,3 +203,47 @@ function A.PicksText(result, picks)
 	end
 	return table.concat(parts, ", ")
 end
+
+local function itemName(id)
+	return C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id)
+end
+
+--- Each reagent in a row: name, rank, units, price per unit, line total. Fixed reagents have no rank.
+function A.CostLines(result, picks)
+	local out = {}
+	for i, slot in ipairs(result.qual) do
+		for q = #slot.items, 1, -1 do
+			local n = picks[i][q] or 0
+			if n > 0 then
+				local unit = price("chmat", slot.items[q])
+				table.insert(out, { name = itemName(slot.items[q]), rank = q, n = n, unit = unit, total = unit and unit * n })
+			end
+		end
+	end
+	for _, slot in ipairs(result.fixed) do
+		local unit = price("chmat", slot.items[1])
+		table.insert(out, { name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty })
+	end
+	return out
+end
+
+-- TSM's own sources behind chvalue, labelled by where they come from.
+A.SOURCES = {
+	{ "dbminbuyout", "Lowest listing, realm" },
+	{ "dbmarket", "Market value, realm" },
+	{ "dbregionmarketavg", "Market value, region" },
+	{ "dbregionsaleavg", "Sale price, region" },
+	{ "dbregionsalerate", "Sale rate, region", "rate" },
+	{ "dbregionsoldperday", "Sold per day, region", "count" },
+}
+
+--- The prices behind a crafted item's value. "money" is copper, "rate" a sale rate, "count" units a day.
+function A.PriceSources(itemID)
+	local out = {}
+	if not TSM_API or not itemID then return out end
+	for _, s in ipairs(A.SOURCES) do
+		local ok, v = pcall(TSM_API.GetCustomPriceValue, s[1], "i:" .. itemID)
+		table.insert(out, { label = s[2], value = ok and v or nil, kind = s[3] or "money" })
+	end
+	return out
+end
