@@ -16,3 +16,4 @@ Prices.lua
 Tooltip.lua
 Professions.lua
 UI.lua
+Minimap.lua
