@@ -4,3 +4,5 @@ ignore:
   - tests
   - README.md
   - .github
+  - Media/Icon.svg
+  - Media/Logo-400.png
