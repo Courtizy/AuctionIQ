@@ -17,3 +17,5 @@ Tooltip.lua
 Professions.lua
 UI.lua
 Minimap.lua
+Advisor.lua
+AdvisorUI.lua

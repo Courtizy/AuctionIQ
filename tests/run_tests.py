@@ -74,5 +74,17 @@ check("dragging moves it round the minimap", abs(CH.db.settings.minimap.angle) <
 run('SlashCmdList.CLEARINGHOUSE("minimap")')
 check("/ch minimap hides it", not btn.shown)
 
+res = CH.Advisor.Analyze(10)
+rows = list(CH.AdvisorUI.Render(res).values())
+check("advisor: cheapest reagents for each quality", rows[0].startswith("Q1 plain cost=670000 profit=280000") and rows[2].startswith("Q2 plain cost=2120000 profit=730000"))
+check("advisor: best profit without Concentration is Q2", "BEST" in rows[2] and "BEST" not in rows[0].replace("BESTCONC", ""))
+check("advisor: Concentration value = profit / Concentration cost", "Q2 conc80" in rows[1] and "pp=27250" in rows[1] and rows[1].endswith("BESTCONC"))
+check("advisor: no Concentration row when the quality is already top", len(rows) == 3)
+check("advisor: picks the cheaper skill first", CH.Advisor.PicksText(res, res.best.picks).count("Q2") == 2)
+run('Clearinghouse.db.settings.advisor.hide = false; STUB.Fire("TRADE_SKILL_SHOW")')
+check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
+run('STUB.Fire("TRADE_SKILL_CLOSE")')
+check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
