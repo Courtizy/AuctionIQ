@@ -18,6 +18,7 @@ local function newFrame()
 	local f = { shown = false, scripts = {} }
 	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
+	function f:SetPoint(...) self.point = { ... } end
 	function f:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
 	function f:Hide() self.shown = false end
 	function f:IsShown() return self.shown end
@@ -37,6 +38,11 @@ end
 function CreateFrame() return newFrame() end
 UIParent = newFrame()
 function Mixin(t) return t end
+Minimap = newFrame()
+function Minimap:GetWidth() return 140 end
+function Minimap:GetCenter() return 100, 100 end
+function Minimap:GetEffectiveScale() return 1 end
+function GetCursorPosition() return 200, 100 end
 BackdropTemplateMixin = {}
 
 function STUB.Fire(event, ...)
