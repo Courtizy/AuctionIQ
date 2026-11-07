@@ -3,7 +3,7 @@
 ## Notes: Crafting and auction advice in one place: what to craft, what it costs, what it sells for. Uses TradeSkillMaster prices.
 ## Author: Courtizy
 ## Version: @project-version@
-## IconTexture: Interface\Icons\INV_Misc_Coin_02
+## IconTexture: Interface\AddOns\Clearinghouse\Media\Icon
 ## Category-enUS: Auctions
 ## SavedVariables: ClearinghouseDB
 ## OptionalDeps: TradeSkillMaster
