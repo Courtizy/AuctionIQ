@@ -1,0 +1,17 @@
+## Interface: 120105
+## Title: Clearinghouse
+## Notes: Crafting and auction advice in one place: what to craft, what it costs, what it sells for. Uses TradeSkillMaster prices.
+## Author: Courtizy
+## Version: @project-version@
+## IconTexture: Interface\Icons\INV_Misc_Coin_02
+## Category-enUS: Auctions
+## SavedVariables: ClearinghouseDB
+## OptionalDeps: TradeSkillMaster
+## AddonCompartmentFunc: Clearinghouse_OnAddonCompartmentClick
+## X-License: MIT
+
+Core.lua
+Prices.lua
+Tooltip.lua
+Professions.lua
+UI.lua

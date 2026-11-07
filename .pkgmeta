@@ -1,0 +1,6 @@
+package-as: Clearinghouse
+
+ignore:
+  - tests
+  - README.md
+  - .github
