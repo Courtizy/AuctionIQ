@@ -39,6 +39,10 @@ function AUI.Place()
 		panel:SetPoint("CENTER")
 	end
 	if panel.dock then panel.dock:SetShown(s.docked == false) end
+	if panel.queue then
+		panel.queue:ClearAllPoints()
+		panel.queue:SetPoint("RIGHT", s.docked == false and panel.dock or panel.dock:GetParent(), s.docked == false and "LEFT" or "RIGHT", s.docked == false and -4 or -26, 0)
+	end
 end
 
 local function build()
@@ -88,6 +92,10 @@ local function build()
 	dock:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	dock:SetScript("OnClick", function() settings().docked = true; AUI.Place() end)
 	panel.dock = dock
+	local queue = T.Button(bar, "Queue", 56, 18)
+	queue:SetPoint("RIGHT", dock, "LEFT", -4, 0)
+	queue:SetScript("OnClick", function() CH.QueueUI.Toggle() end)
+	panel.queue = queue
 
 	panel.recipe = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	panel.recipe:SetPoint("TOPLEFT", 12, -34)
@@ -117,6 +125,10 @@ local function build()
 			fs:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 			r.cells[j] = fs
 		end
+		local click = CreateFrame("Button", nil, panel)
+		click:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
+		click:SetSize(WIDTH - 12, 20)
+		click:SetScript("OnClick", function() AUI.RowClick(i) end)
 		r.hover = {}
 		for _, col in ipairs(HOVER) do
 			local h = CreateFrame("Frame", nil, panel)
@@ -125,6 +137,7 @@ local function build()
 			h:EnableMouse(true)
 			h:SetScript("OnEnter", function(self) AUI.ShowBreakdown(self, i, col) end)
 			h:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			h:SetScript("OnMouseUp", function() AUI.RowClick(i) end)
 			r.hover[col] = h
 		end
 		rows[i] = r
@@ -281,6 +294,24 @@ function AUI.Show(recipeID)
 	panel:Show()
 end
 
+--- Click a row to queue one craft of it; shift-click to queue as many as you can make now.
+function AUI.RowClick(i)
+	local r = shown and shown.rows[i]
+	if not r then return end
+	local qty = IsShiftKeyDown and IsShiftKeyDown() and math.max(1, r.max or 1) or 1
+	CH.Queue.Add(shown, r, qty)
+	CH.Print(string.format("queued %d x %s (Q%d%s)", qty, shown.name or "?", r.quality, r.concentration and ", Concentration" or ""))
+	CH.QueueUI.Show()
+end
+
+function AUI.UpdateQueueButton()
+	if panel and panel.queue then
+		local n = CH.Queue.Count()
+		local t = n > 0 and ("Queue " .. n) or "Queue"
+		if panel.queue.text then panel.queue.text:SetText(t) elseif panel.queue.SetText then panel.queue:SetText(t) end
+	end
+end
+
 function AUI.Hide()
 	if panel then panel:Hide() end
 end
@@ -303,7 +334,12 @@ local function hook()
 		end, AUI)
 		hooked = true
 	end
-	if ProfessionsFrame and ProfessionsFrame.HookScript then ProfessionsFrame:HookScript("OnHide", AUI.Hide) end
+	if ProfessionsFrame and ProfessionsFrame.HookScript then
+		ProfessionsFrame:HookScript("OnHide", function()
+			AUI.Hide()
+			if CH.QueueUI.IsShown() and CH.db.settings.advisor.docked ~= false then CH.QueueUI.Toggle() end
+		end)
+	end
 end
 
 CH.On("TRADE_SKILL_SHOW", function() hook(); AUI.Show() end)

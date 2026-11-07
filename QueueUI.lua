@@ -1,0 +1,183 @@
+-- Craft queue and shopping list panel. Docks under the crafting advisor; /ch queue opens it anywhere
+-- (at the auction house, say) on its own.
+local _, CH = ...
+
+local QUI = {}
+CH.QueueUI = QUI
+local panel, qrows, srows, shopHead, empty
+local QROWS, SROWS, W = 8, 8, 454
+
+local function classColor(class)
+	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+	return c and c.colorStr and ("|c" .. c.colorStr) or "|cffffffff"
+end
+
+local function rank(q)
+	if not q then return "" end
+	return CreateAtlasMarkup and (" " .. CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", 14, 14)) or (" Q" .. q)
+end
+
+local function place()
+	panel:ClearAllPoints()
+	local adv = _G.ClearinghouseAdvisor
+	if adv and adv:IsShown() and CH.db.settings.advisor.docked ~= false then
+		panel:SetPoint("TOPLEFT", adv, "BOTTOMLEFT", 0, -2)
+	else
+		panel:SetPoint("CENTER", 0, 80)
+	end
+end
+
+local function text(parent, x, y, w, justify, template)
+	local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
+	fs:SetPoint("TOPLEFT", x, y)
+	fs:SetWidth(w)
+	fs:SetJustifyH(justify or "LEFT")
+	return fs
+end
+
+local function build()
+	local T = CH.Theme
+	T.Sync()
+	panel = CreateFrame("Frame", "ClearinghouseQueue", UIParent, "BackdropTemplate")
+	T.Panel(panel, "bg", 0.95)
+	panel:SetSize(W, 74 + (QROWS + SROWS) * 18 + 40)
+	panel:SetFrameStrata("HIGH")
+	panel:SetMovable(true)
+	panel:SetClampedToScreen(true)
+	panel:EnableMouse(true)
+	panel:RegisterForDrag("LeftButton")
+	panel:SetScript("OnDragStart", panel.StartMoving)
+	panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
+	panel:Hide()
+	table.insert(UISpecialFrames, "ClearinghouseQueue")
+
+	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+	T.Panel(bar, "panel", 1)
+	bar:SetPoint("TOPLEFT")
+	bar:SetPoint("TOPRIGHT")
+	bar:SetHeight(26)
+	local badge = bar:CreateTexture(nil, "ARTWORK")
+	badge:SetTexture("Interface\\AddOns\\Clearinghouse\\Media\\Icon")
+	badge:SetSize(18, 18)
+	badge:SetPoint("LEFT", 5, 0)
+	panel.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	panel.title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
+	local close = T.Button(bar, "x", 18, 18)
+	close:SetPoint("RIGHT", -4, 0)
+	close:SetScript("OnClick", function() panel:Hide() end)
+	local clear = T.Button(bar, "Clear", 46, 18)
+	clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
+	clear:SetScript("OnClick", function() CH.Queue.Clear() end)
+	local fill = T.Button(bar, "Fill", 40, 18)
+	fill:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+	fill:SetScript("OnClick", function()
+		local n = CH.Queue.FillFromBest(5)
+		CH.Print(n > 0 and ("queued the best craft of " .. n .. " recipes") or "open a profession to fill the queue from its best crafts")
+	end)
+	fill:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine("Queue one of each of the open profession's five best crafts, with the advisor's reagents.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+	local y = -34
+	empty = text(panel, 12, y, W - 24, "LEFT")
+	qrows = {}
+	for i = 1, QROWS do
+		local r = {}
+		local ry = y - (i - 1) * 18
+		r.name = text(panel, 12, ry, 200)
+		r.who = text(panel, 214, ry, 80)
+		r.profit = text(panel, 296, ry, 72, "RIGHT")
+		r.craft = T.Button(panel, "Craft", 44, 16)
+		r.craft:SetPoint("TOPLEFT", 374, ry + 2)
+		r.minus = T.Button(panel, "-", 18, 16)
+		r.minus:SetPoint("TOPLEFT", 422, ry + 2)
+		qrows[i] = r
+	end
+
+	y = y - QROWS * 18 - 8
+	shopHead = text(panel, 12, y, W - 24, "LEFT", "GameFontNormalSmall")
+	local cols = { { "Reagent", 12, 196, "LEFT" }, { "Need", 210, 46 }, { "Have", 258, 46 }, { "Buy", 306, 46 }, { "Cost", 354, 88 } }
+	y = y - 16
+	for _, c in ipairs(cols) do
+		local h = text(panel, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall")
+		h:SetText(c[1])
+	end
+	srows = {}
+	for i = 1, SROWS do
+		local ry = y - i * 18
+		local r = {}
+		for j, c in ipairs(cols) do r[j] = text(panel, c[2], ry, c[3], c[4] or "RIGHT") end
+		srows[i] = r
+	end
+	T.Fonts(panel)
+end
+
+--- Redraw. Returns the queue and shopping lines it wrote, for the tests.
+function QUI.Refresh()
+	if not panel or not panel:IsShown() then return end
+	local T = CH.Theme
+	local q = CH.db.queue
+	panel.title:SetText(T.Color("accent", "Clearinghouse") .. "  " .. T.Color("muted", "Craft queue (" .. CH.Queue.Count() .. ")"))
+	empty:SetText(#q == 0 and T.Color("muted", "Empty. Click a row in the crafting advisor to queue one, shift-click to queue as many as you can make.") or "")
+	local lines = { queue = {}, shop = {} }
+	for i, r in ipairs(qrows) do
+		local e = q[i]
+		local show = e ~= nil
+		r.craft:SetShown(show)
+		r.minus:SetShown(show)
+		if show then
+			r.name:SetText(string.format("%s%s x%d%s", e.name or "?", rank(e.quality), e.qty, e.concentration and T.Color("accent", " conc") or ""))
+			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
+			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
+			local can, why = CH.Queue.CanCraftHere(e)
+			r.craft:SetEnabled(can)
+			r.craft:SetScript("OnClick", function() CH.Queue.Craft(e, e.qty) end)
+			r.craft:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_TOP")
+				GameTooltip:AddLine(can and ("Craft " .. e.qty .. " with the queued reagents" .. (e.concentration and " and Concentration" or "")) or ("Craft " .. why), 1, 1, 1)
+				GameTooltip:Show()
+			end)
+			r.craft:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			r.minus:SetScript("OnClick", function() CH.Queue.Remove(e, IsShiftKeyDown() and e.qty or 1) end)
+			table.insert(lines.queue, string.format("%s Q%d x%d %s", e.name, e.quality or 0, e.qty, e.charName or ""))
+		else
+			r.name:SetText(""); r.who:SetText(""); r.profit:SetText("")
+		end
+	end
+	local shop, total = CH.Queue.ShoppingList()
+	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", "  buy for " .. CH.FormatMoney(total) .. " at chmat") or ""))
+	for i, r in ipairs(srows) do
+		local s = shop[i]
+		if s then
+			r[1]:SetText(s.name .. rank(s.rank))
+			r[2]:SetText(s.need)
+			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
+			r[4]:SetText(s.buy > 0 and T.Color("accent", tostring(s.buy)) or T.Color("muted", "0"))
+			r[5]:SetText(s.buy > 0 and CH.FormatMoney(s.cost) or "")
+			table.insert(lines.shop, string.format("%s need=%d have=%d buy=%d", s.name, s.need, s.have, s.buy))
+		else
+			for j = 1, 5 do r[j]:SetText("") end
+		end
+	end
+	return lines
+end
+
+function QUI.Show()
+	if not panel then build() end
+	place()
+	panel:Show()
+	return QUI.Refresh()
+end
+
+function QUI.Toggle()
+	if panel and panel:IsShown() then panel:Hide() else QUI.Show() end
+end
+
+function QUI.IsShown() return panel ~= nil and panel:IsShown() end
+
+CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end end
+CH.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
+CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then place(); QUI.Refresh() end end)

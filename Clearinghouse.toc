@@ -19,3 +19,5 @@ UI.lua
 Minimap.lua
 Advisor.lua
 AdvisorUI.lua
+Queue.lua
+QueueUI.lua

@@ -39,6 +39,8 @@ end
 function CreateFrame() return newFrame() end
 UIParent = newFrame()
 function Mixin(t) return t end
+function wipe(t) for k in pairs(t) do t[k] = nil end return t end
+function IsShiftKeyDown() return STUB.shift end
 Minimap = newFrame()
 function Minimap:GetWidth() return 140 end
 function Minimap:GetCenter() return 100, 100 end
@@ -107,6 +109,7 @@ C_TradeSkillUI = {
 	end,
 	-- Skill 100 plus 5 per top-quality unit in slot 1 and 2 per unit in slot 2; quality 2 from 130.
 	-- Concentration always lands on quality 2 and costs 20 + 2 per missing skill point.
+	CraftRecipe = function(id, n, reagents, _, _, conc) STUB.crafted = { id = id, n = n, reagents = reagents, conc = conc } end,
 	GetCraftingOperationInfo = function(_, infos, _, concentrate)
 		local bonus = 0
 		for _, r in ipairs(infos) do
