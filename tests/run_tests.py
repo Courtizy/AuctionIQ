@@ -469,6 +469,11 @@ run("Clearinghouse.UI.Page('ledger')")
 check("theme: the Clearinghouse tab is plum", L.eval("Clearinghouse.Theme.palette == 'clearinghouse' and Clearinghouse.Theme.hex.bg == '1c1222'"))
 run("Clearinghouse.UI.Page('briefing')")
 check("theme: other pages are AuctionIQ navy", L.eval("Clearinghouse.Theme.palette == 'auctioniq' and Clearinghouse.Theme.hex.bg == '0e1729'"))
+# Clearinghouse companion data in the tooltip
+run("""ClearinghouseMarket = { Get = function(id) if id == 302 then return { market = 123400, avg7 = 110000, change7 = 0.12, qty = 40, days = 9, source = 'realm' } end end }""")
+tl = [l[1] for l in CH.TooltipLines("item:302").values()]
+check("tooltip: Clearinghouse market history shows", "Clearinghouse market" in tl and any("7-day average  +12% in 7 days" in x for x in tl))
+run("ClearinghouseMarket = nil")
 run("Clearinghouse.Auction.RecordOwned({})")
 LU = CH.LedgerUI
 rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))

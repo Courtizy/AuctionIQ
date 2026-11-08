@@ -1,0 +1,57 @@
+name: Clearinghouse app
+
+on:
+  pull_request:
+    paths: ["companion/**", ".github/workflows/companion.yml"]
+  push:
+    branches: [main]
+    paths: ["companion/**", ".github/workflows/companion.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
+      - name: Live check against Blizzard (counts only)
+        env:
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+        run: python live_check.py
+
+  build:
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: >
+          pyinstaller --noconfirm --onefile --windowed --name Clearinghouse
+          --icon clearinghouse.ico
+          --add-data "clearinghouse_app/icon.png;."
+          --add-data "clearinghouse.ico;."
+          --hidden-import pystray._win32
+          --hidden-import keyring.backends.Windows
+          run_clearinghouse.py
+      - name: Smoke test the build imports
+        run: python -c "import clearinghouse_app.app, pystray, keyring, PIL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clearinghouse-app-and-addon
+          path: |
+            companion/dist/Clearinghouse.exe
+            companion/addon/Clearinghouse
