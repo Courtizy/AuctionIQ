@@ -43,7 +43,7 @@ local VIEWS = {
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
 	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
-	par = { label = "Par levels", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
+	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	when = { label = "When it sells", sort = 2, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
 		{ "Best hours", 382, 110 }, { "Share then", 496, 80 }, { "Post by", 580, 144 } } },
@@ -270,7 +270,7 @@ function LUI.Rows(v, opts)
 					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
 			end
 		end
-		return out, string.format("%d items below par, %s of stock to make or buy", short, money(worth))
+		return out, string.format("%d items below stock target, %s of stock to make or buy", short, money(worth))
 			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
 	end
 
@@ -614,7 +614,7 @@ function LUI.Refresh()
 	return rows, footer
 end
 
---- Par levels view: shift-click raises an item's par by 1, ctrl-click lowers it, alt-click goes
+--- Stock targets view: shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
 --- back to the automatic one (a week of sales).
 function LUI.ParClick(id, mod)
 	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")

@@ -137,7 +137,7 @@ function UI.BriefingText(now)
 			for _, e in ipairs(below) do if e.short > 0 then nShort = nShort + 1 end end
 			if nShort > 0 then
 				table.insert(out, "")
-				table.insert(out, T.Color("accent", "Below par") .. T.Color("muted", "  " .. nShort .. " items; the Queue's Fill crafts up to par"))
+				table.insert(out, T.Color("accent", "Below stock target") .. T.Color("muted", "  " .. nShort .. " items; the Queue's Fill crafts up to target"))
 				local shown = 0
 				for _, e in ipairs(below) do
 					if e.short > 0 and shown < 6 then

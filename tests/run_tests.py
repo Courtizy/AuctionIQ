@@ -428,9 +428,9 @@ par = {e.id: e for e in CH.Par.List().values()}
 check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
 check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 1)
 run("Clearinghouse.Par.Set(302, 6); Clearinghouse.Par.Refresh()")
-check("briefing lists what's below par", "Below par" in plain(CH.UI.BriefingText()))
+check("briefing lists what's below par", "Below stock target" in plain(CH.UI.BriefingText()))
 rows, foot = CH.LedgerUI.Rows("par", L.eval("{ }"))
-check("par view rows", len(list(rows.values())) == 2 and plain(foot).startswith("1 items below par"))
+check("par view rows", len(list(rows.values())) == 2 and plain(foot).startswith("1 items below stock target"))
 run("Clearinghouse.Par.Set(302, nil); Clearinghouse.Par.Refresh()")
 # Groups and auctioning
 n = CH.Groups.Rebuild()

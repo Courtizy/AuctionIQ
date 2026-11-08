@@ -5,7 +5,7 @@
 --          what you paid after the cut, anything else at 80% of its buy price
 --   normal post here when nobody is cheaper: Clearinghouse value
 --   max    never post above it: 3x normal
--- and how many to keep up across the whole Warband (par level, else a cap).
+-- and how many to keep up across the whole Warband (stock target, else a cap).
 local _, CH = ...
 
 local G = {}
