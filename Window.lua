@@ -112,6 +112,14 @@ function W.Tooltip(owner, lines)
 	GameTooltip:Show()
 end
 
+--- An item's icon, inline in text. The game has every item icon loaded, so this is cheap.
+function W.ItemIcon(itemID, size)
+	local icon = itemID and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID)
+	if not icon then return "" end
+	size = size or 16
+	return "|T" .. icon .. ":" .. size .. ":" .. size .. ":0:0:64:64:5:59:5:59|t "
+end
+
 --- Quality icon. tiers is how many qualities the item has: Midnight's two-quality items and
 --- reagents use their own icons (the ones in their chat links), older ones the five-tier set.
 function W.QualityIcon(q, size, tiers)

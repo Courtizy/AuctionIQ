@@ -75,12 +75,18 @@ local function build()
 	local fill = T.Button(bar, "Fill", 40, 18)
 	fill:SetPoint("RIGHT", pop, "LEFT", -4, 0)
 	fill:SetScript("OnClick", function()
-		local n = CH.Queue.FillFromBest(5)
-		CH.Print(n > 0 and ("queued the best craft of " .. n .. " recipes") or "open a profession to fill the queue from its best crafts")
+		local prof = CH.OpenProfessionID()
+		local plan, why = prof and CH.Queue.FillPlan(prof)
+		if plan then
+			CH.Print(string.format("queued %d Concentration crafts (%d of %d points) and %d without, about %s profit.",
+				plan.conc, math.floor(plan.points + 0.5), plan.budget, plan.plain, CH.FormatMoney(plan.profit)))
+		else
+			CH.Print(why or "open a profession to fill the queue from its scan.")
+		end
 	end)
 	fill:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:AddLine("Queue one of each of the open profession's five best crafts, with the advisor's reagents.", 1, 1, 1, true)
+		GameTooltip:AddLine("Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/ch cap), less what you own.", 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
 	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -134,7 +140,7 @@ function QUI.Refresh()
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
 		if show then
-			r.name:SetText(string.format("%s%s x%d%s", e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
+			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
 			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
 			local can, why = CH.Queue.CanCraftHere(e)
@@ -157,7 +163,7 @@ function QUI.Refresh()
 	for i, r in ipairs(srows) do
 		local s = shop[i]
 		if s then
-			r[1]:SetText(s.name .. rank(s.rank, s.tiers))
+			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
 			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
 			r[4]:SetText(s.buy > 0 and T.Color("accent", tostring(s.buy)) or T.Color("muted", "0"))

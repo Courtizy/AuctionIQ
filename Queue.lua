@@ -38,7 +38,7 @@ function Q.FromRow(result, r)
 	return {
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
-		concentration = r.concentration, profit = r.profit, cost = r.cost,
+		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item,
 		reagents = reagents, shop = shop, qty = 0,
 	}
 end
@@ -105,6 +105,83 @@ function Q.FillFromBest(limit)
 		end
 	end
 	return added
+end
+
+--- Fill the queue from the saved scan of a profession, on a Concentration budget:
+---   1. Concentration crafts, best extra gold per point first, only as many as your Concentration pays
+---      for (budget, default what you have now) and as many as sell in a day (less what you own).
+---   2. Then crafts that make a profit without Concentration, up to what sells in a day.
+--- Returns a summary { conc, plain, points, budget, profit, recipes }, or nil and why.
+function Q.FillPlan(profID, opts)
+	opts = opts or {}
+	local scan = CH.Scan and CH.Scan.Results(profID)
+	if not scan or #scan.rows == 0 then return nil, "scan the profession first (the Scan tab)" end
+	local p = CH.Me().professions[profID]
+	local budget = opts.budget or (p and CH.ConcentrationNow(p)) or 0
+	local out = { conc = 0, plain = 0, points = 0, budget = budget, profit = 0, recipes = 0 }
+	local limit = opts.limit or 12
+	local results, queued, done = {}, {}, {}
+	local function analyze(id)
+		if results[id] == nil then
+			local ok, r = pcall(CH.Advisor.Analyze, id, { professionID = profID })
+			results[id] = ok and r or false
+		end
+		return results[id]
+	end
+	local function demand(r, itemID)
+		local units = CH.Scan.DailyUnits(itemID)
+		return math.max(0, math.ceil((units - have(itemID or 0) - (queued[itemID or 0] or 0)) / (r.made or 1)))
+	end
+	local function add(r, row, n, isConc)
+		if not done[r.recipeID] then
+			if out.recipes >= limit then return false end
+			done[r.recipeID] = true
+			out.recipes = out.recipes + 1
+		end
+		Q.Add(r.result, row, n)
+		queued[row.item or 0] = (queued[row.item or 0] or 0) + n * (r.made or 1)
+		out.profit = out.profit + (row.profit or 0) * n
+		if isConc then out.conc = out.conc + n else out.plain = out.plain + n end
+		return true
+	end
+
+	-- 1. Concentration, best extra gold per point first
+	local conc = {}
+	for _, r in ipairs(scan.rows) do
+		local avg = r.avgConcentration or r.concentration
+		local gain = r.concProfit and (r.concProfit - math.max(0, r.profit or 0))
+		if avg and avg > 0 and gain and gain > 0 then
+			table.insert(conc, { row = r, avg = avg, gpp = gain / avg })
+		end
+	end
+	table.sort(conc, function(a, b) return a.gpp > b.gpp end)
+	for _, c in ipairs(conc) do
+		local r = c.row
+		local raw = r.concentration or c.avg
+		if budget >= raw then
+			local n = math.min(demand(r, r.concItem), 1 + math.floor((budget - raw) / c.avg))
+			local res = n > 0 and analyze(r.recipeID)
+			if res and res.bestConc then
+				if add({ recipeID = r.recipeID, made = r.made, result = res }, res.bestConc, n, true) then
+					budget = budget - c.avg * n
+					out.points = out.points + c.avg * n
+				end
+			end
+		end
+	end
+
+	-- 2. Profitable without Concentration
+	local plain = {}
+	for _, r in ipairs(scan.rows) do
+		if r.profit and r.profit > 0 then table.insert(plain, r) end
+	end
+	table.sort(plain, function(a, b) return (a.perDay or 0) > (b.perDay or 0) end)
+	for _, r in ipairs(plain) do
+		local n = demand(r, r.item)
+		local res = n > 0 and analyze(r.recipeID)
+		if res and res.best then add({ recipeID = r.recipeID, made = r.made, result = res }, res.best, n, false) end
+	end
+	return out
 end
 
 --- Reagents for the whole queue: need, have, buy and what buying costs. Sorted by cost, biggest first.

@@ -29,13 +29,24 @@ local function summary(result)
 	local item = b and b.item or (c and c.item)
 	local units = Sc.DailyUnits(item)
 	local made = result.made or 1
+	local perDay = b and b.profit and b.profit > 0 and b.profit * units / made or 0
+	-- With Concentration: as many crafts a day as sell, up to what a day's refill pays for.
+	local avg = c and (c.avgConcentration or c.concentration)
+	if c and c.profit and c.profit > 0 and avg and avg > 0 then
+		local crafts = math.min(units / made, CH.CONC_PER_HOUR * 24 / avg)
+		local plain = math.max(0, b and b.profit or 0)
+		-- the Concentration crafts replace plain ones; any left sell without it
+		local conc = crafts * c.profit + math.max(0, units / made - crafts) * plain
+		if conc > perDay then perDay = conc end
+	end
 	return {
 		recipeID = result.recipeID, name = result.name, made = made, tiers = result.model and result.model.maxQ,
 		quality = b and b.quality, profit = b and b.profit, cost = b and b.cost, item = item,
 		pct = b and b.cost and b.cost > 0 and b.profit / b.cost or nil,
 		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,
+		avgConcentration = avg, concItem = c and c.item,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
-		perDay = b and b.profit and b.profit > 0 and b.profit * units / made or 0,
+		perDay = perDay,
 	}
 end
 Sc.Summary = summary
@@ -105,7 +116,7 @@ function Sc.Top(profID, n)
 	return out
 end
 
---- Sorts scan rows by a column: profit, pct, perPoint, perDay or soldPerDay.
+--- Sorts scan rows by a column: profit, pct, concProfit, perPoint, perDay or soldPerDay.
 function Sc.Sort(rows, key)
 	table.sort(rows, function(a, b) return (a[key] or -math.huge) > (b[key] or -math.huge) end)
 	return rows

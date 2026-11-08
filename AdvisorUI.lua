@@ -195,7 +195,8 @@ function AUI.Render(result, reason)
 		notes:SetText("")
 		return {}
 	end
-	local head = T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
+	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
+	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
 	if result.order then
 		local o = result.order
 		head = head .. T.Color("muted", "  order" .. (o.customer and (" for " .. o.customer) or "")

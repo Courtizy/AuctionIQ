@@ -214,6 +214,21 @@ check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(
 top = list(CH.Scan.Top(2906, 1).values())
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
+# Queue on a Concentration budget
+run('Clearinghouse.Queue.Clear()')
+plan = CH.Queue.FillPlan(2906, L.eval("{ budget = 100 }"))
+qs = list(CH.db.queue.values())
+cq = [e for e in qs if e.concentration]
+check("fill: Concentration crafts stay within the budget", plan.conc == 1 and plan.points == 80 and plan.conc == sum(e.qty for e in cq))
+check("fill: profitable crafts without Concentration are added too", plan.plain > 0 and any(not e.concentration for e in qs))
+check("fill: crafts per recipe stop at what sells in a day", all(e.qty <= 10 for e in qs))
+run('Clearinghouse.Queue.Clear()')
+plan0 = CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and plan0.points == 0)
+run('Clearinghouse.Queue.Clear()')
+scan_cols = list(CH.ScanUI.Refresh().values())
+check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
+
 # Cooldowns
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 cd = list(CH.Cooldowns.All().values())
