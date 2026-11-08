@@ -1,0 +1,126 @@
+-- Recipe scan: runs the crafting advisor on every learned recipe of the open profession, with the
+-- best reagents (and finishing reagents) for each, and ranks them. Spread over frames so the game
+-- doesn't stall. Results are saved with the character, so the briefing and the path planner can use
+-- them when the profession is closed.
+local _, CH = ...
+
+local Sc = {}
+CH.Scan = Sc
+Sc.models = {} -- [professionID][recipeID] = advisor model, for simulations this session
+
+local PER_FRAME = 2
+local running
+
+local function settings() return CH.db.settings.scan end
+
+local function eligible(info)
+	return info and info.learned and not info.isRecraft and not info.isSalvageRecipe and not info.isGatheringRecipe
+		and not info.isDummyRecipe
+end
+
+--- How many of an item you'd sell a day: what the region sells, up to your own cap.
+function Sc.DailyUnits(itemID)
+	local sold = CH.Advisor.SoldPerDay(itemID) or 0
+	return math.min(sold, settings().dailyCap or 10)
+end
+
+local function summary(result)
+	local b, c = result.best, result.bestConc
+	local item = b and b.item or (c and c.item)
+	local units = Sc.DailyUnits(item)
+	local made = result.made or 1
+	return {
+		recipeID = result.recipeID, name = result.name, made = made,
+		quality = b and b.quality, profit = b and b.profit, cost = b and b.cost, item = item,
+		pct = b and b.cost and b.cost > 0 and b.profit / b.cost or nil,
+		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,
+		soldPerDay = CH.Advisor.SoldPerDay(item),
+		perDay = b and b.profit and b.profit > 0 and b.profit * units / made or 0,
+	}
+end
+Sc.Summary = summary
+
+--- Recipe IDs worth scanning in the open profession.
+function Sc.Recipes()
+	local out = {}
+	local ui = C_TradeSkillUI
+	for _, id in ipairs(ui.GetAllRecipeIDs and ui.GetAllRecipeIDs() or {}) do
+		if eligible(ui.GetRecipeInfo(id)) then table.insert(out, id) end
+	end
+	return out
+end
+
+--- Scan the open profession. onStep(done, total) while it runs, onDone(rows) at the end.
+function Sc.Run(onStep, onDone)
+	if running then return false end
+	local profID = CH.OpenProfessionID()
+	if not profID then return false end
+	if not CH.Prices.Available() then return false end
+	local ids = Sc.Recipes()
+	local i, rows = 0, {}
+	Sc.models[profID] = Sc.models[profID] or {}
+	running = true
+	local function step()
+		for _ = 1, PER_FRAME do
+			i = i + 1
+			local id = ids[i]
+			if not id then
+				running = false
+				table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
+				local p = CH.Me().professions[profID]
+				if p then p.scan = { at = time(), rows = rows } end
+				if onDone then onDone(rows) end
+				return
+			end
+			local ok, model = pcall(CH.Advisor.Measure, id, { professionID = profID })
+			if ok and model then
+				Sc.models[profID][id] = model
+				local ok2, result = pcall(CH.Advisor.Evaluate, model)
+				if ok2 and result and (result.best or result.bestConc) then table.insert(rows, summary(result)) end
+			end
+		end
+		if onStep then onStep(i, #ids) end
+		C_Timer.After(0, step)
+	end
+	step()
+	return true
+end
+
+function Sc.IsRunning() return running end
+
+--- The saved scan for a profession on this character.
+function Sc.Results(profID)
+	local p = profID and CH.Me().professions[profID]
+	return p and p.scan
+end
+
+--- Best n recipes by profit from the saved scan.
+function Sc.Top(profID, n)
+	local s = Sc.Results(profID)
+	local out = {}
+	for _, r in ipairs(s and s.rows or {}) do
+		if r.profit and r.profit > 0 then table.insert(out, r) end
+		if #out >= n then break end
+	end
+	return out
+end
+
+--- Sorts scan rows by a column: profit, pct, perPoint, perDay or soldPerDay.
+function Sc.Sort(rows, key)
+	table.sort(rows, function(a, b) return (a[key] or -math.huge) > (b[key] or -math.huge) end)
+	return rows
+end
+
+--- A model for a recipe: from this session's scan, else measured now (profession must be open).
+function Sc.Model(profID, recipeID)
+	local m = Sc.models[profID] and Sc.models[profID][recipeID]
+	if m then return m end
+	local ok, model = pcall(CH.Advisor.Measure, recipeID, { professionID = profID })
+	if ok and model then
+		Sc.models[profID] = Sc.models[profID] or {}
+		Sc.models[profID][recipeID] = model
+		return model
+	end
+end
+
+CH.On("TRADE_SKILL_CLOSE", function() wipe(Sc.models) end)

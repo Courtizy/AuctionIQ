@@ -58,16 +58,36 @@ function UI.BriefingText(now)
 	local listed = false
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
-			for i, r in ipairs(p.crafts or {}) do
-				if i > 3 then break end
-				listed = true
-				table.insert(out, string.format("   %s%s|r %s: %s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
+			-- the recipe scan (best reagents, average profit) when there is one, else the quick top-quality list
+			local scanned = p.scan and p.scan.rows
+			local list = scanned or p.crafts or {}
+			local n = 0
+			for _, r in ipairs(list) do
+				if n >= 3 then break end
+				if r.profit and r.profit > 0 then
+					n = n + 1
+					listed = true
+					table.insert(out, string.format("   %s%s|r %s: %s%s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?",
+						scanned and r.quality and (" Q" .. r.quality) or "", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
+				end
 			end
 		end
 	end
 	if not listed then
 		table.insert(out, CH.Prices.Available() and "   Open a profession window to rank its recipes."
 			or "   Needs TradeSkillMaster for prices.")
+	end
+
+	local cds = CH.Cooldowns and CH.Cooldowns.All(now) or {}
+	if #cds > 0 then
+		table.insert(out, "")
+		table.insert(out, CH.Theme.Color("accent", "Cooldowns"))
+		for i, cd in ipairs(cds) do
+			if i > 6 then break end
+			local when = cd.ready and CH.Theme.Color("ok", "ready")
+				or ("in " .. math.ceil(((cd.readyAt or now) - now) / 3600) .. "h")
+			table.insert(out, string.format("   %s%s|r %s  %s", classColor(cd.class), cd.char or "?", cd.name or "?", when))
+		end
 	end
 	return table.concat(out, "\n")
 end

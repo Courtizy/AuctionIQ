@@ -7,7 +7,7 @@ CH.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 CH.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 1, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true } }, characters = {} }
+local DEFAULTS = { version = 1, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -86,7 +86,7 @@ CH.handlers = handlers
 function CH.On(event, fn)
 	handlers[event] = handlers[event] or {}
 	table.insert(handlers[event], fn)
-	frame:RegisterEvent(event)
+	pcall(frame.RegisterEvent, frame, event) -- an event this game version doesn't have is skipped, not an error
 end
 
 frame:SetScript("OnEvent", function(_, event, ...)
@@ -126,10 +126,22 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
 	elseif msg == "queue" then
 		CH.QueueUI.Toggle()
+	elseif msg == "scan" then
+		CH.ScanUI.Toggle()
+	elseif msg == "paths" or msg:match("^plan") or msg:match("^path ") then
+		local goal = msg:match("^plan%s+(.+)") or msg:match("^path%s+(.+)")
+		if not CH.PathsUI.IsShown() then CH.PathsUI.Toggle() end
+		if goal then CH.PathsUI.Run(goal) end
+	elseif msg == "results" or msg == "log" then
+		CH.LogUI.Toggle()
+	elseif msg:match("^cap") then
+		local n = tonumber(msg:match("(%d+)"))
+		if n then CH.db.settings.scan.dailyCap = n end
+		CH.Print("gold a day counts up to " .. CH.db.settings.scan.dailyCap .. " sold a day per item. /ch cap 20 to change.")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list.")
+		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item.")
 	else
 		CH.UI.Toggle()
 	end

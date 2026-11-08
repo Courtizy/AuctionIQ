@@ -7,7 +7,7 @@ from pathlib import Path
 from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-files = [l.strip() for l in (ROOT / "Clearinghouse.toc").read_text().splitlines() if l.strip().endswith(".lua")]
+files = [l.strip().replace("\\", "/") for l in (ROOT / "Clearinghouse.toc").read_text().splitlines() if l.strip().endswith(".lua")]
 L = LuaRuntime(unpack_returned_tuples=True)
 L.execute((ROOT / "tests" / "wow_stub.lua").read_text())
 ns = L.table()
@@ -133,6 +133,98 @@ check("ElvUI: value colour becomes the accent", T.hex.accent == "336699")
 check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
 check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
 run('ElvUI = nil')
+
+# CraftSim parity: average profit with Multicraft and Resourcefulness, Ingenuity, finishing reagents
+St = CH.Stats
+check("multicraft: average extra items from the base yield", abs(St.MulticraftExtra(2, 0) - 2.33) < 1e-9 and abs(St.MulticraftExtra(1, 0.25) - 1.8125) < 1e-9)
+check("concentration cost from the game's curve", St.ConcentrationCost(1, 100, 25, 0) == 100 and St.ConcentrationCost(1, 100, 25, 0.1) == 90)
+pr = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+prow = list(pr.rows.values())
+best = pr.best
+check("average profit adds Multicraft extras and Resourcefulness savings",
+      best.quality == 2 and best.cost == 260000 and abs(best.profit - (690000 + 0.35 * 2.33 * 475000 + 0.2 * 0.3 * 180000)) < 1)
+check("finishing reagent picked per row: Multicraft one for the plain craft", [f.itemID for f in best.finishing.values()] == [222])
+conc = pr.bestConc
+check("skill finishing reagent picked for the Concentration craft, less Concentration",
+      [f.itemID for f in conc.finishing.values()] == [221] and conc.concentration == 60 and conc.cost == 90000)
+check("Ingenuity: average Concentration counts the refund", conc.avgConcentration == 51 and abs(conc.perPoint - conc.profit / 51) < 1e-6)
+pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(pr, best, 5).values()]
+check("profit hover shows the Multicraft and Resourcefulness parts",
+      any(a.startswith("Multicraft  35% x 2.3 more") for a, _ in pl) and any(a.startswith("Resourcefulness  20% saves") for a, _ in pl))
+cl = [plain(l[1]) for l in CH.AdvisorUI.BreakdownLines(pr, best, 3).values()]
+check("reagent hover lists the finishing reagent", any("item 222" in c for c in cl))
+
+# Simulation: more skill
+m10 = CH.Advisor.Measure(10)
+sim = CH.Advisor.Evaluate(m10, L.eval('{ sim = { skill = 30 } }'))
+check("simulating +30 skill reaches Q2 with the cheapest reagents", sim.best.quality == 2 and sim.best.cost == 670000 and sim.best.profit == 2180000)
+check("quality thresholds come from the game", m10.thresholds[2] == 130)
+
+# Specialization: what ranks give, and a plan
+run("""Clearinghouse.SpecData[2906] = { name = "Alchemy", recipes = { [10] = { 900, 9001 }, [11] = { 900, 9001, 901 } },
+  nodes = { [900] = { nodeID = 900, maxRank = 20, base = true, stats = { skill = 1 } },
+            [9001] = { nodeID = 900, maxRank = 1, stats = { multicraft = 50, additionalitemscraftedwithmulticraft = 25 } },
+            [901] = { nodeID = 901, maxRank = 10, base = true, stats = { resourcefulness = 10 } } } }""")
+run('STUB.Fire("TRAIT_NODE_CHANGED")')
+tree = CH.Spec.Read(2906)
+check("spec: tree read with ranks, perks and parents", tree.nodes[900].rank == 0 and tree.nodes[901].rank == -1 and tree.nodes[901].parent == 900
+      and tree.nodes[900].perks[9001] == 10 and tree.unspent == 10)
+ranks = L.eval("{ [900] = 12, [901] = 3 }")
+d = CH.Spec.Delta(2906, tree, ranks, 11)
+check("spec: delta for a recipe at other ranks", d.skill == 12 and d.multicraft == 50 and abs(d.mcExtra - 0.25) < 1e-9 and d.resourcefulness == 30)
+check("goal text matches recipes by category", list(CH.Paths.Match("I want to sell potions")[0].values()) == [11]
+      and list(CH.Paths.Match("flasks")[0].values()) == [10])
+plan = CH.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))
+check("plan: puts points where the flask gains", plan.steps[1].name == "Node 900" and plan.final > plan.start and plan.budget == 30)
+check("plan: describes itself in words", any("Node 900" in plain(l) for l in plan.text.values()) and "Goal:" in plain(plan.text[1]))
+CH.AdvisorUI.SetPlan(plan)
+CH.AdvisorUI.Show(10)
+check("advisor simulates the plan", CH.AdvisorUI.Current().sim is not None)
+run('Clearinghouse.AdvisorUI.SetPlan(nil); Clearinghouse.AdvisorUI.SetSimSkill(0)')
+
+# Top gear
+c = CH.Gear.Candidates()
+check("gear: worn and bag items found", len(list(c.tools.values())) == 2 and len(list(c.gear.values())) == 2)
+g = CH.Gear.Best(m10, None, c)
+check("gear: the better tool wins for the flask", g.set is not None and g.gain > 0 and "404" in CH.Gear.SwapText(g.set))
+CH.Gear.Equip(g.set, c)
+check("gear: equip puts the bag tool in the tool slot", L.eval("STUB.equipped[20]") == "item:404")
+
+# Crafting orders
+o = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
+  reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 2 } } } }"""))
+orows = list(o.rows.values())
+check("order: the customer's reagents aren't charged, the commission is the value",
+      o.best.quality == 2 and o.best.cost == 2100000 and o.best.value == 900000 and o.best.profit == 900000 - 2100000)
+check("order: qualities under the minimum are marked", orows[0].short == True and L.eval("STUB.orderCall") == 77)
+
+# Recraft
+rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
+check("recraft: profit is the better item less the one you have", rc.best.quality == 2 and rc.best.profit == 2850000 - 2120000 - 950000)
+
+# Recipe scan
+run('Clearinghouse.ScanUI.Toggle(); for i = 1, 20 do STUB.RunTimers() end')
+sr = CH.Scan.Results(2906)
+names = [r.name for r in sr.rows.values()]
+check("scan: every learned recipe with a result, saved", "Test Flask" in names and "Test Potion" in names)
+pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
+check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(pot.perDay - pot.profit * 10 / 2) < 1e-6)
+top = list(CH.Scan.Top(2906, 1).values())
+check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
+
+# Cooldowns
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+cd = list(CH.Cooldowns.All().values())
+check("cooldowns recorded and listed", len(cd) == 1 and cd[0].name == "Phoenix Oil" and cd[0].ready == False)
+check("briefing shows cooldowns", "Cooldowns" in plain(CH.UI.BriefingText()))
+
+# Craft results log
+CH.AdvisorUI.Show(10)
+run('C_TradeSkillUI.CraftRecipe(10, 1, {}, nil, nil, false)')
+run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 2, multicraft = 1, resourcesReturned = { { itemID = 204, quantity = 1 } } })')
+lr = list(CH.Log.Rows().values())[0]
+check("results log: craft, Multicraft proc and saved reagents counted",
+      lr.crafts == 1 and lr.e.mcProcs == 1 and lr.e.saved == 300000 and lr.e.value == 2 * 3000000 * 0.95 and lr.expected == 730000)
 
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

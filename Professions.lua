@@ -35,6 +35,12 @@ local function outputItem(recipeID, info)
 	return s and s.outputItemID, nil
 end
 
+--- Skill line of the open profession (the expansion one, e.g. Midnight Alchemy), or nil.
+function CH.OpenProfessionID()
+	local info = currentProfession()
+	return info and info.professionID
+end
+
 function CH.BestCrafts(limit)
 	local out = {}
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs() or {}) do
@@ -63,6 +69,8 @@ function CH.RecordProfession()
 	p.skill, p.maxSkill = info.skillLevel, info.maxSkillLevel
 	p.conc, p.concMax = concentration(info.professionID)
 	p.concAt = time()
+	if CH.Spec then CH.Spec.Record(info.professionID) end
+	if CH.Cooldowns then CH.Cooldowns.Record(p) end
 	if CH.Prices.Available() then
 		p.crafts = CH.BestCrafts()
 		p.craftsAt = time()
