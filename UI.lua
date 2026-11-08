@@ -8,7 +8,6 @@ local W, H = 920, 600
 local pages, pageButtons = {}, {}
 local page = "dashboard"
 local range = "1M"
-local ledgerView, ledgerFilter, ledgerOffset = "inventory", "", 0
 local RANGES = { { "1D", 1 }, { "1W", 7 }, { "1M", 30 }, { "3M", 91 }, { "6M", 182 }, { "1Y", 365 }, { "All", nil } }
 
 local function classColor(class)
@@ -186,18 +185,6 @@ function UI.DashboardData(now)
 	return d
 end
 
-local VIEWS = {
-	inventory = { label = "Inventory", cols = { { "Item", 0, 250 }, { "Total", 256, 70 }, { "Bags", 330, 64 }, { "Bank", 398, 70 },
-		{ "Mail", 472, 56 }, { "Warband", 532, 70 }, { "AH", 606, 56 }, { "Value", 666, 112 } } },
-	revenue = { label = "Revenue", cols = { { "Item", 0, 250 }, { "Player", 256, 90 }, { "Qty", 350, 50 }, { "Each", 404, 90 },
-		{ "Total", 498, 100 }, { "Source", 602, 76 }, { "When", 682, 96 } } },
-	expenses = { label = "Expenses", cols = { { "Item", 0, 250 }, { "Player", 256, 90 }, { "Qty", 350, 50 }, { "Each", 404, 90 },
-		{ "Total", 498, 100 }, { "Source", 602, 76 }, { "When", 682, 96 } } },
-	failed = { label = "Failed Auctions", cols = { { "Item", 0, 250 }, { "Player", 256, 90 }, { "Qty", 350, 50 }, { "Why", 404, 100 },
-		{ "When", 682, 96 } } },
-}
-local VIEW_ORDER = { "inventory", "revenue", "expenses", "failed" }
-
 local function itemName(id, fallback)
 	local n = id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
 	return n or fallback or (id and ("item " .. id)) or "?"
@@ -207,45 +194,9 @@ local function when(t)
 	return date and date("%b %d %H:%M", t) or tostring(t)
 end
 
---- Ledger rows for a view as lists of cell texts, plus the footer text. Filter matches names.
+--- Ledger rows for a view (see LedgerUI.Rows), for tests and older callers.
 function UI.LedgerRows(view, filter)
-	local L = CH.Ledger
-	local out, total = {}, 0
-	local key = filter and filter ~= "" and string.lower(filter) or nil
-	local function keep(name) return not key or string.lower(name or ""):find(key, 1, true) end
-	if view == "inventory" then
-		for _, e in ipairs(L.Inventory(filter)) do
-			total = total + e.value
-			table.insert(out, { CH.Window.ItemIcon(e.id, 14) .. itemName(e.id, e.item), e.total, e.bags, e.bank, e.mail, e.warband, e.ah, money(e.value) })
-		end
-		return out, "Total value: " .. money(total)
-	end
-	local list = {}
-	if view == "revenue" then
-		for _, r in ipairs(L.Records("Sales")) do table.insert(list, r) end
-		for _, r in ipairs(L.Records("Income")) do r.label = r.source; table.insert(list, r) end
-	elseif view == "expenses" then
-		for _, r in ipairs(L.Records("Buys")) do table.insert(list, r) end
-		for _, r in ipairs(L.Records("Expense")) do r.label = r.source; table.insert(list, r) end
-	else
-		for _, r in ipairs(L.Records("Expired")) do r.why = "Expired"; table.insert(list, r) end
-		for _, r in ipairs(L.Records("Cancelled")) do r.why = "Cancelled"; table.insert(list, r) end
-	end
-	table.sort(list, function(a, b) return a.time > b.time end)
-	for _, r in ipairs(list) do
-		local name = r.label or itemName(r.id, r.item)
-		if keep(name) then
-			if view == "failed" then
-				total = total + r.quantity
-				table.insert(out, { CH.Window.ItemIcon(r.id, 14) .. name, r.player or "?", r.quantity, r.why, when(r.time) })
-			else
-				total = total + r.amount
-				table.insert(out, { (r.id and CH.Window.ItemIcon(r.id, 14) or "") .. name, r.player or "?", r.label and "" or r.quantity,
-					r.label and "" or money(r.price), money(r.amount), r.label and (r.other or "") or (r.source or ""), when(r.time) })
-			end
-		end
-	end
-	return out, view == "failed" and (total .. " items came back") or ("Total: " .. money(total))
+	return CH.LedgerUI.Rows(view, { filter = filter })
 end
 
 -- Building ------------------------------------------------------------------------------------
@@ -376,35 +327,8 @@ local function buildDashboard(p)
 end
 
 local function buildLedger(p)
-	local T = CH.Theme
 	pages.ledger = p
-	local nav = panel(p, 0, 0, 160, H - 70)
-	p.nav = {}
-	for i, k in ipairs(VIEW_ORDER) do
-		local b = T.Button(nav, VIEWS[k].label, 144, 22)
-		b:SetPoint("TOPLEFT", 8, -10 - (i - 1) * 26)
-		b:SetScript("OnClick", function() ledgerView = k; ledgerOffset = 0; UI.Refresh() end)
-		p.nav[k] = b
-	end
-	local x0 = 172
-	local search = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
-	search:SetSize(300, 20)
-	search:SetPoint("TOPLEFT", x0 + 6, -4)
-	search:SetAutoFocus(false)
-	search:SetScript("OnTextChanged", function(self) ledgerFilter = self:GetText() or ""; ledgerOffset = 0; UI.Refresh() end)
-	search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	p.hint = fs(p, x0 + 320, -8, 300, "LEFT", "GameFontDisableSmall")
-	p.hint:SetText("Filter by item name")
-	p.heads, p.rows = {}, {}
-	for j = 1, 8 do p.heads[j] = fs(p, 0, -34, 10, "LEFT", "GameFontNormalSmall") end
-	for i = 1, 24 do
-		local r = {}
-		for j = 1, 8 do r[j] = fs(p, 0, -52 - (i - 1) * 18, 10) end
-		p.rows[i] = r
-	end
-	p.footer = fs(p, x0, -H + 86, W - x0 - 24, "CENTER", "GameFontNormal")
-	p:EnableMouseWheel(true)
-	p:SetScript("OnMouseWheel", function(_, delta) ledgerOffset = math.max(0, ledgerOffset - delta * 5); UI.Refresh() end)
+	CH.LedgerUI.Build(p, fs, panel)
 end
 
 local function buildBriefing(p)
@@ -615,44 +539,7 @@ local function refreshDashboard()
 	return data
 end
 
-local function refreshLedger()
-	local p = pages.ledger
-	for k, b in pairs(p.nav) do colorButton(b, k == ledgerView) end
-	local v = VIEWS[ledgerView]
-	local x0 = 172
-	for j, h in ipairs(p.heads) do
-		local c = v.cols[j]
-		h:ClearAllPoints()
-		if c then
-			h:SetPoint("TOPLEFT", x0 + c[2], -34)
-			h:SetWidth(c[3])
-			h:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
-			h:SetText(c[1])
-		else
-			h:SetText("")
-		end
-	end
-	local rows, footer = {}, ""
-	if CH.Ledger.Available() then rows, footer = UI.LedgerRows(ledgerView, ledgerFilter) end
-	ledgerOffset = math.max(0, math.min(ledgerOffset, #rows - #p.rows))
-	for i, r in ipairs(p.rows) do
-		local data = rows[i + ledgerOffset]
-		for j, cell in ipairs(r) do
-			local c = v.cols[j]
-			cell:ClearAllPoints()
-			if c and data then
-				cell:SetPoint("TOPLEFT", x0 + c[2], -52 - (i - 1) * 18)
-				cell:SetWidth(c[3])
-				cell:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
-				cell:SetText(tostring(data[j] or ""))
-			else
-				cell:SetText("")
-			end
-		end
-	end
-	p.footer:SetText(CH.Ledger.Available() and footer or CH.Theme.Color("muted", "Needs TradeSkillMaster."))
-	return rows
-end
+local function refreshLedger() return CH.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end

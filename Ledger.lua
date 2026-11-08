@@ -254,7 +254,7 @@ end
 -- Inventory -----------------------------------------------------------------------------------
 --- Every item you hold on this realm, from TSM's counts: { item, id, bags, bank, mail, ah, warband,
 --- total, value } sorted by value (Clearinghouse value x total). filter is a name keyword.
-function Lg.Inventory(filter)
+function Lg.Inventory(filter, char)
 	local db = tsm()
 	local items = {}
 	if not db then return {} end
@@ -269,12 +269,15 @@ function Lg.Inventory(filter)
 		end
 	end
 	for _, c in ipairs(Lg.Characters()) do
+		if char and c.name ~= char then -- one character only
+		else
 		add(db["s@" .. c.key .. "@internalData@bagQuantity"], "bags")
 		add(db["s@" .. c.key .. "@internalData@bankQuantity"], "bank")
 		add(db["s@" .. c.key .. "@internalData@mailQuantity"], "mail")
 		add(db["s@" .. c.key .. "@internalData@auctionQuantity"], "ah")
+		end
 	end
-	add(db["g@ @internalData@warbankQuantity"], "warband")
+	if not char then add(db["g@ @internalData@warbankQuantity"], "warband") end
 	local out = {}
 	local key = filter and filter ~= "" and string.lower(filter) or nil
 	for _, e in pairs(items) do

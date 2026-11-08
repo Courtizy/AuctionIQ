@@ -25,6 +25,7 @@ Tooltip.lua
 Professions.lua
 Cooldowns.lua
 Ledger.lua
+LedgerUI.lua
 UI.lua
 Minimap.lua
 Advisor.lua
