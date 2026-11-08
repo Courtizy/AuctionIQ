@@ -50,7 +50,7 @@ in `clearinghouse_app/ui/`; open `index.html` in a browser to preview it with de
 
 The "Clearinghouse app" workflow builds the program (PyInstaller) and the installer (Inno Setup) on
 every change. To release, bump `__version__` in `clearinghouse_app/__init__.py` and push a matching
-tag, for example `companion-v0.2.0`; the workflow publishes the installer and the addon zip.
+tag, for example `companion-v0.2.0` (or publish a release with that tag on GitHub); the workflow adds the installer and the addon zip to it.
 
 Developers can skip the server: set `"use_own_keys": true` in settings.json and store your own keys
 with `python -c "from clearinghouse_app import config; config.set_keys('ID', 'SECRET')"`.
