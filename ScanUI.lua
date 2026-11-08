@@ -8,8 +8,8 @@ local frame, rows, status
 local N, W, H = 16, 836, 18
 local offset, sortKey, data = 0, "profit", {}
 
-local COLS = { { "Recipe", 12, 226 }, { "Profit", 240, 92 }, { "%", 334, 44 }, { "With Conc.", 380, 104 },
-	{ "Per pt", 486, 72 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
+local COLS = { { "Recipe", 12, 204 }, { "Profit (can make)", 218, 114 }, { "%", 334, 44 }, { "With Conc. (can make)", 380, 130 },
+	{ "Per pt", 512, 46 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
 local SORTS = { profit = "profit per craft", concProfit = "profit with Concentration", perPoint = "gold per Concentration point",
 	perDay = "gold a day", buySave = "how much buying beats crafting" }
 
@@ -43,6 +43,18 @@ local function hover(owner, i)
 		table.insert(lines, { "Best with Concentration", CH.Window.QualityIcon(r.concQuality, 14, r.tiers) .. " " .. CH.FormatMoney(r.concProfit) })
 		table.insert(lines, { string.format("  %d points", r.concentration or 0), CH.FormatMoney(r.perPoint) .. " per point" })
 	end
+	local function short(id)
+		if id == "concentration" then return "Concentration" end
+		return id and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)) or nil
+	end
+	if r.canMake then
+		table.insert(lines, { "You can make now", r.canMake .. (r.canMake == 0 and r.shortItem and T.Color("muted", "  short of " .. short(r.shortItem))
+			or (r.shortItem and T.Color("muted", "  until " .. short(r.shortItem) .. " runs out") or "")) })
+	end
+	if r.canMakeConc then
+		table.insert(lines, { "  with Concentration", r.canMakeConc .. (r.shortConc and T.Color("muted", "  until " .. short(r.shortConc) .. " runs out") or "") })
+	end
+	table.insert(lines, { T.Color("muted", "Counts use the scan's best reagents and finishing reagents, from bags, banks and the warband bank.") })
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
 	table.insert(lines, { string.format("Gold a day at up to %d sold", CH.db.settings.scan.dailyCap or 10), CH.FormatMoney(r.perDay) })
 	local bc = r.bc
@@ -96,7 +108,10 @@ function SUI.Refresh()
 	local profID = CH.OpenProfessionID() or SUI.prof
 	local s = CH.Scan.Results(profID)
 	data = {}
+	local prof = profID and CH.Me().professions[profID]
+	local concNow = prof and CH.ConcentrationNow(prof)
 	for _, r in ipairs(s and s.rows or {}) do
+		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
 		r.bc = CH.Scan.BuyOrCraft(r)
 		r.buySave = r.bc and r.bc.save
 		table.insert(data, r)
@@ -112,9 +127,10 @@ function SUI.Refresh()
 		local d = data[i + offset]
 		if d then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item or d.concItem, 15) .. CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. (d.name or "?"))
-			r.cells[2]:SetText(money(d.profit))
+			local function n(k) return k and T.Color(k > 0 and "accent" or "muted", " (" .. k .. ")") or "" end
+			r.cells[2]:SetText(money(d.profit) .. n(d.canMake))
 			r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
-			r.cells[4]:SetText(d.concProfit and (CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit)) or "")
+			r.cells[4]:SetText(d.concProfit and (CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit) .. n(d.canMakeConc)) or "")
 			r.cells[5]:SetText(d.perPoint and money(d.perPoint) or "")
 			r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
 			r.cells[7]:SetText(money(d.perDay))
