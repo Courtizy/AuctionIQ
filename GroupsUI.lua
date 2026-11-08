@@ -43,6 +43,19 @@ local function moveMenu(owner, id)
 	end)
 end
 
+--- Right-click a group: mail its items to one of your characters.
+function GUI.RouteMenu(owner, path)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle("Mail " .. path .. " to")
+		for _, c in ipairs(CH.Ledger.Characters()) do
+			root:CreateRadio(c.name, function() return CH.Mail.Store().routes[path] == c.name end,
+				function() CH.Mail.Route(path, c.name); CH.UI.Refresh() end)
+		end
+		root:CreateButton("Don't mail", function() CH.Mail.Route(path, nil); CH.UI.Refresh() end)
+	end)
+end
+
 function GUI.Build(p, fs, panel)
 	local T = CH.Theme
 	page = p
@@ -53,7 +66,13 @@ function GUI.Build(p, fs, panel)
 		b:SetPoint("TOPLEFT", 6, -30 - (i - 1) * 19)
 		b:SetSize(208, 18)
 		b.text = fs(b, 0, -2, 208, "LEFT")
-		b:SetScript("OnClick", function(self) if self.path then selected, itemOffset = self.path, 0; CH.UI.Refresh() end end)
+		if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+		b:SetScript("OnClick", function(self, button)
+			if not self.path then return end
+			if button == "RightButton" then return GUI.RouteMenu(self, self.path) end
+			selected, itemOffset = self.path, 0
+			CH.UI.Refresh()
+		end)
 		p.tree[i] = b
 	end
 	local rebuild = T.Button(tree, "Rebuild", 70, 18)
@@ -142,6 +161,8 @@ function GUI.Refresh()
 		b.path = g and g.path
 		if g then
 			local own = s.assign[g.path] and T.Color("accent", " *") or ""
+			local to = CH.Mail and CH.Mail.Store().routes[g.path]
+			if to then own = own .. T.Color("muted", " > " .. to) end
 			local label = string.rep("   ", g.depth) .. g.name .. T.Color("muted", " " .. g.n) .. own
 			b.text:SetText(g.path == selected and T.Color("accent", label) or label)
 		else

@@ -91,3 +91,11 @@ a stubbed WoW environment and checks prices, tooltips, profession tracking and t
 `v*` builds a release with the BigWigs packager.
 
 MIT licence.
+
+## Python export
+
+`tools/clearinghouse_export.py` reads Clearinghouse's and TSM's SavedVariables (read only) after you log
+out and writes CSVs (sales, buys, income, expenses, expired, cancelled, gold over time, inventory, net
+worth, scans) plus a Markdown report. No packages needed.
+
+    python tools/clearinghouse_export.py "<WoW>/_retail_/WTF/Account/<NAME>/SavedVariables" --out reports

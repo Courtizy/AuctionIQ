@@ -67,7 +67,9 @@ function LUI.ItemText(id)
 	if not id then return "?", "?" end
 	local name, link
 	if C_Item and C_Item.GetItemInfo then name, link = C_Item.GetItemInfo(id) end
-	name = name or (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)
+	name = name or (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id))
+	if name and CH.db then CH.db.itemNames = CH.db.itemNames or {}; CH.db.itemNames[id] = name end -- for the Python export
+	name = name or ("item " .. id)
 	local shown = link and link:gsub("|H.-|h%[?(.-)%]?|h", "%1") or name
 	return CH.Window.ItemIcon(id, 14) .. shown, name
 end
