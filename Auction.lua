@@ -80,8 +80,14 @@ end
 function A.Decide(id, results, held)
 	local p = CH.Groups.Prices(id)
 	note(id, results, p.normal)
-	if not p.post then return { action = "skip", why = p.tsm and (p.why or "TSM doesn't post it") or "its group doesn't post" } end
+	if not p.post then return { action = "skip", why = (p.op or "its operation") .. " doesn't post it" } end
 	if not p.normal then return { action = "skip", why = "no price" } end
+	if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
+		local n = CH.Ledger.NumExpires(id)
+		if n >= p.maxExpires then
+			return { action = "skip", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
+		end
+	end
 	local other, mine = lowest(results)
 	local price, why
 	if not other then
@@ -90,10 +96,10 @@ function A.Decide(id, results, held)
 		price, why = other - p.undercut, "undercutting the cheapest"
 		if mine and mine <= other then price, why = mine, "yours is cheapest: matching it" end
 		if p.min and price < p.min then
-			-- TSM's "below minimum" setting; without TSM rules (or set to don't post) it skips
+			-- below min: post at min, normal or max if the operation says so, else don't post
 			local reset = p.priceReset
 			if reset == "minPrice" or reset == "normalPrice" or reset == "maxPrice" then
-				price, why = p[({ minPrice = "min", normalPrice = "normal", maxPrice = "max" })[reset]], "under min: TSM resets to " .. reset
+				price, why = p[({ minPrice = "min", normalPrice = "normal", maxPrice = "max" })[reset]], "cheapest is under min: posting at " .. reset:gsub("Price", "")
 			else
 				return { action = "skip", why = string.format("cheapest is under your min (%s, %s)", CH.FormatMoney(p.min), p.why or "") }
 			end
@@ -102,9 +108,9 @@ function A.Decide(id, results, held)
 	if p.max and price > p.max then
 		local above = p.aboveMax
 		if above == "minPrice" or above == "normalPrice" then
-			price, why = p[above == "minPrice" and "min" or "normal"], "above max: TSM posts at " .. above
+			price, why = p[above == "minPrice" and "min" or "normal"], "above max: posting at " .. above:gsub("Price", "")
 		elseif above == "none" then
-			return { action = "skip", why = "above max (TSM: don't post)" }
+			return { action = "skip", why = "above max: set not to post" }
 		else
 			price, why = p.max, "capped at max"
 		end
@@ -119,9 +125,10 @@ function A.Decide(id, results, held)
 	local qty = math.min(room, held or room)
 	if p.keep and p.keep > 0 and held then
 		qty = math.min(qty, held - p.keep)
-		if qty <= 0 then return { action = "skip", why = string.format("keeping %d (TSM keep quantity)", p.keep) } end
+		if qty <= 0 then return { action = "skip", why = string.format("keeping %d in bags", p.keep) } end
 	end
 	if qty <= 0 then return { action = "skip", why = "none in bags" } end
+	if p.learned then why = why .. "; " .. p.learned end
 	return { action = "post", price = math.floor(price), qty = qty, why = why, duration = p.duration }
 end
 

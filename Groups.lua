@@ -34,8 +34,6 @@ local function store()
 		if not s.ops[k] then local c = {}; for f, x in pairs(v) do c[f] = x end; s.ops[k] = c end
 	end
 	if s.useTSM == nil then s.useTSM = true end
-	-- TSM's auctioning operations for items in TSM groups: "strict" (both must agree), "tsm" or "off"
-	s.tsmRules = s.tsmRules or "tsm"
 	return s
 end
 G.Store = store
@@ -72,43 +70,63 @@ end
 --- Forget the TSM groups read so far (they're read once per session).
 function G.ResetTSM() tsmCache, tsmRaw = nil, nil end
 
-local function tsmValue(v, item)
-	if v == nil then return nil end
-	if type(v) == "number" then return v end
-	local n = tonumber(v)
-	if n then return n end
-	if not CH.Prices.Available() then return nil end
-	local ok, r = pcall(TSM_API.GetCustomPriceValue, v, item)
-	return ok and r or nil
-end
+-- TSM's operation fields, copied into AuctionIQ's own operations.
+local function num(v) return tonumber(v) end
 
---- TSM's auctioning operation for an item in a TSM group, read only, or nil:
---- { name, min, normal, max, cap, undercut, duration, post }. Prices are TSM custom prices for the item.
-function G.TSMAuction(id)
-	G.TSMGroups()
-	local path = tsmRaw and tsmRaw[id]
+--- Copy TSM's auctioning setup into AuctionIQ, once (TSM's data is only read):
+---   * each Auctioning operation becomes an AuctionIQ operation of the same name with the same
+---     formulas and settings (min, normal, max, undercut, post cap, keep, max expires, resets, duration)
+---   * TSM's custom price sources become AuctionIQ's (see Formula.lua)
+---   * each TSM group that sets its own operation gets it here too, and TSM's groups win over the
+---     automatic ones, so items post as TSM would
+--- After this nothing needs TSM: change the operations here and they stay yours.
+--- Returns { ops, sources, groups } counts, or nil and why.
+function G.ImportTSM()
 	local db = TradeSkillMasterDB
-	if not path or type(db) ~= "table" then return nil end
+	if type(db) ~= "table" then return nil, "TSM's saved data isn't loaded" end
 	local profile = tsmProfile(db)
-	local groups = profile and db["p@" .. profile .. "@userData@groups"]
-	local ops = profile and db["p@" .. profile .. "@userData@operations"]
-	if type(groups) ~= "table" then return nil end
-	-- the nearest group up the path with Auctioning operations of its own (TSM's override)
-	local name, p = nil, path
-	while p do
-		local g = groups[p]
-		local a = type(g) == "table" and g.Auctioning
-		if type(a) == "table" and (a.override or not p:find("`")) then name = a[1]; break end
-		p = p:match("^(.*)`[^`]*$")
+	local s = store()
+	local n = { ops = 0, sources = 0, groups = 0 }
+	local function opsFrom(t)
+		if type(t) ~= "table" or type(t.Auctioning) ~= "table" then return end
+		for name, op in pairs(t.Auctioning) do
+			if type(op) == "table" then
+				local cap = num(op.postCap)
+				s.ops[name] = {
+					post = cap ~= 0, imported = "TSM",
+					minPrice = op.minPrice, normalPrice = op.normalPrice, maxPrice = op.maxPrice,
+					undercut = op.undercut or 0, cap = cap, keepQuantity = num(op.keepQuantity) or 0,
+					maxExpires = num(op.maxExpires) or 0, priceReset = op.priceReset or "none",
+					aboveMax = op.aboveMax or "maxPrice", duration = num(op.duration) or 2,
+					floor = "market", floorPct = 1, maxMult = 3, learn = false,
+				}
+				n.ops = n.ops + 1
+			end
+		end
 	end
-	if not name then return { post = false, why = "no TSM auctioning operation" } end
-	local op = type(ops) == "table" and type(ops.Auctioning) == "table" and ops.Auctioning[name]
-	if type(op) ~= "table" then return { post = false, name = name, why = "TSM operation missing" } end
-	local item = "i:" .. id
-	return { name = name, post = true, min = tsmValue(op.minPrice, item), normal = tsmValue(op.normalPrice, item),
-		max = tsmValue(op.maxPrice, item), cap = tsmValue(op.postCap, item), undercut = tsmValue(op.undercut, item),
-		duration = tonumber(op.duration), keep = tsmValue(op.keepQuantity, item),
-		priceReset = op.priceReset, aboveMax = op.aboveMax }
+	opsFrom(db["g@ @userData@sharedOperations"])
+	opsFrom(profile and db["p@" .. profile .. "@userData@operations"])
+	local custom = db["g@ @userData@customPriceSources"]
+	if type(custom) == "table" then
+		local mine = CH.Formula.Custom()
+		for k, v in pairs(custom) do
+			if type(v) == "string" then mine[tostring(k):lower()] = v; n.sources = n.sources + 1 end
+		end
+	end
+	local groups = profile and db["p@" .. profile .. "@userData@groups"]
+	if type(groups) == "table" then
+		for path, g in pairs(groups) do
+			local a = type(g) == "table" and g.Auctioning
+			if type(a) == "table" and a[1] and (a.override or path == "") then
+				local here = path == "" and "TSM" or ("TSM" .. SEP .. path:gsub("`", SEP))
+				s.assign[here] = a[1]
+				n.groups = n.groups + 1
+			end
+		end
+	end
+	s.useTSM, s.preferTSM = true, true
+	G.ResetTSM()
+	return n
 end
 
 --- Rebuild the automatic groups from your scans and TSM's records:
@@ -144,10 +162,23 @@ function G.Rebuild()
 	return n
 end
 
---- An item's group: yours if you moved it, else the automatic one, else TSM's (if used).
+--- An item's group: yours if you moved it, else the automatic one, else TSM's (if used). After an
+--- import from TSM, TSM's groups come before the automatic ones.
 function G.Path(id)
 	local s = store()
-	return s.manual[id] or s.auto[id] or (s.useTSM and G.TSMGroups()[id]) or nil
+	local tsm = s.useTSM and G.TSMGroups()[id] or nil
+	if s.manual[id] then return s.manual[id] end
+	if s.preferTSM and tsm then return tsm end
+	return s.auto[id] or tsm
+end
+
+-- Every grouped item and its group, by the same order as Path.
+local function members()
+	local s, out = store(), {}
+	if s.useTSM then for id, p in pairs(G.TSMGroups()) do out[id] = p end end
+	for id, p in pairs(s.auto) do if not (s.preferTSM and out[id]) then out[id] = p end end
+	for id, p in pairs(s.manual) do out[id] = p end
+	return out
 end
 
 --- Put an item in a group yourself (path), or back to automatic (nil).
@@ -164,10 +195,7 @@ function G.Tree()
 			counts[acc] = (counts[acc] or 0) + 1
 		end
 	end
-	local seen = {}
-	for id, p in pairs(s.manual) do seen[id] = true; count(p) end
-	for id, p in pairs(s.auto) do if not seen[id] then seen[id] = true; count(p) end end
-	if s.useTSM then for id, p in pairs(G.TSMGroups()) do if not seen[id] then count(p) end end end
+	for _, p in pairs(members()) do count(p) end
 	local out = {}
 	for path, n in pairs(counts) do
 		local _, depth = path:gsub(SEP, "")
@@ -179,11 +207,10 @@ end
 
 --- Items in a group and its sub-groups.
 function G.Items(path)
-	local s, out, seen = store(), {}, {}
+	local out = {}
 	local function want(p) return p == path or p:sub(1, #path + 1) == path .. SEP end
-	for id, p in pairs(s.manual) do seen[id] = true; if want(p) then table.insert(out, id) end end
-	for id, p in pairs(s.auto) do if not seen[id] then seen[id] = true; if want(p) then table.insert(out, id) end end end
-	if s.useTSM then for id, p in pairs(G.TSMGroups()) do if not seen[id] and want(p) then table.insert(out, id) end end end
+	for id, p in pairs(members()) do if want(p) then table.insert(out, id) end end
+	table.sort(out)
 	return out
 end
 
@@ -212,45 +239,57 @@ local function costEach(id)
 	return CH.Ledger and CH.Ledger.CostAtPaid(acc, paid) or nil
 end
 
---- Posting prices for an item: { min, normal, max, cap, undercut, duration, post, op, why }.
+G.CostEach = costEach
+
+--- How sales have gone lately, as a factor for the normal price and why: an item that sells most
+--- of what it posts goes up 5%, one that mostly expires comes down 5-10%. Needs 4+ posts' worth of
+--- sales and expiries in 30 days, else 1 (no change).
+function G.Learn(id)
+	if not (CH.Ledger and CH.Ledger.Available()) then return 1 end
+	local sold, expired = CH.Ledger.SellThrough(id)
+	if sold + expired < 4 then return 1 end
+	local rate = sold / (sold + expired)
+	local f = rate >= 0.8 and 1.05 or rate >= 0.5 and 1 or rate >= 0.25 and 0.95 or 0.9
+	return f, string.format("sells %d%% of posts (%d sold, %d expired): %+d%%", math.floor(rate * 100 + 0.5), sold, expired,
+		math.floor((f - 1) * 100 + 0.5))
+end
+
+--- Posting prices and rules for an item: { min, normal, max, cap, undercut, duration, post, op, why,
+--- keep, maxExpires, priceReset, aboveMax, learned }. An operation with formulas (minPrice,
+--- normalPrice, maxPrice: see Formula.lua) prices by them; without, by its floor and multipliers.
 function G.Prices(id)
 	local op, name = G.Operation(id)
 	op = op or store().ops.Default
+	local F = CH.Formula
 	local item = "i:" .. id
-	local normal = CH.Prices.Get("chvalue", item)
-	local floor, why
-	if op.floor == "cost" then
-		local c = costEach(id)
-		floor, why = c and c / CH.AH_CUT, "cost to make"
-	elseif op.floor == "paid" then
-		local p = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Paid()[id]
-		floor, why = p and p.each / CH.AH_CUT, "what you paid"
+	local normal = op.normalPrice and F.Value(op.normalPrice, id) or CH.Prices.Get("chvalue", item)
+	local learned
+	if op.learn and normal then
+		local f, why = G.Learn(id)
+		if f ~= 1 then normal, learned = normal * f, why end
 	end
-	if not floor then floor, why = CH.Prices.Get("chmat", item), "buy price" end
-	local min = floor and math.floor(floor * (op.floorPct or 1))
+	local min, why
+	if op.minPrice then
+		min, why = F.Value(op.minPrice, id, { normal = normal }), "min " .. tostring(op.minPrice)
+	else
+		local floor
+		if op.floor == "cost" then
+			local c = costEach(id)
+			floor, why = c and c / CH.AH_CUT, "cost to make"
+		elseif op.floor == "paid" then
+			local p = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Paid()[id]
+			floor, why = p and p.each / CH.AH_CUT, "what you paid"
+		end
+		if not floor then floor, why = CH.Prices.Get("chmat", item), "buy price" end
+		min = floor and floor * (op.floorPct or 1)
+	end
+	local max
+	if op.maxPrice then max = F.Value(op.maxPrice, id, { normal = normal, min = min })
+	else max = normal and normal * (op.maxMult or 3) end
 	local cap = op.cap or (CH.Par and CH.Par.Target(id)) or 5
-	local out = { min = min, normal = normal, max = normal and math.floor(normal * (op.maxMult or 3)), cap = cap,
-		undercut = op.undercut or 1, duration = op.duration or 2, post = op.post ~= false, op = name, why = why }
-	local mode = store().tsmRules
-	local t = mode ~= "off" and G.TSMAuction(id)
-	if not t then return out end
-	out.tsm = t
-	if mode == "tsm" then
-		out.post, out.op = t.post, "TSM: " .. (t.name or "none")
-		if not t.post then out.why = t.why; return out end
-		out.min, out.why = t.min or out.min, t.min and "TSM min" or out.why
-		out.normal, out.max = t.normal or out.normal, t.max or out.max
-		out.cap, out.undercut, out.duration = t.cap or out.cap, t.undercut or out.undercut, t.duration or out.duration
-		out.keep, out.priceReset, out.aboveMax = t.keep, t.priceReset, t.aboveMax
-		return out
-	end
-	-- stricter of the two: post only if both would, the higher min, the lower cap
-	if not t.post then out.post, out.why, out.op = false, t.why, name .. " + TSM"; return out end
-	out.op = name .. " + TSM"
-	if t.min and (not out.min or t.min > out.min) then out.min, out.why = t.min, "TSM min" end
-	if t.cap and t.cap < out.cap then out.cap = t.cap end
-	if t.normal then out.normal = t.normal end
-	if t.max then out.max = t.max end
-	if out.max and out.min and out.max < out.min then out.max = out.min end
-	return out
+	local undercut = type(op.undercut) == "number" and op.undercut or F.Value(op.undercut, id) or 1
+	return { min = min and math.floor(min), normal = normal and math.floor(normal), max = max and math.floor(max), cap = cap,
+		undercut = undercut, duration = op.duration or 2, post = op.post ~= false and cap > 0, op = name, why = why,
+		keep = op.keepQuantity or 0, maxExpires = op.maxExpires or 0, priceReset = op.priceReset or "none",
+		aboveMax = op.aboveMax or "maxPrice", learned = learned }
 end

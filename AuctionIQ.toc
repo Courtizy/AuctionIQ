@@ -14,6 +14,7 @@ Core.lua
 Theme.lua
 Window.lua
 Prices.lua
+Formula.lua
 Stats.lua
 Data\ConcentrationCurves.lua
 Data\SpecAlchemy.lua

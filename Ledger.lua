@@ -407,6 +407,44 @@ function Lg.LastSold()
 	return t
 end
 
+-- Per item: last sale, expiries since it, and 30-day sold and expired counts. Rebuilt at most once a minute.
+local stats, statsAt
+local function itemStats()
+	local now = GetTime and GetTime() or 0
+	if stats and statsAt and now - statsAt < 60 then return stats end
+	stats, statsAt = {}, now
+	local cut = time() - 30 * DAY
+	local function e(id) local x = stats[id]; if not x then x = { last = 0, since = 0, sold30 = 0, exp30 = 0, n = 0, gold = 0 }; stats[id] = x end return x end
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id then
+			local x = e(s.id)
+			if s.time > x.last then x.last = s.time end
+			if s.time >= cut then x.sold30 = x.sold30 + s.quantity end
+			x.n, x.gold = x.n + s.quantity, x.gold + (s.amount or 0)
+		end
+	end
+	for _, r in ipairs(Lg.Records("Expired")) do
+		if r.id then
+			local x = e(r.id)
+			if r.time >= cut then x.exp30 = x.exp30 + 1 end
+		end
+	end
+	for _, r in ipairs(Lg.Records("Expired")) do
+		if r.id and r.time > stats[r.id].last then stats[r.id].since = stats[r.id].since + 1 end
+	end
+	return stats
+end
+function Lg.ClearStats() stats = nil end
+
+--- How many times an item expired since it last sold (TSM's numexpires).
+function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
+
+--- Your average sale price for an item, or nil.
+function Lg.AvgSell(id) local x = itemStats()[id]; return x and x.n > 0 and x.gold / x.n or nil end
+
+--- Sold units and expiries in the last 30 days: sold, expired.
+function Lg.SellThrough(id) local x = itemStats()[id]; return x and x.sold30 or 0, x and x.exp30 or 0 end
+
 --- Stock that isn't moving: held items with no sale in `days` days or 3+ expiries in that time.
 --- { id, held, value, lastSold, expired, advice }.
 function Lg.DeadStock(now, days, char)
