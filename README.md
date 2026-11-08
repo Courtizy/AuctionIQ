@@ -30,7 +30,9 @@ takes over the jobs that today need both TSM and CraftSim.
   craft, gold per Concentration point, or gold a day (profit x what the region sells, up to your cap).
 - **Profession paths** (`/ch plan potions`, or the Paths tab): type what you want to sell and
   get a knowledge point plan for the open profession, node by node, with the gold a day each step
-  adds and which recipes it improves. Alchemy, Enchanting, Jewelcrafting and Inscription for now.
+  adds and which recipes it improves. The plan is drawn on the profession's own trees (the game's
+  layout and icons) in the Paths tab, and marked with step badges on the game's Specializations tab.
+  Alchemy, Enchanting, Jewelcrafting and Inscription for now.
 - **Craft results** (`/ch results`): what your crafts really gave (Multicraft, Resourcefulness,
   Ingenuity) against what the advisor expected.
 - **Cooldowns** across the warband, in the briefing.

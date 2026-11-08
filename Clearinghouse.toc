@@ -24,6 +24,7 @@ Spec.lua
 Tooltip.lua
 Professions.lua
 Cooldowns.lua
+Ledger.lua
 UI.lua
 Minimap.lua
 Advisor.lua
@@ -36,4 +37,6 @@ QueueUI.lua
 ScanUI.lua
 Log.lua
 Paths.lua
+TreeView.lua
 PathsUI.lua
+SpecOverlay.lua

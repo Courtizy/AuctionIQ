@@ -42,7 +42,8 @@ check("money shows coin icons by default", "UI-GoldIcon" in CH.FormatMoney(12500
 run('Clearinghouse.db.settings.coins = false')
 check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
-check("tooltip shows value, buy price and profit", lines == ["Clearinghouse value=475g after cut", "Clearinghouse buy price=450g", "Craft profit=375g"])
+check("tooltip shows value, buy now / post and profit",
+      lines == ["Clearinghouse value=475g after cut", "    Lower of buy now / post price=450g / 450g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
@@ -98,6 +99,8 @@ ml = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best,
 check("max hover lists have and need", ("item 204 Q2", "12 have, 5 each") in ml)
 run('Clearinghouse.db.settings.advisor.hide = false; STUB.Fire("TRADE_SKILL_SHOW")')
 check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
+col = L.eval('function(x) local f = { GetLeft = function() return 0 end, GetEffectiveScale = function() return 1 end }; local g = GetCursorPosition; GetCursorPosition = function() return x, 0 end; local c = Clearinghouse.AdvisorUI.ColumnAt(f); GetCursorPosition = g; return c end')
+check("row hover picks the column under the cursor", col(200) == 3 and col(250) == 4 and col(350) == 5 and col(500) == 7 and col(20) is None)
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
 check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
@@ -183,6 +186,29 @@ CH.AdvisorUI.SetPlan(plan)
 CH.AdvisorUI.Show(10)
 check("advisor simulates the plan", CH.AdvisorUI.Current().sim is not None)
 run('Clearinghouse.AdvisorUI.SetPlan(nil); Clearinghouse.AdvisorUI.SetSimSkill(0)')
+check("spec: the trees' layout is read per tab, with links",
+      tree.tabs[1].name == "Test Mastery" and list(tree.tabs[1].nodes.values()) == [900, 901]
+      and tree.layout[901].parent == 900 and tree.layout[901].y == 600 and tree.layout[901].rank == -1)
+marks = CH.Paths.Marks(plan)
+check("plan marks: each node's planned rank and steps", marks[900].to == max(s.to for s in plan.steps.values() if s.node == 900) and marks[900].steps[1] == 1)
+CH.Paths.SetCurrent(plan)
+run('Clearinghouse.PathsUI.Open()')
+drawn = list(CH.PathsUI.DrawTree().values())
+check("paths tab draws the tree with the plan on it",
+      len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
+groups = list(CH.Paths.GoalGroups(2906).values())
+check("paths picker: recipes in main groups", [g.name for g in groups] == ["Potions", "Flasks & Phials", "Oils", "Other"])
+cost = CH.Paths.PathCost(2906, L.eval("{ 10 }"))
+check("paths: default points finish the path for the goal", cost > 0 and CH.Paths.PathCost(2906, L.eval("{ }")) == 0)
+run('Clearinghouse.PathsUI.Pick("Flasks & Phials", { 10 })')
+check("picking a group plans it", CH.PathsUI.DefaultPoints(L.eval("{ 10 }")) == max(0, cost - CH.Spec.Tree(2906).unspent))
+run("""STUB.btn = CreateFrame("Button"); STUB.btn:Show()
+ProfessionsFrame = CreateFrame("Frame"); ProfessionsFrame.SpecPage = CreateFrame("Frame"); ProfessionsFrame.SpecPage:Show()
+function ProfessionsFrame.SpecPage:GetTalentButtonByNodeID(id) return id == 900 and STUB.btn or nil end""")
+check("game's spec tab gets a badge on each planned node", CH.SpecOverlay.Refresh() == 1)
+run('Clearinghouse.Paths.ClearCurrent(2906)')
+check("clearing the plan takes the badges off", CH.SpecOverlay.Refresh() == 0)
+run('ProfessionsFrame = nil; Clearinghouse.PathsUI.Toggle()')
 
 # Top gear
 c = CH.Gear.Candidates()
@@ -212,6 +238,12 @@ check("scan: every learned recipe with a result, saved", "Test Flask" in names a
 pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
 check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(pot.perDay - pot.profit * 10 / 2) < 1e-6)
 top = list(CH.Scan.Top(2906, 1).values())
+tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
+names = [t[0] for t in tl]
+acc = pot = [r for r in sr.rows.values() if r.item == 302 or r.concItem == 302][0]
+check("tooltip: a scanned craft's accounts, reagents to profit",
+      any(n.startswith("Crafting, per craft") for n in names) and "  Reagents" in names and "  Profit per craft" in names
+      and any(n.startswith("    item 20") for n in names))
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget
@@ -268,6 +300,66 @@ run('STUB.qualityOffset = 12')
 mq = CH.Advisor.Analyze(10)
 check("quality from skill, not the game's quality ID", [r.quality for r in mq.rows.values()] == [1, 2, 2] and mq.best.item == 302 and mq.bestConc.perPoint == 27250)
 run('STUB.qualityOffset = nil')
+
+# Dashboard and Ledger from TSM's saved data (read only)
+run(r"""
+local now = STUB.now
+local m = math.floor(now / 60)
+local function lines(t) return table.concat(t, "\n") end
+TradeSkillMasterDB = {
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@money"] = 5000000,
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@money"] = 3000000,
+  ["s@Other - Horde - Area 52@internalData@money"] = 99990000,
+  ["g@ @internalData@warbankMoney"] = 2000000,
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@goldLog"] = lines({ "minute,copper", (m - 3000) .. ",1000000", (m - 600) .. ",5000000" }),
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@goldLog"] = lines({ "minute,copper", (m - 3000) .. ",3000000" }),
+  ["g@ @internalData@warbankGoldLog"] = lines({ "minute,copper", (m - 3000) .. ",2000000" }),
+  ["r@Emerald Dream@internalData@csvSales"] = lines({ "itemString,stackSize,quantity,price,otherPlayer,player,time,source",
+    "i:302,1,2,3000000,Buyer,Courtizy," .. (now - 3600) .. ",Auction",
+    "i:301,1,1,1000000,Buyer,Luxaren," .. (now - 3 * 86400) .. ",Auction",
+    "i:301,1,4,1000000,Buyer,Luxaren," .. (now - 400 * 86400) .. ",Auction" }),
+  ["r@Emerald Dream@internalData@csvBuys"] = lines({ "itemString,stackSize,quantity,price,otherPlayer,player,time,source",
+    "i:201,1,10,100000,Seller,Courtizy," .. (now - 7200) .. ",Auction" }),
+  ["r@Emerald Dream@internalData@csvIncome"] = lines({ "type,amount,otherPlayer,player,time",
+    "Money Transfer,500000,Luxaren,Courtizy," .. (now - 100) }),
+  ["r@Emerald Dream@internalData@csvExpense"] = lines({ "type,amount,otherPlayer,player,time",
+    "Money Transfer,500000,Courtizy,Luxaren," .. (now - 100), "Repair Bill,20000,Merchant,Courtizy," .. (now - 50) }),
+  ["r@Emerald Dream@internalData@csvExpired"] = lines({ "itemString,stackSize,quantity,player,time", "i:302,1,1,Courtizy," .. (now - 3500) }),
+  ["r@Emerald Dream@internalData@csvCancelled"] = "itemString,stackSize,quantity,player,time",
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@bagQuantity"] = { ["i:302"] = 3 },
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@mailQuantity"] = { ["i:302::q2"] = 1 },
+  ["g@ @internalData@warbankQuantity"] = { ["i:301"] = 2 },
+}
+""")
+LG = CH.Ledger
+names = sorted(c.name for c in LG.Characters().values())
+check("ledger: this realm's characters only", names == ["Courtizy", "Luxaren"] and LG.Gold() == 10000000)
+gs = list(LG.GoldSeries(L.eval("STUB.now") - 2 * 86400, L.eval("STUB.now"), 3).values())
+check("ledger: gold history adds up every character's log", gs[0].v == 6000000 and gs[2].v == 10000000)
+run("Clearinghouse.UI.SetRange('1M')")
+d = CH.UI.DashboardData()
+s = d.summary
+check("dashboard: sales, buys and real expenses in range; own transfers left out",
+      s.sales == 7000000 and s.buys == 1000000 and s.income == 0 and s.expense == 20000 and s.cash == 5980000 and s.topItem == 302)
+check("dashboard: top sale, top purchase, 52 week high and low", d.topSale == 6000000 and d.topBuy == 1000000 and d.high == 10000000 and 0 < d.low <= d.high)
+run("Clearinghouse.UI.SetRange('All')")
+check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 11000000)
+act = list(LG.Activity(10).values())
+check("activity log: grouped by character and hour", act[0].player == "Courtizy" and act[0].sold == 2 and act[0].expired == 1 and sum(a.bought for a in act) == 10)
+inv = {e.id: e for e in LG.Inventory().values()}
+v302 = CH.Prices.Get("chvalue", "i:302")
+check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4 and inv[302].bags == 3 and inv[302].mail == 1 and inv[301].warband == 2 and inv[302].value == v302 * 4)
+w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
+LG.Snapshot()
+check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.now") - 6 * 86400)[0] == 0 and w1[0] > 10000000)
+rows, foot = CH.UI.LedgerRows("revenue", "")
+check("ledger revenue lists sales and income, newest first", len(rows) == 4 and "Total" in plain(foot))
+rows, foot = CH.UI.LedgerRows("failed", "")
+check("ledger failed auctions", len(rows) == 1 and plain(foot).startswith("1 items"))
+run("Clearinghouse.UI.Page('dashboard')")
+check("dashboard page draws", CH.UI.IsShown())
+run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
+check("ledger and briefing pages draw", CH.UI.IsShown())
 
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
