@@ -69,11 +69,12 @@ function PUI.DrawTree()
 	return view:Draw(tree, selectedTab, marks, prof)
 end
 
-function PUI.Run(goal)
+--- Plan for a typed goal, or for a picked set of recipes (recipes + label from the group picker).
+function PUI.Run(goal, recipes)
 	if not frame or not frame:IsShown() then PUI.Open() end
 	goal = goal or (input and input:GetText()) or ""
 	render({ CH.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
-	local plan, why = CH.Paths.Plan({ goal = goal, points = extra, onDone = function(p)
+	local plan, why = CH.Paths.Plan({ goal = goal, recipes = recipes, label = recipes and goal or nil, points = extra, onDone = function(p)
 		lastPlan = p
 		if p.error then
 			render({ CH.Theme.Color("bad", "Couldn't finish the plan: " .. tostring(p.error)) })
@@ -87,6 +88,24 @@ function PUI.Run(goal)
 	if not plan then render({ CH.Theme.Color("muted", why) }) end
 end
 
+--- Set the points to what finishing the path for these recipes takes (less what's unspent).
+function PUI.DefaultPoints(recipes)
+	local prof = CH.OpenProfessionID()
+	local tree = prof and CH.Spec.Tree(prof)
+	if not tree then return extra end
+	if not recipes then recipes = CH.Paths.Match(input and input:GetText() or "") end
+	extra = math.max(0, CH.Paths.PathCost(prof, recipes) - (tree.unspent or 0))
+	updatePoints()
+	return extra
+end
+
+--- Pick a group (or one of its splits) and plan it.
+function PUI.Pick(label, recipes)
+	input:SetText(label)
+	PUI.DefaultPoints(recipes)
+	PUI.Run(label, recipes)
+end
+
 local function build()
 	local T, Wd = CH.Theme, CH.Window
 	frame = Wd.New("ClearinghousePaths", "Profession paths", W, H)
@@ -97,15 +116,15 @@ local function build()
 	input:SetPoint("TOPLEFT", 18, -56)
 	input:SetAutoFocus(false)
 	input:SetText("potions")
-	input:SetScript("OnEnterPressed", function(self) self:ClearFocus(); PUI.Run() end)
+	input:SetScript("OnEnterPressed", function(self) self:ClearFocus(); PUI.DefaultPoints(); PUI.Run() end)
 	local go = T.Button(frame, "Plan", 70, 20)
 	go:SetPoint("TOPLEFT", 446, -56)
-	go:SetScript("OnClick", function() PUI.Run() end)
+	go:SetScript("OnClick", function() PUI.DefaultPoints(); PUI.Run() end)
 
 	goalButtons = {}
-	for i = 1, 6 do
-		local b = T.Button(frame, "", 116, 18)
-		b:SetPoint("TOPLEFT", 12 + (i - 1) * 122, -84)
+	for i = 1, 7 do
+		local b = T.Button(frame, "", 104, 18)
+		b:SetPoint("TOPLEFT", 12 + (i - 1) * 108, -84)
 		b:Hide()
 		goalButtons[i] = b
 	end
@@ -166,14 +185,33 @@ local function build()
 	Wd.Attach("paths", frame)
 end
 
+-- A group button: the whole group, or a menu of its splits (Light or Void potions) when it has any.
+local function groupMenu(owner, g)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) or #g.subs == 0 then return PUI.Pick(g.name, g.recipes) end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle(g.name)
+		root:CreateButton("All " .. string.lower(g.name) .. " (" .. #g.recipes .. ")", function() PUI.Pick(g.name, g.recipes) end)
+		for _, sub in ipairs(g.subs) do
+			local label = g.name .. " - " .. sub.name
+			root:CreateButton(sub.name .. " (" .. #sub.recipes .. ")", function() PUI.Pick(label, sub.recipes) end)
+		end
+	end)
+end
+
 local function fillGoals()
-	local goals = CH.OpenProfessionID() and CH.Paths.Goals() or {}
+	local groups = CH.OpenProfessionID() and CH.Paths.GoalGroups() or {}
+	PUI.groups = groups
 	for i, b in ipairs(goalButtons) do
-		local g = goals[i]
+		local g = groups[i]
 		if g then
-			local label = g.name
-			setLabel(b, label)
-			b:SetScript("OnClick", function() input:SetText(label); PUI.Run(label) end)
+			setLabel(b, g.name .. (#g.subs > 0 and " +" or ""))
+			b:SetScript("OnClick", function(self) groupMenu(self, g) end)
+			b:SetScript("OnEnter", function(self)
+				local lines = { { g.name }, { #g.recipes .. " recipes", "" } }
+				if #g.subs > 0 then table.insert(lines, { CH.Theme.Color("muted", "Click to pick all of them or one branch.") }) end
+				CH.Window.Tooltip(self, lines)
+			end)
+			b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 			b:Show()
 		else
 			b:Hide()
@@ -189,12 +227,12 @@ end
 function PUI.Open()
 	if not frame then build() end
 	frame:Show()
-	updatePoints()
 	fillGoals()
+	if CH.OpenProfessionID() and not lastPlan then PUI.DefaultPoints() else updatePoints() end
 	if not CH.OpenProfessionID() then
 		render({ CH.Theme.Color("muted", "Open the profession you want a plan for (Alchemy, Enchanting, Jewelcrafting or Inscription), then type a goal like \"potions\" or \"gems\".") })
 	elseif not lastPlan then
-		render({ CH.Theme.Color("muted", "Type what you want to sell, or pick a category, and press Plan. Points are planned for the open profession on this character.") })
+		render({ CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Points start at what finishing that path takes; change them with -5 and +5.") })
 	end
 	PUI.DrawTree()
 end

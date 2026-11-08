@@ -68,6 +68,85 @@ function P.Goals()
 	return out
 end
 
+-- Main groups for the picker, matched against a recipe's categories, then its name.
+local MAIN = {
+	{ "Potions", { "potion", "tonic", "draught", "serum", "tincture" } },
+	{ "Flasks & Phials", { "flask", "phial" } },
+	{ "Elixirs", { "elixir" } },
+	{ "Transmutations", { "transmut" } },
+	{ "Oils", { "oil" } },
+	{ "House Decor", { "decor", "house", "furnish", "housing" } },
+}
+
+local function mainGroup(text)
+	text = string.lower(text or "")
+	for _, g in ipairs(MAIN) do
+		for _, k in ipairs(g[2]) do if text:find(k, 1, true) then return g[1] end end
+	end
+end
+
+--- The open profession's recipes in main groups, each with the spec nodes that split it (Light
+--- and Void potions, say): { { name, recipes, subs = { { name, node, recipes } } } }.
+function P.GoalGroups(prof)
+	prof = prof or CH.OpenProfessionID()
+	local byName, out = {}, {}
+	for _, id in ipairs(CH.Scan.Recipes()) do
+		local info = C_TradeSkillUI.GetRecipeInfo(id)
+		local cats = table.concat(categoryNames(info and info.categoryID), " ")
+		local name = mainGroup(cats) or mainGroup(info and info.name) or "Other"
+		if not byName[name] then byName[name] = { name = name, recipes = {}, subs = {} }; table.insert(out, byName[name]) end
+		table.insert(byName[name].recipes, id)
+	end
+	local order = {}
+	for i, g in ipairs(MAIN) do order[g[1]] = i end
+	order.Other = #MAIN + 1
+	table.sort(out, function(a, b) return order[a.name] < order[b.name] end)
+	local tree = prof and CH.Spec.Tree(prof)
+	if tree then
+		for _, g in ipairs(out) do
+			local set = {}
+			for _, id in ipairs(g.recipes) do set[id] = true end
+			for nodeID, n in pairs(tree.nodes) do
+				local ids = {}
+				for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do if set[recipeID] then table.insert(ids, recipeID) end end
+				-- a node that covers some of the group but not all of it splits the group
+				if #ids > 0 and #ids < #g.recipes then
+					local label = (n.name or ""):match(" %- (.+)$") or n.name or ("node " .. nodeID)
+					table.sort(ids)
+					table.insert(g.subs, { name = label, node = nodeID, recipes = ids })
+				end
+			end
+			table.sort(g.subs, function(a, b) if #a.recipes ~= #b.recipes then return #a.recipes > #b.recipes end return a.name < b.name end)
+			for i = #g.subs, 9, -1 do g.subs[i] = nil end
+		end
+	end
+	return out
+end
+
+--- Points to finish every node that helps these recipes, including locked nodes on the way.
+function P.PathCost(prof, recipes)
+	local tree = prof and CH.Spec.Tree(prof)
+	if not tree then return 0 end
+	local want = {}
+	local set = {}
+	for _, id in ipairs(recipes or {}) do set[id] = true end
+	for nodeID in pairs(tree.nodes) do
+		for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do
+			if set[recipeID] then want[nodeID] = true; break end
+		end
+	end
+	local counted, total = {}, 0
+	local function add(nodeID, guard)
+		local n = tree.nodes[nodeID]
+		if not n or counted[nodeID] or guard > 10 then return end
+		counted[nodeID] = true
+		total = total + math.max(0, n.max - (n.rank or -1))
+		if (n.rank or -1) < 0 and not n.available and n.parent then add(n.parent, guard + 1) end
+	end
+	for nodeID in pairs(want) do add(nodeID, 0) end
+	return total
+end
+
 --- Recipes a goal means. "I want to sell potions" -> every learned recipe whose name or category
 --- says potion. Returns ids and a label; everything when the goal is just "gold".
 function P.Match(text)
