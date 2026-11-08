@@ -214,7 +214,14 @@ function A.Measure(recipeID, opts)
 					d.mcExtra, d.resExtra, d.refundExtra, d.concReduce = 0, 0, 0, 0
 					local helps = d.skill > 0 or d.multicraft > 0 or d.resourcefulness > 0 or d.ingenuity > 0
 					if helps then
-						table.insert(options, { itemID = id, slot = slot.index, cost = p or 0, delta = d })
+						-- One you already own costs what you'd get selling it instead (after the cut),
+						-- never more than buying one; one you'd buy costs its price.
+						local cost = p or 0
+						if own > 0 then
+							local sell = price("chvalue", id)
+							cost = sell and math.min(cost > 0 and cost or math.huge, sell * CH.AH_CUT) or cost
+						end
+						table.insert(options, { itemID = id, slot = slot.index, cost = cost, buy = p, own = own, delta = d })
 					end
 				end
 			end
@@ -412,6 +419,42 @@ function A.Evaluate(model, opts)
 	if bestConc then bestConc.bestConcentration = true end
 	return { recipeID = model.recipeID, name = model.name, rows = rows, qual = model.qual, fixed = model.fixed,
 		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order }
+end
+
+--- What each finishing reagent is worth on this recipe: { itemID, own, buy, cost, gain, effect,
+--- picked, verdict } best first. gain is the plain craft's profit with it less the best without any,
+--- with the reagent's own cost already taken off (what you'd sell an owned one for, else its price).
+--- verdict: "use" (you have it and it pays), "buy" (it pays even bought), "skip".
+function A.FinishingAdvice(result)
+	local model = result and result.model
+	if not model or not model.finishing or #model.finishing == 0 then return {} end
+	local base = pickBest(build(model, result.sim, {}, false))
+	local baseProfit = base and base.profit or 0
+	local picked = {}
+	for _, f in ipairs(result.best and result.best.finishing or {}) do picked[f.itemID] = true end
+	local out = {}
+	for _, options in ipairs(model.finishing) do
+		for _, o in ipairs(options) do
+			local b = pickBest(build(model, result.sim, { o }, false))
+			local gain = b and b.profit and (b.profit - baseProfit) or nil
+			local d, parts = o.delta, {}
+			if d.skill > 0 then table.insert(parts, string.format("+%d skill", d.skill)) end
+			for _, k in ipairs({ "multicraft", "resourcefulness", "ingenuity" }) do
+				if (d[k] or 0) > 0 then
+					local div = St().DIVISOR and St().DIVISOR[k]
+					table.insert(parts, div and string.format("+%.1f%% %s", d[k] / div * 100, k:gsub("^%l", string.upper))
+						or ("+" .. k:gsub("^%l", string.upper)))
+				end
+			end
+			-- bought, it would cost its price; owned, the gain already uses the cheaper sell value
+			local boughtGain = gain and o.buy and gain - (o.buy - o.cost) or nil
+			local verdict = gain and gain > 0 and o.own > 0 and "use" or boughtGain and boughtGain > 0 and "buy" or "skip"
+			table.insert(out, { itemID = o.itemID, slot = o.slot, own = o.own, buy = o.buy, cost = o.cost, gain = gain,
+				boughtGain = boughtGain, effect = table.concat(parts, ", "), picked = picked[o.itemID] or false, verdict = verdict })
+		end
+	end
+	table.sort(out, function(a, b) return (a.gain or -math.huge) > (b.gain or -math.huge) end)
+	return out
 end
 
 --- Measure and evaluate in one go.

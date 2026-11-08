@@ -238,6 +238,7 @@ function AUI.Render(result, reason)
 		table.insert(lines, T.Color("accent", "With Concentration: ") .. CH.FormatMoney(result.bestConc.perPoint) .. " per point, using "
 			.. CH.Advisor.PicksText(result, result.bestConc.picks, result.bestConc.finishing))
 	end
+	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
 	local g = gearPick
 	panel.equip:SetShown(g ~= nil and g.set ~= nil and not result.sim)
@@ -265,6 +266,34 @@ end
 local function rankText(q, tiers)
 	if not q then return "" end
 	return " " .. CH.Window.QualityIcon(q, 14, tiers)
+end
+
+--- One line on finishing reagents for the advisor's notes: use the one you have, buy one that pays
+--- for itself, or that none is worth it. Each option's gain is per plain craft.
+function AUI.FinishingLines(result)
+	local T, M = CH.Theme, CH.FormatMoney
+	local adv = CH.Advisor.FinishingAdvice(result)
+	if #adv == 0 or result.order then return {} end
+	local name = CH.Advisor.ItemName
+	local use, buy = nil, nil
+	for _, a in ipairs(adv) do
+		if a.verdict == "use" and not use then use = a end
+		if a.verdict == "buy" and not buy then buy = a end
+	end
+	local out = {}
+	if use then
+		table.insert(out, T.Color("accent", "Finishing: ") .. string.format("use your %s (have %d)", name(use.itemID), use.own)
+			.. "  " .. T.Color("ok", "+" .. M(use.gain)) .. T.Color("muted", " a craft, " .. use.effect))
+	end
+	if buy and (not use or buy.boughtGain > use.gain) then
+		table.insert(out, T.Color("accent", use and "Or buy: " or "Finishing: ") .. string.format("buy %s at %s", name(buy.itemID), M(buy.buy))
+			.. "  " .. T.Color("ok", "+" .. M(buy.boughtGain)) .. T.Color("muted", " a craft, " .. buy.effect))
+	end
+	if #out == 0 then
+		table.insert(out, T.Color("muted", "Finishing: none pays for itself here"
+			.. (adv[1].own > 0 and string.format(" (best you have: %s)", name(adv[1].itemID)) or "") .. "."))
+	end
+	return out
 end
 
 --- The expected-value steps for one unit (Expect.Value's detail): cut, deposits, carrying.

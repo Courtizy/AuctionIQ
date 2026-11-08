@@ -162,6 +162,17 @@ check("profit hover shows the Multicraft and Resourcefulness parts",
       any(a.startswith("Multicraft  35% x 2.3 more") for a, _ in pl) and any(a.startswith("Resourcefulness  20% saves") for a, _ in pl))
 cl = [plain(l[1]) for l in CH.AdvisorUI.BreakdownLines(pr, best, 3).values()]
 check("reagent hover lists the finishing reagent", any("item 222" in c for c in cl))
+fa = {a.itemID: a for a in CH.Advisor.FinishingAdvice(pr).values()}
+check("finishing advice: every option with its gain, what you own and the verdict",
+      set(fa) == {221, 222} and fa[221].own == 2 and fa[222].own == 0 and fa[222].picked and fa[222].verdict == "buy" and fa[222].gain > 0
+      and "Multicraft" in fa[222].effect and "skill" in fa[221].effect)
+fl = [plain(x) for x in CH.AdvisorUI.FinishingLines(pr).values()]
+check("finishing advice in the advisor notes", any(x.startswith("Finishing: buy item 222") for x in fl) or any("Or buy: buy item 222" in x for x in fl))
+run("STUB.prices['i:221'].formula_value = 10000; Clearinghouse.Prices.ClearCache()")   # you could sell yours for only 1g
+pr2 = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+o221 = [o for opts in pr2.model.finishing.values() for o in opts.values() if o.itemID == 221][0]
+check("finishing: one you own costs what you'd sell it for", o221.cost == 9500 and o221.buy == 30000)
+run("STUB.prices['i:221'].formula_value = nil; Clearinghouse.Prices.ClearCache()")
 
 # Simulation: more skill
 m10 = CH.Advisor.Measure(10)
