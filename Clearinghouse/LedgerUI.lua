@@ -61,7 +61,7 @@ local SECTIONS = {
 	analytics = { { "par" }, { "dead" }, { "time" } },
 }
 local section = "ledger"
-local lastView = { ledger = "inventory", markets = "market", analytics = "par" }
+local lastView = { ledger = "inventory", markets = "compare", analytics = "par" }
 LUI.SECTIONS = SECTIONS
 LUI.VIEWS = VIEWS
 

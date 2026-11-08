@@ -1,8 +1,5 @@
 __pycache__/
 *.pyc
 .release/
-companion/dist/
-companion/build/
-companion/*.spec
 __pycache__/
 .pytest_cache/

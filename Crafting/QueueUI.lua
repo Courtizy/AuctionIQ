@@ -25,7 +25,8 @@ function QUI.CostLines(s)
 	local T, M = CH.Theme, CH.FormatMoney
 	local out = {}
 	if not s or s.buy <= 0 or not s.cost then return out end
-	local from = s.source == "ah" and "your AH search" or s.source == "app" and "the Clearinghouse app's last scan" or "chmat (no listings seen)"
+	local from = s.source == "ah" and "your AH search" or s.source == "scan" and ("your last AH scan, " .. CH.Scans.Age(s.age) .. " old")
+		or "chmat (no listings seen)"
 	out[#out + 1] = "Buying " .. s.buy .. " costs " .. M(s.cost)
 	if s.first and s.source ~= "chmat" then
 		out[#out + 1] = T.Color("muted", "Cheapest " .. M(s.first) .. " each, " .. M(math.floor(s.unit + 0.5)) .. " each on average")

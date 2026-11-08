@@ -1,4 +1,4 @@
--- Markets tab: Market prices, Competition and When it sells. The views draw in the Clearinghouse's
+-- Markets tab: Compare prices, Market prices, Competition and When it sells. The views draw in the Clearinghouse's
 -- table page (Clearinghouse/LedgerUI.lua), which this file registers them with; the rows come from
 -- CH.Prices and CH.Ledger, which only read TSM's data.
 local _, CH = ...
@@ -35,17 +35,45 @@ local function marketRows(ctx)
 		end
 	end
 	if not any then
-		return out, CH.Theme.Color("muted", "No market data yet: needs TSM, Oribos Exchange or the Clearinghouse app.")
+		return out, CH.Theme.Color("muted", "No market data yet: needs TSM, Oribos Exchange or an AH scan.")
 	end
 	local from = {}
-	if sources.realm or sources.commodity then
-		local at, realm = 0, ""
-		if ClearinghouseMarket and ClearinghouseMarket.Info then at, realm = ClearinghouseMarket.Info() end
-		table.insert(from, "Clearinghouse app (" .. realm .. (at > 0 and (", " .. LUI.Ago(at, now) .. " old") or "") .. ", 7-day avg)")
-	end
+	if sources.scan then table.insert(from, "your AH scans (7-day avg)") end
 	if sources.tsm then table.insert(from, "TSM (60-day avg)") end
 	if sources.oribos then table.insert(from, "Oribos Exchange") end
 	return out, "Items you hold or sold this month" .. CH.Theme.Color("muted", "   from " .. table.concat(from, ", "))
+end
+
+local VERDICT_COLOR = { ["cheap now"] = "ok", ["pricey now"] = "bad", disagree = "accent", agree = "muted", ["one source"] = "muted", ["no prices"] = "muted" }
+
+local function compareRows(ctx)
+	local T, C, now, opts, keepName = CH.Theme, CH.Compare, ctx.now, ctx.opts, ctx.keepName
+	local out, counts = {}, {}
+	for id in pairs(C.Items(opts.char, now)) do
+		local r = C.Row(id)
+		if r.verdict ~= "no prices" then
+			local text, name = LUI.ItemText(id)
+			if keepName(name) then
+				counts[r.verdict] = (counts[r.verdict] or 0) + 1
+				local ah = r.ah and (r.ahFresh and money(r.ah) or T.Color("muted", CH.FormatMoney(r.ah))) or T.Color("muted", "-")
+				local age = r.ahAge and T.Color(r.ahFresh and "fg" or "muted", CH.Scans.Age(r.ahAge)) or ""
+				local gap = r.gap and T.Color(r.gap < 0 and "ok" or "bad", string.format("%+d%%", math.floor(r.gap * 100 + 0.5)))
+					or (r.spread and T.Color("muted", string.format("%d%%", math.floor(r.spread * 100 + 0.5)))) or T.Color("muted", "-")
+				table.insert(out, { id = id, cells = { text, ah, age, money(r.tsm), money(r.oe), money(r.region), gap,
+					T.Color(VERDICT_COLOR[r.verdict] or "fg", r.verdict) },
+					sort = { name, r.ah or 0, -(r.ahAge or math.huge), r.tsm or 0, r.oe or 0, r.region or 0, r.gap or r.spread or 0, r.verdict } })
+			end
+		end
+	end
+	if not out[1] then
+		return out, T.Color("muted", "Nothing to compare yet: needs TSM or Oribos Exchange, or search items at the AH.")
+	end
+	local parts = {}
+	for _, k in ipairs({ "cheap now", "pricey now", "disagree" }) do
+		if counts[k] then parts[#parts + 1] = T.Color(VERDICT_COLOR[k], counts[k] .. " " .. k) end
+	end
+	return out, (parts[1] and table.concat(parts, ", ") or "Sources agree")
+		.. T.Color("muted", "   Gap: your AH scan against TSM and Oribos (spread when there's no fresh scan). Scans older than a day are grey.")
 end
 
 local function rivalRows(ctx)
@@ -82,6 +110,8 @@ local function whenRows(ctx)
 end
 
 MUI.VIEWS = {
+	compare = { label = "Compare prices", sort = 7, noTime = true, rows = compareRows, cols = { { "Item", 0, 190 }, { "AH scan", 194, 84 },
+		{ "Age", 282, 52 }, { "TSM", 338, 84 }, { "Oribos", 426, 84 }, { "Region", 514, 84 }, { "Gap", 602, 50 }, { "Read", 656, 68 } } },
 	market = { label = "Market prices", sort = 7, noTime = true, rows = marketRows, cols = { { "Item", 0, 220 }, { "Held", 224, 50 }, { "Market now", 278, 96 },
 		{ "Average", 378, 96 }, { "Trend", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
 	when = { label = "When it sells", sort = 2, rows = whenRows, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
@@ -90,4 +120,4 @@ MUI.VIEWS = {
 		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
 }
 
-LUI.Register("markets", MUI.VIEWS, { "market", "rivals", "when" })
+LUI.Register("markets", MUI.VIEWS, { "compare", "market", "rivals", "when" })

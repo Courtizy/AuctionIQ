@@ -8,7 +8,7 @@
 -- Sources, all per item:
 --   crafting      what making one costs (AuctionIQ's scan and what you paid for reagents)
 --   dbmarket, dbminbuyout, dbhistorical, dbregionmarketavg, dbregionsaleavg, dbregionhistorical,
---   dbregionsoldperday   market data: the Clearinghouse app where it has the number, else TSM's
+--   dbregionsoldperday   market data from TSM
 --   vendorsell    what a vendor pays
 --   avgbuy, avgsell      your own average buy and sale price (ledger)
 --   numexpires    times it expired since it last sold (ledger)
@@ -206,13 +206,6 @@ local function source(name, ctx, ev)
 	if name == "avgsell" then return CH.Ledger and CH.Ledger.Available() and CH.Ledger.AvgSell and CH.Ledger.AvgSell(id) or nil end
 	if name == "chvalue" or name == "chmat" then return CH.Prices.Get(name, item) end
 	if TSM_ONLY[name] then
-		-- the Clearinghouse app's history first where it has the same number
-		local m = CH.Prices.Market and CH.Prices.Market(id)
-		if m then
-			if name == "dbmarket" and m.market then return m.market end
-			if name == "dbminbuyout" and m.min then return m.min end
-			if name == "dbhistorical" and m.avg30 then return m.avg30 end
-		end
 		return CH.Prices.Raw(name, id)
 	end
 	return CH.Prices.Raw(name, id)

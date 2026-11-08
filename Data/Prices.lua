@@ -17,7 +17,7 @@ local FORMULA = {
 	-- Oribos Exchange (Undermine Exchange's addon), through TSM, when it's installed
 	oerealm = "oerealm",
 	oeregion = "oeregion",
-	-- TSM's own sources, for the Markets view when the Clearinghouse app has no data yet
+	-- TSM's own sources, for the Markets view and the price comparison
 	dbmarket = "dbmarket",
 	dbminbuyout = "dbminbuyout",
 	dbhistorical = "dbhistorical",
@@ -78,11 +78,9 @@ function Prices.CraftProfit(item, quantity)
 	return (ev - cost) * (quantity or 1)
 end
 
---- The Clearinghouse app's market history for an item (see the Clearinghouse addon), or nil.
+--- What the AH showed for an item at its last scan (see Scans.lua), or nil.
 function Prices.Market(id)
-	if type(ClearinghouseMarket) ~= "table" or not id then return nil end
-	local ok, v = pcall(ClearinghouseMarket.Get, id)
-	return ok and v or nil
+	return id and CH.Scans and CH.Scans.Get(id) or nil
 end
 
 --- Oribos Exchange's numbers for an item: { market (realm), region, days }, or nil.
@@ -96,7 +94,7 @@ function Prices.Oribos(id)
 	return { market = r.market, region = r.region, days = r.days }
 end
 
---- Market numbers for an item from whatever is installed: the Clearinghouse app's history first,
+--- Market numbers for an item from whatever there is: your AH scans first (avgDays 7),
 --- else TSM's realm data and Oribos Exchange. Same shape as Prices.Market; from TSM/OE, avg7 is
 --- TSM's 60-day historical price and change7 is today's market against it (avgDays says which).
 function Prices.MarketAny(id)

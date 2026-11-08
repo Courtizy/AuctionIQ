@@ -215,17 +215,24 @@ local function answered(id)
 	if waiting and waiting.id == id then
 		local w = waiting
 		waiting = nil
-		local res = A.Results(w.id, w.key, w.commodity)
-		if w.commodity and CH.Depth then CH.Depth.Remember(w.id, res) end
-		w.done(res)
+		w.done(A.Results(w.id, w.key, w.commodity))
 	end
 end
-CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(id)
-	-- your own searches at the AH price big buys too (see Depth.lua)
-	if not (waiting and waiting.id == id) and CH.Depth and id then CH.Depth.Remember(id, A.Results(id, nil, true)) end
+-- Every search answered in the AH window (AuctionIQ's, yours or TSM's) is saved as a scan
+-- (Scans.lua) and kept for pricing big buys (Depth.lua), then handed to a waiting A.Search.
+CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(_, id)
+	if not id then return end
+	local res = A.Results(id, nil, true)
+	CH.Depth.Remember(id, res)
+	CH.Scans.Record(id, res, true)
 	answered(id)
 end)
-CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(key) answered(key and key.itemID) end)
+CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(_, key)
+	local id = key and key.itemID
+	if not id then return end
+	CH.Scans.Record(id, A.Results(id, key, false), false)
+	answered(id)
+end)
 
 --- How many of an item are in your bags (unbound).
 function A.InBags(id)

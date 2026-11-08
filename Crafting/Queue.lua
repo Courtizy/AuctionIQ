@@ -287,7 +287,7 @@ function Q.ShoppingList()
 		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
 		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
-			source = d and d.source, short = d and d.short or 0, first = d and d.first,
+			source = d and d.source, short = d and d.short or 0, first = d and d.first, age = d and d.age,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end
 	table.sort(out, function(a, b) return (a.cost or 0) > (b.cost or 0) end)
