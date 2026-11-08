@@ -51,7 +51,7 @@ local VIEWS = {
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 	report = { label = "Report", cols = {} },
 	market = { label = "Market prices", sort = 7, cols = { { "Item", 0, 220 }, { "Held", 224, 50 }, { "Market now", 278, 96 },
-		{ "7-day avg", 378, 96 }, { "7 days", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
+		{ "Average", 378, 96 }, { "Trend", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
@@ -299,11 +299,12 @@ function LUI.Rows(v, opts)
 			if e.id and not e.bound then held[e.id] = e.total; ids[e.id] = true end
 		end
 		for _, r in ipairs(L.Records("Sales")) do if r.id and r.time >= now - 30 * 86400 then ids[r.id] = true end end
-		local any = false
+		local any, sources = false, {}
 		for id in pairs(ids) do
-			local m = CH.Prices.Market and CH.Prices.Market(id)
+			local m = CH.Prices.MarketAny and CH.Prices.MarketAny(id)
 			if m then
 				any = true
+				sources[m.source or "realm"] = true
 				local text, name = LUI.ItemText(id)
 				if keepName(name) then
 					local h, mk = held[id] or 0, m.market or m.min
@@ -316,12 +317,17 @@ function LUI.Rows(v, opts)
 			end
 		end
 		if not any then
-			return out, CH.Theme.Color("muted", "No market data yet: run the Clearinghouse app and press Sync now, then /reload.")
+			return out, CH.Theme.Color("muted", "No market data yet: needs TSM, Oribos Exchange or the Clearinghouse app.")
 		end
-		local at, realm = 0, ""
-		if ClearinghouseMarket and ClearinghouseMarket.Info then at, realm = ClearinghouseMarket.Info() end
-		return out, "Items you hold or sold this month" .. CH.Theme.Color("muted", "   Clearinghouse app data for " .. realm
-			.. (at > 0 and (", " .. LUI.Ago(at, now) .. " old") or ""))
+		local from = {}
+		if sources.realm or sources.commodity then
+			local at, realm = 0, ""
+			if ClearinghouseMarket and ClearinghouseMarket.Info then at, realm = ClearinghouseMarket.Info() end
+			table.insert(from, "Clearinghouse app (" .. realm .. (at > 0 and (", " .. LUI.Ago(at, now) .. " old") or "") .. ", 7-day avg)")
+		end
+		if sources.tsm then table.insert(from, "TSM (60-day avg)") end
+		if sources.oribos then table.insert(from, "Oribos Exchange") end
+		return out, "Items you hold or sold this month" .. CH.Theme.Color("muted", "   from " .. table.concat(from, ", "))
 	end
 
 	if v == "time" then
