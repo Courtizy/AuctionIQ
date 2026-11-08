@@ -58,6 +58,32 @@ function M.SendNext()
 	end
 end
 
+--- What's waiting in this mailbox: gold, mails, mails with items, cash-on-delivery mails. Also saved
+--- per character, so the briefing can add up gold waiting in every character's mail.
+function M.Waiting()
+	local w = { gold = 0, mails = 0, items = 0, cod = 0 }
+	if not GetInboxNumItems then return w end
+	for i = 1, GetInboxNumItems() do
+		local _, _, _, _, money, cod, _, hasItem = GetInboxHeaderInfo(i)
+		w.mails = w.mails + 1
+		if (cod or 0) > 0 then w.cod = w.cod + 1 else w.gold = w.gold + (money or 0) end
+		if hasItem then w.items = w.items + 1 end
+	end
+	local s = store()
+	s.waiting = s.waiting or {}
+	if UnitName then s.waiting[UnitName("player")] = { gold = w.gold, items = w.items, at = time() } end
+	return w
+end
+
+--- Gold waiting in mail across your characters, as last seen at each mailbox: total, { name = gold }.
+function M.WaitingAll()
+	local total, by = 0, {}
+	for name, w in pairs(store().waiting or {}) do
+		if (w.gold or 0) > 0 then total = total + w.gold; by[name] = w.gold end
+	end
+	return total, by
+end
+
 -- Open all: take money and items from every mail that isn't cash on delivery, one every 0.3s.
 local opening
 function M.OpenAll(done)
@@ -77,6 +103,7 @@ function M.OpenAll(done)
 			end
 		end
 		opening = false
+		M.Waiting()
 		if done then done(taken, gold) end
 	end
 	step()

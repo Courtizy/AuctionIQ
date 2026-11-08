@@ -67,8 +67,19 @@ end
 
 --- What to do with an item you hold: { action = "post"|"skip", price, qty, why }.
 --- results: the AH's listings for it; held: how many you have to post.
+-- Remember whether someone outside the account was cheaper than your normal price, and who.
+local function note(id, results, normal)
+	if not (CH.Ledger and CH.Ledger.NoteCompetition) then return end
+	local other, owners
+	for _, r in ipairs(results or {}) do
+		if not r.mine and (not other or r.price < other) then other, owners = r.price, r.owners end
+	end
+	CH.Ledger.NoteCompetition(id, other ~= nil and normal ~= nil and other < normal, owners)
+end
+
 function A.Decide(id, results, held)
 	local p = CH.Groups.Prices(id)
+	note(id, results, p.normal)
 	if not p.post then return { action = "skip", why = "its group doesn't post" } end
 	if not p.normal then return { action = "skip", why = "no price" } end
 	local other, mine = lowest(results)
@@ -161,7 +172,9 @@ function A.Results(id, key, commodity)
 	else
 		for i = 1, AH.GetNumItemSearchResults(key) or 0 do
 			local r = AH.GetItemSearchResultInfo(key, i)
-			if r and r.buyoutAmount then table.insert(out, { price = r.buyoutAmount, qty = r.quantity or 1, mine = r.containsOwnerItem or r.containsAccountItem }) end
+			if r and r.buyoutAmount then
+				table.insert(out, { price = r.buyoutAmount, qty = r.quantity or 1, mine = r.containsOwnerItem or r.containsAccountItem, owners = r.owners })
+			end
 		end
 	end
 	return out

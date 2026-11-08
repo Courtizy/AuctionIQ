@@ -43,13 +43,17 @@ local VIEWS = {
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
 	par = { label = "Par levels", parent = "Goblin CFO", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
+	when = { label = "When it sells", parent = "Goblin CFO", sort = 2, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
+		{ "Best hours", 382, 110 }, { "Share then", 496, 80 }, { "Post by", 580, 144 } } },
+	rivals = { label = "Competition", parent = "Goblin CFO", sort = 2, cols = { { "Item", 0, 220 }, { "Cancels", 224, 60 }, { "Seen", 288, 50 },
+		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
 	overhead = { label = "Overhead", parent = "Goblin CFO", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 }
 local NAV = { { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 	{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 	{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
-	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "par", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } }
+	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "par", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "when", sub = true }, { "rivals", sub = true }, { "overhead", sub = true } }
 LUI.VIEWS = VIEWS
 
 -- Formatting ----------------------------------------------------------------------------------
@@ -231,6 +235,35 @@ function LUI.Rows(v, opts)
 		end
 		return out, string.format("%d items below par, %s of stock to make or buy", short, money(worth))
 			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
+	end
+
+	if v == "when" then
+		local DAYS = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" }
+		for _, e in ipairs(L.SaleTimes(since, opts.char)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) and e.sold >= 3 then
+				local post = (e.bestHour + 23) % 24
+				table.insert(out, { id = e.id, cells = { text, e.sold, DAYS[e.bestDay], string.format("%02d:00-%02d:00", e.bestHour, (e.bestHour + 4) % 24),
+					string.format("%d%%", math.floor(e.share * 100 + 0.5)), string.format("%s by %02d:00", DAYS[e.bestDay]:sub(1, 3), post) },
+					sort = { name, e.sold, e.bestDay, e.bestHour, e.share, e.bestDay * 24 + post } })
+			end
+		end
+		return out, "Items sold 3+ times. A 4-hour window holding 17% of sales is no pattern; 40%+ is worth posting for."
+	end
+
+	if v == "rivals" then
+		local n = 0
+		for _, e in ipairs(L.Competition(since)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				if e.status == "contested" then n = n + 1 end
+				local col = e.status == "contested" and "bad" or e.status == "busy" and "accent" or "ok"
+				table.insert(out, { id = e.id, cells = { text, e.cancels, e.seen, e.rate and string.format("%d%%", math.floor(e.rate * 100 + 0.5)) or "-",
+					e.rival or CH.Theme.Color("muted", "-"), CH.Theme.Color(col, e.status) },
+					sort = { name, e.cancels, e.seen, e.rate or -1, e.rival or "", e.status } })
+			end
+		end
+		return out, string.format("%d contested markets", n) .. CH.Theme.Color("muted", "   Undercut and rivals fill in from your post scans; commodities don't show sellers")
 	end
 
 	if v == "overhead" then

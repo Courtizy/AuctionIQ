@@ -37,8 +37,18 @@ function UI.BriefingText(now)
 			table.insert(out, T.Color("accent", "Last 24 hours") .. T.Color("muted", "  from TSM's accounting"))
 			table.insert(out, string.format("   Sold %d for %s, bought %d for %s, cash %s", r.sold, CH.FormatMoney(r.earned), r.bought,
 				CH.FormatMoney(r.spent), T.Color(r.earned - r.spent >= 0 and "ok" or "bad", CH.FormatMoney(r.earned - r.spent))))
+			local mailGold = CH.Mail and CH.Mail.WaitingAll() or 0
+			if mailGold > 0 then
+				local _, by = CH.Mail.WaitingAll()
+				local parts = {}
+				for name, g in pairs(by) do table.insert(parts, name .. " " .. CH.FormatMoney(g)) end
+				table.sort(parts)
+				table.insert(out, "   Waiting in mail " .. CH.FormatMoney(mailGold) .. T.Color("muted", "  " .. table.concat(parts, ", ")))
+			end
 			if r.worth then
-				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth)))
+				local tk = CH.Alerts and CH.Alerts.InTokens(math.abs(r.worth))
+				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth))
+					.. (tk and T.Color("muted", "  (" .. tk .. ")") or ""))
 			end
 			for _, t in ipairs(r.top) do table.insert(out, "   " .. item(t.id) .. "  " .. CH.FormatMoney(t.gold)) end
 			local below = CH.Par and CH.Par.List(now) or {}
@@ -54,6 +64,21 @@ function UI.BriefingText(now)
 						shown = shown + 1
 						table.insert(out, string.format("   %s  %d of %d, short %d", item(e.id), e.held, e.target, e.short))
 					end
+				end
+			end
+			local hour, wday = tonumber(date("%H", now)), tonumber(date("%w", now)) + 1
+			local postNow = {}
+			for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do
+				local ahead = (e.bestHour - hour) % 24
+				if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then table.insert(postNow, e) end
+			end
+			table.sort(postNow, function(a, b) return a.gold > b.gold end)
+			if #postNow > 0 then
+				table.insert(out, "")
+				table.insert(out, T.Color("accent", "Post now") .. T.Color("muted", "  their best selling hours start soon"))
+				for i, e in ipairs(postNow) do
+					if i > 5 then break end
+					table.insert(out, string.format("   %s  %d%% of sales from %02d:00", item(e.id), math.floor(e.share * 100 + 0.5), e.bestHour))
 				end
 			end
 			if #r.restock > 0 then
@@ -149,6 +174,24 @@ function UI.BriefingText(now)
 		for i, b in ipairs(buys) do
 			if i > 4 then break end
 			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", CH.FormatMoney(b.bc.buy), CH.FormatMoney(b.bc.craft)))
+		end
+	end
+
+	if CH.Planner then
+		local up = CH.Planner.Upcoming(now, 7)
+		if #up > 0 then
+			table.insert(out, "")
+			table.insert(out, T.Color("accent", "Coming up"))
+			for i, e in ipairs(up) do
+				if i > 4 then break end
+				table.insert(out, "   " .. e.date:sub(6) .. "  " .. e.name .. (e.hint and T.Color("muted", "  " .. e.hint) or ""))
+			end
+		end
+		local left = 0
+		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
+		if left > 0 then
+			table.insert(out, "")
+			table.insert(out, T.Color("accent", "Knowledge") .. "  " .. left .. " weekly sources not ticked yet " .. T.Color("muted", "(Plan page)"))
 		end
 	end
 
@@ -428,7 +471,7 @@ local function build()
 	frame.title:SetText(T.Color("accent", "Clearinghouse"))
 	frame.TitleText = frame.title
 	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "briefing", "Briefing" } }) do
+	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Briefing" } }) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
 		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
@@ -438,7 +481,8 @@ local function build()
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	frame.gold:SetPoint("RIGHT", frame.close, "LEFT", -10, 0)
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildBriefing }) do
+	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildBriefing }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
@@ -571,7 +615,8 @@ local function refreshDashboard()
 	for _, h in ipairs(holders) do if h.included then on = on + 1 end end
 	local who = on == #holders and ("All characters on " .. (GetRealmName and GetRealmName() or "") .. " + warband bank")
 		or string.format("%d of %d (characters + warband bank)", on, #holders)
-	d.sub:SetText(T.Color("muted", who .. ", now ") .. CH.FormatMoney(data.gold))
+	local tokens = CH.Alerts and CH.Alerts.InTokens(data.gold)
+	d.sub:SetText(T.Color("muted", who .. ", now ") .. CH.FormatMoney(data.gold) .. (tokens and T.Color("muted", "  (" .. tokens .. ")") or ""))
 	d.hoverIndex = nil
 	drawChart(d, data)
 	d.stats.high:SetText(money(data.high))
@@ -622,6 +667,7 @@ function UI.Refresh()
 	if page == "dashboard" then return refreshDashboard()
 	elseif page == "ledger" then return refreshLedger()
 	elseif page == "groups" then return CH.GroupsUI.Refresh()
+	elseif page == "plan" then return CH.PlanUI.Refresh()
 	else
 		text:SetText(UI.BriefingText())
 		text:GetParent():SetHeight(text:GetStringHeight() + 10)

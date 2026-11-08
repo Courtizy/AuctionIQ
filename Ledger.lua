@@ -472,6 +472,76 @@ function Lg.Overhead(since, char)
 	return { types = list, total = total, sales = sales, buys = buys, profit = sales - buys, afterOverhead = sales - buys - total }
 end
 
+-- When things sell ---------------------------------------------------------------------------
+--- Your sales of each item by weekday and hour: { id, sold, gold, days = {[1..7]=n}, hours = {[0..23]=n},
+--- bestDay (1 = Sunday), bestHour (start of the best 4-hour window), share (of sales in that window) }.
+function Lg.SaleTimes(since, char)
+	local t = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and s.time >= (since or -math.huge) and (not char or s.player == char) then
+			local e = t[s.id]
+			if not e then e = { id = s.id, sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = e end
+			local d = date("*t", s.time)
+			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+			e.days[d.wday] = (e.days[d.wday] or 0) + s.quantity
+			e.hours[d.hour] = (e.hours[d.hour] or 0) + s.quantity
+		end
+	end
+	local out = {}
+	for _, e in pairs(t) do
+		local bd, bv = 1, -1
+		for d = 1, 7 do if (e.days[d] or 0) > bv then bd, bv = d, e.days[d] or 0 end end
+		local bh, hv = 0, -1
+		for h = 0, 23 do
+			local w = 0
+			for k = 0, 3 do w = w + (e.hours[(h + k) % 24] or 0) end
+			if w > hv then bh, hv = h, w end
+		end
+		e.bestDay, e.bestHour, e.share = bd, bh, e.sold > 0 and hv / e.sold or 0
+		table.insert(out, e)
+	end
+	return out
+end
+
+-- Competition --------------------------------------------------------------------------------
+local function rivals()
+	CH.db.competition = CH.db.competition or {}
+	return CH.db.competition
+end
+
+--- Note what a search found for an item: whether someone outside your account was cheaper, and who.
+function Lg.NoteCompetition(id, beaten, owners)
+	local c = rivals()[id] or { seen = 0, beaten = 0, by = {} }
+	rivals()[id] = c
+	c.seen, c.at = c.seen + 1, time()
+	if beaten then
+		c.beaten = c.beaten + 1
+		for _, o in ipairs(owners or {}) do c.by[o] = (c.by[o] or 0) + 1 end
+	end
+end
+
+--- Per item: how often you're undercut and cancel, and by whom. { id, cancels, seen, beaten, rival, status }.
+function Lg.Competition(since)
+	local cancels = {}
+	for _, r in ipairs(Lg.Records("Cancelled")) do
+		if r.id and r.time >= (since or -math.huge) then cancels[r.id] = (cancels[r.id] or 0) + 1 end
+	end
+	local ids = {}
+	for id in pairs(cancels) do ids[id] = true end
+	for id in pairs(rivals()) do ids[id] = true end
+	local out = {}
+	for id in pairs(ids) do
+		local c = rivals()[id] or { seen = 0, beaten = 0, by = {} }
+		local rival, rn = nil, 0
+		for o, n in pairs(c.by) do if n > rn then rival, rn = o, n end end
+		local rate = c.seen > 0 and c.beaten / c.seen or nil
+		local n = cancels[id] or 0
+		local status = (n >= 5 or (rate and rate >= 0.6)) and "contested" or ((rate and rate >= 0.3) or n >= 2) and "busy" or "safe"
+		table.insert(out, { id = id, cancels = n, seen = c.seen, beaten = c.beaten, rate = rate, rival = rival, status = status })
+	end
+	return out
+end
+
 -- Morning report -----------------------------------------------------------------------------
 --- What changed and what needs doing: last day's sales and buys, items you sold this week and
 --- now hold none of, and what came back unsold (and what keeps coming back).

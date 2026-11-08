@@ -7,6 +7,11 @@ local frame, status, list, sendButton
 
 function MUI.Refresh()
 	if not frame then return end
+	if not CH.Mail.opening then
+		local w = CH.Mail.Waiting()
+		frame.waiting:SetText(string.format("Waiting: %s in %d mails, %d with items%s", CH.FormatMoney(w.gold), w.mails, w.items,
+			w.cod > 0 and CH.Theme.Color("bad", ", " .. w.cod .. " cash on delivery") or ""))
+	end
 	local box = CH.Mail.Outbox()
 	local lines, n = {}, 0
 	for to, items in pairs(box) do
@@ -44,8 +49,9 @@ local function build()
 		if to then status:SetText(string.format("Sent %d to %s.", n, to)) end
 		C_Timer.After(1, MUI.Refresh)
 	end)
-	status = Wd.Text(frame, 12, -64, 336)
-	list = Wd.Text(frame, 12, -86, 336)
+	frame.waiting = Wd.Text(frame, 12, -64, 336)
+	status = Wd.Text(frame, 12, -82, 336)
+	list = Wd.Text(frame, 12, -104, 336)
 	list:SetJustifyV("TOP")
 	T.Fonts(frame)
 	frame:Hide()
@@ -59,6 +65,7 @@ CH.On("MAIL_SHOW", function()
 	MUI.Refresh()
 end)
 CH.On("MAIL_CLOSED", function() if frame then frame:Hide() end end)
+CH.On("MAIL_INBOX_UPDATE", function() if frame and frame:IsShown() then MUI.Refresh() end end)
 CH.On("BAG_UPDATE_DELAYED", function() if frame and frame:IsShown() then MUI.Refresh() end end)
 
 function MUI.Build() if not frame then build() end return frame end

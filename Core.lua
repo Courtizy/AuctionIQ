@@ -120,6 +120,15 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		CH.db.settings.coins = not CH.db.settings.coins
 		CH.Print("coin icons " .. (CH.db.settings.coins and "on" or "off"))
 		if CH.UI.IsShown() then CH.UI.Refresh() end
+	elseif msg:match("^event ") then
+		local day, name = msg:match("^event (%d+%-%d+%-%d+) (.+)$")
+		if day then CH.Planner.AddEvent(day, name); CH.Print("added " .. day .. " " .. name) else CH.Print("/ch event 2026-12-01 Season 2 starts") end
+	elseif msg:match("^task ") then
+		local name = msg:match("^task (.+)$")
+		table.insert(CH.Planner.Store().tasks, name)
+		CH.Print("weekly task added: " .. name)
+	elseif msg == "alerts" then
+		CH.Alerts.Toggle()
 	elseif msg == "minimap" then
 		CH.db.settings.minimap.hide = not CH.db.settings.minimap.hide
 		CH.UpdateMinimapButton()
@@ -141,7 +150,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item.")
+		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item. /ch alerts turns alerts on or off.")
 	else
 		CH.UI.Toggle()
 	end

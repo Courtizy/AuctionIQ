@@ -33,6 +33,9 @@ AuctionUI.lua
 GroupsUI.lua
 Mail.lua
 MailUI.lua
+Alerts.lua
+Planner.lua
+PlanUI.lua
 UI.lua
 Minimap.lua
 Advisor.lua
