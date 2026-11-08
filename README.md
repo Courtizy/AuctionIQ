@@ -92,8 +92,9 @@ a stubbed WoW environment and checks prices, tooltips, profession tracking and t
 
 MIT licence.
 
-## Report
+## Briefing and export
 
-The Report page shows the books for the last 7, 30 and 90 days side by side (sales after the cut,
-purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by product
-line. Its Export box turns any Ledger table into CSV text to copy out.
+The Briefing page opens with the books for the last 7, 30 and 90 days side by side (sales after the
+cut, purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by
+product line, then the brief itself. `/ch brief` opens it. The Ledger's Export button turns the
+table you're looking at (with its filters) into CSV text to copy out.

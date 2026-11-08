@@ -372,6 +372,10 @@ function LUI.Build(p, fs, panel)
 		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; CH.UI.Refresh() end)
 	end)
 
+	p.exportButton = T.Button(p, "Export", 70, 20)
+	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
+	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
+
 	-- sortable headers
 	p.heads = {}
 	for j = 1, 8 do

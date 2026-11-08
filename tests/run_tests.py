@@ -452,9 +452,10 @@ check("mail: waiting gold adds up across characters for the briefing", CH.Mail.W
 run("GetInboxNumItems = nil; GetInboxHeaderInfo = nil; Clearinghouse.Mail.Store().waiting = {}")
 n7 = CH.ReportUI.Numbers(7)
 check("report: 7 days of sales after cut, purchases, overhead", abs(n7.sales - 7000000 * 0.95) < 1 and n7.buys == 1000000 and n7.overhead == 20000)
-run("Clearinghouse.UI.Page('report')")
-check("report page draws its rows", len(list(CH.ReportUI.Refresh().values())) == 5)
+run("Clearinghouse.UI.Page('briefing')")
+check("briefing opens with the books", len(list(CH.ReportUI.Refresh().values())) == 5)
 csvtext, nrows = CH.ReportUI.CSV("sales", L.eval("{ }"))
+run("Clearinghouse.ReportUI.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
 run("Clearinghouse.Auction.RecordOwned({})")
 LU = CH.LedgerUI

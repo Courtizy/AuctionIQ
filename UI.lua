@@ -446,8 +446,9 @@ end
 local function buildBriefing(p)
 	local T = CH.Theme
 	pages.briefing = p
+	CH.ReportUI.Build(p, fs, panel)
 	local scroll = CreateFrame("ScrollFrame", nil, p)
-	scroll:SetPoint("TOPLEFT", 4, 0)
+	scroll:SetPoint("TOPLEFT", 4, -176)
 	scroll:SetPoint("BOTTOMRIGHT", -4, 0)
 	scroll:EnableMouseWheel(true)
 	scroll:SetScript("OnMouseWheel", function(self, delta)
@@ -471,19 +472,18 @@ local function build()
 	frame.title:SetText(T.Color("accent", "Clearinghouse"))
 	frame.TitleText = frame.title
 	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "report", "Report" }, { "briefing", "Briefing" } }) do
-		local b = T.Button(frame.bar, pg[2], 80, 20)
+	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Briefing" } }) do
+		local b = T.Button(frame.bar, pg[2], 84, 20)
 		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
 		pageButtons[pg[1]] = b
-		x = x + 84
+		x = x + 88
 	end
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	frame.gold:SetPoint("RIGHT", frame.close, "LEFT", -10, 0)
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
 	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
-	local function buildReport(p) pages.report = p; CH.ReportUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildReport, buildBriefing }) do
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildBriefing }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
@@ -669,8 +669,8 @@ function UI.Refresh()
 	elseif page == "ledger" then return refreshLedger()
 	elseif page == "groups" then return CH.GroupsUI.Refresh()
 	elseif page == "plan" then return CH.PlanUI.Refresh()
-	elseif page == "report" then return CH.ReportUI.Refresh()
 	else
+		CH.ReportUI.Refresh()
 		text:SetText(UI.BriefingText())
 		text:GetParent():SetHeight(text:GetStringHeight() + 10)
 	end

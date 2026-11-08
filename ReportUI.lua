@@ -1,6 +1,6 @@
--- Report page of the main window: the books for the last 7 and 30 days side by side (sales,
--- purchases, overhead, cash profit, net worth change, top items and product lines), plus an Export
--- box with any Ledger table as CSV text to copy out (Ctrl+A, Ctrl+C).
+-- The books at the top of the Briefing: the last 7, 30 and 90 days side by side (sales, purchases,
+-- overhead, cash profit, net worth change), top sellers and profit by product line. Also the
+-- Ledger's Export box: any table as CSV text to copy out.
 local _, CH = ...
 
 local RUI = {}
@@ -94,63 +94,58 @@ function RUI.CSV(view, opts)
 	return table.concat(out, "\n"), #rows
 end
 
+--- The books, drawn at the top of the Briefing page (height 170).
 function RUI.Build(p, fs, panel)
-	local T = CH.Theme
 	page = p
-	local box = panel(p, 0, 0, 560, 250)
+	local box = panel(p, 0, 0, 560, 166)
 	p.head = {}
 	for i, s in ipairs(SPANS) do
-		p.head[i] = fs(box, 240 + (i - 1) * 106, -10, 100, "RIGHT", "GameFontNormal")
+		p.head[i] = fs(box, 240 + (i - 1) * 106, -8, 100, "RIGHT", "GameFontNormal")
 		p.head[i]:SetText(s[1])
 	end
 	p.lines = {}
 	for i = 1, 5 do
-		local y = -36 - (i - 1) * 22
+		local y = -30 - (i - 1) * 20
 		local r = { label = fs(box, 10, y, 230), cells = {} }
 		for j = 1, #SPANS do r.cells[j] = fs(box, 240 + (j - 1) * 106, y, 100, "RIGHT") end
 		p.lines[i] = r
 	end
-	p.note = fs(box, 10, -156, 540, "LEFT", "GameFontDisableSmall")
-	p.note:SetText("Cash profit counts reagents bought as spent; net worth change counts the stock you still hold. Transfers between your characters are left out.")
-	if p.note.SetMaxLines then p.note:SetMaxLines(3) end
-	local side = panel(p, 572, 0, 324, 250)
-	local th = fs(side, 10, -10, 300, "LEFT", "GameFontNormal"); th:SetText("Last 30 days")
-	p.side = fs(side, 10, -32, 304, "LEFT")
+	p.note = fs(box, 10, -134, 540, "LEFT", "GameFontDisableSmall")
+	p.note:SetText("Cash profit counts reagents bought as spent; net worth change counts stock you still hold. Export any table from the Ledger.")
+	if p.note.SetMaxLines then p.note:SetMaxLines(2) end
+	local side = panel(p, 572, 0, 324, 166)
+	p.side = fs(side, 10, -8, 304, "LEFT")
 	p.side:SetJustifyV("TOP")
-	if p.side.SetMaxLines then p.side:SetMaxLines(14) end
+	if p.side.SetMaxLines then p.side:SetMaxLines(10) end
+end
 
-	-- export
-	local ex = panel(p, 0, -262, 896, 250)
-	local eh = fs(ex, 10, -10, 300, "LEFT", "GameFontNormal"); eh:SetText("Export as CSV")
-	p.exportButtons = {}
-	local x = 140
-	for _, k in ipairs({ "inventory", "sales", "purchases", "income", "expense", "expired", "pl", "holdings", "dead", "par" }) do
-		local b = T.Button(ex, CH.LedgerUI.VIEWS[k].label, 80, 18)
-		b:SetPoint("TOPLEFT", x, -8)
-		b:SetScript("OnClick", function()
-			local text, n = RUI.CSV(k, { days = 30 })
-			p.export:SetText(text)
-			p.export:HighlightText()
-			p.export:SetFocus()
-			p.exportNote:SetText(string.format("%s, last 30 days: %d rows. Ctrl+A, Ctrl+C to copy.", CH.LedgerUI.VIEWS[k].label, n))
-		end)
-		x = x + 84
-		if x > 800 then x = 140 end
-		table.insert(p.exportButtons, b)
+local popup
+--- A copy box with a Ledger table as CSV: the Ledger's Export button.
+function RUI.Export(view, opts)
+	local text, n = RUI.CSV(view, opts)
+	if not popup then
+		popup = CH.Window.New("ClearinghouseExport", "", 640, 400)
+		popup.title:SetText(CH.Theme.Color("accent", "Export as CSV"))
+		popup.note = popup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		popup.note:SetPoint("TOPLEFT", 14, -34)
+		local scroll = CreateFrame("ScrollFrame", nil, popup, "UIPanelScrollFrameTemplate")
+		scroll:SetPoint("TOPLEFT", 14, -52)
+		scroll:SetPoint("BOTTOMRIGHT", -34, 14)
+		local eb = CreateFrame("EditBox", nil, scroll)
+		eb:SetMultiLine(true)
+		eb:SetAutoFocus(false)
+		eb:SetFontObject("GameFontHighlightSmall")
+		eb:SetWidth(580)
+		eb:SetScript("OnEscapePressed", function() popup:Hide() end)
+		scroll:SetScrollChild(eb)
+		popup.box = eb
 	end
-	p.exportNote = fs(ex, 10, -32, 870, "LEFT", "GameFontDisableSmall")
-	p.exportNote:SetText("Pick a table; its rows appear below as CSV, selected and ready to copy into a spreadsheet or notes.")
-	local scroll = CreateFrame("ScrollFrame", nil, ex, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", 10, -50)
-	scroll:SetPoint("BOTTOMRIGHT", -30, 10)
-	local eb = CreateFrame("EditBox", nil, scroll)
-	eb:SetMultiLine(true)
-	eb:SetAutoFocus(false)
-	eb:SetFontObject("GameFontHighlightSmall")
-	eb:SetWidth(840)
-	eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	scroll:SetScrollChild(eb)
-	p.export = eb
+	popup.box:SetText(text)
+	popup.note:SetText(string.format("%s: %d rows, selected. Ctrl+C to copy, then paste into a sheet or your notes.", CH.LedgerUI.VIEWS[view].label, n))
+	popup:Show()
+	popup.box:SetFocus()
+	popup.box:HighlightText()
+	return text, n
 end
 
 function RUI.Refresh()
@@ -164,11 +159,11 @@ function RUI.Refresh()
 	end
 	local side = {}
 	if RUI.tops and #RUI.tops > 0 then
-		table.insert(side, CH.Theme.Color("accent", "Top sellers"))
+		table.insert(side, CH.Theme.Color("accent", "Top sellers, last 30 days"))
 		for _, t in ipairs(RUI.tops) do table.insert(side, "  " .. t) end
 	end
 	if RUI.linesText and #RUI.linesText > 0 then
-		table.insert(side, CH.Theme.Color("accent", "Crafted profit by line"))
+		table.insert(side, CH.Theme.Color("accent", "Crafted profit by line, 30 days"))
 		for _, t in ipairs(RUI.linesText) do table.insert(side, "  " .. t) end
 	end
 	p.side:SetText(table.concat(side, "\n"))
