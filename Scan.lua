@@ -41,6 +41,28 @@ local function accounts(result, r)
 end
 Sc.Accounts = accounts
 
+--- What one item costs to make with the best plain craft: reagents less what Resourcefulness saves,
+--- spread over the items a craft makes on average (Multicraft included).
+function Sc.CraftEach(b, made)
+	if not b or not b.cost then return nil end
+	local p = b.parts or {}
+	local items = (made or 1) + (p.mc or 0) * (p.extraItems or 0)
+	return (b.cost - (p.resGold or 0)) / math.max(items, 0.01)
+end
+
+--- Buy or craft: the cheapest listing of a scanned row's item against making it. Returns
+--- { buy, craft, resell (your value after cut), flip (resell less buy), save (craft less buy) }.
+function Sc.BuyOrCraft(r)
+	local item = r and (r.item or r.concItem)
+	local craft = r and r.craftEach
+	if not item then return nil end
+	local buy = CH.Prices.Get("chmat", "i:" .. item)
+	local value = CH.Prices.Get("chvalue", "i:" .. item)
+	local resell = value and value * CH.AH_CUT
+	return { buy = buy, craft = craft, resell = resell, flip = buy and resell and resell - buy,
+		save = buy and craft and craft - buy }
+end
+
 local function summary(result)
 	local b, c = result.best, result.bestConc
 	local item = b and b.item or (c and c.item)
@@ -63,6 +85,7 @@ local function summary(result)
 		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,
 		avgConcentration = avg, concItem = c and c.item,
 		accounts = accounts(result, b), concAccounts = accounts(result, c),
+		craftEach = Sc.CraftEach(b, made),
 		soldPerDay = CH.Advisor.SoldPerDay(item),
 		perDay = perDay,
 	}

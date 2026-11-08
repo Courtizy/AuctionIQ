@@ -246,6 +246,12 @@ check("tooltip: a scanned craft's accounts, reagents to profit",
       any(n.startswith("Crafting, per craft") for n in names) and "  Revenue after cut" in names and "Profit per craft" in names
       and names.index("  AH cut (5%)") < names.index("  Revenue after cut") < names.index("  Reagents") < names.index("Profit per craft")
       and any(n.startswith("    ") and "x item 20" in n for n in names[names.index("  Reagents"):]))
+flask = [r for r in sr.rows.values() if r.item == 302][0]
+check("scan: crafting cost per item, Resourcefulness and Multicraft counted", flask.craftEach and 0 < flask.craftEach <= flask.cost)
+run('STUB.prices["i:302"].mat = 10000; Clearinghouse.Prices.ClearCache()')
+bc = CH.Scan.BuyOrCraft(flask)
+check("buy or craft: a listing under the crafting cost says buy", bc.buy == 10000 and bc.save > 0 and bc.flip == 3000000 * 0.95 - 10000)
+run('STUB.prices["i:302"].mat = nil; Clearinghouse.Prices.ClearCache()')
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget
