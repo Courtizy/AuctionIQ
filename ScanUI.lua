@@ -5,13 +5,13 @@ local _, CH = ...
 local SUI = {}
 CH.ScanUI = SUI
 local frame, rows, status
-local N, W, H = 16, 736, 18
+local N, W, H = 16, 836, 18
 local offset, sortKey, data = 0, "profit", {}
 
 local COLS = { { "Recipe", 12, 226 }, { "Profit", 240, 92 }, { "%", 334, 44 }, { "With Conc.", 380, 104 },
-	{ "Per pt", 486, 72 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 } }
+	{ "Per pt", 486, 72 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
 local SORTS = { profit = "profit per craft", concProfit = "profit with Concentration", perPoint = "gold per Concentration point",
-	perDay = "gold a day" }
+	perDay = "gold a day", buySave = "how much buying beats crafting" }
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "-") end
@@ -45,6 +45,20 @@ local function hover(owner, i)
 	end
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
 	table.insert(lines, { string.format("Gold a day at up to %d sold", CH.db.settings.scan.dailyCap or 10), CH.FormatMoney(r.perDay) })
+	local bc = r.bc
+	if bc and bc.buy then
+		table.insert(lines, { T.Color("accent", "Buy or craft, per item") })
+		table.insert(lines, { "  Cheapest listing", CH.FormatMoney(bc.buy) })
+		if bc.craft then table.insert(lines, { "  Crafting it", CH.FormatMoney(bc.craft) }) end
+		if bc.resell then table.insert(lines, { "  Resells for, after cut", CH.FormatMoney(bc.resell) }) end
+		if bc.save and bc.save > 0 then
+			table.insert(lines, { "  Buying saves", T.Color("ok", CH.FormatMoney(bc.save)) })
+		end
+		if bc.flip and bc.flip > 0 then
+			table.insert(lines, { "  Buy and relist for", T.Color("ok", "+" .. CH.FormatMoney(bc.flip)) })
+		end
+		table.insert(lines, { T.Color("muted", "The cheapest listing may be only a few items; check the AH before buying out.") })
+	end
 	if r.perPoint then table.insert(lines, { T.Color("muted", "Gold a day counts Concentration crafts up to what a day's refill (about 250) pays for.") }) end
 	table.insert(lines, { T.Color("muted", "Click to open it (see it on the Advisor tab), shift-click to queue the best craft.") })
 	CH.Window.Tooltip(owner, lines)
@@ -55,7 +69,7 @@ local function build()
 	frame = Wd.New("ClearinghouseScan", "Recipe scan", W, 92 + N * H)
 	local T = CH.Theme
 	local x = -26
-	for _, s in ipairs({ { "perDay", "Per day" }, { "perPoint", "Per pt" }, { "concProfit", "Conc." }, { "profit", "Profit" } }) do
+	for _, s in ipairs({ { "buySave", "Buy?" }, { "perDay", "Per day" }, { "perPoint", "Per pt" }, { "concProfit", "Conc." }, { "profit", "Profit" } }) do
 		local b = T.Button(frame.bar, s[2], 56, 18)
 		b:SetPoint("RIGHT", x, 0)
 		b:SetScript("OnClick", function() sortKey = s[1]; offset = 0; SUI.Refresh() end)
@@ -82,7 +96,11 @@ function SUI.Refresh()
 	local profID = CH.OpenProfessionID() or SUI.prof
 	local s = CH.Scan.Results(profID)
 	data = {}
-	for _, r in ipairs(s and s.rows or {}) do table.insert(data, r) end
+	for _, r in ipairs(s and s.rows or {}) do
+		r.bc = CH.Scan.BuyOrCraft(r)
+		r.buySave = r.bc and r.bc.save
+		table.insert(data, r)
+	end
 	CH.Scan.Sort(data, sortKey)
 	if not CH.Scan.IsRunning() then
 		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.", #data,
@@ -100,6 +118,12 @@ function SUI.Refresh()
 			r.cells[5]:SetText(d.perPoint and money(d.perPoint) or "")
 			r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
 			r.cells[7]:SetText(money(d.perDay))
+			local bc = d.bc
+			if bc and bc.save and bc.save > 0 then
+				r.cells[8]:SetText(T.Color("ok", "Buy " .. CH.FormatMoney(bc.buy)))
+			else
+				r.cells[8]:SetText(bc and bc.craft and T.Color("muted", "Craft") or "")
+			end
 			table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
 		else
 			for _, c in ipairs(r.cells) do c:SetText("") end

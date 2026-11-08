@@ -1,8 +1,8 @@
--- Minimap button with the Clearinghouse icon: click opens the window, drag moves it around the
+-- Minimap button with the AuctionIQ icon: click opens the window, drag moves it around the
 -- minimap. /ch minimap hides or shows it. No libraries, so it works without LibDBIcon.
 local _, CH = ...
 
-local ICON = "Interface\\AddOns\\Clearinghouse\\Media\\Icon"
+local ICON = CH.ICON
 local button
 
 local function place()
@@ -54,8 +54,8 @@ function CH.CreateMinimapButton()
 	button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-		GameTooltip:AddLine(CH.Theme.Color("accent", "Clearinghouse"))
-		GameTooltip:AddLine("Click to open the briefing. Drag to move.", 1, 1, 1)
+		GameTooltip:AddLine(CH.Theme.Color("accent", "AuctionIQ"))
+		GameTooltip:AddLine("Click to open AuctionIQ. Drag to move.", 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", function() GameTooltip:Hide() end)

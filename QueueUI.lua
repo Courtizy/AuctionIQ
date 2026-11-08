@@ -52,7 +52,7 @@ local function build()
 	bar:SetPoint("TOPRIGHT")
 	bar:SetHeight(26)
 	local badge = bar:CreateTexture(nil, "ARTWORK")
-	badge:SetTexture("Interface\\AddOns\\Clearinghouse\\Media\\Icon")
+	badge:SetTexture(CH.ICON)
 	badge:SetSize(18, 18)
 	badge:SetPoint("LEFT", 5, 0)
 	panel.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -86,7 +86,7 @@ local function build()
 	end)
 	fill:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:AddLine("Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/ch cap), less what you own.", 1, 1, 1, true)
+		GameTooltip:AddLine("Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/aiq cap), less what you own.", 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
 	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -131,7 +131,7 @@ function QUI.Refresh()
 	if not panel or not panel:IsShown() then return end
 	local T = CH.Theme
 	local q = CH.db.queue
-	panel.title:SetText(T.Color("accent", "Clearinghouse") .. "  " .. T.Color("muted", "Craft queue (" .. CH.Queue.Count() .. ")"))
+	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Craft queue (" .. CH.Queue.Count() .. ")"))
 	empty:SetText(#q == 0 and T.Color("muted", "Empty. Click a row in the crafting advisor to queue one, shift-click to queue as many as you can make.") or "")
 	local lines = { queue = {}, shop = {} }
 	for i, r in ipairs(qrows) do

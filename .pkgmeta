@@ -1,9 +1,9 @@
-package-as: Clearinghouse
+package-as: AuctionIQ
 
 ignore:
   - tests
   - README.md
   - .github
-  - tools
+  - migration
   - Media/Icon.svg
   - Media/Logo-400.png

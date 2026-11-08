@@ -82,6 +82,10 @@ Enum = { TooltipDataType = { Item = 0 } }
 GameTooltip = { lines = {} }
 function GameTooltip:GetItem() return "Potion", STUB.tooltipLink end
 function GameTooltip:AddDoubleLine(a, b) table.insert(self.lines, a .. "=" .. b) end
+function GameTooltip:SetOwner() self.lines = {} end
+function GameTooltip:AddLine(a) table.insert(self.lines, a) end
+function GameTooltip:Show() end
+function GameTooltip:Hide() end
 TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) STUB.tooltipFn = fn end }
 
 -- Professions

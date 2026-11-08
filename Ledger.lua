@@ -55,9 +55,17 @@ end
 
 --- Gold now: every character on the realm plus the warband bank.
 function Lg.Gold()
-	local total = warbandMoney()
-	for _, c in ipairs(Lg.Characters()) do total = total + c.money end
+	local total = Lg.Included and Lg.Included(Lg.WARBAND) and warbandMoney() or 0
+	for _, c in ipairs(Lg.Characters()) do if Lg.Included(c.name) then total = total + c.money end end
 	return total
+end
+
+--- Gold now per character and the warband bank: { { name, money, included } }.
+function Lg.Holders()
+	local out = {}
+	for _, c in ipairs(Lg.Characters()) do table.insert(out, { name = c.name, money = c.money, included = Lg.Included(c.name) }) end
+	table.insert(out, { name = Lg.WARBAND, money = warbandMoney(), included = Lg.Included(Lg.WARBAND) })
+	return out
 end
 
 -- CSV parsing ---------------------------------------------------------------------------------
@@ -111,34 +119,59 @@ local function goldLog(scope)
 	return out
 end
 
---- Total gold over time, sampled at n points from `from` to `to` (seconds). Each character's
---- log holds its gold from each change on; the warband bank's log is added in too.
+Lg.WARBAND = "Warband"
+
+local function store0()
+	CH.db.ledger = CH.db.ledger or { days = {}, worth = {} }
+	CH.db.ledger.exclude = CH.db.ledger.exclude or {}
+	return CH.db.ledger
+end
+
+--- Whether a character (or Lg.WARBAND) counts in the gold totals and chart. All do by default.
+function Lg.Included(name) return not store0().exclude[name] end
+function Lg.SetIncluded(name, on) store0().exclude[name] = (not on) or nil end
+
+-- Gold logs for everyone included: { { name, log } }.
+local function logs()
+	local out = {}
+	for _, c in ipairs(Lg.Characters()) do
+		if Lg.Included(c.name) then table.insert(out, { name = c.name, log = goldLog(c.key) }) end
+	end
+	if Lg.Included(Lg.WARBAND) then
+		local wb = {}
+		for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
+		table.insert(out, { name = Lg.WARBAND, log = wb })
+	end
+	return out
+end
+
+local function at(log, t)
+	local v = 0
+	for _, e in ipairs(log) do if e.t <= t then v = e.v else break end end
+	return v
+end
+
+--- Total gold over time for everyone included, sampled at n points from `from` to `to`
+--- (seconds). Each point also has `by` = { { name, v } } for the chart's hover.
 function Lg.GoldSeries(from, to, n)
-	local logs = {}
-	for _, c in ipairs(Lg.Characters()) do table.insert(logs, goldLog(c.key)) end
-	local wb = {}
-	for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
-	table.insert(logs, wb)
+	local all = logs()
 	n = math.max(2, n or 60)
 	local out = {}
 	for i = 0, n - 1 do
 		local t = from + (to - from) * i / (n - 1)
-		local total = 0
-		for _, log in ipairs(logs) do
-			local v = 0
-			for _, e in ipairs(log) do if e.t <= t then v = e.v else break end end
+		local total, by = 0, {}
+		for _, l in ipairs(all) do
+			local v = at(l.log, t)
 			total = total + v
+			by[#by + 1] = { name = l.name, v = v }
 		end
-		out[#out + 1] = { t = t, v = total }
+		out[#out + 1] = { t = t, v = total, by = by }
 	end
 	return out
 end
 
 -- Daily archive -------------------------------------------------------------------------------
-local function store()
-	CH.db.ledger = CH.db.ledger or { days = {}, worth = {} }
-	return CH.db.ledger
-end
+local store = store0
 
 local function dayOf(t) return math.floor(t / DAY) end
 
@@ -221,7 +254,7 @@ end
 -- Inventory -----------------------------------------------------------------------------------
 --- Every item you hold on this realm, from TSM's counts: { item, id, bags, bank, mail, ah, warband,
 --- total, value } sorted by value (Clearinghouse value x total). filter is a name keyword.
-function Lg.Inventory(filter)
+function Lg.Inventory(filter, char)
 	local db = tsm()
 	local items = {}
 	if not db then return {} end
@@ -236,12 +269,15 @@ function Lg.Inventory(filter)
 		end
 	end
 	for _, c in ipairs(Lg.Characters()) do
+		if char and c.name ~= char then -- one character only
+		else
 		add(db["s@" .. c.key .. "@internalData@bagQuantity"], "bags")
 		add(db["s@" .. c.key .. "@internalData@bankQuantity"], "bank")
 		add(db["s@" .. c.key .. "@internalData@mailQuantity"], "mail")
 		add(db["s@" .. c.key .. "@internalData@auctionQuantity"], "ah")
+		end
 	end
-	add(db["g@ @internalData@warbankQuantity"], "warband")
+	if not char then add(db["g@ @internalData@warbankQuantity"], "warband") end
 	local out = {}
 	local key = filter and filter ~= "" and string.lower(filter) or nil
 	for _, e in pairs(items) do
@@ -284,6 +320,276 @@ function Lg.WorthChange(since)
 	for k, w in pairs(s.worth) do if not nowK or k > nowK then nowK, now = k, w end end
 	if not first or not now then return nil end
 	return (now.gold + now.inventory) - (first.gold + first.inventory), first, now, firstK
+end
+
+-- CFO views ----------------------------------------------------------------------------------
+--- What you paid on average for each item, from TSM's purchase records since `since`.
+function Lg.Paid(since)
+	local t = {}
+	for _, b in ipairs(Lg.Records("Buys")) do
+		if b.id and b.time >= (since or -math.huge) and b.quantity > 0 then
+			local e = t[b.id] or { n = 0, gold = 0 }
+			t[b.id] = e
+			e.n, e.gold = e.n + b.quantity, e.gold + b.amount
+		end
+	end
+	for _, e in pairs(t) do e.each = e.gold / e.n end
+	return t
+end
+
+--- Every crafted item you've scanned, on any character: { [itemID] = { name, accounts } }.
+function Lg.Crafted()
+	local out = {}
+	for _, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				if r.item and r.accounts and not out[r.item] then out[r.item] = { name = r.name, acc = r.accounts, row = r } end
+				if r.concItem and r.concAccounts and not out[r.concItem] then out[r.concItem] = { name = r.name, acc = r.concAccounts, row = r } end
+			end
+		end
+	end
+	return out
+end
+
+--- Cost to make one item at what you actually paid for its reagents (today's price for any you
+--- never bought), after Resourcefulness, over what Multicraft makes. Also the share at paid prices.
+function Lg.CostAtPaid(acc, paid)
+	local cost, known, total = 0, 0, 0
+	for _, rg in ipairs(acc.reagents or {}) do
+		local p = paid[rg.itemID]
+		local each = p and p.each or (rg.cost and rg.n > 0 and rg.cost / rg.n) or 0
+		cost = cost + each * rg.n
+		total = total + each * rg.n
+		if p then known = known + each * rg.n end
+	end
+	local saved = (acc.cost and acc.cost > 0) and (acc.resGold or 0) / acc.cost or 0
+	local items = (acc.made or 1) + (acc.extraItems or 0)
+	return cost * (1 - saved) / math.max(items, 0.01), total > 0 and known / total or 0
+end
+
+--- Profit by crafted item over a period: sales after the cut less the cost of making them at what
+--- you paid. { id, name, line, sold, revenue, cost, profit, margin, paidShare }.
+function Lg.ProductPL(since, char)
+	local crafted, paid = Lg.Crafted(), Lg.Paid()
+	local rows = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		local c = s.id and crafted[s.id]
+		if c and s.time >= since and (not char or s.player == char) then
+			local e = rows[s.id]
+			if not e then
+				local each, share = Lg.CostAtPaid(c.acc, paid)
+				e = { id = s.id, name = c.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(c.name) or "Other",
+					sold = 0, revenue = 0, each = each, paidShare = share }
+				rows[s.id] = e
+			end
+			e.sold = e.sold + s.quantity
+			e.revenue = e.revenue + s.amount * CH.AH_CUT
+		end
+	end
+	local out = {}
+	for _, e in pairs(rows) do
+		e.line = e.line or "Other"
+		e.cost = e.each * e.sold
+		e.profit = e.revenue - e.cost
+		e.margin = e.revenue > 0 and e.profit / e.revenue or 0
+		table.insert(out, e)
+	end
+	return out
+end
+
+--- Last time each item sold: { [itemID] = time }.
+function Lg.LastSold()
+	local t = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and (not t[s.id] or s.time > t[s.id]) then t[s.id] = s.time end
+	end
+	return t
+end
+
+--- Stock that isn't moving: held items with no sale in `days` days or 3+ expiries in that time.
+--- { id, held, value, lastSold, expired, advice }.
+function Lg.DeadStock(now, days, char)
+	now, days = now or time(), days or 30
+	local since = now - days * DAY
+	local last, expired = Lg.LastSold(), {}
+	for _, e in ipairs(Lg.Records("Expired")) do
+		if e.id and e.time >= since then expired[e.id] = (expired[e.id] or 0) + 1 end
+	end
+	local out = {}
+	for _, e in ipairs(Lg.Inventory(nil, char)) do
+		if e.id and e.value > 0 then
+			local ls, ex = last[e.id], expired[e.id] or 0
+			local idle = not ls or ls < since
+			if idle or ex >= 3 then
+				local advice = ex >= 3 and "Cut the price or stop posting"
+					or (not ls and (ex > 0 and "Never sold: vendor or rethink" or "Never sold here: list it?"))
+					or "Slow: lower the price"
+				table.insert(out, { id = e.id, held = e.total, value = e.value, lastSold = ls, expired = ex, advice = advice })
+			end
+		end
+	end
+	return out
+end
+
+--- Your stock against what you paid: { id, held, paid (each), now (each), gain, pct, daysOfStock }.
+function Lg.Holdings(now, char)
+	now = now or time()
+	local paid = Lg.Paid()
+	local sold30 = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and s.time >= now - 30 * DAY then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
+	end
+	local out = {}
+	for _, e in ipairs(Lg.Inventory(nil, char)) do
+		local p = e.id and paid[e.id]
+		if p and e.unit then
+			local gain = (e.unit - p.each) * e.total
+			local perDay = (sold30[e.id] or 0) / 30
+			table.insert(out, { id = e.id, held = e.total, paid = p.each, now = e.unit, gain = gain,
+				pct = p.each > 0 and (e.unit - p.each) / p.each or 0, daysOfStock = perDay > 0 and e.total / perDay or nil })
+		end
+	end
+	return out
+end
+
+--- Overhead since a time: TSM's other expenses (repairs, postage and so on, not transfers between
+--- your characters) by type, plus totals to set against trading. { types = { type, n, gold }, total,
+--- sales (after cut), buys, profit, afterOverhead }.
+function Lg.Overhead(since, char)
+	local mine = own()
+	local types, list, total = {}, {}, 0
+	for _, r in ipairs(Lg.Records("Expense")) do
+		if r.time >= since and not mine[r.other] and (not char or r.player == char) then
+			local k = r.source or "Other"
+			if not types[k] then types[k] = { type = k, n = 0, gold = 0 }; table.insert(list, types[k]) end
+			types[k].n, types[k].gold = types[k].n + 1, types[k].gold + r.amount
+			total = total + r.amount
+		end
+	end
+	local sales, buys = 0, 0
+	for _, s in ipairs(Lg.Records("Sales")) do if s.time >= since and (not char or s.player == char) then sales = sales + s.amount * CH.AH_CUT end end
+	for _, b in ipairs(Lg.Records("Buys")) do if b.time >= since and (not char or b.player == char) then buys = buys + b.amount end end
+	return { types = list, total = total, sales = sales, buys = buys, profit = sales - buys, afterOverhead = sales - buys - total }
+end
+
+-- When things sell ---------------------------------------------------------------------------
+--- Your sales of each item by weekday and hour: { id, sold, gold, days = {[1..7]=n}, hours = {[0..23]=n},
+--- bestDay (1 = Sunday), bestHour (start of the best 4-hour window), share (of sales in that window) }.
+function Lg.SaleTimes(since, char)
+	local t = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and s.time >= (since or -math.huge) and (not char or s.player == char) then
+			local e = t[s.id]
+			if not e then e = { id = s.id, sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = e end
+			local d = date("*t", s.time)
+			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+			e.days[d.wday] = (e.days[d.wday] or 0) + s.quantity
+			e.hours[d.hour] = (e.hours[d.hour] or 0) + s.quantity
+		end
+	end
+	local out = {}
+	for _, e in pairs(t) do
+		local bd, bv = 1, -1
+		for d = 1, 7 do if (e.days[d] or 0) > bv then bd, bv = d, e.days[d] or 0 end end
+		local bh, hv = 0, -1
+		for h = 0, 23 do
+			local w = 0
+			for k = 0, 3 do w = w + (e.hours[(h + k) % 24] or 0) end
+			if w > hv then bh, hv = h, w end
+		end
+		e.bestDay, e.bestHour, e.share = bd, bh, e.sold > 0 and hv / e.sold or 0
+		table.insert(out, e)
+	end
+	return out
+end
+
+-- Competition --------------------------------------------------------------------------------
+local function rivals()
+	CH.db.competition = CH.db.competition or {}
+	return CH.db.competition
+end
+
+--- Note what a search found for an item: whether someone outside your account was cheaper, and who.
+function Lg.NoteCompetition(id, beaten, owners)
+	local c = rivals()[id] or { seen = 0, beaten = 0, by = {} }
+	rivals()[id] = c
+	c.seen, c.at = c.seen + 1, time()
+	if beaten then
+		c.beaten = c.beaten + 1
+		for _, o in ipairs(owners or {}) do c.by[o] = (c.by[o] or 0) + 1 end
+	end
+end
+
+--- Per item: how often you're undercut and cancel, and by whom. { id, cancels, seen, beaten, rival, status }.
+function Lg.Competition(since)
+	local cancels = {}
+	for _, r in ipairs(Lg.Records("Cancelled")) do
+		if r.id and r.time >= (since or -math.huge) then cancels[r.id] = (cancels[r.id] or 0) + 1 end
+	end
+	local ids = {}
+	for id in pairs(cancels) do ids[id] = true end
+	for id in pairs(rivals()) do ids[id] = true end
+	local out = {}
+	for id in pairs(ids) do
+		local c = rivals()[id] or { seen = 0, beaten = 0, by = {} }
+		local rival, rn = nil, 0
+		for o, n in pairs(c.by) do if n > rn then rival, rn = o, n end end
+		local rate = c.seen > 0 and c.beaten / c.seen or nil
+		local n = cancels[id] or 0
+		local status = (n >= 5 or (rate and rate >= 0.6)) and "contested" or ((rate and rate >= 0.3) or n >= 2) and "busy" or "safe"
+		table.insert(out, { id = id, cancels = n, seen = c.seen, beaten = c.beaten, rate = rate, rival = rival, status = status })
+	end
+	return out
+end
+
+-- Morning report -----------------------------------------------------------------------------
+--- What changed and what needs doing: last day's sales and buys, items you sold this week and
+--- now hold none of, and what came back unsold (and what keeps coming back).
+function Lg.Report(now)
+	now = now or time()
+	local day, week, fortnight = now - DAY, now - 7 * DAY, now - 14 * DAY
+	local r = { sold = 0, earned = 0, bought = 0, spent = 0, top = {}, restock = {}, expired = {}, stale = {} }
+	local byItem = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.time >= day then
+			r.sold, r.earned = r.sold + s.quantity, r.earned + s.amount
+			if s.id then byItem[s.id] = (byItem[s.id] or 0) + s.amount end
+		end
+	end
+	for _, b in ipairs(Lg.Records("Buys")) do
+		if b.time >= day then r.bought, r.spent = r.bought + b.quantity, r.spent + b.amount end
+	end
+	for id, g in pairs(byItem) do table.insert(r.top, { id = id, gold = g }) end
+	table.sort(r.top, function(a, b) return a.gold > b.gold end)
+	for i = #r.top, 4, -1 do r.top[i] = nil end
+	-- sold this week, none left anywhere
+	local held = {}
+	for _, e in ipairs(Lg.Inventory()) do if e.id then held[e.id] = e.total end end
+	local weekly = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.time >= week and s.id and (held[s.id] or 0) == 0 then
+			local e = weekly[s.id] or { id = s.id, sold = 0, gold = 0 }
+			weekly[s.id] = e
+			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+		end
+	end
+	for _, e in pairs(weekly) do table.insert(r.restock, e) end
+	table.sort(r.restock, function(a, b) return a.gold > b.gold end)
+	for i = #r.restock, 6, -1 do r.restock[i] = nil end
+	-- came back in the last day; and what has come back 3+ times in two weeks
+	local back, count = {}, {}
+	for _, e in ipairs(Lg.Records("Expired")) do
+		if e.id and e.time >= fortnight then
+			count[e.id] = (count[e.id] or 0) + 1
+			if e.time >= day then back[e.id] = (back[e.id] or 0) + e.quantity end
+		end
+	end
+	for id, n in pairs(back) do table.insert(r.expired, { id = id, n = n }) end
+	table.sort(r.expired, function(a, b) return a.n > b.n end)
+	for id, n in pairs(count) do if n >= 3 then table.insert(r.stale, { id = id, times = n }) end end
+	table.sort(r.stale, function(a, b) return a.times > b.times end)
+	r.worth = Lg.WorthChange(day)
+	return r
 end
 
 CH.On("PLAYER_LOGIN", function()

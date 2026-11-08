@@ -1,14 +1,17 @@
-# Clearinghouse
+# AuctionIQ
 
-A World of Warcraft addon that puts crafting and auction advice in one place: what to craft, what
-it costs, and what it really sells for. It reads prices from TradeSkillMaster, and over time it
+Economic intelligence for the Auction House. **AuctionIQ helps you decide what to do; Clearinghouse,
+its ledger, tells you what actually happened.**
+
+A World of Warcraft addon that puts crafting and auction advice in one place: what to craft, buy,
+post and cancel, what it costs, and what it really sells for. It reads prices from TradeSkillMaster, and over time it
 takes over the jobs that today need both TSM and CraftSim.
 
 ## What it does
 
-- **Tooltips on every item:** the Clearinghouse value after the 5% auction cut, the price to buy it
+- **Tooltips on every item:** the AuctionIQ value after the 5% auction cut, the price to buy it
   as a reagent, and the profit or loss of crafting it, with coin icons.
-- **Briefing window** (`/ch`, the minimap button, or the addon compartment): gold on every
+- **Main window** (`/aiq`, the minimap button, or the addon compartment): gold on every
   character, Concentration on every profession with when it will be full, and each profession's
   best crafts.
 - **One window with tabs** (Advisor, Scan, Paths, Queue, Results), docked to the right of the
@@ -26,17 +29,17 @@ takes over the jobs that today need both TSM and CraftSim.
   - top gear: whether another profession tool or accessory in your bags would earn more, with an
     Equip button
   - Simulate: see the numbers with more skill, or with a knowledge point plan from Paths
-- **Recipe scan** (`/ch scan`, or the Scan tab): every learned recipe ranked by profit per
+- **Recipe scan** (`/aiq scan`, or the Scan tab): every learned recipe ranked by profit per
   craft, gold per Concentration point, or gold a day (profit x what the region sells, up to your cap).
-- **Profession paths** (`/ch plan potions`, or the Paths tab): type what you want to sell and
+- **Profession paths** (`/aiq plan potions`, or the Paths tab): type what you want to sell and
   get a knowledge point plan for the open profession, node by node, with the gold a day each step
   adds and which recipes it improves. The plan is drawn on the profession's own trees (the game's
   layout and icons) in the Paths tab, and marked with step badges on the game's Specializations tab.
   Alchemy, Enchanting, Jewelcrafting and Inscription for now.
-- **Craft results** (`/ch results`): what your crafts really gave (Multicraft, Resourcefulness,
+- **Craft results** (`/aiq results`): what your crafts really gave (Multicraft, Resourcefulness,
   Ingenuity) against what the advisor expected.
-- **Cooldowns** across the warband, in the briefing.
-- **Craft queue and shopping list** (`/ch queue`, or Queue on the advisor): click an advisor row to
+- **Cooldowns** across the warband, in the report.
+- **Craft queue and shopping list** (`/aiq queue`, or Queue on the advisor): click an advisor row to
   queue one, shift-click to queue as many as you can make. Fill queues the open profession's five best
   crafts. Craft makes the queued crafts with the advisor's reagents and Concentration, and finished
   crafts come off the queue. The shopping list totals the reagents for the whole warband's queue
@@ -45,16 +48,28 @@ takes over the jobs that today need both TSM and CraftSim.
 
 | Command | Does |
 |---|---|
-| `/ch` | open or close the briefing |
-| `/ch tooltip` | tooltip lines on or off |
-| `/ch coins` | coin icons or g/s/c text |
-| `/ch minimap` | hide or show the minimap button |
-| `/ch advisor` | crafting advisor on or off |
-| `/ch queue` | craft queue and shopping list |
-| `/ch scan` | rank every recipe of the open profession |
-| `/ch plan <goal>` | knowledge point plan, e.g. `/ch plan potions` |
-| `/ch results` | what your crafts really gave |
-| `/ch cap <n>` | most of one item you'd sell a day, for gold a day (default 10) |
+| `/aiq` (or `/ch`) | open or close the main window |
+| `/aiq tooltip` | tooltip lines on or off |
+| `/aiq coins` | coin icons or g/s/c text |
+| `/aiq minimap` | hide or show the minimap button |
+| `/aiq advisor` | crafting advisor on or off |
+| `/aiq queue` | craft queue and shopping list |
+| `/aiq scan` | rank every recipe of the open profession |
+| `/aiq plan <goal>` | knowledge point plan, e.g. `/aiq plan potions` |
+| `/aiq results` | what your crafts really gave |
+| `/aiq cap <n>` | most of one item you'd sell a day, for gold a day (default 10) |
+
+## Clearinghouse, the ledger
+
+The Clearinghouse tab is the books: sales, purchases, income, expenses, expired and cancelled
+auctions, inventory, and the Goblin CFO views (profit by product, par, dead stock, holdings, when it
+sells, rivals, overhead). It reads TradeSkillMaster's accounting and never writes to it.
+
+## Moving from Clearinghouse
+
+The addon used to be called Clearinghouse. Install the AuctionIQ folder and keep the old Clearinghouse
+folder for one login with only the stub `migration/Clearinghouse.toc` in it: AuctionIQ copies the old saved data
+over on first login and says so. After that, delete the Clearinghouse folder.
 
 ## Prices
 
@@ -71,7 +86,7 @@ Craft cost is TSM's own `crafting` price.
 
 ## Requirements
 
-TradeSkillMaster, for prices. Without it the briefing still tracks gold and Concentration.
+TradeSkillMaster, for prices. Without it the report still tracks gold and Concentration.
 
 ## Roadmap
 
@@ -91,3 +106,10 @@ a stubbed WoW environment and checks prices, tooltips, profession tracking and t
 `v*` builds a release with the BigWigs packager.
 
 MIT licence.
+
+## Report and export
+
+The Report page opens with the books for the last 7, 30 and 90 days side by side (sales after the
+cut, purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by
+product line, then the daily rundown (last 24 hours, mail, what to post, restock, cooldowns). `/aiq report` opens it. The Ledger's Export button turns the
+table you're looking at (with its filters) into CSV text to copy out.

@@ -7,13 +7,13 @@ from pathlib import Path
 from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-files = [l.strip().replace("\\", "/") for l in (ROOT / "Clearinghouse.toc").read_text().splitlines() if l.strip().endswith(".lua")]
+files = [l.strip().replace("\\", "/") for l in (ROOT / "AuctionIQ.toc").read_text().splitlines() if l.strip().endswith(".lua")]
 L = LuaRuntime(unpack_returned_tuples=True)
 L.execute((ROOT / "tests" / "wow_stub.lua").read_text())
 ns = L.table()
 for f in files:
     chunk = L.eval("function(src, name) return assert(loadstring and loadstring(src, name) or load(src, name)) end")((ROOT / f).read_text(), f)
-    chunk("Clearinghouse", ns)
+    chunk("AuctionIQ", ns)
 
 fails = []
 def check(name, cond):
@@ -22,7 +22,7 @@ def check(name, cond):
         fails.append(name)
 
 run = L.execute
-run('STUB.Fire("ADDON_LOADED", "Clearinghouse"); STUB.Fire("PLAYER_LOGIN")')
+run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().Clearinghouse
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
@@ -43,7 +43,8 @@ run('Clearinghouse.db.settings.coins = false')
 check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
 check("tooltip shows value, buy now / post and profit",
-      lines == ["Clearinghouse value=475g after cut", "    Lower of buy now / post price=450g / 450g", "Craft profit=375g"])
+      lines == ["AuctionIQ value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
+               "  AH cut (5%)=-25g", "  Value after cut=475g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
@@ -134,7 +135,10 @@ Clearinghouse.Theme.Sync()
 STUB.p = CreateFrame("Frame"); Clearinghouse.Theme.Panel(STUB.p, "bg")
 STUB.b = Clearinghouse.Theme.Button(STUB.p, "Dock"); STUB.x = Clearinghouse.Theme.Button(STUB.p, "x")''')
 T = CH.Theme
-check("ElvUI: value colour becomes the accent", T.hex.accent == "336699")
+check("ElvUI: our palette stays by default, on ElvUI's templates", T.hex.accent == "e0a83a" and T.hex.bg == "0e1729")
+run("Clearinghouse.db.settings.theme = 'elvui'; Clearinghouse.Theme.Use('auctioniq')")
+check("ElvUI: /aiq theme takes its value colour as the accent", T.hex.accent == "336699")
+run("Clearinghouse.db.settings.theme = nil; Clearinghouse.Theme.Use('auctioniq')")
 check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
 check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
 run('ElvUI = nil')
@@ -242,8 +246,15 @@ tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
 names = [t[0] for t in tl]
 acc = pot = [r for r in sr.rows.values() if r.item == 302 or r.concItem == 302][0]
 check("tooltip: a scanned craft's accounts, reagents to profit",
-      any(n.startswith("Crafting, per craft") for n in names) and "  Reagents" in names and "  Profit per craft" in names
-      and any(n.startswith("    item 20") for n in names))
+      any(n.startswith("Crafting, per craft") for n in names) and "  Revenue after cut" in names and "Profit per craft" in names
+      and names.index("  AH cut (5%)") < names.index("  Revenue after cut") < names.index("  Reagents") < names.index("Profit per craft")
+      and any(n.startswith("    ") and "x item 20" in n for n in names[names.index("  Reagents"):]))
+flask = [r for r in sr.rows.values() if r.item == 302][0]
+check("scan: crafting cost per item, Resourcefulness and Multicraft counted", flask.craftEach and 0 < flask.craftEach <= flask.cost)
+run('STUB.prices["i:302"].mat = 10000; Clearinghouse.Prices.ClearCache()')
+bc = CH.Scan.BuyOrCraft(flask)
+check("buy or craft: a listing under the crafting cost says buy", bc.buy == 10000 and bc.save > 0 and bc.flip == 3000000 * 0.95 - 10000)
+run('STUB.prices["i:302"].mat = nil; Clearinghouse.Prices.ClearCache()')
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget
@@ -352,12 +363,147 @@ check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4
 w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
 LG.Snapshot()
 check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.now") - 6 * 86400)[0] == 0 and w1[0] > 10000000)
-rows, foot = CH.UI.LedgerRows("revenue", "")
-check("ledger revenue lists sales and income, newest first", len(rows) == 4 and "Total" in plain(foot))
-rows, foot = CH.UI.LedgerRows("failed", "")
-check("ledger failed auctions", len(rows) == 1 and plain(foot).startswith("1 items"))
+rep = LG.Report()
+check("morning report: last day's sales and what came back", rep.sold == 2 and rep.earned == 6000000 and rep.bought == 10
+      and list(rep.expired.values())[0].id == 302 and len(list(rep.restock.values())) == 0)
+bt = plain(CH.UI.BriefingText())
+check("briefing opens with the last 24 hours", bt.startswith("Last 24 hours") and "Came back unsold" in bt and "repost it" in bt)
+pl = {e.id: e for e in LG.ProductPL(-1e12).values()}
+check("product P&L: crafted sales after cut less cost at what you paid", 302 in pl and pl[302].sold == 2
+      and abs(pl[302].revenue - 6000000 * 0.95) < 1 and abs(pl[302].profit - (pl[302].revenue - pl[302].cost)) < 1
+      and pl[302].line == "Flasks & Phials")
+dead = list(LG.DeadStock(L.eval("STUB.now"), 1).values())
+check("dead stock: held, not sold in the window", [e.id for e in dead] == [301] and dead[0].advice.startswith("Slow"))
+o = LG.Overhead(-1e12)
+check("overhead: repairs, not your own transfers", o.total == 20000 and len(list(o.types.values())) == 1 and o.afterOverhead == o.profit - 20000)
+rows, foot = CH.LedgerUI.Rows("pl", L.eval("{ }"))
+check("CFO views draw rows", len(list(rows.values())) == 1 and "best line: Flasks" in plain(foot))
+for v in ["dead", "holdings", "overhead"]:
+    CH.LedgerUI.Rows(v, L.eval("{ days = 30 }"))
+run("Clearinghouse.Par.Refresh()")
+check("par: a week of what you sold, by default", CH.Par.Target(302)[0] == 1 and CH.Par.Target(301)[0] == 1 and CH.Par.Target(201) is None)
+run("Clearinghouse.Par.Set(302, 6); Clearinghouse.Par.Refresh()")
+par = {e.id: e for e in CH.Par.List().values()}
+check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
+check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 1)
+run("Clearinghouse.Par.Set(302, 6); Clearinghouse.Par.Refresh()")
+check("briefing lists what's below par", "Below par" in plain(CH.UI.BriefingText()))
+rows, foot = CH.LedgerUI.Rows("par", L.eval("{ }"))
+check("par view rows", len(list(rows.values())) == 2 and plain(foot).startswith("1 items below par"))
+run("Clearinghouse.Par.Set(302, nil); Clearinghouse.Par.Refresh()")
+# Groups and auctioning
+n = CH.Groups.Rebuild()
+check("groups: built from scans, reagents and resale", n > 0 and CH.Groups.Path(302).startswith("Crafted/") and CH.Groups.Path(201).startswith("Reagents/"))
+check("groups: crafted goods post, reagents don't", CH.Groups.Prices(302).post and not CH.Groups.Prices(201).post)
+run("Clearinghouse.Groups.Move(302, 'Mine/Flasks')")
+check("groups: moving an item sticks", CH.Groups.Path(302) == "Mine/Flasks" and any(g.path == "Mine/Flasks" for g in CH.Groups.Tree().values()))
+run("Clearinghouse.Groups.Move(302, nil)")
+p302 = CH.Groups.Prices(302)
+check("prices: min is the cost to make after the cut", p302.min and p302.why == "cost to make" and p302.normal == 3000000 and p302.max == 9000000)
+check("warband listed: TSM's counts per character", CH.Auction.Listed(302) == 0)
+run("Clearinghouse.Groups.Store().ops.Crafted.cap = 5")
+d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
+check("auction: undercut the cheapest seller outside the account", d.action == "post" and d.price == 2899999 and d.qty == 5)
+d = CH.Auction.Decide(302, L.eval("{ { price = 2800000, qty = 1, mine = true }, { price = 2900000, qty = 3, mine = false } }"), 10)
+check("auction: never undercut your own Warband, match it", d.action == "post" and d.price == 2800000)
+d = CH.Auction.Decide(302, L.eval("{ { price = 10, qty = 3, mine = false } }"), 10)
+check("auction: skip when the cheapest is under your min", d.action == "skip" and "min" in d.why)
+run("Clearinghouse.Auction.RecordOwned({ { id = 302, qty = 3 } })")
+d = CH.Auction.Decide(302, L.eval("{ }"), 10)
+check("auction: the Warband's live auctions count toward the cap", CH.Auction.Listed(302) == 3 and d.qty == 2 and d.price == 3000000)
+c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = true } }"))
+check("cancel: your own alts never trigger a repost", c.action == "keep")
+c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = false } }"))
+check("cancel: someone else cheaper does", c.action == "cancel")
+run("Clearinghouse.GroupsUI.Select('Crafted'); Clearinghouse.UI.Page('groups')")
+grows = list(CH.GroupsUI.Refresh().values())
+check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())
+check("auction panel builds", CH.AuctionUI.Build() is not None)
+run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
+check("mail: a group's route reaches its sub-groups", CH.Mail.Destination(302)[0] == "Luxaren" and CH.Mail.Destination(201) is None)
+check("mail panel builds", CH.MailUI.Build() is not None)
+run("Clearinghouse.Mail.Route('Crafted', nil)")
+st = {e.id: e for e in LG.SaleTimes(-1e12).values()}
+check("when it sells: weekday and 4-hour window per item", st[301].sold == 5 and 1 <= st[301].bestDay <= 7 and st[302].share == 1)
+comp = {e.id: e for e in LG.Competition(-1e12).values()}
+check("competition: post scans count how often you're beaten", comp[302].seen >= 3 and comp[302].beaten >= 1)
+for v in ["when", "rivals"]:
+    CH.LedgerUI.Rows(v, L.eval("{ }"))
+run("Clearinghouse.db.token = { price = 2500000000, at = 1 }")
+check("token value: gold read as tokens", CH.Alerts.InTokens(5000000000) == "2.0 tokens")
+run("for _, c in pairs(Clearinghouse.db.characters) do for _, p in pairs(c.professions) do p.conc = p.concMax; p.concAt = STUB.now end end")
+fired = list(CH.Alerts.Check().values())
+again = list(CH.Alerts.Check().values())
+check("alerts fire once, then wait 6 hours", any("Concentration is full" in f for f in fired) and len(again) == 0)
+run("Clearinghouse.Planner.Store().kp['Seyko-Emerald Dream'] = { ['Midnight Enchanting'] = { first = { [Clearinghouse.Planner.WeekStart()] = 20 }, now = 26, unspent = 4 } }")
+kn = list(CH.Planner.Knowledge().values())
+check("knowledge: points gained this week per character and profession", kn[0].gained == 6 and kn[0].unspent == 4 and len(list(kn[0].tasks.values())) == 4)
+check("knowledge: tick a weekly source", CH.Planner.Tick("Seyko-Emerald Dream", "Midnight Enchanting", "Treatise") == True and list(CH.Planner.Knowledge().values())[0].tasks[1].done)
+run("SlashCmdList.CLEARINGHOUSE('event ' .. date('%Y-%m-%d', STUB.now + 3 * 86400) .. ' Season 2 starts')")
+up = list(CH.Planner.Upcoming().values())
+check("calendar: your dates with what they mean for demand", up[0].name.lower() == "season 2 starts" and "potions" in up[0].hint)
+run("Clearinghouse.Planner.StartSession('Auction House'); STUB.now = STUB.now + 1800; Clearinghouse.Planner.StopSession('Auction House')")
+tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
+check("gold per hour: time per activity", abs(tm.kinds["Auction House"] - 0.5) < 1e-9 and tm.perHour is not None)
+run("Clearinghouse.UI.Page('plan')")
+check("plan page draws", CH.UI.IsShown() and len(list(CH.PlanUI.Refresh().values())) == 1)
+run("""function GetInboxNumItems() return 3 end
+function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', ({ 5000000, 0, 7000000 })[i], ({ 0, 0, 100 })[i], 1, i == 2 end""")
+w = CH.Mail.Waiting()
+check("mail: gold waiting before opening, cash on delivery left out", w.gold == 5000000 and w.mails == 3 and w["items"] == 1 and w.cod == 1)
+check("mail: waiting gold adds up across characters for the briefing", CH.Mail.WaitingAll()[0] == 5000000 and "Waiting in mail" in plain(CH.UI.BriefingText()))
+run("GetInboxNumItems = nil; GetInboxHeaderInfo = nil; Clearinghouse.Mail.Store().waiting = {}")
+n7 = CH.ReportUI.Numbers(7)
+check("report: 7 days of sales after cut, purchases, overhead", abs(n7.sales - 7000000 * 0.95) < 1 and n7.buys == 1000000 and n7.overhead == 20000)
+run("Clearinghouse.UI.Page('briefing')")
+check("briefing opens with the books", len(list(CH.ReportUI.Refresh().values())) == 5)
+csvtext, nrows = CH.ReportUI.CSV("sales", L.eval("{ }"))
+run("Clearinghouse.ReportUI.Export('sales', { days = 30 })")
+check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
+# rename: a fresh AuctionIQ takes over the old Clearinghouse saved data
+run("""_G.__saved = AuctionIQDB; AuctionIQDB = nil; ClearinghouseDB = { queue = {}, marker = 42 }
+STUB.Fire("ADDON_LOADED", "AuctionIQ")""")
+check("rename: old Clearinghouse data moves into AuctionIQ", L.eval("AuctionIQDB.marker == 42 and Clearinghouse.db == AuctionIQDB and Clearinghouse.migrated and AuctionIQ == Clearinghouse"))
+run("AuctionIQDB = _G.__saved; Clearinghouse.db = AuctionIQDB; Clearinghouse.migrated = nil; ClearinghouseDB = nil")
+run("Clearinghouse.UI.Page('ledger')")
+check("theme: the Clearinghouse tab is plum", L.eval("Clearinghouse.Theme.palette == 'clearinghouse' and Clearinghouse.Theme.hex.bg == '1c1222'"))
+run("Clearinghouse.UI.Page('briefing')")
+check("theme: other pages are AuctionIQ navy", L.eval("Clearinghouse.Theme.palette == 'auctioniq' and Clearinghouse.Theme.hex.bg == '0e1729'"))
+run("Clearinghouse.Auction.RecordOwned({})")
+LU = CH.LedgerUI
+rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))
+check("ledger sales: in the time frame only, with the total", len(list(rows.values())) == 2 and plain(foot) == "3 items sold: 700g")
+rows, foot = LU.Rows("sales", L.eval("{ char = 'Luxaren' }"))
+check("ledger sales: one character", len(list(rows.values())) == 2 and all(r.cells[2] == "Luxaren" for r in rows.values()))
+rows, foot = LU.Rows("income", L.eval("{ }"))
+check("ledger other income: own transfers shown but kept out of the total", len(list(rows.values())) == 1 and plain(foot).startswith("Total: -") or "moved between" in plain(foot))
+rows, foot = LU.Rows("expense", L.eval("{ }"))
+check("ledger other expenses: repairs count", "Total: 2g" in plain(foot))
+rows, foot = LU.Rows("expired", L.eval("{ }"))
+check("ledger failed auctions", len(list(rows.values())) == 1 and plain(foot).startswith("1 items expired"))
+rows, foot = LU.Rows("resale", L.eval("{ }"))
+check("ledger resale: only items both bought and sold", len(list(rows.values())) == 0 and "0 items resold" in plain(foot))
+inv = list(LU.Rows("inventory", L.eval("{ char = 'Courtizy' }"))[0].values())
+check("ledger inventory: one character leaves out the others and the warband", len(inv) == 1 and inv[0].cells[2] == 3)
+run("Clearinghouse.UI.Page('ledger')")
+run("Clearinghouse.LedgerUI.Set({ view = 'sales', days = false, sort = 6, desc = true })")
+shown = list(CH.LedgerUI.Refresh()[0].values())
+check("ledger table sorts by any column", [r.sort[6] for r in shown] == sorted([r.sort[6] for r in shown], reverse=True) and len(shown) == 3)
+run("Clearinghouse.LedgerUI.Set({ sort = 6, desc = false })")
+shown = list(CH.LedgerUI.Refresh()[0].values())
+check("and back the other way", [r.sort[6] for r in shown] == sorted(r.sort[6] for r in shown))
+check("time frame reads like TSM's", CH.LedgerUI.Ago(L.eval("STUB.now") - 3 * 86400 - 7200, L.eval("STUB.now")) == "3 Days 2 Hr")
 run("Clearinghouse.UI.Page('dashboard')")
 check("dashboard page draws", CH.UI.IsShown())
+run("Clearinghouse.UI.Page('dashboard')")
+pt = CH.UI.ChartHover(10000)
+check("chart hover: nearest point with who held what", pt.v == LG.Gold() and sorted(b.name for b in pt.by.values()) == ["Courtizy", "Luxaren", "Warband"])
+run("Clearinghouse.UI.CharacterMenu(nil, 'Warband'); Clearinghouse.UI.CharacterMenu(nil, 'Luxaren')")
+check("characters can be left out, warband too", LG.Gold() == 5000000 and not LG.Included("Warband"))
+last = list(LG.GoldSeries(L.eval("STUB.now") - 86400, L.eval("STUB.now"), 2).values())[1]
+check("the chart leaves them out too", last.v == 5000000 and len(list(last.by.values())) == 1)
+run("Clearinghouse.UI.CharacterMenu(nil, 'Warband'); Clearinghouse.UI.CharacterMenu(nil, 'Luxaren')")
+check("and back in", LG.Gold() == 10000000)
 run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
 check("ledger and briefing pages draw", CH.UI.IsShown())
 
