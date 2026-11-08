@@ -87,9 +87,9 @@ local function build()
 	for i = 1, QROWS do
 		local r = {}
 		local ry = y - (i - 1) * 18
-		r.name = text(panel, 12, ry, 200)
-		r.who = text(panel, 214, ry, 80)
-		r.profit = text(panel, 296, ry, 72, "RIGHT")
+		r.name = CH.Window.OneLine(text(panel, 12, ry, 200))
+		r.who = CH.Window.OneLine(text(panel, 214, ry, 80))
+		r.profit = CH.Window.OneLine(text(panel, 296, ry, 72, "RIGHT"))
 		r.craft = T.Button(panel, "Craft", 44, 16)
 		r.craft:SetPoint("TOPLEFT", 374, ry + 2)
 		r.minus = T.Button(panel, "-", 18, 16)
@@ -109,7 +109,7 @@ local function build()
 	for i = 1, SROWS do
 		local ry = y - i * 18
 		local r = {}
-		for j, c in ipairs(cols) do r[j] = text(panel, c[2], ry, c[3], c[4] or "RIGHT") end
+		for j, c in ipairs(cols) do r[j] = CH.Window.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
 		srows[i] = r
 	end
 	T.Fonts(panel)

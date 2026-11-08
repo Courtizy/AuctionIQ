@@ -129,7 +129,7 @@ local function build()
 			fs:SetPoint("TOPLEFT", 12 + c[2], y - i * 20)
 			fs:SetWidth(c[3])
 			fs:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
-			r.cells[j] = fs
+			r.cells[j] = CH.Window.OneLine(fs)
 		end
 		local click = CreateFrame("Button", nil, panel)
 		click:SetPoint("TOPLEFT", 6, y - 4 - i * 20)

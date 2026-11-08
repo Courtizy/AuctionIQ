@@ -48,6 +48,14 @@ function W.New(name, title, width, height)
 	return f
 end
 
+--- Keep a font string to one line: long text is cut with "..." instead of wrapping onto the row below.
+function W.OneLine(fs)
+	if fs.SetWordWrap then fs:SetWordWrap(false) end
+	if fs.SetNonSpaceWrap then fs:SetNonSpaceWrap(false) end
+	if fs.SetMaxLines then fs:SetMaxLines(1) end
+	return fs
+end
+
 --- A line of text at x, y inside a frame.
 function W.Text(parent, x, y, w, justify, template)
 	local fs = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
@@ -62,7 +70,7 @@ end
 function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
 	local T = CH.Theme
 	for _, c in ipairs(cols) do
-		local fs = W.Text(parent, c[2], y, c[3], c[4] or (c[2] <= 12 and "LEFT" or "RIGHT"), "GameFontDisableSmall")
+		local fs = W.OneLine(W.Text(parent, c[2], y, c[3], c[4] or (c[2] <= 12 and "LEFT" or "RIGHT"), "GameFontDisableSmall"))
 		fs:SetText(c[1])
 		fs:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
 	end
@@ -76,7 +84,7 @@ function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
 		r.bg:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.12)
 		r.bg:Hide()
 		for j, c in ipairs(cols) do
-			r.cells[j] = W.Text(parent, c[2], ry, c[3], c[4] or (j == 1 and "LEFT" or "RIGHT"))
+			r.cells[j] = W.OneLine(W.Text(parent, c[2], ry, c[3], c[4] or (j == 1 and "LEFT" or "RIGHT")))
 		end
 		if onClick or onEnter then
 			local b = CreateFrame("Button", nil, parent)
