@@ -207,10 +207,16 @@ end
 local function fillGoals()
 	local groups = CH.OpenProfessionID() and CH.Paths.GoalGroups() or {}
 	PUI.groups = groups
+	local gx = 12
 	for i, b in ipairs(goalButtons) do
 		local g = groups[i]
 		if g then
 			setLabel(b, g.name .. (#g.subs > 0 and " +" or ""))
+			local gfs = b.text or (b.GetFontString and b:GetFontString())
+			b:SetWidth(math.max(80, math.ceil((gfs and gfs.GetStringWidth and gfs:GetStringWidth() or 90) + 20)))
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", frame, "TOPLEFT", gx, -84)
+			gx = gx + b:GetWidth() + 4
 			b:SetScript("OnClick", function(self) groupMenu(self, g) end)
 			b:SetScript("OnEnter", function(self)
 				local lines = { { g.name }, { #g.recipes .. " recipes", "" } }

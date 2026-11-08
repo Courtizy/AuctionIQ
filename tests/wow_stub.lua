@@ -14,23 +14,63 @@ C_AddOns = { GetAddOnMetadata = function() return "test" end }
 C_Timer = { After = function(_, fn) table.insert(timers, fn) end }
 function STUB.RunTimers() local t = timers; timers = {}; for _, fn in ipairs(t) do fn() end end
 
-local function newFrame()
-	local f = { shown = false, scripts = {} }
+-- Frames keep their parent, size, anchor and children so tests/layout_audit.lua can check that
+-- nothing sits outside its panel. Text width is estimated from the font: about 6 px a character
+-- for small fonts, 7 for normal, 8.5 for large; a texture escape counts as one icon.
+STUB.frames = {}
+local function textWidth(t, font)
+	t = tostring(t or "")
+	local icons = 0
+	t = t:gsub("|T.-|t", function() icons = icons + 1; return "" end):gsub("|A.-|a", function() icons = icons + 1; return "" end)
+	t = t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h", ""):gsub("|h", "")
+	local longest = 0
+	for line in (t .. "\n"):gmatch("(.-)\n") do longest = math.max(longest, #line) end
+	local per = (font or ""):find("Large") and 8.5 or (font or ""):find("Small") and 6 or 7
+	return longest * per + icons * 15
+end
+STUB.TextWidth = textWidth
+
+local function newFrame(parent, kind, template)
+	local f = { shown = false, scripts = {}, parent = parent, kind = kind, xmlTemplate = template, kids = {}, texts = {}, w = 0, h = 0, points = {} }
+	if type(parent) == "table" and type(rawget(parent, "kids")) == "table" then table.insert(parent.kids, f) end
+	table.insert(STUB.frames, f)
 	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
-	function f:SetPoint(...) self.point = { ... } end
+	function f:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+	function f:ClearAllPoints() self.point = nil; self.points = {} end
+	function f:SetAllPoints() self.fill = true end
+	function f:SetSize(w, h) self.w, self.h = w or self.w, h or self.h end
+	function f:SetWidth(w) self.w = w end
+	function f:SetHeight(h) self.h = h end
+	function f:GetWidth() return self.w end
+	function f:GetHeight() return self.h end
+	function f:GetParent() return self.parent end
 	function f:SetTemplate(t) self.template = t end
 	function f:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
 	function f:Hide() local was = self.shown; self.shown = false; if was and self.scripts.OnHide then self.scripts.OnHide(self) end end
 	function f:SetShown(v) if v then self:Show() else self:Hide() end end
 	function f:HookScript(k, fn) local old = self.scripts[k]; self.scripts[k] = function(...) if old then old(...) end fn(...) end end
 	function f:IsShown() return self.shown end
-	function f:CreateFontString()
-		local fs = { t = "" }
+	function f:SetText(t) self.label = t end
+	function f:GetFontString() return nil end
+	function f:CreateFontString(_, _, font)
+		local fs = { t = "", font = font, w = 0, wrap = true, hidden = false, owner = f, points = {} }
 		function fs:SetText(t) self.t = t end
+		function fs:GetText() return self.t end
 		function fs:GetStringHeight() return 100 end
+		function fs:GetStringWidth() return textWidth(self.t, self.font) end
 		function fs:GetParent() return f end
+		function fs:SetWidth(w) self.w = w end
+		function fs:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+		function fs:ClearAllPoints() self.point = nil; self.points = {} end
+		function fs:SetFontObject(o) self.font = o end
+		function fs:SetWordWrap(v) self.wrap = v end
+		function fs:SetMaxLines(n) self.maxLines = n end
+		function fs:Hide() self.hidden = true end
+		function fs:Show() self.hidden = false end
+		function fs:SetShown(v) self.hidden = not v end
 		setmetatable(fs, { __index = function() return function() end end })
+		table.insert(f.texts, fs)
 		return fs
 	end
 	function f:CreateTexture() return setmetatable({}, { __index = function() return function() end end }) end
@@ -38,8 +78,9 @@ local function newFrame()
 	setmetatable(f, { __index = function() return function() end end })
 	return f
 end
-function CreateFrame() return newFrame() end
+function CreateFrame(kind, _, parent, template) return newFrame(parent, kind, template) end
 UIParent = newFrame()
+UIParent.w, UIParent.h = 1920, 1080
 function Mixin(t) return t end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function IsShiftKeyDown() return STUB.shift end

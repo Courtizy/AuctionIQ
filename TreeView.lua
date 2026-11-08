@@ -89,6 +89,7 @@ function TV.New(parent, x, y, w, h)
 		b.ring:SetAllPoints()
 		b.rank = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		b.rank:SetPoint("TOP", b, "BOTTOM", 0, -1)
+		b.rank.aiqOverhang = true -- sits under the node on purpose
 		b.badge = CreateFrame("Frame", nil, b, "BackdropTemplate")
 		b.badge:SetSize(16, 14)
 		b.badge:SetPoint("CENTER", b, "TOPRIGHT", -1, -1)

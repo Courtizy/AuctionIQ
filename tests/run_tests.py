@@ -559,5 +559,26 @@ check("the tooltip says it can't go on the AH", "can't go on the AH" in plain(CH
 check("other items keep their value", CH.Unsellable(100) is False or CH.Unsellable(100) is None or not CH.Unsellable(100))
 run("C_Item.GetItemInfo = nil")
 
+# layout: nothing outside its panel, no one-line text cut off, button labels fit
+L.execute((ROOT / "tests" / "layout_audit.lua").read_text())
+audit_all = []
+def audit(where):
+    roots = L.eval("(function() local r = {} for _, f in ipairs(STUB.frames) do if (f.parent == nil or f.parent == UIParent) and f.w > 0 then table.insert(r, f) end end return r end)()")
+    for p in L.eval("STUB.Audit")(roots).values():
+        audit_all.append(where + ": " + p)
+for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report"]:
+    run(f"Clearinghouse.UI.Page('{tab}')")
+    audit(tab)
+for v in ["inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time"]:
+    run(f"Clearinghouse.UI.Page('ledger', '{v}')")
+    audit("view " + v)
+run("Clearinghouse.UI.Page('today')")
+for w in ["ScanUI", "PathsUI", "QueueUI", "LogUI"]:
+    run(f"if Clearinghouse.{w} and Clearinghouse.{w}.Toggle then pcall(Clearinghouse.{w}.Toggle) end")
+    audit(w)
+for a in sorted(set(audit_all)):
+    print("LAYOUT " + a)
+check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
