@@ -17,14 +17,11 @@ local function rank(q, tiers)
 	return " " .. CH.Window.QualityIcon(q, 14, tiers)
 end
 
-local function place()
-	panel:ClearAllPoints()
-	local adv = _G.ClearinghouseAdvisor
-	if adv and adv:IsShown() and CH.db.settings.advisor.docked ~= false then
-		panel:SetPoint("TOPLEFT", adv, "BOTTOMLEFT", 0, -2)
-	else
-		panel:SetPoint("CENTER", 0, 80)
-	end
+local function updatePop()
+	local popped = not CH.Window.InTabs("queue")
+	local b = panel.pop
+	local t = popped and "Tab" or "Pop out"
+	if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end
 end
 
 local function text(parent, x, y, w, justify, template)
@@ -46,8 +43,6 @@ local function build()
 	panel:SetClampedToScreen(true)
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
-	panel:SetScript("OnDragStart", panel.StartMoving)
-	panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
 	panel:Hide()
 	table.insert(UISpecialFrames, "ClearinghouseQueue")
 
@@ -68,15 +63,30 @@ local function build()
 	local clear = T.Button(bar, "Clear", 46, 18)
 	clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	clear:SetScript("OnClick", function() CH.Queue.Clear() end)
+	local pop = T.Button(bar, "Pop out", 60, 18)
+	pop:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+	pop:SetScript("OnClick", function() CH.Window.ToggleQueuePop(); updatePop() end)
+	pop:SetScript("OnEnter", function(self)
+		CH.Window.Tooltip(self, { { CH.Window.InTabs("queue") and "Take the queue out of the tabs so it sits under them, next to the advisor."
+			or "Put the queue back in the tabs." } })
+	end)
+	pop:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	panel.pop = pop
 	local fill = T.Button(bar, "Fill", 40, 18)
-	fill:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+	fill:SetPoint("RIGHT", pop, "LEFT", -4, 0)
 	fill:SetScript("OnClick", function()
-		local n = CH.Queue.FillFromBest(5)
-		CH.Print(n > 0 and ("queued the best craft of " .. n .. " recipes") or "open a profession to fill the queue from its best crafts")
+		local prof = CH.OpenProfessionID()
+		local plan, why = prof and CH.Queue.FillPlan(prof)
+		if plan then
+			CH.Print(string.format("queued %d Concentration crafts (%d of %d points) and %d without, about %s profit.",
+				plan.conc, math.floor(plan.points + 0.5), plan.budget, plan.plain, CH.FormatMoney(plan.profit)))
+		else
+			CH.Print(why or "open a profession to fill the queue from its scan.")
+		end
 	end)
 	fill:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:AddLine("Queue one of each of the open profession's five best crafts, with the advisor's reagents.", 1, 1, 1, true)
+		GameTooltip:AddLine("Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/ch cap), less what you own.", 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
 	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -113,6 +123,7 @@ local function build()
 		srows[i] = r
 	end
 	T.Fonts(panel)
+	CH.Window.Attach("queue", panel)
 end
 
 --- Redraw. Returns the queue and shopping lines it wrote, for the tests.
@@ -129,7 +140,7 @@ function QUI.Refresh()
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
 		if show then
-			r.name:SetText(string.format("%s%s x%d%s", e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
+			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
 			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
 			local can, why = CH.Queue.CanCraftHere(e)
@@ -152,7 +163,7 @@ function QUI.Refresh()
 	for i, r in ipairs(srows) do
 		local s = shop[i]
 		if s then
-			r[1]:SetText(s.name .. rank(s.rank, s.tiers))
+			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
 			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
 			r[4]:SetText(s.buy > 0 and T.Color("accent", tostring(s.buy)) or T.Color("muted", "0"))
@@ -167,8 +178,9 @@ end
 
 function QUI.Show()
 	if not panel then build() end
-	place()
+	updatePop()
 	panel:Show()
+	CH.Window.Arrange()
 	return QUI.Refresh()
 end
 
@@ -180,4 +192,4 @@ function QUI.IsShown() return panel ~= nil and panel:IsShown() end
 
 CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end end
 CH.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
-CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then place(); QUI.Refresh() end end)
+CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then CH.Window.Arrange(); QUI.Refresh() end end)

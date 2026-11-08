@@ -112,6 +112,14 @@ function W.Tooltip(owner, lines)
 	GameTooltip:Show()
 end
 
+--- An item's icon, inline in text. The game has every item icon loaded, so this is cheap.
+function W.ItemIcon(itemID, size)
+	local icon = itemID and C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemID)
+	if not icon then return "" end
+	size = size or 16
+	return "|T" .. icon .. ":" .. size .. ":" .. size .. ":0:0:64:64:5:59:5:59|t "
+end
+
 --- Quality icon. tiers is how many qualities the item has: Midnight's two-quality items and
 --- reagents use their own icons (the ones in their chat links), older ones the five-tier set.
 function W.QualityIcon(q, size, tiers)
@@ -123,3 +131,207 @@ function W.QualityIcon(q, size, tiers)
 	end
 	return CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", size, size)
 end
+
+-- Tabs ----------------------------------------------------------------------------------------
+-- The advisor, scan, paths, queue and results windows share one spot: beside the profession window
+-- (docked), or wherever you last dragged one of them. A row of tabs sits under the one showing, and
+-- opening one hides the others, so they never pile up. The queue can be popped out of the tabs to sit
+-- under them, so the plan and the shopping list show together.
+local tabs, byKey = {}, {}
+local active, strip, switching
+
+local function deck() return CH.db.settings.advisor end -- docked, point: shared with the advisor's old settings
+local function ws() return CH.db.settings.window end
+
+--- Register a tab. open() shows its window, building it if needed.
+function W.AddTab(key, label, open, tip)
+	local t = { key = key, label = label, open = open, tip = tip }
+	table.insert(tabs, t)
+	byKey[key] = t
+	return t
+end
+
+--- Is this window one of the tabs right now (the queue isn't, when popped out)?
+function W.InTabs(key)
+	if key == "queue" then return not ws().popQueue end
+	return byKey[key] ~= nil
+end
+
+--- The tab showing, if any.
+function W.Active()
+	return active and active.frame and active.frame:IsShown() and active.key or nil
+end
+
+--- True when another tab is showing, so a window that updates itself (the advisor, on each recipe
+--- click) shouldn't jump in front of it.
+function W.Busy(key)
+	local a = W.Active()
+	return a ~= nil and a ~= key
+end
+
+local function profOpen() return ProfessionsFrame and ProfessionsFrame:IsShown() end
+
+--- Put a tab window in the shared spot.
+function W.Place(f)
+	local s = deck()
+	f:ClearAllPoints()
+	if s.docked ~= false and profOpen() then
+		f:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", 2, 0)
+	elseif s.point then
+		f:SetPoint(s.point[1], UIParent, s.point[3], s.point[4], s.point[5])
+	else
+		f:SetPoint("CENTER", 0, 60)
+	end
+end
+
+local function colorTab(b, on)
+	local T = CH.Theme
+	local fs = b.text or (b.GetFontString and b:GetFontString())
+	local c = on and T.accent or T.muted
+	if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
+	if b.SetBackdropBorderColor then
+		local l = on and T.accent or T.line
+		b:SetBackdropBorderColor(l[1], l[2], l[3], 1)
+	end
+end
+
+local function buildStrip()
+	local T = CH.Theme
+	strip = CreateFrame("Frame", "ClearinghouseTabs", UIParent)
+	strip:SetFrameStrata("HIGH")
+	strip:SetSize(10, 22)
+	strip:Hide()
+	strip.buttons = {}
+	for i, t in ipairs(tabs) do
+		local b = T.Button(strip, t.label, 74, 22)
+		b:SetScript("OnClick", function() t.open() end)
+		b:SetScript("OnEnter", function(self)
+			if t.tip then W.Tooltip(self, { { t.tip } }) end
+		end)
+		b:SetScript("OnLeave", function(self) GameTooltip:Hide(); colorTab(self, active == t) end)
+		strip.buttons[i] = b
+	end
+	strip.dock = T.Button(strip, "Dock", 50, 22)
+	strip.dock:SetScript("OnClick", function() deck().docked = true; deck().point = nil; W.Arrange() end)
+	strip.dock:SetScript("OnEnter", function(self) W.Tooltip(self, { { "Put the window back beside the profession window." } }) end)
+	strip.dock:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	T.Fonts(strip)
+end
+
+--- Lay the windows out: the active tab in the shared spot, the tab row under it, a popped-out queue
+--- under that. Returns the labels of the tabs shown, for tests.
+function W.Arrange()
+	if active and not W.InTabs(active.key) then active = nil end
+	local f = active and active.frame
+	local labels = {}
+	if f and f:IsShown() then
+		W.Place(f)
+		if not strip then buildStrip() end
+		strip:ClearAllPoints()
+		strip:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -1)
+		local x = 0
+		for i, t in ipairs(tabs) do
+			local b = strip.buttons[i]
+			local show = W.InTabs(t.key)
+			b:SetShown(show)
+			if show then
+				b:ClearAllPoints()
+				b:SetPoint("TOPLEFT", x, 0)
+				x = x + 76
+				colorTab(b, t == active)
+				table.insert(labels, t.label)
+			end
+		end
+		local undocked = deck().docked == false and ProfessionsFrame ~= nil
+		strip.dock:SetShown(undocked)
+		if undocked then strip.dock:ClearAllPoints(); strip.dock:SetPoint("TOPLEFT", x + 8, 0); x = x + 58 end
+		strip:SetWidth(math.max(10, x))
+		strip:Show()
+	elseif strip then
+		strip:Hide()
+	end
+	local q = byKey.queue and byKey.queue.frame
+	if q and q:IsShown() and not W.InTabs("queue") then
+		local p = ws().queuePoint
+		q:ClearAllPoints()
+		if p then
+			q:SetPoint(p[1], UIParent, p[3], p[4], p[5])
+		elseif strip and strip:IsShown() then
+			q:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -4)
+		else
+			q:SetPoint("CENTER", 0, 80)
+		end
+	end
+	return labels
+end
+
+--- Hand a built window to its tab: it takes the shared spot, hides the other tabs when it opens,
+--- and dragging it moves them all.
+function W.Attach(key, f)
+	local t = byKey[key]
+	t.frame = f
+	f:SetScript("OnDragStart", function(self)
+		if key == "queue" and not W.InTabs("queue") then self:StartMoving(); return end
+		deck().docked = false
+		self:StartMoving()
+	end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local p, _, rp, x, y = self:GetPoint()
+		if key == "queue" and not W.InTabs("queue") then
+			ws().queuePoint = { p, nil, rp, x, y }
+		else
+			deck().point = { p, nil, rp, x, y }
+		end
+		W.Arrange()
+	end)
+	f:HookScript("OnShow", function()
+		if W.InTabs(key) then
+			switching = true
+			for _, o in ipairs(tabs) do
+				if o ~= t and o.frame and o.frame:IsShown() and W.InTabs(o.key) then o.frame:Hide() end
+			end
+			switching = false
+			active = t
+		end
+		W.Arrange()
+	end)
+	f:HookScript("OnHide", function()
+		if switching then return end
+		if active == t then active = nil end
+		W.Arrange()
+	end)
+end
+
+--- Close every tab (and the popped queue when it sits under them), as when the profession window
+--- they were docked to closes.
+function W.CloseTabs()
+	local hadStrip = strip and strip:IsShown()
+	for _, t in ipairs(tabs) do
+		local f = t.frame
+		if f and f:IsShown() and (W.InTabs(t.key) or (hadStrip and not ws().queuePoint)) then f:Hide() end
+	end
+end
+
+--- Pop the queue out of the tabs, or put it back.
+function W.ToggleQueuePop()
+	local s = ws()
+	s.popQueue = not s.popQueue
+	s.queuePoint = nil
+	local q = byKey.queue
+	if s.popQueue then
+		W.Arrange()
+		if not W.Active() and CH.OpenProfessionID() then byKey.advisor.open() end
+		W.Arrange()
+	elseif q.frame and q.frame:IsShown() then
+		q.frame:Hide()
+		q.frame:Show()
+	end
+	return s.popQueue
+end
+
+W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
+W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
+W.AddTab("paths", "Paths", function() CH.PathsUI.Open() end, "Where to spend knowledge points for what you want to sell.")
+W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
+W.AddTab("results", "Results", function() CH.LogUI.Open() end, "What your crafts really gave against what was expected.")

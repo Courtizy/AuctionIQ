@@ -29,21 +29,7 @@ local function ownProfession()
 end
 
 function AUI.Place()
-	if not panel then return end
-	local s = settings()
-	panel:ClearAllPoints()
-	if s.docked ~= false and ProfessionsFrame then
-		panel:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", 2, 0)
-	elseif s.point then
-		panel:SetPoint(s.point[1], UIParent, s.point[3], s.point[4], s.point[5])
-	else
-		panel:SetPoint("CENTER")
-	end
-	if panel.dock then panel.dock:SetShown(s.docked == false) end
-	if panel.queue then
-		panel.queue:ClearAllPoints()
-		panel.queue:SetPoint("RIGHT", s.docked == false and panel.dock or panel.dock:GetParent(), s.docked == false and "LEFT" or "RIGHT", s.docked == false and -4 or -26, 0)
-	end
+	if panel then CH.Window.Place(panel) end
 end
 
 local function build()
@@ -57,16 +43,6 @@ local function build()
 	panel:SetClampedToScreen(true)
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
-	panel:SetScript("OnDragStart", function(self)
-		settings().docked = false
-		self:StartMoving()
-	end)
-	panel:SetScript("OnDragStop", function(self)
-		self:StopMovingOrSizing()
-		local p, _, rp, x, y = self:GetPoint()
-		settings().point = { p, nil, rp, x, y }
-		AUI.Place()
-	end)
 	panel:Hide()
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
@@ -89,12 +65,8 @@ local function build()
 	local close = T.Button(bar, "x", 18, 18)
 	close:SetPoint("RIGHT", -4, 0)
 	close:SetScript("OnClick", function() settings().hide = true; panel:Hide(); CH.Print("advisor hidden. /ch advisor brings it back.") end)
-	local dock = T.Button(bar, "Dock", 44, 18)
-	dock:SetPoint("RIGHT", close, "LEFT", -4, 0)
-	dock:SetScript("OnClick", function() settings().docked = true; AUI.Place() end)
-	panel.dock = dock
 	local queue = T.Button(bar, "Queue", 56, 18)
-	queue:SetPoint("RIGHT", dock, "LEFT", -4, 0)
+	queue:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	queue:SetScript("OnClick", function() CH.QueueUI.Toggle() end)
 	panel.queue = queue
 
@@ -185,22 +157,11 @@ local function build()
 	off:SetPoint("RIGHT", -72, 0)
 	off:SetScript("OnClick", function() sim.skill = 0; sim.plan = nil; AUI.Show() end)
 
-	-- Tools
-	local x = 6
-	for _, t in ipairs({ { "Scan", function() CH.ScanUI.Toggle() end, "Every recipe in this profession, ranked." },
-		{ "Paths", function() CH.PathsUI.Toggle() end, "Where to spend knowledge points for what you want to sell." },
-		{ "Results", function() CH.LogUI.Toggle() end, "What your crafts really gave against what was expected." } }) do
-		local b = T.Button(panel, t[1], 60, 18)
-		b:SetPoint("BOTTOMLEFT", x, 10)
-		b:SetScript("OnClick", t[2])
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { t[3] } }) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		x = x + 64
-	end
 	panel.status = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	panel.status:SetPoint("BOTTOMRIGHT", -10, 14)
 	panel.status:SetJustifyH("RIGHT")
 	T.Fonts(panel)
+	CH.Window.Attach("advisor", panel)
 	AUI.Place()
 end
 
@@ -234,7 +195,8 @@ function AUI.Render(result, reason)
 		notes:SetText("")
 		return {}
 	end
-	local head = T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
+	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
+	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
 	if result.order then
 		local o = result.order
 		head = head .. T.Color("muted", "  order" .. (o.customer and (" for " .. o.customer) or "")
@@ -381,8 +343,10 @@ function AUI.ShowBreakdown(owner, i, col)
 	GameTooltip:Show()
 end
 
-function AUI.Show(recipeID)
-	if not CH.db or settings().hide or not ownProfession() then
+--- Update the advisor for a recipe (or the one on screen). It comes to the front unless another tab
+--- is open: then it updates quietly, ready for when you click its tab.
+function AUI.Show(recipeID, force)
+	if not CH.db or (settings().hide and not force) or not ownProfession() then
 		if panel then panel:Hide() end
 		return
 	end
@@ -401,7 +365,17 @@ function AUI.Show(recipeID)
 	else
 		AUI.Render(nil)
 	end
-	panel:Show()
+	if force or not CH.Window.Busy("advisor") then panel:Show() end
+end
+
+--- The Advisor tab: bring it to the front (turning it back on if it was closed).
+function AUI.Open()
+	if not CH.OpenProfessionID() and not current then
+		CH.Print("open a profession to see the crafting advisor.")
+		return
+	end
+	settings().hide = false
+	AUI.Show(nil, true)
 end
 
 --- The simulated stat change for a recipe, or nil when the simulation is off.
@@ -456,7 +430,7 @@ function AUI.SetPlan(plan)
 	sim.plan = plan
 	if not plan then return end
 	CH.Print("simulating the " .. (plan.label or "") .. " plan in the crafting advisor. Press Off on its Simulate bar to stop.")
-	if ProfessionsFrame and ProfessionsFrame:IsShown() then AUI.Show() end
+	if ProfessionsFrame and ProfessionsFrame:IsShown() then AUI.Open() end
 end
 
 function AUI.SetSimSkill(n) sim.skill = n or 0 end
@@ -468,7 +442,7 @@ function AUI.RowClick(i)
 	local qty = IsShiftKeyDown and IsShiftKeyDown() and math.max(1, r.max or 1) or 1
 	CH.Queue.Add(shown, r, qty)
 	CH.Print(string.format("queued %d x %s (Q%d%s)", qty, shown.name or "?", r.quality, r.concentration and ", Concentration" or ""))
-	CH.QueueUI.Show()
+	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
 end
 
 function AUI.UpdateQueueButton()
@@ -504,7 +478,7 @@ local function hook()
 	if ProfessionsFrame and ProfessionsFrame.HookScript then
 		ProfessionsFrame:HookScript("OnHide", function()
 			AUI.Hide()
-			if CH.QueueUI.IsShown() and CH.db.settings.advisor.docked ~= false then CH.QueueUI.Toggle() end
+			if CH.db.settings.advisor.docked ~= false then CH.Window.CloseTabs() end
 		end)
 	end
 end

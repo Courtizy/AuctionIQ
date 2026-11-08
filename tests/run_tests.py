@@ -109,7 +109,9 @@ run('Clearinghouse.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentrat
 q = list(CH.db.queue.values())
 check("queue: clicks add, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
 check("queue: Count adds up", CH.Queue.Count() == 3)
-lines = CH.QueueUI.Refresh()
+check("queueing from the advisor keeps you on the Advisor tab", CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown())
+lines = CH.QueueUI.Show()
+check("the Queue tab replaces the Advisor in the same spot", CH.QueueUI.IsShown() and not CH.AdvisorUI.IsShown() and CH.Window.Active() == "queue")
 shop = list(lines.shop.values())
 # 2x Q2 craft (4x202, 5x204, 2x205) + 1x conc craft (4x201, 5x203, 2x205)
 check("shopping list: need across the queue, less what you have",
@@ -212,6 +214,21 @@ check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(
 top = list(CH.Scan.Top(2906, 1).values())
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
+# Queue on a Concentration budget
+run('Clearinghouse.Queue.Clear()')
+plan = CH.Queue.FillPlan(2906, L.eval("{ budget = 100 }"))
+qs = list(CH.db.queue.values())
+cq = [e for e in qs if e.concentration]
+check("fill: Concentration crafts stay within the budget", plan.conc == 1 and plan.points == 80 and plan.conc == sum(e.qty for e in cq))
+check("fill: profitable crafts without Concentration are added too", plan.plain > 0 and any(not e.concentration for e in qs))
+check("fill: crafts per recipe stop at what sells in a day", all(e.qty <= 10 for e in qs))
+run('Clearinghouse.Queue.Clear()')
+plan0 = CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and plan0.points == 0)
+run('Clearinghouse.Queue.Clear()')
+scan_cols = list(CH.ScanUI.Refresh().values())
+check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
+
 # Cooldowns
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 cd = list(CH.Cooldowns.All().values())
@@ -225,6 +242,26 @@ run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 2, 
 lr = list(CH.Log.Rows().values())[0]
 check("results log: craft, Multicraft proc and saved reagents counted",
       lr.crafts == 1 and lr.e.mcProcs == 1 and lr.e.saved == 300000 and lr.e.value == 2 * 3000000 * 0.95 and lr.expected == 730000)
+
+# Tabs: one window at a time, the queue can pop out
+run('Clearinghouse.ScanUI.Open()')
+check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")
+labels = list(CH.Window.Arrange().values())
+check("tabs: the row lists every window", labels == ["Advisor", "Scan", "Paths", "Queue", "Results"])
+run('Clearinghouse.AdvisorUI.Show(10)')
+check("tabs: a recipe click updates the advisor without leaving Scan", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
+run('Clearinghouse.AdvisorUI.Open()')
+check("tabs: the Advisor tab brings it back", CH.AdvisorUI.IsShown() and not CH.ScanUI.IsShown())
+run('Clearinghouse.QueueUI.Show(); Clearinghouse.Window.ToggleQueuePop()')
+labels = list(CH.Window.Arrange().values())
+check("pop-out: the queue leaves the tabs and shows beside the advisor",
+      CH.QueueUI.IsShown() and CH.AdvisorUI.IsShown() and "Queue" not in labels)
+run('Clearinghouse.PathsUI.Open()')
+check("pop-out: switching tabs leaves the queue open", CH.PathsUI.IsShown() and CH.QueueUI.IsShown() and not CH.AdvisorUI.IsShown())
+run('Clearinghouse.Window.ToggleQueuePop()')
+check("back in the tabs: the queue takes the spot", CH.QueueUI.IsShown() and not CH.PathsUI.IsShown() and CH.Window.Active() == "queue")
+run('Clearinghouse.Window.CloseTabs()')
+check("closing the profession closes the tabs", not CH.QueueUI.IsShown() and CH.Window.Active() is None)
 
 # Midnight reports craftingQuality as a quality ID (13, 14), not 1, 2: quality comes from skill instead
 run('STUB.qualityOffset = 12')

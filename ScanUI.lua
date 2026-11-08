@@ -5,11 +5,13 @@ local _, CH = ...
 local SUI = {}
 CH.ScanUI = SUI
 local frame, rows, status
-local N, W, H = 16, 660, 18
+local N, W, H = 16, 736, 18
 local offset, sortKey, data = 0, "profit", {}
 
-local COLS = { { "Recipe", 12, 240 }, { "Profit", 254, 96 }, { "%", 352, 48 }, { "Per pt", 402, 76 },
-	{ "Sold/day", 480, 70 }, { "Gold/day", 552, 96 } }
+local COLS = { { "Recipe", 12, 226 }, { "Profit", 240, 92 }, { "%", 334, 44 }, { "With Conc.", 380, 104 },
+	{ "Per pt", 486, 72 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 } }
+local SORTS = { profit = "profit per craft", concProfit = "profit with Concentration", perPoint = "gold per Concentration point",
+	perDay = "gold a day" }
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "-") end
@@ -43,7 +45,8 @@ local function hover(owner, i)
 	end
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
 	table.insert(lines, { string.format("Gold a day at up to %d sold", CH.db.settings.scan.dailyCap or 10), CH.FormatMoney(r.perDay) })
-	table.insert(lines, { T.Color("muted", "Click to open, shift-click to queue the best craft.") })
+	if r.perPoint then table.insert(lines, { T.Color("muted", "Gold a day counts Concentration crafts up to what a day's refill (about 250) pays for.") }) end
+	table.insert(lines, { T.Color("muted", "Click to open it (see it on the Advisor tab), shift-click to queue the best craft.") })
 	CH.Window.Tooltip(owner, lines)
 end
 
@@ -52,7 +55,7 @@ local function build()
 	frame = Wd.New("ClearinghouseScan", "Recipe scan", W, 92 + N * H)
 	local T = CH.Theme
 	local x = -26
-	for _, s in ipairs({ { "perDay", "Per day" }, { "perPoint", "Per pt" }, { "profit", "Profit" } }) do
+	for _, s in ipairs({ { "perDay", "Per day" }, { "perPoint", "Per pt" }, { "concProfit", "Conc." }, { "profit", "Profit" } }) do
 		local b = T.Button(frame.bar, s[2], 56, 18)
 		b:SetPoint("RIGHT", x, 0)
 		b:SetScript("OnClick", function() sortKey = s[1]; offset = 0; SUI.Refresh() end)
@@ -69,6 +72,7 @@ local function build()
 		SUI.Refresh()
 	end)
 	T.Fonts(frame)
+	Wd.Attach("scan", frame)
 end
 
 --- Redraw from the saved scan. Returns the row texts, for tests.
@@ -82,19 +86,20 @@ function SUI.Refresh()
 	CH.Scan.Sort(data, sortKey)
 	if not CH.Scan.IsRunning() then
 		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.", #data,
-			date and date("%H:%M", s.at) or "", sortKey == "perDay" and "gold a day" or sortKey == "perPoint" and "gold per Concentration point" or "profit per craft"))
+			date and date("%H:%M", s.at) or "", SORTS[sortKey] or sortKey))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
 		if d then
-			r.cells[1]:SetText(CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. (d.name or "?"))
+			r.cells[1]:SetText(CH.Window.ItemIcon(d.item or d.concItem, 15) .. CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. (d.name or "?"))
 			r.cells[2]:SetText(money(d.profit))
 			r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
-			r.cells[4]:SetText(d.perPoint and money(d.perPoint) or "")
-			r.cells[5]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
-			r.cells[6]:SetText(money(d.perDay))
+			r.cells[4]:SetText(d.concProfit and (CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit)) or "")
+			r.cells[5]:SetText(d.perPoint and money(d.perPoint) or "")
+			r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
+			r.cells[7]:SetText(money(d.perDay))
 			table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
 		else
 			for _, c in ipairs(r.cells) do c:SetText("") end
@@ -112,8 +117,12 @@ function SUI.Start()
 end
 
 function SUI.Toggle()
+	if frame and frame:IsShown() then frame:Hide() else SUI.Open() end
+end
+
+--- The Scan tab: show the saved scan, or scan now if there isn't one for the open profession.
+function SUI.Open()
 	if not frame then build() end
-	if frame:IsShown() then frame:Hide(); return end
 	SUI.prof = CH.OpenProfessionID() or SUI.prof
 	frame:Show()
 	if CH.OpenProfessionID() and not CH.Scan.Results(CH.OpenProfessionID()) then SUI.Start() else SUI.Refresh() end

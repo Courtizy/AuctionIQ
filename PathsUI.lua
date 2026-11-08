@@ -23,7 +23,7 @@ local function updatePoints()
 end
 
 function PUI.Run(goal)
-	if not frame then PUI.Toggle() end
+	if not frame or not frame:IsShown() then PUI.Open() end
 	goal = goal or (input and input:GetText()) or ""
 	render({ CH.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
 	local plan, why = CH.Paths.Plan({ goal = goal, points = extra, onDone = function(p)
@@ -88,6 +88,7 @@ local function build()
 	out:SetJustifyH("LEFT")
 	out:SetSpacing(3)
 	T.Fonts(frame)
+	Wd.Attach("paths", frame)
 end
 
 local function fillGoals()
@@ -106,8 +107,12 @@ local function fillGoals()
 end
 
 function PUI.Toggle()
+	if frame and frame:IsShown() then frame:Hide() else PUI.Open() end
+end
+
+--- The Paths tab.
+function PUI.Open()
 	if not frame then build() end
-	if frame:IsShown() then frame:Hide(); return end
 	frame:Show()
 	updatePoints()
 	fillGoals()
