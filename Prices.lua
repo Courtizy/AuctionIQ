@@ -17,6 +17,11 @@ local FORMULA = {
 	-- Oribos Exchange (Undermine Exchange's addon), through TSM, when it's installed
 	oerealm = "oerealm",
 	oeregion = "oeregion",
+	-- TSM's own sources, for the Markets view when the Clearinghouse app has no data yet
+	dbmarket = "dbmarket",
+	dbminbuyout = "dbminbuyout",
+	dbhistorical = "dbhistorical",
+	dbregionmarketavg = "dbregionmarketavg",
 }
 
 local Prices = { FORMULA = FORMULA }
@@ -75,6 +80,35 @@ function Prices.Market(id)
 	if type(ClearinghouseMarket) ~= "table" or not id then return nil end
 	local ok, v = pcall(ClearinghouseMarket.Get, id)
 	return ok and v or nil
+end
+
+--- Oribos Exchange's numbers for an item: { market (realm), region, days }, or nil.
+function Prices.Oribos(id)
+	if type(OEMarketInfo) ~= "function" or not id then return nil end
+	local t = {}
+	local ok, r = pcall(OEMarketInfo, type(id) == "number" and ("item:" .. id) or id, t)
+	if not ok then return nil end
+	r = type(r) == "table" and r or t
+	if not (r.market or r.region) then return nil end
+	return { market = r.market, region = r.region, days = r.days }
+end
+
+--- Market numbers for an item from whatever is installed: the Clearinghouse app's history first,
+--- else TSM's realm data and Oribos Exchange. Same shape as Prices.Market; from TSM/OE, avg7 is
+--- TSM's 60-day historical price and change7 is today's market against it (avgDays says which).
+function Prices.MarketAny(id)
+	local m = Prices.Market(id)
+	if m then m.avgDays = 7; return m end
+	if not id then return nil end
+	local key = "i:" .. id
+	local oe = Prices.Oribos(id)
+	local market = Prices.Get("dbmarket", key) or (oe and oe.market) or Prices.Get("dbregionmarketavg", key) or (oe and oe.region)
+	if not market then return nil end
+	local hist = Prices.Get("dbhistorical", key)
+	local fromTSM = Prices.Get("dbmarket", key) ~= nil or Prices.Get("dbregionmarketavg", key) ~= nil
+	return { market = market, min = Prices.Get("dbminbuyout", key), avg7 = hist, avgDays = hist and 60 or nil,
+		change7 = hist and hist > 0 and (market / hist - 1) or nil, region = (oe and oe.region) or Prices.Get("dbregionmarketavg", key),
+		source = fromTSM and "tsm" or "oribos" }
 end
 
 function Prices.ClearCache()

@@ -106,6 +106,10 @@ function CH.TooltipLines(link)
 		if mk.qty then table.insert(lines, { "  Listed now", tostring(mk.qty), "muted", "muted" }) end
 	end
 	local oeR, oeG = CH.Prices.Get("oerealm", link), CH.Prices.Get("oeregion", link)
+	if not (oeR or oeG) then
+		local oe = CH.Prices.Oribos(itemID(link))
+		if oe then oeR, oeG = oe.market, oe.region end
+	end
 	if oeR or oeG then
 		table.insert(lines, { "Oribos Exchange", "" })
 		if oeR then table.insert(lines, { "  Realm", m(oeR), "muted", "muted" }) end
