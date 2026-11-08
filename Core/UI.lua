@@ -509,7 +509,8 @@ end
 local TABS = { { "today", "Today" }, { "markets", "Markets" }, { "crafting", "Crafting" }, { "trading", "Trading" },
 	{ "analytics", "Analytics" }, { "ledger", "Clearinghouse" } }
 -- which page frame each tab shows; Markets, Analytics and the Clearinghouse share the table page
-local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "groups", analytics = "ledger", ledger = "ledger" }
+local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "groups", analytics = "ledger", ledger = "ledger",
+	settings = "settings" }
 -- old page names (commands, other modules) and where they live now
 local OLD = { dashboard = { "today" }, groups = { "trading" }, plan = { "crafting" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 
@@ -548,11 +549,16 @@ local function build()
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
+	local settings = T.Button(frame.bar, "Settings", 70, 20)
+	settings:SetPoint("RIGHT", frame.close, "LEFT", -6, 0)
+	settings:SetScript("OnClick", function() UI.Go(page == "settings" and "today" or "settings") end)
+	pageButtons.settings = settings
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	frame.gold:SetPoint("RIGHT", frame.close, "LEFT", -10, 0)
+	frame.gold:SetPoint("RIGHT", settings, "LEFT", -10, 0)
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
 	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildBriefing }) do
+	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildBriefing, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
@@ -775,6 +781,7 @@ function UI.Refresh()
 	if page == "today" then return refreshDashboard()
 	elseif page == "trading" then return CH.GroupsUI.Refresh()
 	elseif page == "crafting" then return CH.PlanUI.Refresh()
+	elseif page == "settings" then return CH.SettingsUI.Refresh()
 	elseif report then
 		refreshLedger()
 		CH.ReportUI.Refresh()
