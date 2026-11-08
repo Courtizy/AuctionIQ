@@ -50,15 +50,35 @@ function S.Read(professionID)
 			tree.nodes[n.nodeID].perks[perkID] = ok and threshold or 0
 		end
 	end
-	-- parents, so a plan unlocks a node only after the one above it
+	-- parents, so a plan unlocks a node only after the one above it; and the trees' layout as the game
+	-- draws them (each tab its own tree: position, icon, links), for the Paths tab
+	tree.tabs, tree.layout = {}, {}
 	if C_ProfSpecs.GetSpecTabIDsForSkillLine then
-		local function walk(pathID, parent)
+		local function walk(pathID, parent, tab, guard)
+			if guard > 20 then return end
 			if tree.nodes[pathID] then tree.nodes[pathID].parent = parent end
-			for _, child in ipairs(C_ProfSpecs.GetChildrenForPath(pathID) or {}) do walk(child, pathID) end
+			local name, info = nodeName(configID, pathID)
+			local icon
+			if info and info.entryIDs and info.entryIDs[1] then
+				local entry = C_Traits.GetEntryInfo(configID, info.entryIDs[1])
+				local def = entry and entry.definitionID and C_Traits.GetDefinitionInfo(entry.definitionID)
+				icon = def and (def.overrideIcon or (def.spellID and C_Spell and C_Spell.GetSpellTexture and C_Spell.GetSpellTexture(def.spellID)))
+			end
+			local n = tree.nodes[pathID]
+			tree.layout[pathID] = { x = info and info.posX or 0, y = info and info.posY or 0, icon = icon, parent = parent,
+				name = (n and n.name) or name or ("Node " .. pathID), tab = tab.id,
+				rank = n and n.rank or (info and info.activeRank and info.activeRank - 1) or -1,
+				max = n and n.max or (info and info.maxRanks and math.max(0, info.maxRanks - 1)) or 0 }
+			table.insert(tab.nodes, pathID)
+			for _, child in ipairs(C_ProfSpecs.GetChildrenForPath(pathID) or {}) do walk(child, pathID, tab, guard + 1) end
 		end
-		for _, tab in ipairs(C_ProfSpecs.GetSpecTabIDsForSkillLine(professionID) or {}) do
-			local root = C_ProfSpecs.GetRootPathForTab(tab)
-			if root then walk(root, nil) end
+		for _, tabID in ipairs(C_ProfSpecs.GetSpecTabIDsForSkillLine(professionID) or {}) do
+			local ok, ti = pcall(C_ProfSpecs.GetTabInfo or function() end, tabID)
+			local tab = { id = tabID, name = ok and ti and ti.name or nil, nodes = {} }
+			local root = C_ProfSpecs.GetRootPathForTab(tabID)
+			if root then walk(root, nil, tab, 0) end
+			tab.name = tab.name or (tree.layout[root or 0] and tree.layout[root].name) or ("Tab " .. tabID)
+			table.insert(tree.tabs, tab)
 		end
 	end
 	return tree

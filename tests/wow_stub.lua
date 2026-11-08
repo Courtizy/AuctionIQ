@@ -169,9 +169,10 @@ C_ProfSpecs = {
 	GetSpecTabIDsForSkillLine = function() return { 1 } end,
 	GetRootPathForTab = function() return 900 end,
 	GetChildrenForPath = function(id) return id == 900 and { 901 } or {} end,
+	GetTabInfo = function() return { name = "Test Mastery" } end,
 }
 C_Traits = {
-	GetNodeInfo = function(_, id) return { activeRank = (STUB.ranks[id] or -1) + 1, entryIDs = { id } } end,
+	GetNodeInfo = function(_, id) return { activeRank = (STUB.ranks[id] or -1) + 1, entryIDs = { id }, posX = id * 10, posY = id == 900 and 0 or 600 } end,
 	GetEntryInfo = function(_, id) return { definitionID = id } end,
 	GetDefinitionInfo = function(id) return { overrideName = "Node " .. id } end,
 }

@@ -183,6 +183,23 @@ CH.AdvisorUI.SetPlan(plan)
 CH.AdvisorUI.Show(10)
 check("advisor simulates the plan", CH.AdvisorUI.Current().sim is not None)
 run('Clearinghouse.AdvisorUI.SetPlan(nil); Clearinghouse.AdvisorUI.SetSimSkill(0)')
+check("spec: the trees' layout is read per tab, with links",
+      tree.tabs[1].name == "Test Mastery" and list(tree.tabs[1].nodes.values()) == [900, 901]
+      and tree.layout[901].parent == 900 and tree.layout[901].y == 600 and tree.layout[901].rank == -1)
+marks = CH.Paths.Marks(plan)
+check("plan marks: each node's planned rank and steps", marks[900].to == max(s.to for s in plan.steps.values() if s.node == 900) and marks[900].steps[1] == 1)
+CH.Paths.SetCurrent(plan)
+run('Clearinghouse.PathsUI.Open()')
+drawn = list(CH.PathsUI.DrawTree().values())
+check("paths tab draws the tree with the plan on it",
+      len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
+run("""STUB.btn = CreateFrame("Button"); STUB.btn:Show()
+ProfessionsFrame = CreateFrame("Frame"); ProfessionsFrame.SpecPage = CreateFrame("Frame"); ProfessionsFrame.SpecPage:Show()
+function ProfessionsFrame.SpecPage:GetTalentButtonByNodeID(id) return id == 900 and STUB.btn or nil end""")
+check("game's spec tab gets a badge on each planned node", CH.SpecOverlay.Refresh() == 1)
+run('Clearinghouse.Paths.ClearCurrent(2906)')
+check("clearing the plan takes the badges off", CH.SpecOverlay.Refresh() == 0)
+run('ProfessionsFrame = nil; Clearinghouse.PathsUI.Toggle()')
 
 # Top gear
 c = CH.Gear.Candidates()

@@ -290,3 +290,27 @@ function P.Describe(plan)
 		CH.db.settings.scan.dailyCap or 10)))
 	return L
 end
+
+--- Where a plan puts points: { [nodeID] = { from, to, steps = { step numbers } } }.
+function P.Marks(plan)
+	local out = {}
+	for i, s in ipairs(plan and plan.steps or {}) do
+		local m = out[s.node]
+		if not m then m = { from = s.from, to = s.to, steps = {} }; out[s.node] = m end
+		m.to = math.max(m.to, s.to)
+		table.insert(m.steps, i)
+	end
+	return out
+end
+
+-- The last plan made for each profession this session, shown on the trees.
+P.current = {}
+function P.SetCurrent(plan)
+	if plan and plan.prof then P.current[plan.prof] = plan end
+	if P.Changed then P.Changed(plan and plan.prof) end
+end
+function P.Current(prof) return prof and P.current[prof] end
+function P.ClearCurrent(prof)
+	if prof then P.current[prof] = nil end
+	if P.Changed then P.Changed(prof) end
+end

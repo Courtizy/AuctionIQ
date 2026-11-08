@@ -36,4 +36,6 @@ QueueUI.lua
 ScanUI.lua
 Log.lua
 Paths.lua
+TreeView.lua
 PathsUI.lua
+SpecOverlay.lua
