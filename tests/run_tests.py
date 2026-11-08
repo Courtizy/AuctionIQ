@@ -698,6 +698,39 @@ check("the tooltip says it can't go on the AH", "can't go on the AH" in plain(CH
 check("other items keep their value", CH.Unsellable(100) is False or CH.Unsellable(100) is None or not CH.Unsellable(100))
 run("C_Item.GetItemInfo = nil")
 
+# Settings: what the commands did, as buttons; operations and price sources without commands
+S = CH.Settings
+run("Clearinghouse.UI.Page('settings')")
+names = list(CH.SettingsUI.Refresh().values())
+check("settings: opens from the window and lists the operations, Default first", names[0] == "Default" and "Crafted" in names)
+was = S.Get("coins")
+run("Clearinghouse.Settings.Flip('coins')")
+check("settings: a toggle does what /aiq coins did", S.Get("coins") == (not was) and L.eval("Clearinghouse.db.settings.coins") == (not was))
+run("Clearinghouse.Settings.Flip('coins')")
+run("Clearinghouse.Settings.DailyCap(20)")
+check("settings: gold a day cap", L.eval("Clearinghouse.db.settings.scan.dailyCap") == 20)
+check("settings: a new operation copies Default", S.NewOp("Flasks") == "Flasks" and CH.Groups.Store().ops.Flasks.floorPct == CH.Groups.Store().ops.Default.floorPct)
+check("settings: names can't repeat", S.NewOp("Flasks")[0] is None)
+run("Clearinghouse.Settings.OpStep('Flasks', 'priceReset', 1); Clearinghouse.Settings.OpStep('Flasks', 'duration', 1); Clearinghouse.Settings.OpStep('Flasks', 'undercut', 1)")
+fl = CH.Groups.Store().ops.Flasks
+check("settings: picks cycle and numbers step", fl.priceReset == "minPrice" and fl.duration == 3 and fl.undercut == 101)
+ok, err = S.SetOpFormula("Flasks", "minPrice", "max(")
+check("settings: a bad formula is refused with the reason", ok is False and err and fl.minPrice is None)
+check("settings: a good formula saves", S.SetOpFormula("Flasks", "minPrice", "80% chvalue") is True and fl.minPrice == "80% chvalue")
+run("Clearinghouse.Groups.Assign('Crafted', 'Flasks')")
+check("settings: renaming keeps the groups that use it", S.RenameOp("Flasks", "Flask rules") == "Flask rules" and CH.Groups.Store().assign.Crafted == "Flask rules")
+check("settings: built-in operations can't be deleted", S.DeleteOp("Default")[0] is None and S.DeleteOp("Crafted")[0] is None)
+check("settings: deleting one sends its groups back to inheriting", S.DeleteOp("Flask rules") == 1 and CH.Groups.Store().assign.Crafted is None)
+check("settings: a price source saves", S.SetSource("MyFloor", "max(vendorsell, 1g)") is True and CH.Formula.Custom().myfloor == "max(vendorsell, 1g)")
+check("settings: a source can't take a built-in name", S.SetSource("dbmarket", "1g")[0] is False)
+check("settings: a source with a bad formula is refused", S.SetSource("broken", "min(")[0] is False)
+check("settings: the source works in formulas", CH.Formula.Value("myfloor", 302) == 10000)
+run("Clearinghouse.Settings.DeleteSource('myfloor')")
+check("settings: delete a source", CH.Formula.Custom().myfloor is None)
+run("Clearinghouse.Settings.UseTSM(false)")
+check("settings: TSM groups off", CH.Groups.Store().useTSM is False)
+run("Clearinghouse.Settings.UseTSM(true)")
+
 # layout: nothing outside its panel, no one-line text cut off, button labels fit
 L.execute((ROOT / "tests" / "layout_audit.lua").read_text())
 audit_all = []
@@ -705,7 +738,7 @@ def audit(where):
     roots = L.eval("(function() local r = {} for _, f in ipairs(STUB.frames) do if (f.parent == nil or f.parent == UIParent) and f.w > 0 then table.insert(r, f) end end return r end)()")
     for p in L.eval("STUB.Audit")(roots).values():
         audit_all.append(where + ": " + p)
-for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report"]:
+for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
 for v in ["inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time"]:

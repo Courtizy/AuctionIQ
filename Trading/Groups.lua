@@ -255,10 +255,11 @@ function G.Learn(id)
 end
 
 --- Posting prices and rules for an item: { min, normal, max, cap, undercut, duration, post, op, why,
---- keep, maxExpires, priceReset, aboveMax, learned }. An operation with formulas (minPrice,
+--- keep, maxExpires, priceReset, aboveMax, learned }. opName prices it by that operation instead of its own. An operation with formulas (minPrice,
 --- normalPrice, maxPrice: see Formula.lua) prices by them; without, by its floor and multipliers.
-function G.Prices(id)
+function G.Prices(id, opName)
 	local op, name = G.Operation(id)
+	if opName and store().ops[opName] then op, name = store().ops[opName], opName end
 	op = op or store().ops.Default
 	local F = CH.Formula
 	local item = "i:" .. id

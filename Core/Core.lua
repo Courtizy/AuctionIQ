@@ -185,10 +185,11 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	elseif msg == "analytics" then CH.UI.Page("analytics")
 	elseif msg == "report" or msg == "brief" or msg == "briefing" then CH.UI.Page("report")
 	elseif msg == "ledger" or msg == "clearinghouse" or msg == "books" then CH.UI.Page("ledger")
+	elseif msg == "settings" or msg == "options" or msg == "config" then CH.UI.Page("settings")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. /aiq alerts turns alerts on or off. /aiq today, markets, crafting, trading, analytics or ledger opens that tab; /aiq report opens the Report in the Clearinghouse. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. /aiq alerts turns alerts on or off. /aiq today, markets, crafting, trading, analytics or ledger opens that tab; /aiq report opens the Report in the Clearinghouse. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
 	else
 		CH.UI.Toggle()
 	end
