@@ -1,26 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>
-<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1b8"/><stop offset=".35" stop-color="#f2c14e"/><stop offset=".75" stop-color="#c8871c"/><stop offset="1" stop-color="#7a4a0c"/></linearGradient>
-<linearGradient id="goldS" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8a560f"/><stop offset=".45" stop-color="#ffe9a0"/><stop offset=".6" stop-color="#e0a83a"/><stop offset="1" stop-color="#6b3f08"/></linearGradient>
-<linearGradient id="bevel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d9c79a"/><stop offset=".5" stop-color="#6b5a3a"/><stop offset="1" stop-color="#1c150c"/></linearGradient>
-<radialGradient id="bg" cx=".45" cy=".4" r=".8"><stop offset="0" stop-color="#1d2f5c"/><stop offset=".6" stop-color="#0f1a38"/><stop offset="1" stop-color="#050914"/></radialGradient>
-<radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5dff9c" stop-opacity=".55"/><stop offset="1" stop-color="#5dff9c" stop-opacity="0"/></radialGradient>
-<radialGradient id="shine" cx=".3" cy=".25" r=".6"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-</defs>
-<rect width="64" height="64" fill="#0b0805"/><rect x="2" y="2" width="60" height="60" fill="url(#bevel)"/><rect x="4" y="4" width="56" height="56" fill="url(#bg)"/>
-<path d="M8 50 H56 M8 40 H56 M8 30 H56 M8 20 H56" stroke="#2a4a8a" stroke-width=".6" opacity=".45"/>
-<circle cx="49" cy="15" r="11" fill="url(#glow)"/>
-<polyline points="7,53 18,44 26,47 37,32 44,35 52,17" fill="none" stroke="#04140a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-<polyline points="7,53 18,44 26,47 37,32 44,35 52,17" fill="none" stroke="#1fae55" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-<polyline points="7,53 18,44 26,47 37,32 44,35 52,17" fill="none" stroke="#8dffb5" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-<polygon points="56,9 55.5,22 46,15.5" fill="#5dff9c" stroke="#04140a" stroke-width="1.2" stroke-linejoin="round"/>
-<g transform="rotate(-40 30 30)">
-<rect x="27.3" y="30" width="5.4" height="26" rx="2" fill="url(#goldS)" stroke="#3a2306" stroke-width="1.1"/>
-<rect x="26.5" y="52" width="7" height="5" rx="2" fill="url(#gold)" stroke="#3a2306" stroke-width="1"/>
-<rect x="14" y="18" width="32" height="13" rx="3" fill="url(#gold)" stroke="#3a2306" stroke-width="1.3"/>
-<rect x="11" y="16" width="6" height="17" rx="2" fill="url(#gold)" stroke="#3a2306" stroke-width="1.2"/>
-<rect x="43" y="16" width="6" height="17" rx="2" fill="url(#gold)" stroke="#3a2306" stroke-width="1.2"/>
-<path d="M20 21 H40" stroke="#fff6cf" stroke-width="1.6" stroke-linecap="round" opacity=".8"/>
-<path d="M17 24.5 v-5 M43 24.5 v-5" stroke="#7a4a0c" stroke-width="1" opacity=".7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs>
+
+<radialGradient id="bgA" cx=".42" cy=".36" r=".85"><stop offset="0" stop-color="#22397a"/><stop offset=".55" stop-color="#0f1c40"/><stop offset="1" stop-color="#040812"/></radialGradient>
+<linearGradient id="rimA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0b5"/><stop offset=".22" stop-color="#e3b04b"/><stop offset=".5" stop-color="#8f5a14"/><stop offset=".78" stop-color="#d9a441"/><stop offset="1" stop-color="#4a2c06"/></linearGradient>
+<linearGradient id="rimB" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2a1803"/><stop offset="1" stop-color="#6b4210"/></linearGradient>
+<radialGradient id="vign" cx=".5" cy=".5" r=".72"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".65"/></radialGradient>
+<linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient>
+
+<linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff4c4"/><stop offset=".3" stop-color="#f4c552"/><stop offset=".7" stop-color="#c9861b"/><stop offset="1" stop-color="#6e420a"/></linearGradient>
+<linearGradient id="goldH" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7a4a0c"/><stop offset=".4" stop-color="#ffeaa3"/><stop offset=".6" stop-color="#e0a83a"/><stop offset="1" stop-color="#5e3707"/></linearGradient>
+<linearGradient id="wood" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b1d0b"/><stop offset=".45" stop-color="#9a5a2a"/><stop offset=".6" stop-color="#7a4219"/><stop offset="1" stop-color="#2a1306"/></linearGradient>
+<radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#7dffb0" stop-opacity=".8"/><stop offset=".4" stop-color="#34c77b" stop-opacity=".35"/><stop offset="1" stop-color="#34c77b" stop-opacity="0"/></radialGradient>
+<linearGradient id="line" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#138a45"/><stop offset="1" stop-color="#5dffa0"/></linearGradient>
+<filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="1.5" dy="2.5" stdDeviation="2" flood-color="#000" flood-opacity=".75"/></filter>
+<filter id="bl"><feGaussianBlur stdDeviation="2.2"/></filter>
+</defs><rect width="128" height="128" fill="url(#bgA)"/>
+<g transform="translate(64 64) scale(1.12) translate(-64 -64)">
+<g stroke="#3b5fb0" stroke-width="1" opacity=".35"><path d="M10 98H118M10 80H118M10 62H118M10 44H118M10 26H118"/><path d="M32 10V118M54 10V118M76 10V118M98 10V118" opacity=".5"/></g>
+<g fill="#5b7cd1" opacity=".35"><rect x="24" y="86" width="8" height="26"/><rect x="40" y="80" width="8" height="32"/><rect x="56" y="88" width="8" height="24"/><rect x="72" y="70" width="8" height="42"/><rect x="88" y="62" width="8" height="50"/></g>
+<circle cx="100" cy="28" r="24" fill="url(#glow)"/>
+<polyline points="16,104 36,86 52,92 72,64 86,70 102,32" fill="none" stroke="#5dffa0" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#bl)" opacity=".55"/>
+<polyline points="16,104 36,86 52,92 72,64 86,70 102,32" fill="none" stroke="#03140a" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="16,104 36,86 52,92 72,64 86,70 102,32" fill="none" stroke="url(#line)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="16,103 36,85 52,91 72,63 86,69 101,32" fill="none" stroke="#c9ffe0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity=".85"/>
+<polygon points="110,16 109,42 90,30" fill="#6dffab" stroke="#03140a" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="108,20 107.5,34 97,28" fill="#d6ffe8" opacity=".6"/>
+<g filter="url(#sh)" transform="rotate(-42 60 58)">
+ <rect x="55" y="58" width="10" height="50" rx="3.5" fill="url(#wood)" stroke="#1d0d03" stroke-width="2"/>
+ <path d="M58 62 V104" stroke="#d9925a" stroke-width="1.4" opacity=".55"/>
+ <rect x="53" y="66" width="14" height="5" rx="2" fill="url(#goldH)" stroke="#3a2306" stroke-width="1.4"/>
+ <rect x="52.5" y="102" width="15" height="10" rx="4" fill="url(#gold)" stroke="#3a2306" stroke-width="1.8"/>
+ <rect x="30" y="34" width="60" height="26" rx="6" fill="url(#gold)" stroke="#3a2306" stroke-width="2.4"/>
+ <rect x="24" y="30" width="12" height="34" rx="4" fill="url(#gold)" stroke="#3a2306" stroke-width="2.2"/>
+ <rect x="84" y="30" width="12" height="34" rx="4" fill="url(#gold)" stroke="#3a2306" stroke-width="2.2"/>
+ <rect x="36" y="44" width="48" height="6" fill="#8a540f" opacity=".55"/>
+ <path d="M38 38.5 H82" stroke="#fffbe0" stroke-width="2.6" stroke-linecap="round" opacity=".9"/>
+ <path d="M27 34 V44 M87 34 V44" stroke="#fffbe0" stroke-width="2" stroke-linecap="round" opacity=".8"/>
+ <circle cx="60" cy="47" r="4.2" fill="#34c77b" stroke="#3a2306" stroke-width="1.6"/><circle cx="58.8" cy="45.8" r="1.4" fill="#e2ffef"/>
 </g>
-<rect x="4" y="4" width="56" height="56" fill="url(#shine)"/><rect x="4.5" y="4.5" width="55" height="55" fill="none" stroke="#000" stroke-opacity=".55"/>
-</svg>
+<g fill="#fff8d8"><path d="M98 80 l1.6 4.4 4.4 1.6 -4.4 1.6 -1.6 4.4 -1.6 -4.4 -4.4 -1.6 4.4 -1.6z" opacity=".9"/><path d="M26 30 l1 2.8 2.8 1 -2.8 1 -1 2.8 -1 -2.8 -2.8 -1 2.8 -1z" opacity=".7"/></g>
+</g>
+<rect width="128" height="128" fill="url(#vign)"/>
+<path d="M0 0 H128 V52 Q64 38 0 58 Z" fill="url(#gloss)"/>
+<rect x="1" y="1" width="126" height="126" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="2"/></svg>
