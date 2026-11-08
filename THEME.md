@@ -14,7 +14,7 @@ The addon and the companion page are one product, so they share these rules. A c
 
 AuctionIQ (every page but one) is navy, gold and emerald: analytical, decision-making. Its
 Clearinghouse ledger tab is plum, parchment and gold: the books. Switching to the Clearinghouse tab
-re-tints the window and its title reads "Clearinghouse  AuctionIQ ledger".
+re-tints the window and its title reads "Clearinghouse". The Clearinghouse tab sits last, after AuctionIQ's own pages.
 
 ## With ElvUI and ToxiUI
 

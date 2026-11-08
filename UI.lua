@@ -340,7 +340,7 @@ local function buildDashboard(p)
 	local x0 = 262
 	local cw = W - 24 - x0
 	d.title = fs(p, x0, -4, 300, "LEFT", "GameFontNormalLarge")
-	d.sub = fs(p, x0, -26, 300, "LEFT")
+	d.sub = fs(p, x0, -26, cw, "LEFT")
 	d.rangeButtons = {}
 	local bx = W - 24
 	for i = #RANGES, 1, -1 do
@@ -466,18 +466,42 @@ local function buildBriefing(p)
 	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
 end
 
+local TABS = { { "dashboard", "Dashboard" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" }, { "ledger", "Clearinghouse" } }
+
+--- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
+--- after the widest title so a title change never pushes into them.
+local function layoutTabs()
+	local title = frame.title
+	local keep = title:GetText()
+	local widest = 0
+	for _, t in ipairs({ CH.Theme.Color("accent", "AuctionIQ"), CH.Theme.Color("accent", "Clearinghouse") }) do
+		title:SetText(t)
+		widest = math.max(widest, title:GetStringWidth() or 0)
+	end
+	title:SetText(keep)
+	local x = (title:GetLeft() and frame.bar:GetLeft()) and (title:GetLeft() - frame.bar:GetLeft()) or 32
+	x = x + widest + 18
+	for _, pg in ipairs(TABS) do
+		local b = pageButtons[pg[1]]
+		local f = b.text or (b.GetFontString and b:GetFontString())
+		local w = math.max(64, math.ceil((f and f:GetStringWidth() or 60) + 22))
+		b:SetWidth(w)
+		b:ClearAllPoints()
+		b:SetPoint("LEFT", frame.bar, "LEFT", x, 0)
+		x = x + w + 4
+	end
+end
+
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
 	frame.title:SetText(T.Color("accent", "AuctionIQ"))
 	frame.TitleText = frame.title
-	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Clearinghouse" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" } }) do
+	-- AuctionIQ's pages first, then its Clearinghouse ledger last
+	for _, pg in ipairs(TABS) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
-		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
 		pageButtons[pg[1]] = b
-		x = x + 88
 	end
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	frame.gold:SetPoint("RIGHT", frame.close, "LEFT", -10, 0)
@@ -496,6 +520,7 @@ local function build()
 		UI.Refresh()
 	end)
 	T.Fonts(frame)
+	layoutTabs()
 end
 
 -- Drawing -------------------------------------------------------------------------------------
@@ -636,7 +661,7 @@ local function refreshDashboard()
 	d.box.cash:SetText(T.Color(s.cash >= 0 and "ok" or "bad", money(s.cash, true)))
 	local wc = data.worthChange
 	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
-	d.note:SetText("Cash profit counts reagents you bought as spent, like TSM. Net worth change also counts what you still hold, so stock you bought to craft with isn't a loss.")
+	d.note:SetText("Cash profit counts reagents as spent, like TSM. Net worth change counts stock you still hold.")
 	-- activity cards
 	for i, c in ipairs(d.cards) do
 		local a = data.activity[i + d.logOffset]
@@ -666,10 +691,11 @@ function UI.Refresh()
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
 		frame.palette = want
-		frame.title:SetText(want == "clearinghouse" and (CH.Theme.Color("accent", "Clearinghouse") .. "  " .. CH.Theme.Color("muted", "AuctionIQ ledger")) or CH.Theme.Color("accent", "AuctionIQ"))
+		frame.title:SetText(CH.Theme.Color("accent", want == "clearinghouse" and "Clearinghouse" or "AuctionIQ"))
 	end
 	for k, p in pairs(pages) do p:SetShown(k == page) end
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
+	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
 	frame.foot:SetText(CH.Theme.Color("muted", "/aiq scan, /aiq paths, /aiq queue, /aiq results open the crafting tabs.  /aiq help for more.")
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
