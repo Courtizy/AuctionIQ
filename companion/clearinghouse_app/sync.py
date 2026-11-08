@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import export
-from .blizzard import Blizzard, BlizzardError, summarize
+from .blizzard import Blizzard, BlizzardError, depth, summarize
 from .store import Store
 
 log = logging.getLogger("clearinghouse")
@@ -50,7 +50,10 @@ class Syncer:
                 got = call(self.store.get_meta(mkey))
                 if got.data is None:
                     continue
-                self.store.add(now, source, summarize(got.data.get("auctions") or []))
+                auctions = got.data.get("auctions") or []
+                self.store.add(now, source, summarize(auctions))
+                if source == "commodity":
+                    self.store.set_depth(source, depth(auctions))
                 self.store.set_meta(mkey, got.last_modified)
                 fetched.append(source)
         except BlizzardError as e:
@@ -78,7 +81,8 @@ class Syncer:
         realm = self.store.stats("realm", now)
         comm = self.store.stats("commodity", now)
         text = export.render(settings.region, settings.realm, realm, comm,
-                             self.store.latest("realm"), self.store.latest("commodity"), now)
+                             self.store.latest("realm"), self.store.latest("commodity"), now,
+                             self.store.depth("commodity"))
         try:
             export.write_atomic(addon_dir / "Data.lua", text)
         except PermissionError:

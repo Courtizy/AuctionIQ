@@ -267,7 +267,7 @@ function Q.FillPlan(profID, opts)
 	return out
 end
 
---- Reagents for the whole queue: need, have, buy and what buying costs. Sorted by cost, biggest first.
+--- Reagents for the whole queue: need, have, buy and what buying costs, walking the listings. Sorted by cost, biggest first.
 function Q.ShoppingList()
 	local need, rank, tiers = {}, {}, {}
 	for _, e in ipairs(list()) do
@@ -281,10 +281,13 @@ function Q.ShoppingList()
 	for id, n in pairs(need) do
 		local h = have(id)
 		local buy = math.max(0, n - h)
-		local unit = CH.Prices.Get("chmat", "i:" .. id)
-		local cost = unit and unit * buy
+		-- walk the order book for the quantity bought, not chmat x quantity (see Depth.lua)
+		local d = buy > 0 and CH.Depth.Cost(id, buy)
+		local unit = d and d.unit or CH.Prices.Get("chmat", "i:" .. id)
+		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
 		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
+			source = d and d.source, short = d and d.short or 0, first = d and d.first,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end
 	table.sort(out, function(a, b) return (a.cost or 0) > (b.cost or 0) end)

@@ -146,3 +146,25 @@ def test_settings_roundtrip(tmp_path):
 
 def test_lua_string_escaping():
     assert export.lua_quote('a"b\\c') == '"a\\"b\\\\c"'
+
+
+def test_depth_walks_the_cheapest_listings():
+    from clearinghouse_app.blizzard import depth
+    auctions = [{"item": {"id": 1}, "quantity": 8, "unit_price": 200},
+                {"item": {"id": 1}, "quantity": 5, "unit_price": 100},
+                {"item": {"id": 1}, "quantity": 50, "unit_price": 300}]
+    d = depth(auctions, points=(1, 10, 50, 100))
+    # 1 at 100; 10 = 5x100 + 5x200 -> 150; 50 = 500 + 1600 + 37x300 -> 264; all 63 listed
+    assert d[1][0] == (1, 100)
+    assert d[1][1] == (10, 150)
+    assert d[1][2] == (50, -(-(500 + 1600 + 37 * 300) // 50))
+    assert d[1][3] == (63, -(-(500 + 1600 + 50 * 300) // 63))
+
+
+def test_depth_reaches_the_addon(tmp_path):
+    store = Store(tmp_path / "h.db")
+    store.set_depth("commodity", {7: [(1, 100), (10, 150)]})
+    text = export.render("us", "Emerald Dream", {}, {}, 1, 2, 3, store.depth("commodity"))
+    assert 'commodityDepth = "7:1/100,10/150;"' in text
+    store.set_depth("commodity", {8: [(1, 5)]})
+    assert store.depth("commodity") == {8: "1/5"}

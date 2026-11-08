@@ -95,12 +95,11 @@ class Blizzard:
         return self.get("/data/wow/auctions/commodities", "dynamic", since)
 
 
-def summarize(auctions: list[dict], share: float = 0.15) -> dict[int, tuple[int, int, int]]:
-    """Per item id: (lowest unit price, market value, quantity listed), prices in copper.
+DEPTH_POINTS = (1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000)
 
-    Market value is the average unit price of the cheapest `share` of the quantity listed (at least
-    one unit), so a handful of silly high listings don't move it. Bid-only auctions are skipped.
-    """
+
+def _units(auctions: list[dict]) -> dict[int, list[tuple[int, int]]]:
+    """Per item id: [(unit price, quantity)] for buyout listings, cheapest first."""
     by_item: dict[int, list[tuple[int, int]]] = {}
     for a in auctions:
         item = (a.get("item") or {}).get("id")
@@ -114,9 +113,47 @@ def summarize(auctions: list[dict], share: float = 0.15) -> dict[int, tuple[int,
                 continue
             unit = buyout / qty
         by_item.setdefault(int(item), []).append((int(round(unit)), qty))
-    out: dict[int, tuple[int, int, int]] = {}
-    for item, rows in by_item.items():
+    for rows in by_item.values():
         rows.sort()
+    return by_item
+
+
+def depth(auctions: list[dict], points: tuple[int, ...] = DEPTH_POINTS) -> dict[int, list[tuple[int, int]]]:
+    """Per item id: [(quantity, average unit price to buy that many)] walking the cheapest listings.
+
+    One row per point in `points` that the listings can fill, plus one for everything listed when
+    that falls between points. Averages are rounded up, so a cost read from them is never too low.
+    """
+    out: dict[int, list[tuple[int, int]]] = {}
+    for item, rows in _units(auctions).items():
+        total = sum(q for _, q in rows)
+        wants = [p for p in points if p <= total]
+        if total < points[-1] and total not in wants:
+            wants.append(total)
+        ladder, got, spent, i = [], 0, 0, 0
+        for want in wants:
+            while got < want:
+                price, q = rows[i]
+                take = min(q, want - got)
+                got += take
+                spent += take * price
+                if take == q:
+                    i += 1
+                else:
+                    rows[i] = (price, q - take)
+            ladder.append((want, -(-spent // want)))
+        out[item] = ladder
+    return out
+
+
+def summarize(auctions: list[dict], share: float = 0.15) -> dict[int, tuple[int, int, int]]:
+    """Per item id: (lowest unit price, market value, quantity listed), prices in copper.
+
+    Market value is the average unit price of the cheapest `share` of the quantity listed (at least
+    one unit), so a handful of silly high listings don't move it. Bid-only auctions are skipped.
+    """
+    out: dict[int, tuple[int, int, int]] = {}
+    for item, rows in _units(auctions).items():
         total = sum(q for _, q in rows)
         want = max(1, int(total * share))
         got, spent = 0, 0
