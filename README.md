@@ -62,7 +62,10 @@ One window, six tabs:
   queue one, shift-click to queue as many as you can make. Fill queues the open profession's five best
   crafts. Craft makes the queued crafts with the advisor's reagents and Concentration, and finished
   crafts come off the queue. The shopping list totals the reagents for the whole warband's queue
-  against what you have and prices what's left to buy.
+  against what you have and prices what's left to buy by walking the listings: buying 200 of a
+  reagent costs what the cheapest 200 listed cost, not 200 times the cheapest one. It uses your AH
+  search from the last 15 minutes, else the Clearinghouse app's last commodity scan, else `chmat`.
+  Hover a cost to see how far above the cheapest listing it is.
 - Learns your characters and professions as you play. Open each profession window once.
 
 | Command | Does |

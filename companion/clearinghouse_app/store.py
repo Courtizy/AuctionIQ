@@ -51,6 +51,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS daily (day TEXT, source TEXT, item INTEGER, sum_mkt INTEGER, n INTEGER, minp INTEGER, sum_qty INTEGER,
                 PRIMARY KEY (day, source, item));
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE IF NOT EXISTS depth (source TEXT, item INTEGER, ladder TEXT, PRIMARY KEY (source, item));
             """
         )
 
@@ -78,6 +79,20 @@ class Store:
         cur.execute("DELETE FROM snap WHERE ts < ?", (ts - SNAP_DAYS * 86400,))
         cur.execute("DELETE FROM daily WHERE day < ?", (day_of(ts - DAILY_DAYS * 86400),))
         self.db.commit()
+
+    @locked
+    def set_depth(self, source: str, ladders: dict[int, list[tuple[int, int]]]) -> None:
+        """Replace the order book of `source` with the latest scan's ladders."""
+        cur = self.db.cursor()
+        cur.execute("DELETE FROM depth WHERE source = ?", (source,))
+        cur.executemany("INSERT INTO depth VALUES (?, ?, ?)",
+                        [(source, item, ",".join(f"{q}/{p}" for q, p in rows)) for item, rows in ladders.items()])
+        self.db.commit()
+
+    @locked
+    def depth(self, source: str) -> dict[int, str]:
+        """The latest ladder of each item in `source`, as "qty/avg,qty/avg" text."""
+        return dict(self.db.execute("SELECT item, ladder FROM depth WHERE source = ?", (source,)).fetchall())
 
     @locked
     def latest(self, source: str) -> int | None:

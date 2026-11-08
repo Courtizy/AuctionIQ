@@ -215,10 +215,16 @@ local function answered(id)
 	if waiting and waiting.id == id then
 		local w = waiting
 		waiting = nil
-		w.done(A.Results(w.id, w.key, w.commodity))
+		local res = A.Results(w.id, w.key, w.commodity)
+		if w.commodity and CH.Depth then CH.Depth.Remember(w.id, res) end
+		w.done(res)
 	end
 end
-CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(id) answered(id) end)
+CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(id)
+	-- your own searches at the AH price big buys too (see Depth.lua)
+	if not (waiting and waiting.id == id) and CH.Depth and id then CH.Depth.Remember(id, A.Results(id, nil, true)) end
+	answered(id)
+end)
 CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(key) answered(key and key.itemID) end)
 
 --- How many of an item are in your bags (unbound).

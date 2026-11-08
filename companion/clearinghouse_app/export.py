@@ -2,7 +2,8 @@
 
 Each source is one long string of "id:min,market,qty,avg7,avg30,change7,vol30,days;" entries (prices
 in copper, change and volatility in tenths of a percent, blank when unknown), parsed in game on first
-use. One string keeps the file small and stays far under Lua's limit on constants per chunk.
+use. commodityDepth is "id:qty/avg,qty/avg;" per commodity: the average unit price of buying that many
+from the cheapest listings at the last scan, so AuctionIQ can price a big reagent buy. One string keeps the file small and stays far under Lua's limit on constants per chunk.
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ def lua_quote(s: str) -> str:
 
 
 def render(region: str, realm: str, realm_stats: dict[int, ItemStats], commodity_stats: dict[int, ItemStats],
-           realm_ts: int | None, commodity_ts: int | None, now: int | None = None) -> str:
+           realm_ts: int | None, commodity_ts: int | None, now: int | None = None,
+           commodity_depth: dict[int, str] | None = None) -> str:
     now = int(now or time.time())
+    book = "".join(f"{item}:{ladder};" for item, ladder in sorted((commodity_depth or {}).items()))
     return (
         "-- Written by the Clearinghouse app. Don't edit: it's replaced on every sync.\n"
         "ClearinghouseData = {\n"
@@ -45,6 +48,7 @@ def render(region: str, realm: str, realm_stats: dict[int, ItemStats], commodity
         f"\tcommodityScan = {commodity_ts or 0},\n"
         f"\trealmItems = {lua_quote(encode(realm_stats))},\n"
         f"\tcommodities = {lua_quote(encode(commodity_stats))},\n"
+        f"\tcommodityDepth = {lua_quote(book)},\n"
         "}\n"
     )
 

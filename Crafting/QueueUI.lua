@@ -20,6 +20,23 @@ local function itemHover(parent, x, y, w)
 	return hit
 end
 
+--- Hover lines for a shopping row's cost: where the price came from and how far up the book it goes.
+function QUI.CostLines(s)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = {}
+	if not s or s.buy <= 0 or not s.cost then return out end
+	local from = s.source == "ah" and "your AH search" or s.source == "app" and "the Clearinghouse app's last scan" or "chmat (no listings seen)"
+	out[#out + 1] = "Buying " .. s.buy .. " costs " .. M(s.cost)
+	if s.first and s.source ~= "chmat" then
+		out[#out + 1] = T.Color("muted", "Cheapest " .. M(s.first) .. " each, " .. M(math.floor(s.unit + 0.5)) .. " each on average")
+		local slip = s.first > 0 and s.unit / s.first - 1 or 0
+		if slip >= 0.005 then out[#out + 1] = T.Color("accent", string.format("%d%% above the cheapest listing", math.floor(slip * 100 + 0.5))) end
+	end
+	if (s.short or 0) > 0 then out[#out + 1] = T.Color("bad", "Only " .. (s.buy - s.short) .. " listed; the rest is priced at the top listing") end
+	out[#out + 1] = T.Color("muted", "From " .. from)
+	return out
+end
+
 local function classColor(class)
 	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
 	return c and c.colorStr and ("|c" .. c.colorStr) or "|cffffffff"
@@ -158,6 +175,17 @@ local function build()
 		local r = {}
 		for j, c in ipairs(cols) do r[j] = CH.Window.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
 		r.hit = itemHover(panel, 12, ry, 250)
+		r.costHit = CreateFrame("Button", nil, panel)
+		r.costHit:SetPoint("TOPLEFT", 432, ry + 2)
+		r.costHit:SetSize(96, 18)
+		r.costHit:SetScript("OnEnter", function(self)
+			local lines = QUI.CostLines(self.row)
+			if not lines[1] then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			for _, l in ipairs(lines) do GameTooltip:AddLine(l, 1, 1, 1) end
+			GameTooltip:Show()
+		end)
+		r.costHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		srows[i] = r
 	end
 	local swheel = CreateFrame("Frame", nil, panel)
@@ -211,18 +239,19 @@ function QUI.Refresh()
 		end
 	end
 	local shop, total = CH.Queue.ShoppingList()
-	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", "  buy for " .. CH.FormatMoney(total) .. " at chmat") or ""))
+	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", "  buy for " .. CH.FormatMoney(total) .. ", walking the listings") or ""))
 	sOffset = math.max(0, math.min(sOffset, #shop - SROWS))
 	if #shop > SROWS then shopHead:SetText(shopHead:GetText() .. CH.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shop, sOffset + SROWS), #shop))) end
 	for i, r in ipairs(srows) do
 		local s = shop[i + sOffset]
 		r.hit.id = s and s.itemID
+		r.costHit.row = s
 		if s then
 			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
 			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
 			r[4]:SetText(s.buy > 0 and T.Color("accent", tostring(s.buy)) or T.Color("muted", "0"))
-			r[5]:SetText(s.buy > 0 and CH.FormatMoney(s.cost) or "")
+			r[5]:SetText(s.buy > 0 and s.cost and T.Color((s.short or 0) > 0 and "bad" or "fg", CH.FormatMoney(s.cost)) or "")
 			table.insert(lines.shop, string.format("%s need=%d have=%d buy=%d", s.name, s.need, s.have, s.buy))
 		else
 			for j = 1, 5 do r[j]:SetText("") end

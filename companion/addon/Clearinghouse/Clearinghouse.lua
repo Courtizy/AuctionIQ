@@ -34,6 +34,22 @@ function ClearinghouseMarket.Get(id)
 	return nil
 end
 
+--- The order book of a commodity at the app's last scan: { { qty, avg }, ... } where avg is the
+--- average unit price of buying qty from the cheapest listings, smallest qty first. nil if unknown.
+function ClearinghouseMarket.Depth(id)
+	id = tonumber(id)
+	local rest = id and (index.commodityDepth or build("commodityDepth"))[id]
+	if not rest then return nil end
+	local out = {}
+	for q, p in rest:gmatch("(%d+)/(%d+)") do out[#out + 1] = { tonumber(q), tonumber(p) } end
+	return out[1] and out or nil
+end
+
+--- When the commodity scan behind Depth was taken (unix time).
+function ClearinghouseMarket.DepthTime()
+	return data.commodityScan or 0
+end
+
 --- When the data was written (unix time), and for which realm.
 function ClearinghouseMarket.Info()
 	return data.updated or 0, data.realm or "", data.region or ""
