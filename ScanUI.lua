@@ -7,6 +7,7 @@ CH.ScanUI = SUI
 local frame, rows, status
 local N, W, H = 16, 836, 18
 local offset, sortKey, data = 0, "profit", {}
+local showOlder = true
 
 local COLS = { { "Recipe", 12, 196 }, { "Profit (can make)", 210, 114 }, { "%", 326, 40 }, { "With Conc. (can make)", 368, 128 },
 	{ "Per pt", 498, 60 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
@@ -21,6 +22,10 @@ end
 local function click(i)
 	local r = data[i + offset]
 	if not r then return end
+	if r.header then
+		if not r.current then showOlder = false; offset = 0; SUI.Refresh() end
+		return
+	end
 	if IsShiftKeyDown and IsShiftKeyDown() then
 		local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
 		if ok and result and result.best then
@@ -36,7 +41,13 @@ local function hover(owner, i)
 	local r = data[i + offset]
 	if not r then return end
 	local T = CH.Theme
+	if r.header then
+		CH.Window.Tooltip(owner, { { T.Color("accent", r.expansion) }, { T.Color("muted", r.current
+			and "Recipes from the current expansion." or "Older expansion recipes: usually fewer buyers, so check Sold/day. Click to hide them.") } })
+		return
+	end
 	local lines = { { T.Color("accent", r.name or "?") } }
+	if r.expansion then table.insert(lines, { "Expansion", r.expansion .. (r.current and "" or T.Color("muted", "  (older)")) }) end
 	if r.quality then table.insert(lines, { "Best without Concentration", CH.Window.QualityIcon(r.quality, 14, r.tiers) .. " " .. CH.FormatMoney(r.profit) }) end
 	if r.cost then table.insert(lines, { "Reagents", CH.FormatMoney(r.cost) }) end
 	if r.perPoint then
@@ -87,6 +98,10 @@ local function build()
 		b:SetScript("OnClick", function() sortKey = s[1]; offset = 0; SUI.Refresh() end)
 		x = x - 60
 	end
+	local older = T.Button(frame.bar, "Older: shown", 100, 18)
+	older:SetPoint("RIGHT", x - 54, 0)
+	older:SetScript("OnClick", function() showOlder = not showOlder; offset = 0; SUI.Refresh() end)
+	SUI.olderButton = older
 	local scan = T.Button(frame.bar, "Scan", 50, 18)
 	scan:SetPoint("RIGHT", x, 0)
 	scan:SetScript("OnClick", function() SUI.Start() end)
@@ -110,23 +125,53 @@ function SUI.Refresh()
 	data = {}
 	local prof = profID and CH.Me().professions[profID]
 	local concNow = prof and CH.ConcentrationNow(prof)
+	local current = s and (s.currentLine or CH.Scan.CurrentLine(s.rows))
+	local groups, order, hidden, count = {}, {}, 0, 0
 	for _, r in ipairs(s and s.rows or {}) do
+		if not r.line then r.line, r.expansion = CH.Scan.Expansion(r.recipeID) end
+		r.current = not r.line or not current or r.line == current
 		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
 		r.bc = CH.Scan.BuyOrCraft(r)
 		r.buySave = r.bc and r.bc.save
-		table.insert(data, r)
+		if r.current or showOlder then
+			local key = r.current and math.huge or (r.line or 0)
+			if not groups[key] then groups[key] = {}; table.insert(order, key) end
+			table.insert(groups[key], r)
+			count = count + 1
+		else
+			hidden = hidden + 1
+		end
 	end
-	CH.Scan.Sort(data, sortKey)
+	-- the current expansion first, then older ones newest first, each under its own header
+	table.sort(order, function(a, b) return a > b end)
+	local split = #order > 1 or (#order == 1 and order[1] ~= math.huge)
+	for _, key in ipairs(order) do
+		local g = CH.Scan.Sort(groups[key], sortKey)
+		if split then
+			local cur = key == math.huge
+			table.insert(data, { header = true, current = cur, n = #g,
+				expansion = g[1].expansion or (cur and "Current expansion" or "Older recipes") })
+		end
+		for _, r in ipairs(g) do table.insert(data, r) end
+	end
+	if SUI.olderButton then SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden") end
 	if not CH.Scan.IsRunning() then
-		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.", #data,
-			date and date("%H:%M", s.at) or "", SORTS[sortKey] or sortKey))
+		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.%s", count,
+			date and date("%H:%M", s.at) or "", SORTS[sortKey] or sortKey,
+			hidden > 0 and string.format(" %d from older expansions hidden.", hidden) or ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
-		if d then
-			r.cells[1]:SetText(CH.Window.ItemIcon(d.item or d.concItem, 15) .. CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. (d.name or "?"))
+		if d and d.header then
+			for _, c in ipairs(r.cells) do c:SetText("") end
+			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion))
+			r.cells[2]:SetText(T.Color("muted", string.format(d.current and "current, %d" or "older, %d", d.n)))
+			table.insert(out, "== " .. d.expansion)
+		elseif d then
+			r.cells[1]:SetText(CH.Window.ItemIcon(d.item or d.concItem, 15) .. CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " "
+				.. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			local function n(k) return k and T.Color(k > 0 and "accent" or "muted", " (" .. k .. ")") or "" end
 			r.cells[2]:SetText(money(d.profit) .. n(d.canMake))
 			r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")

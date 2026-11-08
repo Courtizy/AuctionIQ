@@ -92,6 +92,30 @@ local function summary(result)
 end
 Sc.Summary = summary
 
+--- The expansion a recipe comes from: its skill line ID and a short name such as "Khaz Algar".
+function Sc.Expansion(recipeID)
+	local ui = C_TradeSkillUI
+	if not ui.GetTradeSkillLineForRecipe then return nil end
+	local ok, line, lineName = pcall(ui.GetTradeSkillLineForRecipe, recipeID)
+	if not ok or not line then return nil end
+	for _, p in ipairs(ui.GetChildProfessionInfos and ui.GetChildProfessionInfos() or {}) do
+		if p.professionID == line and p.expansionName and p.expansionName ~= "" then return line, p.expansionName end
+	end
+	-- "Khaz Algar Alchemy" -> "Khaz Algar"; the classic line is just "Alchemy"
+	return line, lineName and lineName:match("^(.-)%s+%S+$") or "Classic"
+end
+
+--- The current expansion's skill line: the newest of the profession's lines, else the newest in rows.
+function Sc.CurrentLine(rows)
+	local ui, best = C_TradeSkillUI, nil
+	for _, p in ipairs(ui.GetChildProfessionInfos and ui.GetChildProfessionInfos() or {}) do
+		if p.professionID and (not best or p.professionID > best) then best = p.professionID end
+	end
+	if best then return best end
+	for _, r in ipairs(rows or {}) do if r.line and (not best or r.line > best) then best = r.line end end
+	return best
+end
+
 --- Recipe IDs worth scanning in the open profession.
 function Sc.Recipes()
 	local out = {}
@@ -120,7 +144,7 @@ function Sc.Run(onStep, onDone)
 				running = false
 				table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
 				local p = CH.Me().professions[profID]
-				if p then p.scan = { at = time(), rows = rows } end
+				if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows) } end
 				if onDone then onDone(rows) end
 				return
 			end
@@ -128,7 +152,11 @@ function Sc.Run(onStep, onDone)
 			if ok and model then
 				Sc.models[profID][id] = model
 				local ok2, result = pcall(CH.Advisor.Evaluate, model)
-				if ok2 and result and (result.best or result.bestConc) then table.insert(rows, summary(result)) end
+				if ok2 and result and (result.best or result.bestConc) then
+					local row = summary(result)
+					row.line, row.expansion = Sc.Expansion(id)
+					table.insert(rows, row)
+				end
 			end
 		end
 		if onStep then onStep(i, #ids) end
