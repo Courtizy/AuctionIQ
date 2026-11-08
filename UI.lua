@@ -428,7 +428,7 @@ local function build()
 	frame.title:SetText(T.Color("accent", "Clearinghouse"))
 	frame.TitleText = frame.title
 	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "briefing", "Briefing" } }) do
+	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "briefing", "Briefing" } }) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
 		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
@@ -437,7 +437,8 @@ local function build()
 	end
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	frame.gold:SetPoint("RIGHT", frame.close, "LEFT", -10, 0)
-	for _, b in ipairs({ buildDashboard, buildLedger, buildBriefing }) do
+	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildBriefing }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
@@ -620,6 +621,7 @@ function UI.Refresh()
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
 	if page == "dashboard" then return refreshDashboard()
 	elseif page == "ledger" then return refreshLedger()
+	elseif page == "groups" then return CH.GroupsUI.Refresh()
 	else
 		text:SetText(UI.BriefingText())
 		text:GetParent():SetHeight(text:GetStringHeight() + 10)

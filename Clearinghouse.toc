@@ -27,6 +27,10 @@ Cooldowns.lua
 Ledger.lua
 LedgerUI.lua
 Par.lua
+Groups.lua
+Auction.lua
+AuctionUI.lua
+GroupsUI.lua
 UI.lua
 Minimap.lua
 Advisor.lua
