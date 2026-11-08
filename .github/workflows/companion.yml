@@ -6,7 +6,11 @@ on:
   push:
     branches: [main]
     paths: ["companion/**", ".github/workflows/companion.yml"]
+    tags: ["companion-v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -40,18 +44,41 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements.txt pyinstaller
       - run: >
-          pyinstaller --noconfirm --onefile --windowed --name Clearinghouse
+          pyinstaller --noconfirm --onedir --windowed --name Clearinghouse
           --icon clearinghouse.ico
           --add-data "clearinghouse_app/icon.png;."
           --add-data "clearinghouse.ico;."
+          --add-data "clearinghouse_app/ui;ui"
           --hidden-import pystray._win32
           --hidden-import keyring.backends.Windows
+          --collect-all webview
           run_clearinghouse.py
       - name: Smoke test the build imports
-        run: python -c "import clearinghouse_app.app, pystray, keyring, PIL"
+        run: python -c "import clearinghouse_app.app, clearinghouse_app.api, pystray, keyring, PIL, webview"
+      - name: Installer
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress | Out-Null }
+          $v = python -c "import clearinghouse_app; print(clearinghouse_app.__version__)"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer.iss
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+        shell: pwsh
+        run: |
+          $v = python -c "import clearinghouse_app; print(clearinghouse_app.__version__)"
+          if ("companion-v$v" -ne "${{ github.ref_name }}") { Write-Error "Tag ${{ github.ref_name }} but the app says $v"; exit 1 }
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          Compress-Archive -Path addon/Clearinghouse -DestinationPath dist/Clearinghouse-addon.zip -Force
+          gh release create "${{ github.ref_name }}" dist/Clearinghouse-Setup.exe dist/Clearinghouse-addon.zip `
+            --title "Clearinghouse ${{ github.ref_name }}" --notes "Install or update with Clearinghouse-Setup.exe. The app updates itself from here."
       - uses: actions/upload-artifact@v4
         with:
           name: Clearinghouse-app-and-addon
           path: |
-            companion/dist/Clearinghouse.exe
+            companion/dist/Clearinghouse-Setup.exe
             companion/addon/Clearinghouse

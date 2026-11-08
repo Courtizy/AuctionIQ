@@ -5,4 +5,4 @@ the Clearinghouse addon folder for AuctionIQ to read in game. It only writes int
 AddOns/Clearinghouse: never WoW's SavedVariables and never TradeSkillMaster's files.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

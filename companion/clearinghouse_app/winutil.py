@@ -48,8 +48,8 @@ def wow_running() -> bool:
 
 def exe_command() -> str:
     if getattr(sys, "frozen", False):
-        return f'"{sys.executable}"'
-    return f'"{sys.executable}" -m clearinghouse_app'
+        return f'"{sys.executable}" --minimized'
+    return f'"{sys.executable}" -m clearinghouse_app --minimized'
 
 
 def start_with_windows() -> bool:
