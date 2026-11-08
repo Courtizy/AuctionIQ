@@ -6,8 +6,8 @@ local _, CH = ...
 local PUI = {}
 CH.PathsUI = PUI
 local frame, input, out, pointsText, goalButtons, tabButtons, view, treeNote
-local W, H = 780, 560
-local TREE_W, TREE_H = 420, 372
+local W, H = 780, 700
+local TREE_W, TREE_H = 756, 330 -- the whole tree across the window; the plan explained below it
 local extra = 0
 local lastPlan
 local selectedTab
@@ -46,9 +46,12 @@ function PUI.DrawTree()
 		local first = plan and plan.steps[1] and tree.layout[plan.steps[1].node]
 		if first then selectedTab = first.tab end
 	end
+	local tx = 12
 	for i, b in ipairs(tabButtons) do
 		local t = tabs[i]
 		if t then
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", frame, "TOPLEFT", tx, -136)
 			local n = 0
 			for _, id in ipairs(t.nodes) do if marks[id] then n = n + 1 end end
 			setLabel(b, t.name .. (n > 0 and (" (" .. n .. ")") or ""))
@@ -56,6 +59,9 @@ function PUI.DrawTree()
 			local c = t.id == selectedTab and T.accent or T.fg
 			if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
 			b:SetScript("OnClick", function() selectedTab = t.id; PUI.DrawTree() end)
+			local w = math.max(80, math.ceil((fs and fs.GetStringWidth and fs:GetStringWidth() or 90) + 20))
+			b:SetWidth(w)
+			tx = tx + w + 4
 			b:Show()
 		else
 			b:Hide()
@@ -163,15 +169,15 @@ local function build()
 		local b = T.Button(frame, "", 104, 18)
 		b:SetPoint("TOPLEFT", 12 + (i - 1) * 108, -136)
 		b:Hide()
-		tabButtons[i] = b
+		tabButtons[i] = b -- widths and positions set from their names in DrawTree
 	end
 	view = CH.TreeView.New(frame, 12, -160, TREE_W, TREE_H)
 	treeNote = CH.Window.OneLine(Wd.Text(frame, 12, -160 - TREE_H - 4, TREE_W))
 
 	local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", TREE_W + 24, -160)
+	scroll:SetPoint("TOPLEFT", 12, -160 - TREE_H - 24)
 	scroll:SetPoint("BOTTOMRIGHT", -30, 12)
-	local cw = W - TREE_W - 58
+	local cw = W - 54
 	local child = CreateFrame("Frame", nil, scroll)
 	child:SetSize(cw, 10)
 	scroll:SetScrollChild(child)

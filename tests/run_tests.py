@@ -545,6 +545,12 @@ check("scan: with Concentration, a finishing reagent or the points cap it", cr[2
 cr2 = L.eval("{ Clearinghouse.Scan.Craftable({ concAccounts = { reagents = { { itemID = 901, n = 1 } } }, concentration = 300 }, 650) }")
 check("scan: Concentration points can be the limit", cr2[2] == 2 and cr2[4] == "concentration")
 
+# paths: profession trees that report every node at 0,0 get a tidy tree layout
+lay = L.eval("Clearinghouse.TreeView.Layout({ nodes = { 1, 2, 3, 4 } }, { [1] = { x = 0, y = 0 }, [2] = { x = 0, y = 0, parent = 1 }, [3] = { x = 0, y = 0, parent = 1 }, [4] = { x = 0, y = 0, parent = 2 } })")
+check("paths tree: root on top, children a row below, spread out", lay[1].y == 0 and lay[2].y == 1 and lay[4].y == 2 and lay[2].x != lay[3].x and lay[1].x == (lay[2].x + lay[3].x) / 2)
+lay2 = L.eval("Clearinghouse.TreeView.Layout({ nodes = { 1, 2 } }, { [1] = { x = 10, y = 5 }, [2] = { x = 40, y = 90, parent = 1 } })")
+check("paths tree: the game's own positions win when it gives them", lay2[2].x == 40 and lay2[2].y == 90)
+
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")
 inv2 = {e.id: e for e in LG.Inventory().values()}
