@@ -99,6 +99,8 @@ ml = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best,
 check("max hover lists have and need", ("item 204 Q2", "12 have, 5 each") in ml)
 run('Clearinghouse.db.settings.advisor.hide = false; STUB.Fire("TRADE_SKILL_SHOW")')
 check("advisor panel shows with the profession window", CH.AdvisorUI.IsShown())
+col = L.eval('function(x) local f = { GetLeft = function() return 0 end, GetEffectiveScale = function() return 1 end }; local g = GetCursorPosition; GetCursorPosition = function() return x, 0 end; local c = Clearinghouse.AdvisorUI.ColumnAt(f); GetCursorPosition = g; return c end')
+check("row hover picks the column under the cursor", col(200) == 3 and col(250) == 4 and col(350) == 5 and col(500) == 7 and col(20) is None)
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
 check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 

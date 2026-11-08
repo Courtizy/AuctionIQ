@@ -103,17 +103,19 @@ local function build()
 		click:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
 		click:SetSize(WIDTH - 12, 20)
 		click:SetScript("OnClick", function() AUI.RowClick(i) end)
-		r.hover = {}
-		for _, col in ipairs(HOVER) do
-			local h = CreateFrame("Frame", nil, panel)
-			h:SetPoint("TOPLEFT", 12 + COLS[col][2], y - i * 20 + 3)
-			h:SetSize(COLS[col][3], 18)
-			h:EnableMouse(true)
-			h:SetScript("OnEnter", function(self) AUI.ShowBreakdown(self, i, col) end)
-			h:SetScript("OnLeave", function() GameTooltip:Hide() end)
-			h:SetScript("OnMouseUp", function() AUI.RowClick(i) end)
-			r.hover[col] = h
-		end
+		-- One mouse frame per row: the column under the cursor picks the breakdown. (Separate hover
+		-- frames per cell overlapped the next row's click frame, so only the first row's showed.)
+		click:SetScript("OnEnter", function(self)
+			self.col = nil
+			self:SetScript("OnUpdate", function()
+				local col = AUI.ColumnAt(self)
+				if col ~= self.col then
+					self.col = col
+					if col then AUI.ShowBreakdown(self, i, col) else GameTooltip:Hide() end
+				end
+			end)
+		end)
+		click:SetScript("OnLeave", function(self) self:SetScript("OnUpdate", nil); self.col = nil; GameTooltip:Hide() end)
 		rows[i] = r
 	end
 	notes = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -331,6 +333,17 @@ function AUI.BreakdownLines(result, r, col)
 		end
 	end
 	return lines
+end
+
+--- The hover column (cost, sells for, profit, max) under the cursor on a row's frame, or nil.
+function AUI.ColumnAt(frame)
+	local left = frame.GetLeft and frame:GetLeft()
+	if not left or not GetCursorPosition then return nil end
+	local x = GetCursorPosition() / (frame:GetEffectiveScale() or 1) - left
+	for _, col in ipairs(HOVER) do
+		local c = COLS[col]
+		if x >= 6 + c[2] and x <= 6 + c[2] + c[3] then return col end
+	end
 end
 
 function AUI.ShowBreakdown(owner, i, col)
