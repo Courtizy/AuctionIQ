@@ -105,20 +105,29 @@ TradeSkillMaster, for prices. Without it the report still tracks gold and Concen
 
 ## Roadmap
 
-1. Shared price source (done)
-2. Core addon: briefing and tooltips (done)
-3. Crafting advisor in the profession window (done)
-4. Craft queue and shopping list (done), then CraftSim's remaining features and profession paths
-   (this version)
-5. Flip finder
-6. Inventory and sales tracking
-7. Posting and cancelling
+The plan lives in GitHub milestones, one per phase (Phase 0: prove what's built, through Phase 5:
+release), with an issue per item labelled by component.
 
 ## Development
 
 Plain Lua, no libraries. `python3 tests/run_tests.py` (needs `pip install lupa`) loads the addon in
 a stubbed WoW environment and checks prices, tooltips, profession tracking and the briefing. Tagging
 `v*` builds a release with the BigWigs packager.
+
+The code is split into one folder per component, each with its own `comp:` label on GitHub:
+
+| Folder | What it owns |
+| --- | --- |
+| `Core/` | Start-up, settings, theme, window, tab bar, minimap button, tooltips, alerts |
+| `Data/` | Price sources, TSM-syntax formulas, the sales ledger, item stats |
+| `Today/` | The opening page: what to do next |
+| `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
+| `Trading/` | Groups and operations, posting and cancelling, mail |
+| `Analytics/` | Par levels; forecast vs actual lands here |
+| `Clearinghouse/` | The ledger tab and reports |
+| `companion/` | The Clearinghouse desktop app and its addon (not packaged with AuctionIQ) |
+
+`AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them.
 
 MIT licence.
 
