@@ -24,52 +24,72 @@ function CH.CraftAccounts(id)
 	return found, foundAcc, at
 end
 
--- Accounting lines for a craft, TSM-style: reagents, sales, procs, profit. Indented sub-lines.
+-- Lines are { left, right, right colour, left colour }. A left text starting with spaces is a
+-- line item under the heading above it; four spaces is a detail under a line item.
+local function cutPct() return string.format("AH cut (%d%%)", math.floor((1 - CH.AH_CUT) * 100 + 0.5)) end
+
+-- A craft as a statement: revenue (sales, Multicraft, the cut), then reagents itemised, then profit.
 local function craftLines(lines, row, acc, at)
 	local T, m = CH.Theme, CH.FormatMoney
 	local how = acc.concentration and string.format("with Concentration (%d)", acc.concentration) or "without Concentration"
-	table.insert(lines, { "Crafting, per craft", T.Color("muted", how .. (at and date and date(", scan %H:%M", at) or "")), "accent" })
+	table.insert(lines, { "Crafting, per craft", T.Color("muted", how .. (at and date and date(", scan %H:%M", at) or "")) })
+	-- revenue, before the cut
+	local cut = CH.AH_CUT
+	local sales, mc = acc.sales or 0, acc.mcGold or 0
+	local made = math.floor((acc.made or 0) * 10 + 0.5) / 10
+	table.insert(lines, { string.format("  Sales, %g made at %s", made, m((acc.unit or 0) / cut)), m(sales / cut) })
+	if mc ~= 0 then
+		table.insert(lines, { string.format("  Multicraft, +%.2f items on average", acc.extraItems or 0), "+" .. m(mc / cut), "ok" })
+	end
+	table.insert(lines, { "  " .. cutPct(), m(-((sales + mc) / cut - (sales + mc))), "bad" })
+	table.insert(lines, { "  Revenue after cut", m(sales + mc), nil, "accent" })
+	-- reagents, itemised
+	table.insert(lines, { "  Reagents", m(-(acc.cost or 0)), "bad" })
 	for _, rg in ipairs(acc.reagents or {}) do
 		local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)) or ("item " .. rg.itemID)
 		local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. CH.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
 		local n = string.format("%g", math.floor(rg.n * 10 + 0.5) / 10)
-		table.insert(lines, { "    " .. name .. q .. " x" .. n, rg.cost and m(rg.cost) or "-", "muted" })
+		table.insert(lines, { "    " .. n .. "x " .. name .. q, rg.cost and m(rg.cost) or "-", "muted", "muted" })
 	end
-	table.insert(lines, { "  Reagents", m(-(acc.cost or 0)), "bad" })
-	if acc.sales then
-		table.insert(lines, { string.format("  Sales, %g made at %s", math.floor((acc.made or 0) * 10 + 0.5) / 10, m(acc.unit or 0)), m(acc.sales) })
+	local res = acc.resGold or 0
+	if res ~= 0 then
+		table.insert(lines, { "  Resourcefulness, reagents saved", "+" .. m(res), "ok" })
+		table.insert(lines, { "  Reagents after savings", m(-((acc.cost or 0) - res)), "bad", "accent" })
 	end
-	if (acc.mcGold or 0) ~= 0 then
-		table.insert(lines, { string.format("  Multicraft, +%.2f items on average", acc.extraItems or 0), "+" .. m(acc.mcGold), "ok" })
-	end
-	if (acc.resGold or 0) ~= 0 then table.insert(lines, { "  Resourcefulness, reagents saved", "+" .. m(acc.resGold), "ok" }) end
+	-- the bottom line
+	local good = acc.profit >= 0 and "ok" or "bad"
+	table.insert(lines, { "Profit per craft", m(acc.profit), good })
 	local items = (acc.made or 1) + (acc.extraItems or 0)
-	table.insert(lines, { "  Profit per craft", m(acc.profit), acc.profit >= 0 and "ok" or "bad" })
 	if items > 0 then
-		table.insert(lines, { string.format("  Profit per item (%.2f a craft)", items), m(acc.profit / items), acc.profit >= 0 and "ok" or "bad" })
+		table.insert(lines, { string.format("  Per item (%.2f a craft)", items), m(acc.profit / items), good })
 	end
 	if acc.avgConcentration and acc.avgConcentration > 0 then
-		table.insert(lines, { "  Per Concentration point", m(acc.profit / acc.avgConcentration), "ok" })
+		table.insert(lines, { string.format("  Per Concentration point (%d)", acc.avgConcentration), m(acc.profit / acc.avgConcentration), good })
 	end
 end
 
 function CH.TooltipLines(link)
 	local lines = {}
-	local shownNow
+	local m = CH.FormatMoney
 	local value = CH.Prices.Get("chvalue", link)
+	local now, post = CH.Prices.Get("chmat", link), CH.Prices.Get("chpost", link)
 	if value then
-		table.insert(lines, { "Clearinghouse value", CH.FormatMoney(value * CH.AH_CUT) .. " after cut" })
-		local now, post = CH.Prices.Get("chmat", link), CH.Prices.Get("chpost", link)
-		shownNow = now and post
-		if shownNow then
-			table.insert(lines, { "    Lower of buy now / post price", CH.FormatMoney(now) .. " / " .. CH.FormatMoney(post), "muted" })
+		-- sale price, the cut, what you keep
+		table.insert(lines, { "Clearinghouse value", "" })
+		if now and post then
+			table.insert(lines, { "    Buy now (lowest listing)", m(now), "muted", "muted" })
+			table.insert(lines, { "    Post price", m(post), "muted", "muted" })
+			local lower = math.abs(value - math.min(now, post)) < 1
+			table.insert(lines, { lower and "  Sale price, the lower" or "  Sale price", m(value) })
+		else
+			table.insert(lines, { "  Sale price", m(value) })
 		end
+		table.insert(lines, { "  " .. cutPct(), m(-(value - value * CH.AH_CUT)), "bad" })
+		table.insert(lines, { "  Value after cut", m(value * CH.AH_CUT), "ok", "accent" })
 		local sold = CH.Prices.Get("avgsell", link)
-		if sold then table.insert(lines, { "    Your average sale", CH.FormatMoney(sold), "muted" }) end
-	end
-	local mat = CH.Prices.Get("chmat", link)
-	if mat and mat ~= value and not shownNow then
-		table.insert(lines, { "Clearinghouse buy price", CH.FormatMoney(mat) })
+		if sold then table.insert(lines, { "    Your average sale", m(sold), "muted", "muted" }) end
+	elseif now then
+		table.insert(lines, { "Clearinghouse buy price", m(now) })
 	end
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
@@ -78,7 +98,7 @@ function CH.TooltipLines(link)
 		local profit = CH.Prices.CraftProfit(link)
 		if profit then
 			local word = profit >= 0 and "Craft profit" or "Craft loss"
-			table.insert(lines, { word, CH.FormatMoney(profit), profit >= 0 and "ok" or "bad" })
+			table.insert(lines, { word, m(profit), profit >= 0 and "ok" or "bad" })
 		end
 	end
 	return lines
@@ -91,8 +111,8 @@ local function onItemTooltip(tooltip)
 	if not link then return end
 	local lines = CH.TooltipLines(link)
 	for _, l in ipairs(lines) do
-		local a, r = CH.Theme.accent, CH.Theme[l[3] or "fg"]
-		if l[1]:sub(1, 2) == "  " then a = CH.Theme.fg end
+		local r = CH.Theme[l[3] or "fg"]
+		local a = CH.Theme[l[4] or (l[1]:sub(1, 2) == "  " and "fg" or "accent")]
 		tooltip:AddDoubleLine(l[1], l[2], a[1], a[2], a[3], r[1], r[2], r[3])
 	end
 end
