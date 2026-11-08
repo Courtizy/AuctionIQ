@@ -417,7 +417,7 @@ check("prices: min is the cost to make after the cut", p302.min and p302.why == 
 check("warband listed: TSM's counts per character", CH.Auction.Listed(302) == 0)
 run("Clearinghouse.Groups.Store().ops.Crafted.cap = 5")
 d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
-check("auction: undercut the cheapest seller outside the account", d.action == "post" and d.price == 2899999 and d.qty == 5)
+check("auction: undercut the cheapest seller outside the account", d.action == "post" and d.price == 2899900 and d.qty == 5)
 d = CH.Auction.Decide(302, L.eval("{ { price = 2800000, qty = 1, mine = true }, { price = 2900000, qty = 3, mine = false } }"), 10)
 check("auction: never undercut your own Warband, match it", d.action == "post" and d.price == 2800000)
 d = CH.Auction.Decide(302, L.eval("{ { price = 10, qty = 3, mine = false } }"), 10)
@@ -433,6 +433,32 @@ run("Clearinghouse.GroupsUI.Select('Crafted'); Clearinghouse.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
 check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())
 check("auction panel builds", CH.AuctionUI.Build() is not None)
+# Posting waits for the AH's answer
+run("""
+STUB.ahPosts = {}
+Clearinghouse.Auction.BagSlots = function(id) return STUB.owlBags > 0 and { { bag = 0, slot = 1, count = 1 } } or {} end
+STUB.owlBags = 2
+""")
+run("""
+local AUI = Clearinghouse.AuctionUI
+local plan = AUI.Plan()
+for k in pairs(plan) do plan[k] = nil end
+table.insert(plan, { id = 302, d = { action = "post", qty = 2, price = 11000099, duration = 2, why = "undercutting" } })
+""")
+L.execute("Clearinghouse.AuctionUI.PostNext()")
+pp = L.eval("STUB.ahPosts[1]")
+e = L.eval("Clearinghouse.AuctionUI.Plan()[1]")
+check("post: whole silver only, one item per click, not done until the AH answers",
+      pp.buyout == 11000000 and pp.qty == 1 and not e.done)
+L.execute("Clearinghouse.AuctionUI.PostNext()")
+check("post: no second post while one is waiting", L.eval("#STUB.ahPosts") == 1)
+run('STUB.owlBags = 1; STUB.Fire("AUCTION_HOUSE_AUCTION_CREATED", 1)')
+check("post: the AH's confirmation counts it, the rest stay to post", e.posted == 1 and not e.done and "1 of 2" in e.d.why)
+L.execute("Clearinghouse.AuctionUI.PostNext()")
+run('STUB.Fire("UI_ERROR_MESSAGE", 1, "Item not found"); STUB.RunTimers()')
+check("post: no confirmation and still in bags means failed, with the game's reason",
+      e.failed and e.done and e.d.why == "Item not found")
+
 run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
 check("mail: a group's route reaches its sub-groups", CH.Mail.Destination(302)[0] == "Luxaren" and CH.Mail.Destination(201) is None)
 check("mail panel builds", CH.MailUI.Build() is not None)
