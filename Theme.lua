@@ -1,16 +1,30 @@
--- Clearinghouse look: flat dark panels with a 1px border (ElvUI style) in the same colours as the
--- companion page. See THEME.md; change a colour here and in the page together.
+-- AuctionIQ look: flat dark panels with a 1px border (ElvUI style). Two palettes: AuctionIQ is navy,
+-- gold and emerald; its Clearinghouse ledger is plum, parchment and gold. With ElvUI (and ToxiUI on
+-- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
+-- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
 local _, CH = ...
 
 local function hex(h)
 	return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
 end
 
-local T = {
-	hex = { bg = "141821", panel = "1b202b", line = "2c3342", fg = "e6e8ee", muted = "9aa2b3", accent = "e0a83a", ok = "6cc58f", bad = "ef7d72" },
+local PALETTES = {
+	auctioniq = { bg = "0e1729", panel = "15213b", line = "263a63", fg = "e6e8ee", muted = "9aa6bd", accent = "e0a83a", iq = "34c77b", ok = "6cc58f", bad = "ef7d72" },
+	clearinghouse = { bg = "1c1222", panel = "281a30", line = "45304f", fg = "efe4c8", muted = "b8a69a", accent = "e0a83a", iq = "d8c39a", ok = "6cc58f", bad = "ef7d72" },
 }
-for k, h in pairs(T.hex) do T[k] = hex(h) end
+local T = { hex = {}, PALETTES = PALETTES }
 CH.Theme = T
+
+local function elvColours()
+	return CH.db and CH.db.settings and CH.db.settings.theme == "elvui"
+end
+
+--- Switch palette: "auctioniq" (default) or "clearinghouse". ElvUI's colours win when /aiq theme says so.
+function T.Use(name)
+	T.palette = PALETTES[name] and name or "auctioniq"
+	for k, h in pairs(PALETTES[T.palette]) do T.hex[k] = h; T[k] = hex(h) end
+	if T.Sync then T.Sync() end
+end
 
 -- "|cffe0a83atext|r" in a theme colour.
 function T.Color(name, text)
@@ -31,7 +45,7 @@ end
 -- Pull ElvUI's colours into the theme (border, backdrop, value colour). Call before building frames.
 function T.Sync()
 	local E = T.Elv()
-	if not E then return end
+	if not E or not elvColours() then return end
 	local m = E.media
 	local function set(name, c)
 		if c and c[1] then
@@ -60,16 +74,39 @@ end
 
 -- A flat panel: background colour, 1px border. With ElvUI, its Transparent or Default template.
 function T.Panel(frame, bg, alpha)
+	frame.aiqBg, frame.aiqAlpha = bg or "bg", alpha
 	if T.Elv() and frame.SetTemplate then
 		frame:SetTemplate(bg == "panel" and "Default" or "Transparent")
+		T.Tint(frame)
 		return frame
 	end
 	if not frame.SetBackdrop then Mixin(frame, BackdropTemplateMixin) end
 	frame:SetBackdrop(BACKDROP)
-	local c = T[bg or "bg"]
-	frame:SetBackdropColor(c[1], c[2], c[3], alpha or 0.95)
-	frame:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1)
+	T.Tint(frame)
 	return frame
+end
+
+--- Colour a panel from the current palette. With ElvUI the template's border, shadow and alpha stay.
+function T.Tint(frame)
+	if not frame.SetBackdropColor or not frame.aiqBg then return end
+	local c = T[frame.aiqBg] or T.bg
+	local E = T.Elv()
+	if E then
+		if elvColours() then return end
+		local fade = E.media.backdropfadecolor
+		local a = frame.aiqBg == "panel" and 1 or (fade and fade[4]) or 0.8
+		frame:SetBackdropColor(c[1], c[2], c[3], a)
+		return
+	end
+	frame:SetBackdropColor(c[1], c[2], c[3], frame.aiqAlpha or 0.95)
+	frame:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1)
+end
+
+--- Re-tint a window and everything in it after a palette switch.
+function T.Repaint(root)
+	if not root then return end
+	T.Tint(root)
+	if root.GetChildren then for _, c in ipairs({ root:GetChildren() }) do T.Repaint(c) end end
 end
 
 -- A flat text button that turns gold on hover (ElvUI: its button skin, or its close button for "x").
@@ -104,4 +141,5 @@ function T.Button(parent, label, w, h)
 end
 
 -- ElvUI sets its media during its own login; take its colours once everything has loaded.
-CH.On("PLAYER_LOGIN", function() T.Sync() end)
+T.Use("auctioniq")
+CH.On("PLAYER_LOGIN", function() T.Use(T.palette) end)

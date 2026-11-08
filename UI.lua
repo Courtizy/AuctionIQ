@@ -660,6 +660,14 @@ local function refreshLedger() return CH.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end
+	-- the Clearinghouse tab is the ledger: plum and parchment; every other page is AuctionIQ navy
+	local want = page == "ledger" and "clearinghouse" or "auctioniq"
+	if CH.Theme.palette ~= want or frame.palette ~= want then
+		CH.Theme.Use(want)
+		CH.Theme.Repaint(frame)
+		frame.palette = want
+		frame.title:SetText(want == "clearinghouse" and (CH.Theme.Color("accent", "Clearinghouse") .. "  " .. CH.Theme.Color("muted", "AuctionIQ ledger")) or CH.Theme.Color("accent", "AuctionIQ"))
+	end
 	for k, p in pairs(pages) do p:SetShown(k == page) end
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
