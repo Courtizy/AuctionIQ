@@ -43,7 +43,8 @@ run('Clearinghouse.db.settings.coins = false')
 check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
 check("tooltip shows value, buy now / post and profit",
-      lines == ["Clearinghouse value=475g after cut", "    Lower of buy now / post price=450g / 450g", "Craft profit=375g"])
+      lines == ["Clearinghouse value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
+               "  AH cut (5%)=-25g", "  Value after cut=475g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
@@ -242,8 +243,9 @@ tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
 names = [t[0] for t in tl]
 acc = pot = [r for r in sr.rows.values() if r.item == 302 or r.concItem == 302][0]
 check("tooltip: a scanned craft's accounts, reagents to profit",
-      any(n.startswith("Crafting, per craft") for n in names) and "  Reagents" in names and "  Profit per craft" in names
-      and any(n.startswith("    item 20") for n in names))
+      any(n.startswith("Crafting, per craft") for n in names) and "  Revenue after cut" in names and "Profit per craft" in names
+      and names.index("  AH cut (5%)") < names.index("  Revenue after cut") < names.index("  Reagents") < names.index("Profit per craft")
+      and any(n.startswith("    ") and "x item 20" in n for n in names[names.index("  Reagents"):]))
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget
