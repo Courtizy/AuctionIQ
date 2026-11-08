@@ -271,6 +271,20 @@ check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and pla
 run('Clearinghouse.Queue.Clear()')
 scan_cols = list(CH.ScanUI.Refresh().values())
 check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
+pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
+check("scan: each recipe tagged with its expansion", pot.line == 2871 and pot.expansion == "Khaz Algar" and sr.currentLine == 2906)
+heads = [t for t in scan_cols if t.startswith("== ")]
+check("scan: current expansion first, older under their own header",
+      heads == ["== Midnight", "== Khaz Algar"] and scan_cols[0] == "== Midnight"
+      and scan_cols.index("== Khaz Algar") < [i for i, t in enumerate(scan_cols) if t.startswith("Test Potion")][0])
+run('Clearinghouse.ScanUI.olderButton.scripts.OnClick()')
+hidden = list(CH.ScanUI.Refresh().values())
+check("scan: older expansions can be hidden", not any(t.startswith("Test Potion") for t in hidden) and not any(t.startswith("== ") for t in hidden))
+run('Clearinghouse.ScanUI.olderButton.scripts.OnClick()')
+run('for _, r in ipairs(Clearinghouse.Scan.Results(2906).rows) do r.line = nil; r.expansion = nil end')
+again = list(CH.ScanUI.Refresh().values())
+check("scan: an older saved scan gets its expansions filled in", "== Khaz Algar" in again)
+
 
 # Cooldowns
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')

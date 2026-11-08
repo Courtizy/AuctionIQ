@@ -140,6 +140,11 @@ C_TradeSkillUI = {
 	IsNPCCrafting = function() return false end,
 	GetChildProfessionInfo = function() return { professionID = 2906, profession = 3, parentProfessionName = "Alchemy", professionName = "Midnight Enchanting", skillLevel = 80, maxSkillLevel = 100 } end,
 	GetProfessionSlots = function() return { 20, 21, 22 } end,
+	GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = "Midnight" }, { professionID = 2871, expansionName = "Khaz Algar" } } end,
+	GetTradeSkillLineForRecipe = function(id)
+		if id == 11 then return 2871, "Khaz Algar Alchemy", 171 end
+		return 2906, "Midnight Alchemy", 171
+	end,
 	GetCategoryInfo = function(id) return ({ [50] = { name = "Potions" }, [60] = { name = "Flasks" } })[id] end,
 	GetRecipeCooldown = function(id) if id == 1 then return 7200, true, 0, 0 end return 0 end,
 	GetConcentrationCurrencyID = function() return 3000 end,
