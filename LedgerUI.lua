@@ -35,10 +35,19 @@ local VIEWS = {
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
 	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 4, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
+	pl = { label = "Product P&L", parent = "Goblin CFO", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
+		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
+	dead = { label = "Dead stock", parent = "Goblin CFO", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
+		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
+	holdings = { label = "Holdings", parent = "Goblin CFO", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
+		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
+	overhead = { label = "Overhead", parent = "Goblin CFO", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
+		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 }
 local NAV = { { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 	{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
-	{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true } }
+	{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
+	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } }
 LUI.VIEWS = VIEWS
 
 -- Formatting ----------------------------------------------------------------------------------
@@ -152,6 +161,69 @@ function LUI.Rows(v, opts)
 			end
 		end
 		return out, string.format("%d items resold   Total profit: %s", n, signed(total))
+	end
+
+	if v == "pl" then
+		local rows = L.ProductPL(since, opts.char)
+		local rev, prof, lines = 0, 0, {}
+		for _, e in ipairs(rows) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) or keepName(e.line) then
+				rev, prof = rev + e.revenue, prof + e.profit
+				lines[e.line] = (lines[e.line] or 0) + e.profit
+				local est = e.paidShare < 0.5 and CH.Theme.Color("muted", "*") or ""
+				table.insert(out, { id = e.id, cells = { text, e.line, e.sold, money(e.revenue), money(e.cost) .. est, signed(e.profit),
+					string.format("%d%%", math.floor(e.margin * 100 + 0.5)) },
+					sort = { name, e.line, e.sold, e.revenue, e.cost, e.profit, e.margin } })
+			end
+		end
+		local best, bv
+		for l, g in pairs(lines) do if not bv or g > bv then best, bv = l, g end end
+		return out, string.format("Crafted sales %s, profit %s%s", money(rev), signed(prof),
+			best and ("   best line: " .. best .. " " .. money(bv)) or "")
+			.. CH.Theme.Color("muted", "   * mostly today's prices: you bought few of its reagents")
+	end
+
+	if v == "dead" then
+		local tied = 0
+		for _, e in ipairs(L.DeadStock(now, opts.days or 30, opts.char)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				tied = tied + e.value
+				table.insert(out, { id = e.id, cells = { text, e.held, money(e.value), e.lastSold and LUI.Ago(e.lastSold, now) or CH.Theme.Color("muted", "never"),
+					e.expired, CH.Theme.Color(e.expired >= 3 and "bad" or "muted", e.advice) },
+					sort = { name, e.held, e.value, e.lastSold and (now - e.lastSold) or math.huge, e.expired, e.advice } })
+			end
+		end
+		return out, string.format("%d items not moving, %s tied up", #out, money(tied))
+	end
+
+	if v == "holdings" then
+		local gain = 0
+		for _, e in ipairs(L.Holdings(now, opts.char)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				gain = gain + e.gain
+				table.insert(out, { id = e.id, cells = { text, e.held, money(e.paid), money(e.now),
+					CH.Theme.Color(e.pct >= 0 and "ok" or "bad", string.format("%+d%%", math.floor(e.pct * 100 + 0.5))), signed(e.gain),
+					e.daysOfStock and string.format("%.0f", e.daysOfStock) or CH.Theme.Color("muted", "no sales") },
+					sort = { name, e.held, e.paid, e.now, e.pct, e.gain, e.daysOfStock or math.huge } })
+			end
+		end
+		return out, "Unrealized gain on stock you bought: " .. signed(gain)
+	end
+
+	if v == "overhead" then
+		local o = L.Overhead(since, opts.char)
+		local span = math.max(1, (now - (opts.days and since or (now - 365 * 86400))) / 86400)
+		for _, t in ipairs(o.types) do
+			if keepName(t.type) then
+				table.insert(out, { cells = { t.type, t.n, money(t.gold), money(t.gold / span),
+					o.total > 0 and string.format("%d%%", math.floor(t.gold / o.total * 100 + 0.5)) or "" },
+					sort = { t.type, t.n, t.gold, t.gold / span, t.gold } })
+			end
+		end
+		return out, string.format("Trading profit %s, overhead %s, after overhead %s", signed(o.profit), money(-o.total), signed(o.afterOverhead))
 	end
 
 	-- expired / cancelled

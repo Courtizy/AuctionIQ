@@ -322,6 +322,156 @@ function Lg.WorthChange(since)
 	return (now.gold + now.inventory) - (first.gold + first.inventory), first, now, firstK
 end
 
+-- CFO views ----------------------------------------------------------------------------------
+--- What you paid on average for each item, from TSM's purchase records since `since`.
+function Lg.Paid(since)
+	local t = {}
+	for _, b in ipairs(Lg.Records("Buys")) do
+		if b.id and b.time >= (since or -math.huge) and b.quantity > 0 then
+			local e = t[b.id] or { n = 0, gold = 0 }
+			t[b.id] = e
+			e.n, e.gold = e.n + b.quantity, e.gold + b.amount
+		end
+	end
+	for _, e in pairs(t) do e.each = e.gold / e.n end
+	return t
+end
+
+--- Every crafted item you've scanned, on any character: { [itemID] = { name, accounts } }.
+function Lg.Crafted()
+	local out = {}
+	for _, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				if r.item and r.accounts and not out[r.item] then out[r.item] = { name = r.name, acc = r.accounts, row = r } end
+				if r.concItem and r.concAccounts and not out[r.concItem] then out[r.concItem] = { name = r.name, acc = r.concAccounts, row = r } end
+			end
+		end
+	end
+	return out
+end
+
+--- Cost to make one item at what you actually paid for its reagents (today's price for any you
+--- never bought), after Resourcefulness, over what Multicraft makes. Also the share at paid prices.
+function Lg.CostAtPaid(acc, paid)
+	local cost, known, total = 0, 0, 0
+	for _, rg in ipairs(acc.reagents or {}) do
+		local p = paid[rg.itemID]
+		local each = p and p.each or (rg.cost and rg.n > 0 and rg.cost / rg.n) or 0
+		cost = cost + each * rg.n
+		total = total + each * rg.n
+		if p then known = known + each * rg.n end
+	end
+	local saved = (acc.cost and acc.cost > 0) and (acc.resGold or 0) / acc.cost or 0
+	local items = (acc.made or 1) + (acc.extraItems or 0)
+	return cost * (1 - saved) / math.max(items, 0.01), total > 0 and known / total or 0
+end
+
+--- Profit by crafted item over a period: sales after the cut less the cost of making them at what
+--- you paid. { id, name, line, sold, revenue, cost, profit, margin, paidShare }.
+function Lg.ProductPL(since, char)
+	local crafted, paid = Lg.Crafted(), Lg.Paid()
+	local rows = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		local c = s.id and crafted[s.id]
+		if c and s.time >= since and (not char or s.player == char) then
+			local e = rows[s.id]
+			if not e then
+				local each, share = Lg.CostAtPaid(c.acc, paid)
+				e = { id = s.id, name = c.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(c.name) or "Other",
+					sold = 0, revenue = 0, each = each, paidShare = share }
+				rows[s.id] = e
+			end
+			e.sold = e.sold + s.quantity
+			e.revenue = e.revenue + s.amount * CH.AH_CUT
+		end
+	end
+	local out = {}
+	for _, e in pairs(rows) do
+		e.line = e.line or "Other"
+		e.cost = e.each * e.sold
+		e.profit = e.revenue - e.cost
+		e.margin = e.revenue > 0 and e.profit / e.revenue or 0
+		table.insert(out, e)
+	end
+	return out
+end
+
+--- Last time each item sold: { [itemID] = time }.
+function Lg.LastSold()
+	local t = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and (not t[s.id] or s.time > t[s.id]) then t[s.id] = s.time end
+	end
+	return t
+end
+
+--- Stock that isn't moving: held items with no sale in `days` days or 3+ expiries in that time.
+--- { id, held, value, lastSold, expired, advice }.
+function Lg.DeadStock(now, days, char)
+	now, days = now or time(), days or 30
+	local since = now - days * DAY
+	local last, expired = Lg.LastSold(), {}
+	for _, e in ipairs(Lg.Records("Expired")) do
+		if e.id and e.time >= since then expired[e.id] = (expired[e.id] or 0) + 1 end
+	end
+	local out = {}
+	for _, e in ipairs(Lg.Inventory(nil, char)) do
+		if e.id and e.value > 0 then
+			local ls, ex = last[e.id], expired[e.id] or 0
+			local idle = not ls or ls < since
+			if idle or ex >= 3 then
+				local advice = ex >= 3 and "Cut the price or stop posting"
+					or (not ls and (ex > 0 and "Never sold: vendor or rethink" or "Never sold here: list it?"))
+					or "Slow: lower the price"
+				table.insert(out, { id = e.id, held = e.total, value = e.value, lastSold = ls, expired = ex, advice = advice })
+			end
+		end
+	end
+	return out
+end
+
+--- Your stock against what you paid: { id, held, paid (each), now (each), gain, pct, daysOfStock }.
+function Lg.Holdings(now, char)
+	now = now or time()
+	local paid = Lg.Paid()
+	local sold30 = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.id and s.time >= now - 30 * DAY then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
+	end
+	local out = {}
+	for _, e in ipairs(Lg.Inventory(nil, char)) do
+		local p = e.id and paid[e.id]
+		if p and e.unit then
+			local gain = (e.unit - p.each) * e.total
+			local perDay = (sold30[e.id] or 0) / 30
+			table.insert(out, { id = e.id, held = e.total, paid = p.each, now = e.unit, gain = gain,
+				pct = p.each > 0 and (e.unit - p.each) / p.each or 0, daysOfStock = perDay > 0 and e.total / perDay or nil })
+		end
+	end
+	return out
+end
+
+--- Overhead since a time: TSM's other expenses (repairs, postage and so on, not transfers between
+--- your characters) by type, plus totals to set against trading. { types = { type, n, gold }, total,
+--- sales (after cut), buys, profit, afterOverhead }.
+function Lg.Overhead(since, char)
+	local mine = own()
+	local types, list, total = {}, {}, 0
+	for _, r in ipairs(Lg.Records("Expense")) do
+		if r.time >= since and not mine[r.other] and (not char or r.player == char) then
+			local k = r.source or "Other"
+			if not types[k] then types[k] = { type = k, n = 0, gold = 0 }; table.insert(list, types[k]) end
+			types[k].n, types[k].gold = types[k].n + 1, types[k].gold + r.amount
+			total = total + r.amount
+		end
+	end
+	local sales, buys = 0, 0
+	for _, s in ipairs(Lg.Records("Sales")) do if s.time >= since and (not char or s.player == char) then sales = sales + s.amount * CH.AH_CUT end end
+	for _, b in ipairs(Lg.Records("Buys")) do if b.time >= since and (not char or b.player == char) then buys = buys + b.amount end end
+	return { types = list, total = total, sales = sales, buys = buys, profit = sales - buys, afterOverhead = sales - buys - total }
+end
+
 -- Morning report -----------------------------------------------------------------------------
 --- What changed and what needs doing: last day's sales and buys, items you sold this week and
 --- now hold none of, and what came back unsold (and what keeps coming back).

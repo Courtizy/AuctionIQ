@@ -365,6 +365,18 @@ check("morning report: last day's sales and what came back", rep.sold == 2 and r
       and list(rep.expired.values())[0].id == 302 and len(list(rep.restock.values())) == 0)
 bt = plain(CH.UI.BriefingText())
 check("briefing opens with the last 24 hours", bt.startswith("Last 24 hours") and "Came back unsold" in bt and "repost it" in bt)
+pl = {e.id: e for e in LG.ProductPL(-1e12).values()}
+check("product P&L: crafted sales after cut less cost at what you paid", 302 in pl and pl[302].sold == 2
+      and abs(pl[302].revenue - 6000000 * 0.95) < 1 and abs(pl[302].profit - (pl[302].revenue - pl[302].cost)) < 1
+      and pl[302].line == "Flasks & Phials")
+dead = list(LG.DeadStock(L.eval("STUB.now"), 1).values())
+check("dead stock: held, not sold in the window", [e.id for e in dead] == [301] and dead[0].advice.startswith("Slow"))
+o = LG.Overhead(-1e12)
+check("overhead: repairs, not your own transfers", o.total == 20000 and len(list(o.types.values())) == 1 and o.afterOverhead == o.profit - 20000)
+rows, foot = CH.LedgerUI.Rows("pl", L.eval("{ }"))
+check("CFO views draw rows", len(list(rows.values())) == 1 and "best line: Flasks" in plain(foot))
+for v in ["dead", "holdings", "overhead"]:
+    CH.LedgerUI.Rows(v, L.eval("{ days = 30 }"))
 LU = CH.LedgerUI
 rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))
 check("ledger sales: in the time frame only, with the total", len(list(rows.values())) == 2 and plain(foot) == "3 items sold: 700g")

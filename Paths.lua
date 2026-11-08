@@ -79,6 +79,11 @@ local MAIN = {
 }
 
 local function mainGroup(text)
+	return P.MainGroup(text)
+end
+
+--- The picker's main group for a category or recipe name ("Potions", "Flasks & Phials"...), or nil.
+function P.MainGroup(text)
 	text = string.lower(text or "")
 	for _, g in ipairs(MAIN) do
 		for _, k in ipairs(g[2]) do if text:find(k, 1, true) then return g[1] end end
