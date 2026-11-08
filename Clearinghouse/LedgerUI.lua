@@ -31,10 +31,10 @@ local VIEWS = {
 		{ "Sold", 358, 56 }, { "Avg sell", 418, 90 }, { "Avg profit", 512, 100 }, { "Total profit", 616, 108 } } },
 	purchases = { label = "Purchases", parent = "Expenses", sort = 7, asc = true, cols = ITEM_TIME },
 	expense = { label = "Other", parent = "Expenses", sort = 5, asc = true, cols = OTHER },
-	expired = { label = "Expired", parent = "Failed Auctions", sort = 4, asc = true,
-		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
-	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 4, asc = true,
-		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
+	expired = { label = "Expired", parent = "Failed Auctions", sort = 5, asc = true,
+		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
+	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 5, asc = true,
+		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
 	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
 	perf = { label = "Forecast vs actual", parent = "Profit", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
@@ -274,7 +274,8 @@ function LUI.Rows(v, opts)
 				if e.short > 0 then short, worth = short + 1, worth + e.value end
 				table.insert(out, { id = e.id, cells = { text, string.format("%.0f", e.weekly), e.target, e.held,
 					e.short > 0 and CH.Theme.Color("bad", e.short) or CH.Theme.Color("ok", "0"), e.short > 0 and money(e.value) or "",
-					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", "a week of sales") },
+					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", string.format("%d days at %d%%",
+						CH.Expect.Setting("cover"), math.floor(CH.Expect.Setting("service") * 100 + 0.5))) },
 					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
 			end
 		end
@@ -309,18 +310,21 @@ function LUI.Rows(v, opts)
 	end
 
 	-- expired / cancelled
-	local n = 0
+	-- TSM doesn't record the deposit, so it's estimated from the vendor price and the item's duration
+	local n, lost = 0, 0
 	for _, r in ipairs(L.Records(v == "expired" and "Expired" or "Cancelled")) do
 		if keepRec(r) then
 			local text, name = LUI.ItemText(r.id)
 			if keepName(name) then
-				n = n + r.quantity
-				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, LUI.Ago(r.time, now) },
-					sort = { name, r.player or "", r.quantity, now - r.time } })
+				local d = r.id and CH.Expect.LostDeposit(r.id, r.quantity) or 0
+				n, lost = n + r.quantity, lost + d
+				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, d > 0 and money(d) or CH.Theme.Color("muted", "-"),
+					LUI.Ago(r.time, now) }, sort = { name, r.player or "", r.quantity, d, now - r.time } })
 			end
 		end
 	end
-	return out, string.format("%d items %s", n, v)
+	return out, string.format("%d items %s, about %s in deposits lost", n, v, money(lost))
+		.. CH.Theme.Color("muted", "   estimated from vendor price and listing length")
 end
 
 local function sortRows(rows, col, desc)

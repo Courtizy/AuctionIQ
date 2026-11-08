@@ -8,9 +8,10 @@ local Fc = {}
 CH.Forecast = Fc
 
 local DAY = 86400
-Fc.MIN_SOLD = 3          -- sold units before an item's record shades its price
+Fc.PRIOR = 5             -- shading trusts your record as much as this many units sold on forecast
+Fc.HALF_LIFE = 30 * DAY  -- a sale this old counts half
 Fc.WINDOW = 90 * DAY     -- only crafts from the last 90 days count toward the record
-Fc.SHADE_MIN, Fc.SHADE_MAX = 0.6, 1.1
+Fc.SHADE_MIN, Fc.SHADE_MAX = 0.3, 1.5 -- only a guard; shrinkage keeps it near 1
 
 local function store()
 	CH.db.batches = CH.db.batches or {}
@@ -116,20 +117,27 @@ function Fc.Performance(since)
 	return out
 end
 
---- How much of the forecast sale price an item really fetches, from the last 90 days of crafts:
---- a factor (1 = on forecast) and why, or nil while fewer than MIN_SOLD have sold.
-function Fc.Shade(id)
+--- How much of the forecast sale price an item really fetches, as a factor (1 = on forecast) and
+--- why, or nil before anything has sold. Each sold unit counts with a 30-day half-life, and the ratio
+--- is shrunk toward 1 by a prior worth Fc.PRIOR units: shade = (n*r + k) / (n + k). So three sales
+--- at 60% shade to about 85%, and an old bad patch fades out.
+function Fc.Shade(id, now)
 	if not id then return nil end
-	local since = time() - Fc.WINDOW
-	local sold, expected, revenue = 0, 0, 0
+	now = now or time()
+	local since = now - Fc.WINDOW
+	local n, expected, revenue, sold = 0, 0, 0, 0
 	for _, b in ipairs(Fc.Batches(id)) do
-		if b.at >= since and b.expectEach and b.sold > 0 then
+		if b.at >= since and b.expectEach and b.expectEach > 0 and b.sold > 0 then
+			local w = 0.5 ^ ((now - b.at) / Fc.HALF_LIFE)
+			n = n + w * b.sold
+			expected = expected + w * b.expectEach * b.sold
+			revenue = revenue + w * b.revenue
 			sold = sold + b.sold
-			expected = expected + b.expectEach * b.sold
-			revenue = revenue + b.revenue
 		end
 	end
-	if sold < Fc.MIN_SOLD or expected <= 0 then return nil end
-	local f = math.max(Fc.SHADE_MIN, math.min(Fc.SHADE_MAX, revenue / expected))
-	return f, string.format("%d sold at %d%% of forecast", sold, math.floor(revenue / expected * 100 + 0.5))
+	if sold == 0 or expected <= 0 then return nil end
+	local r = revenue / expected
+	local f = (n * r + Fc.PRIOR) / (n + Fc.PRIOR)
+	f = math.max(Fc.SHADE_MIN, math.min(Fc.SHADE_MAX, f))
+	return f, string.format("%d sold at %d%% of forecast", sold, math.floor(r * 100 + 0.5))
 end

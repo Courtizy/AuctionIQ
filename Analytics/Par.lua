@@ -1,6 +1,9 @@
--- Stock targets (internally "par"): how many of each item you want on hand across your characters. By default a week of
--- what you actually sold (from TSM's sales), or a number you set. The Queue's Fill crafts up to the target,
--- the Analytics Stock targets view and the briefing show what's short.
+-- Stock targets (internally "par"): how many of each item you want on hand across your characters,
+-- or a number you set. By default, enough to cover a week's demand (Settings: cover days) at a 90%
+-- service level (Settings): demand over the cover is Poisson at your recent sales rate, and the
+-- target is the smallest stock it stays under 90% of the time. 2 a day over 7 days: 19, not 14.
+-- The Queue's Fill crafts up to the target; the Analytics Stock targets view and the briefing show
+-- what's short.
 local _, CH = ...
 
 local Par = {}
@@ -35,7 +38,11 @@ function Par.Target(itemID, now)
 	local s = store()
 	if s.manual[itemID] then return s.manual[itemID], true end
 	local w = Par.Weekly(now)[itemID]
-	if w and w > 0 then return math.ceil(w * (s.weeks or 1)), false end
+	if w and w > 0 then
+		local E = CH.Expect
+		local cover = E and E.Setting("cover") or 7
+		return CH.Prob.PoissonQuantile(w / 7 * cover, E and E.Setting("service") or 0.9), false
+	end
 	return nil
 end
 

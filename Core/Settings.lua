@@ -45,6 +45,31 @@ function S.DailyCap(n)
 	return CH.db.settings.scan.dailyCap or 10
 end
 
+-- Math model ------------------------------------------------------------------------------------
+-- The numbers behind expected value and stock targets (see Data/Expect.lua): { key, label, step,
+-- min, max, how to show it }.
+S.MODEL = {
+	{ "service", "Stock target service", 0.01, 0.5, 0.99, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end },
+	{ "cover", "Stock covers (days)", 1, 1, 30, function(v) return tostring(v) end },
+	{ "carry", "Gold tied up, a day", 0.0025, 0, 0.05, function(v) return string.format("%.2f%%", v * 100) end },
+}
+
+--- A math setting's value, or with `delta`, step it within its bounds and return the new value.
+function S.Model(key, delta)
+	for _, m in ipairs(S.MODEL) do
+		if m[1] == key then
+			local v = CH.Expect.Setting(key)
+			if delta then
+				v = math.max(m[4], math.min(m[5], v + delta * m[3]))
+				v = math.floor(v / m[3] + 0.5) * m[3]
+				CH.Expect.Set(key, v)
+				if CH.Par then CH.Par.Refresh() end
+			end
+			return v, m[6](v)
+		end
+	end
+end
+
 -- Operations ------------------------------------------------------------------------------------
 -- Every field an operation has, how it's edited, and what it means. kind: bool, num (step), pick
 -- (choices), formula.
