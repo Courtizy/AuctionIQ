@@ -125,6 +125,7 @@ The code is split into one folder per component, each with its own `comp:` label
 | `Trading/` | Groups and operations, posting and cancelling, mail |
 | `Analytics/` | Stock targets (Par.lua); forecast vs actual lands here |
 | `Clearinghouse/` | The ledger tab and reports |
+| `Markets/` | The Markets tab: market prices, competition, when it sells |
 | `companion/` | The Clearinghouse desktop app and its addon (not packaged with AuctionIQ) |
 
 `AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them.
