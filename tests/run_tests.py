@@ -295,5 +295,65 @@ mq = CH.Advisor.Analyze(10)
 check("quality from skill, not the game's quality ID", [r.quality for r in mq.rows.values()] == [1, 2, 2] and mq.best.item == 302 and mq.bestConc.perPoint == 27250)
 run('STUB.qualityOffset = nil')
 
+# Dashboard and Ledger from TSM's saved data (read only)
+run(r"""
+local now = STUB.now
+local m = math.floor(now / 60)
+local function lines(t) return table.concat(t, "\n") end
+TradeSkillMasterDB = {
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@money"] = 5000000,
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@money"] = 3000000,
+  ["s@Other - Horde - Area 52@internalData@money"] = 99990000,
+  ["g@ @internalData@warbankMoney"] = 2000000,
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@goldLog"] = lines({ "minute,copper", (m - 3000) .. ",1000000", (m - 600) .. ",5000000" }),
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@goldLog"] = lines({ "minute,copper", (m - 3000) .. ",3000000" }),
+  ["g@ @internalData@warbankGoldLog"] = lines({ "minute,copper", (m - 3000) .. ",2000000" }),
+  ["r@Emerald Dream@internalData@csvSales"] = lines({ "itemString,stackSize,quantity,price,otherPlayer,player,time,source",
+    "i:302,1,2,3000000,Buyer,Courtizy," .. (now - 3600) .. ",Auction",
+    "i:301,1,1,1000000,Buyer,Luxaren," .. (now - 3 * 86400) .. ",Auction",
+    "i:301,1,4,1000000,Buyer,Luxaren," .. (now - 400 * 86400) .. ",Auction" }),
+  ["r@Emerald Dream@internalData@csvBuys"] = lines({ "itemString,stackSize,quantity,price,otherPlayer,player,time,source",
+    "i:201,1,10,100000,Seller,Courtizy," .. (now - 7200) .. ",Auction" }),
+  ["r@Emerald Dream@internalData@csvIncome"] = lines({ "type,amount,otherPlayer,player,time",
+    "Money Transfer,500000,Luxaren,Courtizy," .. (now - 100) }),
+  ["r@Emerald Dream@internalData@csvExpense"] = lines({ "type,amount,otherPlayer,player,time",
+    "Money Transfer,500000,Courtizy,Luxaren," .. (now - 100), "Repair Bill,20000,Merchant,Courtizy," .. (now - 50) }),
+  ["r@Emerald Dream@internalData@csvExpired"] = lines({ "itemString,stackSize,quantity,player,time", "i:302,1,1,Courtizy," .. (now - 3500) }),
+  ["r@Emerald Dream@internalData@csvCancelled"] = "itemString,stackSize,quantity,player,time",
+  ["s@Courtizy - Alliance - Emerald Dream@internalData@bagQuantity"] = { ["i:302"] = 3 },
+  ["s@Luxaren - Alliance - Emerald Dream@internalData@mailQuantity"] = { ["i:302::q2"] = 1 },
+  ["g@ @internalData@warbankQuantity"] = { ["i:301"] = 2 },
+}
+""")
+LG = CH.Ledger
+names = sorted(c.name for c in LG.Characters().values())
+check("ledger: this realm's characters only", names == ["Courtizy", "Luxaren"] and LG.Gold() == 10000000)
+gs = list(LG.GoldSeries(L.eval("STUB.now") - 2 * 86400, L.eval("STUB.now"), 3).values())
+check("ledger: gold history adds up every character's log", gs[0].v == 6000000 and gs[2].v == 10000000)
+run("Clearinghouse.UI.SetRange('1M')")
+d = CH.UI.DashboardData()
+s = d.summary
+check("dashboard: sales, buys and real expenses in range; own transfers left out",
+      s.sales == 7000000 and s.buys == 1000000 and s.income == 0 and s.expense == 20000 and s.cash == 5980000 and s.topItem == 302)
+check("dashboard: top sale, top purchase, 52 week high and low", d.topSale == 6000000 and d.topBuy == 1000000 and d.high == 10000000 and 0 < d.low <= d.high)
+run("Clearinghouse.UI.SetRange('All')")
+check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 11000000)
+act = list(LG.Activity(10).values())
+check("activity log: grouped by character and hour", act[0].player == "Courtizy" and act[0].sold == 2 and act[0].expired == 1 and sum(a.bought for a in act) == 10)
+inv = {e.id: e for e in LG.Inventory().values()}
+v302 = CH.Prices.Get("chvalue", "i:302")
+check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4 and inv[302].bags == 3 and inv[302].mail == 1 and inv[301].warband == 2 and inv[302].value == v302 * 4)
+w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
+LG.Snapshot()
+check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.now") - 6 * 86400)[0] == 0 and w1[0] > 10000000)
+rows, foot = CH.UI.LedgerRows("revenue", "")
+check("ledger revenue lists sales and income, newest first", len(rows) == 4 and "Total" in plain(foot))
+rows, foot = CH.UI.LedgerRows("failed", "")
+check("ledger failed auctions", len(rows) == 1 and plain(foot).startswith("1 items"))
+run("Clearinghouse.UI.Page('dashboard')")
+check("dashboard page draws", CH.UI.IsShown())
+run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
+check("ledger and briefing pages draw", CH.UI.IsShown())
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
