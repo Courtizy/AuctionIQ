@@ -42,7 +42,8 @@ check("money shows coin icons by default", "UI-GoldIcon" in CH.FormatMoney(12500
 run('Clearinghouse.db.settings.coins = false')
 check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
-check("tooltip shows value, buy price and profit", lines == ["Clearinghouse value=475g after cut", "Clearinghouse buy price=450g", "Craft profit=375g"])
+check("tooltip shows value, buy now / post and profit",
+      lines == ["Clearinghouse value=475g after cut", "    Lower of buy now / post price=450g / 450g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
@@ -229,6 +230,12 @@ check("scan: every learned recipe with a result, saved", "Test Flask" in names a
 pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
 check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(pot.perDay - pot.profit * 10 / 2) < 1e-6)
 top = list(CH.Scan.Top(2906, 1).values())
+tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
+names = [t[0] for t in tl]
+acc = pot = [r for r in sr.rows.values() if r.item == 302 or r.concItem == 302][0]
+check("tooltip: a scanned craft's accounts, reagents to profit",
+      any(n.startswith("Crafting, per craft") for n in names) and "  Reagents" in names and "  Profit per craft" in names
+      and any(n.startswith("    item 20") for n in names))
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget

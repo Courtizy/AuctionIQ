@@ -24,6 +24,23 @@ function Sc.DailyUnits(itemID)
 	return math.min(sold, settings().dailyCap or 10)
 end
 
+--- A craft's accounts, saved with the scan for the item tooltip: reagents (with what each cost at
+--- scan time), sales, Multicraft and Resourcefulness, per craft.
+local function accounts(result, r)
+	if not r or not r.profit then return nil end
+	local reagents = {}
+	local ok, e = pcall(CH.Queue.FromRow, result, r)
+	for _, s in ipairs(ok and e and e.shop or {}) do
+		local unit = CH.Prices.Get("chmat", "i:" .. s.itemID)
+		table.insert(reagents, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers, cost = unit and unit * s.n })
+	end
+	local p = r.parts or {}
+	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
+		made = result.made, unit = r.unit, sales = r.value, cost = r.cost, extraItems = (p.mc or 0) * (p.extraItems or 0),
+		mcGold = p.mcGold, resGold = p.resGold, profit = r.profit, reagents = reagents }
+end
+Sc.Accounts = accounts
+
 local function summary(result)
 	local b, c = result.best, result.bestConc
 	local item = b and b.item or (c and c.item)
@@ -45,6 +62,7 @@ local function summary(result)
 		pct = b and b.cost and b.cost > 0 and b.profit / b.cost or nil,
 		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,
 		avgConcentration = avg, concItem = c and c.item,
+		accounts = accounts(result, b), concAccounts = accounts(result, c),
 		soldPerDay = CH.Advisor.SoldPerDay(item),
 		perDay = perDay,
 	}

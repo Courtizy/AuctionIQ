@@ -10,6 +10,8 @@ local NOW = "max(first(dbminbuyout,dbmarket,dbregionmarketavg),80%first(dbmarket
 local POST = "max(first(dbregionsaleavg,dbregionmarketavg),min(dbmarket,400%first(dbregionsaleavg,dbregionmarketavg)))"
 local FORMULA = {
 	chmat = NOW,
+	chpost = POST,
+	avgsell = "avgsell",
 	chvalue = "min(" .. NOW .. "," .. POST .. ")",
 	crafting = "crafting",
 }
