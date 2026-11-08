@@ -1,5 +1,6 @@
--- Plan page of the main window: the weekly knowledge checklist for every character and profession,
--- what's coming up, and time spent goldmaking with gold per hour.
+-- Crafting tab of the main window: the weekly knowledge checklist for every character and
+-- profession, what's coming up, best crafts and Concentration, and buttons for the crafting windows
+-- (the advisor stays docked to the profession window). Gold per hour moved to Analytics.
 local _, CH = ...
 
 local PUI = {}
@@ -39,13 +40,37 @@ function PUI.Build(p, fs, panel)
 	p.upcoming:SetJustifyV("TOP")
 	if p.upcoming.SetMaxLines then p.upcoming:SetMaxLines(16) end
 	local tm = panel(p, 0, -342, 896, 168)
-	local th = fs(tm, 10, -8, 600, "LEFT", "GameFontNormal"); th:SetText("Time spent goldmaking")
-	p.time = fs(tm, 10, -30, 876, "LEFT")
-	p.time:SetJustifyV("TOP")
-	if p.time.SetMaxLines then p.time:SetMaxLines(8) end
+	local scroll = CreateFrame("ScrollFrame", nil, tm)
+	scroll:SetPoint("TOPLEFT", 10, -8)
+	scroll:SetPoint("BOTTOMRIGHT", -10, 6)
+	scroll:EnableMouseWheel(true)
+	scroll:SetScript("OnMouseWheel", function(self, delta)
+		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScrollRange(), self:GetVerticalScroll() - delta * 30)))
+	end)
+	local child = CreateFrame("Frame", nil, scroll)
+	child:SetSize(876, 10)
+	scroll:SetScrollChild(child)
+	p.crafts = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	p.crafts:SetPoint("TOPLEFT")
+	p.crafts:SetWidth(876)
+	p.crafts:SetJustifyH("LEFT")
+	p.crafts:SetSpacing(3)
+	-- the crafting windows
+	local x = 0
+	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
+		{ "Paths", function() CH.PathsUI.Toggle() end, "Plan knowledge points for what you want to sell" },
+		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
+		{ "Results", function() CH.LogUI.Toggle() end, "What your crafts really gave" },
+		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
+		local w = b[1]:len() * 7 + 24
+		local btn = T.Button(p, b[1], w, 20)
+		btn:SetPoint("TOPLEFT", x, -518)
+		btn:SetScript("OnClick", b[2])
+		btn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { b[3] } }) end)
+		btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		x = x + w + 6
+	end
 end
-
-local function fmtHours(h) return h >= 1 and string.format("%.1f h", h) or string.format("%d min", math.floor(h * 60 + 0.5)) end
 
 function PUI.Refresh()
 	local p = page
@@ -76,16 +101,7 @@ function PUI.Refresh()
 		table.insert(lines, T.Color("accent", e.date:sub(6)) .. "  " .. e.name .. (e.hint and T.Color("muted", "\n      " .. e.hint) or ""))
 	end
 	p.upcoming:SetText(#lines > 0 and table.concat(lines, "\n") or T.Color("muted", "Nothing in the game calendar. Add your own: /aiq event 2026-12-01 Season 2 starts"))
-	local out = {}
-	for _, span in ipairs({ { "Last 7 days", 7 }, { "Last 30 days", 30 } }) do
-		local x = Pl.Time(time() - span[2] * 86400)
-		local parts = {}
-		for k, h in pairs(x.kinds) do table.insert(parts, k .. " " .. fmtHours(h)) end
-		table.sort(parts)
-		table.insert(out, T.Color("accent", span[1]) .. "  " .. (x.hours > 0 and (fmtHours(x.hours) .. ": " .. table.concat(parts, ", ")) or "no sessions yet")
-			.. (x.perHour and ("   " .. T.Color(x.perHour >= 0 and "ok" or "bad", CH.FormatMoney(x.perHour) .. " an hour")) or ""))
-	end
-	table.insert(out, T.Color("muted", "Time counts while the AH, mailbox or a profession window is open. Gold an hour is cash profit after overhead over that time, so heavy reagent buying shows as negative until the stock sells."))
-	p.time:SetText(table.concat(out, "\n"))
+	p.crafts:SetText(CH.UI.CraftingText())
+	p.crafts:GetParent():SetHeight(p.crafts:GetStringHeight() + 10)
 	return rows
 end
