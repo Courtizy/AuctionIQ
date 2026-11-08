@@ -512,5 +512,13 @@ check("and back in", LG.Gold() == 10000000)
 run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
 check("ledger and briefing pages draw", CH.UI.IsShown())
 
+# warbound and soulbound items can't go on the AH: no value, and the tooltip says so
+run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")
+inv2 = {e.id: e for e in LG.Inventory().values()}
+check("warbound items count as held but worth nothing", 302 in inv2 and inv2[302].bound and inv2[302].value == 0)
+check("the tooltip says it can't go on the AH", "can't go on the AH" in plain(CH.TooltipLines("i:302")[1][2]))
+check("other items keep their value", CH.Unsellable(100) is False or CH.Unsellable(100) is None or not CH.Unsellable(100))
+run("C_Item.GetItemInfo = nil")
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

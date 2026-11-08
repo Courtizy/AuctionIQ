@@ -71,6 +71,9 @@ end
 function CH.TooltipLines(link)
 	local lines = {}
 	local m = CH.FormatMoney
+	if CH.Unsellable(itemID(link)) then
+		return { { "AuctionIQ", CH.Theme.Color("muted", "bound: can't go on the AH"), nil, "accent" } }
+	end
 	local value = CH.Prices.Get("chvalue", link)
 	local now, post = CH.Prices.Get("chmat", link), CH.Prices.Get("chpost", link)
 	if value then

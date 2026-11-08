@@ -107,7 +107,8 @@ function LUI.Rows(v, opts)
 		for _, e in ipairs(L.Inventory(opts.filter, opts.char)) do
 			local text, name = LUI.ItemText(e.id)
 			total = total + e.value
-			table.insert(out, { id = e.id, cells = { text, e.total, e.bags, e.bank, e.mail, e.warband, e.ah, money(e.value) },
+			table.insert(out, { id = e.id, cells = { text, e.total, e.bags, e.bank, e.mail, e.warband, e.ah,
+				e.bound and CH.Theme.Color("muted", "bound") or money(e.value) },
 				sort = { name, e.total, e.bags, e.bank, e.mail, e.warband, e.ah, e.value } })
 		end
 		return out, "Total value: " .. money(total)

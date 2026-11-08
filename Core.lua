@@ -22,6 +22,22 @@ local function copyDefaults(dst, src)
 	return dst
 end
 
+-- Items the auction house won't take: soulbound (BoP), quest items and warbound items, including
+-- warbound until equipped. AuctionIQ treats them as worth nothing to sell: no value, no net worth,
+-- no dead stock or price alerts. Item bind types from GetItemInfo's 14th return.
+local NO_AH = { [1] = true, [4] = true, [7] = true, [8] = true, [9] = true }
+local unsellable = {}
+function CH.Unsellable(id)
+	if not id then return false end
+	local known = unsellable[id]
+	if known ~= nil then return known end
+	if not (C_Item and C_Item.GetItemInfo) then return false end
+	local bind = select(14, C_Item.GetItemInfo(id))
+	if bind == nil then return false end -- not loaded yet: ask again next time
+	unsellable[id] = NO_AH[bind] == true
+	return unsellable[id]
+end
+
 function CH.Print(msg)
 	print("|cffe0a83aAuctionIQ|r: " .. tostring(msg))
 end
