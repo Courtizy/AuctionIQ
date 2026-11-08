@@ -92,10 +92,8 @@ a stubbed WoW environment and checks prices, tooltips, profession tracking and t
 
 MIT licence.
 
-## Python export
+## Report
 
-`tools/clearinghouse_export.py` reads Clearinghouse's and TSM's SavedVariables (read only) after you log
-out and writes CSVs (sales, buys, income, expenses, expired, cancelled, gold over time, inventory, net
-worth, scans) plus a Markdown report. No packages needed.
-
-    python tools/clearinghouse_export.py "<WoW>/_retail_/WTF/Account/<NAME>/SavedVariables" --out reports
+The Report page shows the books for the last 7, 30 and 90 days side by side (sales after the cut,
+purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by product
+line. Its Export box turns any Ledger table into CSV text to copy out.

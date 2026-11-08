@@ -150,7 +150,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item. /ch alerts turns alerts on or off.")
+		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item. /ch alerts turns alerts on or off. /ch report opens the report.")
 	else
 		CH.UI.Toggle()
 	end

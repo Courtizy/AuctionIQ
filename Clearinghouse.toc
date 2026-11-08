@@ -36,6 +36,7 @@ MailUI.lua
 Alerts.lua
 Planner.lua
 PlanUI.lua
+ReportUI.lua
 UI.lua
 Minimap.lua
 Advisor.lua
