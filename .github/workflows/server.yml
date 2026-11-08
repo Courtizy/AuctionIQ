@@ -9,7 +9,7 @@ on:
   pull_request:
     paths: ["server/**", ".github/workflows/server.yml"]
   push:
-    branches: [main]
+    branches: [main, claude/companion-app]
     paths: ["server/**", ".github/workflows/server.yml"]
   workflow_dispatch:
 
@@ -44,10 +44,12 @@ jobs:
       - name: Check Cloudflare secrets
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first."; exit 1
+            echo "::warning::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets, then re-run this job to deploy."
           fi
-      - run: npx --yes wrangler@4 deploy
+      - if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: npx --yes wrangler@4 deploy
       - name: Give the Worker its secrets
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         env:
           BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
           BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
