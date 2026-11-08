@@ -14,7 +14,7 @@ import requests
 from .blizzard import TOKEN_URL, BlizzardError
 
 # The key server's address. Override it in Settings (server_url) if it moves.
-DEFAULT_SERVER = "https://clearinghouse-keys.jasoncourtoy.workers.dev"
+DEFAULT_SERVER = "https://clearinghouse-keys.jason-courtoy.workers.dev"
 
 
 class KeysAuth:
