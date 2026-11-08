@@ -91,6 +91,25 @@ local function build()
 	end)
 	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+	local function fillButton(label, anchor, tip, fn)
+		local b = T.Button(bar, label, label:len() * 7 + 16, 18)
+		b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+		b:SetScript("OnClick", fn)
+		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { tip } }) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return b
+	end
+	local orders = fillButton("Orders", fill, "Queue the crafting orders worth doing: those whose commission and rewards cover the reagents, or that reward knowledge or Acuity. Open the Crafting Orders tab first so the game lists them. Each order's button goes Claim, Craft, Deliver.", function()
+		local n, profit = CH.Queue.FillOrders()
+		CH.Print(n > 0 and string.format("queued %d orders, about %s profit.", n, CH.FormatMoney(profit))
+			or "no orders worth doing. Open the Crafting Orders tab so the game lists them.")
+	end)
+	fillButton("1st crafts", orders, "Queue every recipe you haven't made yet, once each at its cheapest, for the first-craft knowledge point.", function()
+		local n, cost = CH.Queue.FillFirstCrafts()
+		CH.Print(n > 0 and string.format("queued %d first crafts for %s of reagents: %d knowledge points.", n, CH.FormatMoney(cost), n)
+			or "no first crafts left in this profession (or open it first).")
+	end)
+
 	local y = -34
 	empty = text(panel, 12, y, W - 24, "LEFT")
 	qrows = {}
@@ -100,10 +119,10 @@ local function build()
 		r.name = CH.Window.OneLine(text(panel, 12, ry, 250))
 		r.who = CH.Window.OneLine(text(panel, 266, ry, 90))
 		r.profit = CH.Window.OneLine(text(panel, 360, ry, 86, "RIGHT"))
-		r.craft = T.Button(panel, "Craft", 44, 16)
+		r.craft = T.Button(panel, "Deliver", 58, 16)
 		r.craft:SetPoint("TOPLEFT", 454, ry + 2)
 		r.minus = T.Button(panel, "-", 18, 16)
-		r.minus:SetPoint("TOPLEFT", 504, ry + 2)
+		r.minus:SetPoint("TOPLEFT", 516, ry + 2)
 		qrows[i] = r
 	end
 
@@ -131,7 +150,7 @@ function QUI.Refresh()
 	if not panel or not panel:IsShown() then return end
 	local T = CH.Theme
 	local q = CH.db.queue
-	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Craft queue (" .. CH.Queue.Count() .. ")"))
+	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Queue (" .. CH.Queue.Count() .. ")"))
 	empty:SetText(#q == 0 and T.Color("muted", "Empty. Click a row in the crafting advisor to queue one, shift-click to queue as many as you can make.") or "")
 	local lines = { queue = {}, shop = {} }
 	for i, r in ipairs(qrows) do
@@ -140,15 +159,22 @@ function QUI.Refresh()
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
 		if show then
-			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
+			local tag = (e.concentration and T.Color("accent", " conc") or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
+				.. (e.orderID and T.Color("accent", " order") or "") .. (e.special and T.Color("accent", " reward") or "")
+			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, tag))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
 			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
 			local can, why = CH.Queue.CanCraftHere(e)
 			r.craft:SetEnabled(can)
+			local step = CH.Queue.OrderStep(e)
+			if r.craft.text then r.craft.text:SetText(step) elseif r.craft.SetText then r.craft:SetText(step) end
 			r.craft:SetScript("OnClick", function() CH.Queue.Craft(e, e.qty) end)
 			r.craft:SetScript("OnEnter", function(self)
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
-				GameTooltip:AddLine(can and ("Craft " .. e.qty .. " with the queued reagents" .. (e.concentration and " and Concentration" or "")) or ("Craft " .. why), 1, 1, 1)
+				GameTooltip:AddLine(not can and ("Craft " .. why)
+					or step == "Claim" and ("Claim " .. (e.customer or "the") .. "'s order")
+					or step == "Deliver" and "Deliver the order"
+					or ("Craft " .. e.qty .. " with the queued reagents" .. (e.concentration and " and Concentration" or "")), 1, 1, 1)
 				GameTooltip:Show()
 			end)
 			r.craft:SetScript("OnLeave", function() GameTooltip:Hide() end)

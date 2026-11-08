@@ -551,6 +551,27 @@ check("paths tree: root on top, children a row below, spread out", lay[1].y == 0
 lay2 = L.eval("Clearinghouse.TreeView.Layout({ nodes = { 1, 2 } }, { [1] = { x = 10, y = 5 }, [2] = { x = 40, y = 90, parent = 1 } })")
 check("paths tree: the game's own positions win when it gives them", lay2[2].x == 40 and lay2[2].y == 90)
 
+# Queue first crafts and work orders
+run("Clearinghouse.Queue.Clear(); STUB.recipeIDs = { 10 }; local g = C_TradeSkillUI.GetRecipeInfo; STUB.oldInfo = g; C_TradeSkillUI.GetRecipeInfo = function(id) local i = g(id); if id == 10 then i.firstCraft = true end return i end")
+n1 = L.eval("(Clearinghouse.Queue.FillFirstCrafts())")
+fq = list(CH.db.queue.values())
+check("first crafts: unmade recipes queue once each, cheapest, marked 1KP", n1 == 1 and fq[0].firstCraft and fq[0].qty == 1 and not fq[0].concentration)
+run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; STUB.recipeIDs = nil; Clearinghouse.Queue.Clear()")
+run("C_CraftingOrders = { GetCrafterOrders = function() return { { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Patron', reagents = {} } } end, ClaimOrder = function(id) STUB.claimed = id end, FulfillOrder = function(id) STUB.fulfilled = id end }")
+n2 = L.eval("(Clearinghouse.Queue.FillOrders())")
+oq = list(CH.db.queue.values())
+check("orders: a paying order is queued with its order ID", n2 == 1 and oq[0].orderID == 77)
+check("orders: the button goes Claim first", CH.Queue.OrderStep(oq[0]) == "Claim")
+run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
+check("orders: Claim claims it, then Craft", L.eval("STUB.claimed") == 77 and CH.Queue.OrderStep(oq[0]) == "Craft")
+run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
+check("orders: crafting passes the order ID", L.eval("STUB.crafted.id") == 10)
+run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
+check("orders: after the craft it's Deliver", CH.Queue.OrderStep(oq[0]) == "Deliver")
+run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
+check("orders: Deliver fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+run("C_CraftingOrders = nil")
+
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")
 inv2 = {e.id: e for e in LG.Inventory().values()}

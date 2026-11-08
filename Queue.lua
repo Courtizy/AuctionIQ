@@ -14,7 +14,7 @@ local function have(id)
 end
 
 local function keyOf(e)
-	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "" }, ":")
+	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "", e.orderID or "" }, ":")
 end
 
 --- Turn an advisor row into a queue entry for this character.
@@ -44,8 +44,10 @@ function Q.FromRow(result, r)
 end
 
 --- Add qty crafts of an advisor row; the same recipe, quality and Concentration choice stack.
-function Q.Add(result, r, qty)
+--- extra adds fields to a new entry: firstCraft, orderID, customer, rewards.
+function Q.Add(result, r, qty, extra)
 	local e = Q.FromRow(result, r)
+	for k, v in pairs(extra or {}) do e[k] = v end
 	local k = keyOf(e)
 	for _, x in ipairs(list()) do
 		if keyOf(x) == k then
@@ -105,6 +107,84 @@ function Q.FillFromBest(limit)
 		end
 	end
 	return added
+end
+
+local function eligible(info)
+	return info and info.learned and not info.isRecraft and not info.isSalvageRecipe and not info.isGatheringRecipe
+		and not info.isDummyRecipe
+end
+
+--- The cheapest craft of a result that the game accepts (any quality, no Concentration).
+local function cheapest(result)
+	local best
+	for _, r in ipairs(result and result.rows or {}) do
+		if r.cost and not r.short and not r.concentration and (not best or r.cost < best.cost) then best = r end
+	end
+	return best
+end
+
+--- Queue every learned recipe of the open profession that still gives its first-craft bonus (a
+--- knowledge point), each once, at its cheapest. Returns how many and what they cost.
+function Q.FillFirstCrafts()
+	local ui = C_TradeSkillUI
+	if not ui or not ui.GetAllRecipeIDs then return 0, 0 end
+	local n, cost = 0, 0
+	for _, id in ipairs(ui.GetAllRecipeIDs() or {}) do
+		local info = ui.GetRecipeInfo(id)
+		if eligible(info) and info.firstCraft then
+			local ok, result = pcall(CH.Advisor.Analyze, id, { professionID = CH.OpenProfessionID() })
+			local r = ok and cheapest(result)
+			if r then
+				Q.Add(result, r, 1, { firstCraft = true })
+				n, cost = n + 1, cost + (r.cost or 0)
+			end
+		end
+	end
+	return n, cost
+end
+
+--- Patron (NPC) and personal orders for the open profession, as the game last listed them.
+local function openOrders()
+	local co = C_CraftingOrders
+	if not co or not co.GetCrafterOrders then return {} end
+	return co.GetCrafterOrders() or {}
+end
+
+--- Queue the crafting orders worth doing: each order's best craft that meets its minimum quality,
+--- when the commission and rewards cover the reagents, or when it rewards something you can't buy
+--- (knowledge, Artisan's Acuity and so on). Returns how many were queued and their total profit.
+function Q.FillOrders(opts)
+	opts = opts or {}
+	local n, profit = 0, 0
+	for _, order in ipairs(openOrders()) do
+		local ok, result = pcall(CH.Orders.Analyze, order)
+		local r = ok and result and result.best
+		if r then
+			local special = false
+			for _, rw in ipairs(order.npcOrderRewards or {}) do
+				local id = rw.itemLink and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(rw.itemLink)
+				if id and CH.Unsellable(id) then special = true end
+			end
+			if (r.profit or 0) >= 0 or special or opts.all then
+				Q.Add(result, r, 1, { orderID = order.orderID, customer = order.customerName or "Patron", special = special })
+				n, profit = n + 1, profit + (r.profit or 0)
+			end
+		end
+	end
+	return n, profit
+end
+
+--- The profession the open window is (Enum.Profession), for the order calls.
+local function profession()
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	return info and info.profession
+end
+
+--- What the queue row's button does next for an order: "Claim", "Craft" or "Deliver".
+function Q.OrderStep(e)
+	if not e.orderID then return "Craft" end
+	return e.stage == "crafted" and "Deliver" or e.stage == "claimed" and "Craft" or "Claim"
 end
 
 --- Fill the queue from the saved scan of a profession, on a Concentration budget:
@@ -231,14 +311,29 @@ function Q.Craft(e, amount)
 	for _, r in ipairs(e.reagents) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
 	end
+	if e.orderID then
+		local step = Q.OrderStep(e)
+		if step == "Claim" then
+			C_CraftingOrders.ClaimOrder(e.orderID, profession())
+			e.stage = "claimed"
+			Q.Changed()
+			return true
+		elseif step == "Deliver" then
+			C_CraftingOrders.FulfillOrder(e.orderID, "", profession())
+			Q.Remove(e)
+			return true
+		end
+		amount = 1
+	end
 	crafting = e
-	C_TradeSkillUI.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
+	C_TradeSkillUI.CraftRecipe(e.recipeID, amount or 1, reagents, nil, e.orderID, e.concentration ~= nil)
 	return true
 end
 
 -- A recipe ID is its spell ID: each successful cast is one craft done.
 CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 	if unit ~= "player" or not crafting or crafting.recipeID ~= spellID then return end
+	if crafting.orderID then crafting.stage = "crafted"; crafting = nil; Q.Changed(); return end
 	Q.Remove(crafting, 1)
 	if crafting.qty <= 0 then crafting = nil end
 end)
