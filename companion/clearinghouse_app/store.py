@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import math
 import sqlite3
 import time
@@ -77,6 +78,8 @@ class Store:
             "SELECT item, minp, mkt, qty FROM snap WHERE source = ? AND ts = ?", (source, ts))}
         since = day_of(now - 31 * 86400)
         hist: dict[int, list[tuple[str, float]]] = {}
+        def dnum(d: str) -> int:
+            return calendar.timegm(time.strptime(d, "%Y-%m-%d")) // 86400
         for day, item, s, n in self.db.execute(
                 "SELECT day, item, sum_mkt, n FROM daily WHERE source = ? AND day >= ? ORDER BY day", (source, since)):
             hist.setdefault(item, []).append((day, s / n))
@@ -86,12 +89,15 @@ class Store:
             days = hist.get(item, [])
             last7 = [v for d, v in days if d > d7]
             last30 = [v for _, v in days]
-            ago = [v for d, v in days if d == d7]
-            change = (mk / ago[0] - 1) if ago and ago[0] > 0 else None
+            # the day nearest 7 days ago, within 2 days either side
+            target = dnum(d7)
+            near = sorted(((abs(dnum(d) - target), v) for d, v in days if abs(dnum(d) - target) <= 2), key=lambda x: x[0])
+            change = (mk / near[0][1] - 1) if near and near[0][1] > 0 else None
             vol = None
-            vals = [v for _, v in days if v > 0]
-            if len(vals) >= 5:
-                rets = [math.log(b / a) for a, b in zip(vals, vals[1:])]
+            pts = [(dnum(d), v) for d, v in days if v > 0]
+            if len(pts) >= 5:
+                # daily log changes, a gap of g days scaled by sqrt(g) so missed days don't inflate it
+                rets = [math.log(b / a) / math.sqrt(max(1, db - da)) for (da, a), (db, b) in zip(pts, pts[1:])]
                 m = sum(rets) / len(rets)
                 vol = math.sqrt(sum((r - m) ** 2 for r in rets) / (len(rets) - 1)) if len(rets) > 1 else None
             out[item] = ItemStats(mn, mk, q,
