@@ -33,8 +33,9 @@ class Fetched:
 
 @dataclass
 class Blizzard:
-    client_id: str
-    client_secret: str
+    """Blizzard(auth, region): auth is an auth.ServerAuth or auth.KeysAuth (anything with token(session))."""
+
+    auth: object
     region: str = "us"
     session: requests.Session = field(default_factory=requests.Session)
     timeout: float = 120.0
@@ -44,21 +45,15 @@ class Blizzard:
     def __post_init__(self) -> None:
         if self.region not in REGIONS:
             raise BlizzardError(f"Unknown region {self.region!r}; use one of {', '.join(REGIONS)}.")
-        if not self.client_id or not self.client_secret:
-            raise BlizzardError("Add your Blizzard client ID and secret in Settings.")
+        if self.auth is None:
+            raise BlizzardError("Log in to Clearinghouse first.")
 
     def token(self) -> str:
         if self._token and time.time() < self._token_until:
             return self._token
-        r = self.session.post(TOKEN_URL, data={"grant_type": "client_credentials"},
-                              auth=(self.client_id, self.client_secret), timeout=30)
-        if r.status_code in (400, 401):
-            raise BlizzardError("Blizzard refused the client ID or secret. Check them in Settings.")
-        if r.status_code != 200:
-            raise BlizzardError(f"Couldn't sign in to Blizzard (HTTP {r.status_code}).")
-        body = r.json()
-        self._token = body["access_token"]
-        self._token_until = time.time() + int(body.get("expires_in", 3600)) - 60
+        token, life = self.auth.token(self.session)
+        self._token = token
+        self._token_until = time.time() + life - 60
         return self._token
 
     def get(self, path: str, namespace: str, since: str | None = None) -> Fetched:
@@ -85,6 +80,13 @@ class Blizzard:
         if not m:
             raise BlizzardError(f"Couldn't find the connected realm for {realm!r}.")
         return int(m.group(1))
+
+    def realms(self) -> list[str]:
+        """Every realm name in the region, sorted, for the realm picker."""
+        data = self.get("/data/wow/realm/index", "dynamic").data or {}
+        names = {(r.get("name") if isinstance(r.get("name"), str) else (r.get("name") or {}).get("en_US"))
+                 for r in data.get("realms") or []}
+        return sorted(n for n in names if n)
 
     def auctions(self, connected_realm: int, since: str | None = None) -> Fetched:
         return self.get(f"/data/wow/connected-realm/{connected_realm}/auctions", "dynamic", since)

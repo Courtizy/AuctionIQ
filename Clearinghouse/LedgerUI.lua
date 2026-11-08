@@ -31,27 +31,23 @@ local VIEWS = {
 		{ "Sold", 358, 56 }, { "Avg sell", 418, 90 }, { "Avg profit", 512, 100 }, { "Total profit", 616, 108 } } },
 	purchases = { label = "Purchases", parent = "Expenses", sort = 7, asc = true, cols = ITEM_TIME },
 	expense = { label = "Other", parent = "Expenses", sort = 5, asc = true, cols = OTHER },
-	expired = { label = "Expired", parent = "Failed Auctions", sort = 4, asc = true,
-		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
-	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 4, asc = true,
-		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
+	expired = { label = "Expired", parent = "Failed Auctions", sort = 5, asc = true,
+		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
+	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 5, asc = true,
+		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
 	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
+	perf = { label = "Forecast vs actual", parent = "Profit", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
+		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
 	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
 	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
-	par = { label = "Par levels", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
+	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
-	when = { label = "When it sells", sort = 2, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
-		{ "Best hours", 382, 110 }, { "Share then", 496, 80 }, { "Post by", 580, 144 } } },
-	rivals = { label = "Competition", sort = 2, cols = { { "Item", 0, 220 }, { "Cancels", 224, 60 }, { "Seen", 288, 50 },
-		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 	report = { label = "Report", cols = {} },
-	market = { label = "Market prices", sort = 7, cols = { { "Item", 0, 220 }, { "Held", 224, 50 }, { "Market now", 278, 96 },
-		{ "Average", 378, 96 }, { "Trend", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
@@ -60,8 +56,8 @@ local SECTIONS = {
 	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
-		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
-	markets = { { "market" }, { "rivals" }, { "when" } },
+		{ "Profit", "pl" }, { "pl", sub = true }, { "perf", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
+	markets = {}, -- Markets/MarketsUI.lua fills this in with LUI.Register
 	analytics = { { "par" }, { "dead" }, { "time" } },
 }
 local section = "ledger"
@@ -78,6 +74,16 @@ local function money(c, sign)
 end
 
 local function signed(c) return CH.Theme.Color(c >= 0 and "ok" or "bad", money(c)) end
+LUI.Money, LUI.Signed = money, signed
+
+--- Another tab adds its views to this page: section is "markets" or "analytics", views maps a view
+--- key to { label, sort, cols, rows = function(ctx) return rows, footer end, noTime = true }, and nav
+--- lists the keys in the order the left nav shows them. ctx carries now, since, opts, keepName, keepRec.
+function LUI.Register(sec, views, nav)
+	SECTIONS[sec] = SECTIONS[sec] or {}
+	for k, def in pairs(views) do VIEWS[k] = def end
+	for _, k in ipairs(nav) do table.insert(SECTIONS[sec], { k }) end
+end
 
 --- An item as TSM shows it: icon, name in its rarity colour with its quality pip. Plain name too.
 function LUI.ItemText(id)
@@ -114,6 +120,10 @@ function LUI.Rows(v, opts)
 	local out = {}
 	local function keepName(name) return not key or string.lower(name or ""):find(key, 1, true) end
 	local function keepRec(r) return r.time >= since and (not opts.char or r.player == opts.char) end
+	local def = VIEWS[v]
+	if def and def.rows then
+		return def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
+	end
 
 	if v == "inventory" then
 		local total = 0
@@ -206,6 +216,27 @@ function LUI.Rows(v, opts)
 			.. CH.Theme.Color("muted", "   * mostly today's prices: you bought few of its reagents")
 	end
 
+	if v == "perf" then
+		local made, sold, rev, exp, real, fc = 0, 0, 0, 0, 0, 0
+		for _, e in ipairs(CH.Forecast.Performance(opts.days and since or 0)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				made, sold, rev, real, fc = made + e.made, sold + e.sold, rev + e.revenue, real + e.realized, fc + e.forecast
+				exp = exp + (e.expectEach and e.expectEach * e.sold or 0)
+				local acc = e.accuracy and (e.accuracy - 1)
+				table.insert(out, { id = e.id, cells = { text, e.made, e.sold, money(e.expectEach), money(e.actualEach),
+					acc and CH.Theme.Color(acc >= -0.05 and "ok" or "bad", string.format("%+d%%", math.floor(acc * 100 + 0.5))) or CH.Theme.Color("muted", "-"),
+					e.days and string.format("%.1f", e.days) or CH.Theme.Color("muted", "-"), signed(e.realized) },
+					sort = { name, e.made, e.sold, e.expectEach or 0, e.actualEach or 0, acc or 0, e.days or 1e9, e.realized } })
+			end
+		end
+		if made == 0 then
+			return out, CH.Theme.Color("muted", "Nothing yet: every craft from now on saves its forecast, and sales are matched to it oldest first.")
+		end
+		local acc = exp > 0 and string.format("%+d%%", math.floor((rev / exp - 1) * 100 + 0.5)) or "-"
+		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
+	end
+
 	if v == "dead" then
 		local tied = 0
 		for _, e in ipairs(L.DeadStock(now, opts.days or 30, opts.char)) do
@@ -243,41 +274,13 @@ function LUI.Rows(v, opts)
 				if e.short > 0 then short, worth = short + 1, worth + e.value end
 				table.insert(out, { id = e.id, cells = { text, string.format("%.0f", e.weekly), e.target, e.held,
 					e.short > 0 and CH.Theme.Color("bad", e.short) or CH.Theme.Color("ok", "0"), e.short > 0 and money(e.value) or "",
-					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", "a week of sales") },
+					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", string.format("%d days at %d%%",
+						CH.Expect.Setting("cover"), math.floor(CH.Expect.Setting("service") * 100 + 0.5))) },
 					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
 			end
 		end
-		return out, string.format("%d items below par, %s of stock to make or buy", short, money(worth))
+		return out, string.format("%d items below stock target, %s of stock to make or buy", short, money(worth))
 			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
-	end
-
-	if v == "when" then
-		local DAYS = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" }
-		for _, e in ipairs(L.SaleTimes(since, opts.char)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) and e.sold >= 3 then
-				local post = (e.bestHour + 23) % 24
-				table.insert(out, { id = e.id, cells = { text, e.sold, DAYS[e.bestDay], string.format("%02d:00-%02d:00", e.bestHour, (e.bestHour + 4) % 24),
-					string.format("%d%%", math.floor(e.share * 100 + 0.5)), string.format("%s by %02d:00", DAYS[e.bestDay]:sub(1, 3), post) },
-					sort = { name, e.sold, e.bestDay, e.bestHour, e.share, e.bestDay * 24 + post } })
-			end
-		end
-		return out, "Items sold 3+ times. A 4-hour window holding 17% of sales is no pattern; 40%+ is worth posting for."
-	end
-
-	if v == "rivals" then
-		local n = 0
-		for _, e in ipairs(L.Competition(since)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				if e.status == "contested" then n = n + 1 end
-				local col = e.status == "contested" and "bad" or e.status == "busy" and "accent" or "ok"
-				table.insert(out, { id = e.id, cells = { text, e.cancels, e.seen, e.rate and string.format("%d%%", math.floor(e.rate * 100 + 0.5)) or "-",
-					e.rival or CH.Theme.Color("muted", "-"), CH.Theme.Color(col, e.status) },
-					sort = { name, e.cancels, e.seen, e.rate or -1, e.rival or "", e.status } })
-			end
-		end
-		return out, string.format("%d contested markets", n) .. CH.Theme.Color("muted", "   Undercut and rivals fill in from your post scans; commodities don't show sellers")
 	end
 
 	if v == "overhead" then
@@ -291,43 +294,6 @@ function LUI.Rows(v, opts)
 			end
 		end
 		return out, string.format("Trading profit %s, overhead %s, after overhead %s", signed(o.profit), money(-o.total), signed(o.afterOverhead))
-	end
-
-	if v == "market" then
-		local ids, held = {}, {}
-		for _, e in ipairs(L.Inventory(nil, opts.char)) do
-			if e.id and not e.bound then held[e.id] = e.total; ids[e.id] = true end
-		end
-		for _, r in ipairs(L.Records("Sales")) do if r.id and r.time >= now - 30 * 86400 then ids[r.id] = true end end
-		local any, sources = false, {}
-		for id in pairs(ids) do
-			local m = CH.Prices.MarketAny and CH.Prices.MarketAny(id)
-			if m then
-				any = true
-				sources[m.source or "realm"] = true
-				local text, name = LUI.ItemText(id)
-				if keepName(name) then
-					local h, mk = held[id] or 0, m.market or m.min
-					local ch = m.change7
-					table.insert(out, { id = id, cells = { text, h, money(mk), money(m.avg7),
-						ch and CH.Theme.Color(ch >= 0 and "ok" or "bad", string.format("%+d%%", math.floor(ch * 100 + 0.5))) or CH.Theme.Color("muted", "-"),
-						m.qty or "-", h > 0 and mk and money(mk * h) or "" },
-						sort = { name, h, mk or 0, m.avg7 or 0, ch or 0, m.qty or 0, (mk or 0) * h } })
-				end
-			end
-		end
-		if not any then
-			return out, CH.Theme.Color("muted", "No market data yet: needs TSM, Oribos Exchange or the Clearinghouse app.")
-		end
-		local from = {}
-		if sources.realm or sources.commodity then
-			local at, realm = 0, ""
-			if ClearinghouseMarket and ClearinghouseMarket.Info then at, realm = ClearinghouseMarket.Info() end
-			table.insert(from, "Clearinghouse app (" .. realm .. (at > 0 and (", " .. LUI.Ago(at, now) .. " old") or "") .. ", 7-day avg)")
-		end
-		if sources.tsm then table.insert(from, "TSM (60-day avg)") end
-		if sources.oribos then table.insert(from, "Oribos Exchange") end
-		return out, "Items you hold or sold this month" .. CH.Theme.Color("muted", "   from " .. table.concat(from, ", "))
 	end
 
 	if v == "time" then
@@ -344,18 +310,21 @@ function LUI.Rows(v, opts)
 	end
 
 	-- expired / cancelled
-	local n = 0
+	-- TSM doesn't record the deposit, so it's estimated from the vendor price and the item's duration
+	local n, lost = 0, 0
 	for _, r in ipairs(L.Records(v == "expired" and "Expired" or "Cancelled")) do
 		if keepRec(r) then
 			local text, name = LUI.ItemText(r.id)
 			if keepName(name) then
-				n = n + r.quantity
-				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, LUI.Ago(r.time, now) },
-					sort = { name, r.player or "", r.quantity, now - r.time } })
+				local d = r.id and CH.Expect.LostDeposit(r.id, r.quantity) or 0
+				n, lost = n + r.quantity, lost + d
+				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, d > 0 and money(d) or CH.Theme.Color("muted", "-"),
+					LUI.Ago(r.time, now) }, sort = { name, r.player or "", r.quantity, d, now - r.time } })
 			end
 		end
 	end
-	return out, string.format("%d items %s", n, v)
+	return out, string.format("%d items %s, about %s in deposits lost", n, v, money(lost))
+		.. CH.Theme.Color("muted", "   estimated from vendor price and listing length")
 end
 
 local function sortRows(rows, col, desc)
@@ -546,7 +515,7 @@ function LUI.Refresh()
 	local charLabel = char or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
-	p.timeButton:SetShown(view ~= "inventory" and view ~= "market" and view ~= "par")
+	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
 
 	for j, h in ipairs(p.heads) do
 		local c = v.cols[j]
@@ -591,7 +560,7 @@ function LUI.Refresh()
 	return rows, footer
 end
 
---- Par levels view: shift-click raises an item's par by 1, ctrl-click lowers it, alt-click goes
+--- Stock targets view: shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
 --- back to the automatic one (a week of sales).
 function LUI.ParClick(id, mod)
 	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")

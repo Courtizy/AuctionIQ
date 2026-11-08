@@ -25,7 +25,8 @@ function Lg.Started(recipeID, count, concentrate)
 	end
 	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
 		expected = row and row.profit, cost = row and row.cost, mc = row and row.parts and row.parts.mc,
-		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name }
+		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
+		order = r and r.order ~= nil and r.recipeID == recipeID or nil }
 end
 
 --- One crafting result from the game (TRADE_SKILL_ITEM_CRAFTED_RESULT).
@@ -57,6 +58,11 @@ function Lg.Result(data)
 	if (data.concentrationSpent or 0) > 0 then e.concCrafts = e.concCrafts + 1 end
 	e.concSpent = e.concSpent + (data.concentrationSpent or 0)
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
+	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
+	if CH.Forecast and data.itemID and not (pending and pending.order) then
+		CH.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
+			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID })
+	end
 	if pending then
 		e.cost = e.cost + (pending.cost or 0)
 		e.expected = e.expected + (pending.expected or 0)
@@ -98,6 +104,7 @@ local LUI = {}
 CH.LogUI = LUI
 local frame, rows
 local N, W = 14, 680
+local offset = 0
 local COLS = { { "Recipe", 12, 200 }, { "Crafts", 214, 50 }, { "Multicraft", 266, 86 }, { "Resourceful", 354, 90 },
 	{ "Ingenuity", 446, 80 }, { "Profit vs expected", 528, 140 } }
 
@@ -115,8 +122,9 @@ function LUI.Refresh()
 	frame.note:SetText(#data == 0 and T.Color("muted", "Nothing logged yet. Every craft on this character is recorded here.")
 		or T.Color("muted", "Proc rates are what you got / what the advisor expected."))
 	local out = {}
+	offset = math.max(0, math.min(offset, #data - N))
 	for i, r in ipairs(rows) do
-		local d = data[i]
+		local d = data[i + offset]
 		if d then
 			r.cells[1]:SetText(d.name or "?")
 			r.cells[2]:SetText(d.crafts)
@@ -140,6 +148,7 @@ function LUI.Toggle()
 		clear:SetScript("OnClick", function() Lg.Clear() end)
 		frame.note = CH.Window.Text(frame, 12, -34, W - 24)
 		rows = CH.Window.Table(frame, COLS, N, -54, 18, nil, nil, W)
+		CH.Window.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #Lg.Rows() end, LUI.Refresh)
 		CH.Theme.Fonts(frame)
 		CH.Window.Attach("results", frame)
 	end

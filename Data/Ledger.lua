@@ -325,10 +325,17 @@ end
 
 -- CFO views ----------------------------------------------------------------------------------
 --- What you paid on average for each item, from TSM's purchase records since `since`.
+--- What you paid per item: { [itemID] = { n, gold, each } }. Without `since`, each item's buys from
+--- its last 30 days of buying (so old prices age out), else every buy since then.
 function Lg.Paid(since)
-	local t = {}
-	for _, b in ipairs(Lg.Records("Buys")) do
-		if b.id and b.time >= (since or -math.huge) and b.quantity > 0 then
+	local t, last = {}, {}
+	local buys = Lg.Records("Buys")
+	if not since then
+		for _, b in ipairs(buys) do if b.id and (not last[b.id] or b.time > last[b.id]) then last[b.id] = b.time end end
+	end
+	for _, b in ipairs(buys) do
+		local from = since or (b.id and last[b.id] and last[b.id] - 30 * DAY) or -math.huge
+		if b.id and b.time >= from and b.quantity > 0 then
 			local e = t[b.id] or { n = 0, gold = 0 }
 			t[b.id] = e
 			e.n, e.gold = e.n + b.quantity, e.gold + b.amount
@@ -407,7 +414,8 @@ function Lg.LastSold()
 	return t
 end
 
--- Per item: last sale, expiries since it, and 30-day sold and expired counts. Rebuilt at most once a minute.
+-- Per item: last sale, expiries since it, and 30-day sold and expired units (both in units, so a
+-- stack that partly sells and partly expires counts right). Rebuilt at most once a minute.
 local stats, statsAt
 local function itemStats()
 	local now = GetTime and GetTime() or 0
@@ -426,7 +434,7 @@ local function itemStats()
 	for _, r in ipairs(Lg.Records("Expired")) do
 		if r.id then
 			local x = e(r.id)
-			if r.time >= cut then x.exp30 = x.exp30 + 1 end
+			if r.time >= cut then x.exp30 = x.exp30 + math.max(1, r.quantity or 1) end
 		end
 	end
 	for _, r in ipairs(Lg.Records("Expired")) do

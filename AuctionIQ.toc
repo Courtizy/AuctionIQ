@@ -14,6 +14,8 @@ Core\Core.lua
 Core\Theme.lua
 Core\Window.lua
 Data\Prices.lua
+Data\Prob.lua
+Data\Expect.lua
 Data\Formula.lua
 Data\Stats.lua
 Crafting\Specs\ConcentrationCurves.lua
@@ -27,13 +29,17 @@ Crafting\Professions.lua
 Crafting\Cooldowns.lua
 Data\Ledger.lua
 Clearinghouse\LedgerUI.lua
+Markets\MarketsUI.lua
 Analytics\Par.lua
+Analytics\Forecast.lua
 Trading\Groups.lua
 Trading\Auction.lua
 Trading\AuctionUI.lua
 Trading\GroupsUI.lua
 Trading\Mail.lua
 Trading\MailUI.lua
+Core\Settings.lua
+Core\SettingsUI.lua
 Core\Alerts.lua
 Crafting\Planner.lua
 Crafting\PlanUI.lua

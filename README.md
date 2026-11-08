@@ -13,12 +13,12 @@ One window, six tabs:
 
 | Tab | What it answers |
 |-----|-----------------|
-| Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below par, reposts). Click a card to go where the work is. The activity log is one click away. |
+| Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. The activity log is one click away. |
 | Markets | Market prices from the Clearinghouse app (now, 7-day average, change, listings), competition, when items sell. |
 | Crafting | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and buttons for Scan, Paths, Queue, Results and the advisor. |
 | Trading | Groups, operations and mail routes. |
-| Analytics | Par levels, dead stock, gold per hour. |
-| Clearinghouse | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions, profit by product, holdings, overhead, CSV export. |
+| Analytics | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour. |
+| Clearinghouse | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 
 `/aiq today`, `markets`, `crafting`, `trading`, `analytics` and `ledger` open a tab; `/aiq report` opens the Report.
 
@@ -37,6 +37,10 @@ One window, six tabs:
   profit and the best use of Concentration, worked out the same way CraftSim does:
   - profit is the average per craft, counting Multicraft's extra items and the reagents
     Resourcefulness saves
+  - an item is valued at what you can expect to get for it: the price after the cut, less the
+    deposits you'll lose to expiries before it sells and the cost of gold tied up meanwhile (1% a
+    day by default). How often it sells starts from the region's sale rate and moves toward your
+    own record as you post
   - Concentration's cost counts Ingenuity refunds, with your specialization's bonuses to them
   - finishing reagents: every combination is tried and the best is used
   - crafting orders (commission and patron rewards against your reagents, the customer's minimum
@@ -123,9 +127,11 @@ The code is split into one folder per component, each with its own `comp:` label
 | `Today/` | The opening page: what to do next |
 | `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
 | `Trading/` | Groups and operations, posting and cancelling, mail |
-| `Analytics/` | Par levels; forecast vs actual lands here |
+| `Analytics/` | Stock targets (Par.lua); forecast vs actual lands here |
 | `Clearinghouse/` | The ledger tab and reports |
+| `Markets/` | The Markets tab: market prices, competition, when it sells |
 | `companion/` | The Clearinghouse desktop app and its addon (not packaged with AuctionIQ) |
+| `server/` | The key server the desktop app logs in to (Cloudflare Worker, not packaged) |
 
 `AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them.
 

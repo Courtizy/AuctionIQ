@@ -58,7 +58,7 @@ function Sc.BuyOrCraft(r)
 	if not item then return nil end
 	local buy = CH.Prices.Get("chmat", "i:" .. item)
 	local value = CH.Prices.Get("chvalue", "i:" .. item)
-	local resell = value and value * CH.AH_CUT
+	local resell = value and CH.Expect.Value(item, value)
 	return { buy = buy, craft = craft, resell = resell, flip = buy and resell and resell - buy,
 		save = buy and craft and craft - buy }
 end

@@ -7,20 +7,34 @@ AuctionIQ at login or `/reload`.
 
 It only writes into the Clearinghouse addon folder: never WoW's SavedVariables and never TSM's files.
 
-## Controls (tray icon)
+## Install
 
-| Menu | Does |
+Download `Clearinghouse-Setup.exe` from the newest `companion-v*` release on GitHub and run it. No admin
+prompt; it installs for you alone. The app checks for new releases when it starts and offers
+**Update and restart** at the top of the window.
+
+## Setup
+
+The first time it opens, Clearinghouse asks for three things, like TSM's app:
+
+1. **Log in** with your Clearinghouse user name and password. They are checked by the key server
+   (`server/` in this repo), which keeps the Blizzard API keys, so nothing secret is in the download.
+   The app keeps only a device token, in Windows Credential Manager.
+2. **Pick your region and realm** from Blizzard's realm list.
+3. That's it. World of Warcraft is found from the registry (you can set its folder in Settings), and
+   the first sync starts right away.
+
+## The window
+
+| Page | Shows |
 |---|---|
-| Status... | Last and next sync, items in the data file, days of history, where it writes |
-| Sync now | One update right away (works while paused too) |
-| Pause | No syncs until you resume; the data file stays as it is |
-| Settings... | Region, realm, WoW folder, how often, Blizzard keys, wait while WoW runs |
-| Start with Windows | On or off |
-| Open log | The app's log file |
-| Quit | Closes it fully |
+| Overview | Sync status, last and next sync, items priced, days of history, and the week's biggest moves on your realm or in region commodities |
+| Markets | A 30-day chart (market and lowest listing) for any mover, with its volatility |
+| Settings | Account, region and realm, WoW folder, how often, wait while WoW runs, start with Windows, updates, log |
 
-Blizzard keys come from develop.battle.net and are kept in Windows Credential Manager. Settings,
-history (`history.sqlite`) and the log live in `%APPDATA%\Clearinghouse`.
+Closing the window keeps the app in the tray. The tray menu has Open, Sync now, Pause, Start with
+Windows, Open log and Quit. Settings, history (`history.sqlite`) and the log live in
+`%APPDATA%\Clearinghouse`. Item names come from AuctionIQ's saved names, read only.
 
 ## History
 
@@ -30,5 +44,13 @@ prices stay in AuctionIQ for the long view.
 
 ## Build and test
 
-`pip install -r requirements-dev.txt && python -m pytest -q tests`. The Windows program is built by
-the "Clearinghouse app" GitHub workflow (PyInstaller), with the addon folder next to it.
+`pip install -r requirements-dev.txt && python -m pytest -q tests`. The window is plain HTML, CSS and JS
+in `clearinghouse_app/ui/`; open `index.html` in a browser to preview it with demo data
+(`index.html#setup` for the first-run screens).
+
+The "Clearinghouse app" workflow builds the program (PyInstaller) and the installer (Inno Setup) on
+every change. To release, bump `__version__` in `clearinghouse_app/__init__.py` and push a matching
+tag, for example `companion-v0.2.0`; the workflow publishes the installer and the addon zip.
+
+Developers can skip the server: set `"use_own_keys": true` in settings.json and store your own keys
+with `python -c "from clearinghouse_app import config; config.set_keys('ID', 'SECRET')"`.
