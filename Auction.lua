@@ -95,6 +95,10 @@ function A.Decide(id, results, held)
 	end
 	if p.max and price > p.max then price, why = p.max, "capped at max" end
 	if p.min and price < p.min then price = p.min end
+	-- the AH only takes whole silver: round down, but never under your min
+	price = math.floor(price / 100) * 100
+	if p.min and price < p.min then price = math.ceil(p.min / 100) * 100 end
+	price = math.max(100, price)
 	local room = p.cap - A.Listed(id)
 	if room <= 0 then return { action = "skip", why = string.format("Warband already has %d up (cap %d)", A.Listed(id), p.cap) } end
 	local qty = math.min(room, held or room)
@@ -190,21 +194,34 @@ end
 CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(id) answered(id) end)
 CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(key) answered(key and key.itemID) end)
 
---- Post one decision (must run from a click). Returns true when something was sent.
+--- How many of an item are in your bags (unbound).
+function A.InBags(id)
+	local n = 0
+	for _, s in ipairs(A.BagSlots(id)) do n = n + (s.count or 1) end
+	return n
+end
+
+--- Post one decision (must run from a click). Sends it and returns how many it asked to list, or
+--- nil when there is nothing to post. Whether the AH took it comes back as an event (see AuctionUI).
 function A.Post(id, d)
 	local slots = A.BagSlots(id)
-	if not slots[1] or not ItemLocation then return false end
+	if not slots[1] or not ItemLocation then return nil end
 	local loc = ItemLocation:CreateFromBagAndSlot(slots[1].bag, slots[1].slot)
+	local price = math.max(100, math.floor(d.price / 100) * 100)
 	if isCommodity(id) then
-		AH.PostCommodity(loc, d.duration, d.qty, d.price)
-	else
-		AH.PostItem(loc, d.duration, 1, nil, d.price)
+		AH.PostCommodity(loc, d.duration, d.qty, price)
+		return d.qty
 	end
+	AH.PostItem(loc, d.duration, 1, nil, price)
+	return 1
+end
+
+--- Count a post the AH confirmed toward this character's live auctions.
+function A.Posted(id, n)
 	local rec = store()[me()] or { at = time(), items = {} }
-	rec.items[id] = (rec.items[id] or 0) + (isCommodity(id) and d.qty or 1)
+	rec.items[id] = (rec.items[id] or 0) + n
 	rec.at = rec.at or time()
 	store()[me()] = rec
-	return true
 end
 
 --- Ask the AH for your auctions; calls back with { { auctionID, id, qty, price } }.

@@ -7,6 +7,8 @@ CH.AuctionUI = AUI
 local frame, rows, status, postButton, skipButton, cancelButton
 local W, H, N = 460, 470, 18
 local plan, mode, confirmNext = {}, nil, false
+local pending -- the post sent and not yet answered: { e, n, before, token }
+local WAIT = 4
 
 local function money(c) return c and CH.FormatMoney(c) or "-" end
 
@@ -25,7 +27,7 @@ function AUI.Refresh()
 		local e = plan[i]
 		if e then
 			local text = CH.Window.ItemIcon(e.id, 14) .. ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(e.id)) or ("item " .. e.id))
-			r.cells[1]:SetText(e.done and T.Color("muted", text) or text)
+			r.cells[1]:SetText(e.done and not e.failed and T.Color("muted", text) or text)
 			if e.d.action == "post" then
 				r.cells[2]:SetText(e.d.qty .. " x " .. money(e.d.price))
 			elseif e.d.action == "cancel" then
@@ -33,13 +35,14 @@ function AUI.Refresh()
 			else
 				r.cells[2]:SetText("")
 			end
-			local c = e.done and "muted" or (e.d.action == "skip" or e.d.action == "keep") and "muted" or "ok"
-			r.cells[3]:SetText(T.Color(c, (e.done and "done: " or (e.d.action .. ": ")) .. (e.d.why or "")))
+			local c = e.failed and "bad" or e.done and "muted" or (e.d.action == "skip" or e.d.action == "keep") and "muted" or "ok"
+			local label = e.failed and "failed: " or e.done and "done: " or (pending and pending.e == e) and "sending: " or (e.d.action .. ": ")
+			r.cells[3]:SetText(T.Color(c, label .. (e.d.why or "")))
 		else
 			for _, c in ipairs(r.cells) do c:SetText("") end
 		end
 	end
-	postButton:SetEnabled(mode == "post" and nextEntry("post") ~= nil)
+	postButton:SetEnabled(mode == "post" and (confirmNext or (not pending and nextEntry("post") ~= nil)))
 	cancelButton:SetEnabled(mode == "cancel" and nextEntry("cancel") ~= nil)
 	if mode and todo == 0 and not AUI.busy then status:SetText(T.Color("muted", "Nothing left to " .. mode .. ".")) end
 end
@@ -101,15 +104,60 @@ function AUI.CancelScan()
 	end)
 end
 
+local function itemName(id) return (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id) end
+
+-- The AH answered (or we gave up waiting): ok = it listed, else why not.
+local function settle(ok, why)
+	local p = pending
+	if not p then return end
+	pending, confirmNext = nil, false
+	local e = p.e
+	if ok then
+		CH.Auction.Posted(e.id, p.n)
+		e.posted = (e.posted or 0) + p.n
+		if e.posted >= e.d.qty then
+			e.done = true
+		else
+			e.d.why = string.format("posted %d of %d, press Post for the next", e.posted, e.d.qty)
+		end
+		status:SetText(CH.Theme.Color("ok", string.format("Posted %d x %s.", p.n, itemName(e.id))))
+	else
+		e.done, e.failed = true, true
+		e.d.why = why
+		status:SetText(CH.Theme.Color("bad", string.format("%s was not posted: %s", itemName(e.id), why)))
+	end
+	AUI.Refresh()
+end
+AUI.Settle = settle
+
+-- No answer in time: if the item left your bags it went up, else it didn't.
+local function waitFor(token)
+	C_Timer.After(WAIT, function()
+		if not pending or pending.token ~= token or confirmNext then return end
+		if CH.Auction.InBags(pending.e.id) < pending.before then settle(true) else settle(false, pending.err or "the AH didn't take it, it's still in your bags") end
+	end)
+end
+
 function AUI.PostNext()
 	if confirmNext then
 		confirmNext = false
 		if C_AuctionHouse.ConfirmPostCommodity then pcall(C_AuctionHouse.ConfirmPostCommodity) end
 		if C_AuctionHouse.ConfirmPostItem then pcall(C_AuctionHouse.ConfirmPostItem) end
+		if pending then pending.token = {}; waitFor(pending.token) end
 		return
 	end
+	if pending then return end
 	local e = nextEntry("post")
-	if e and CH.Auction.Post(e.id, e.d) then e.done = true end
+	if not e then return end
+	local before = CH.Auction.InBags(e.id)
+	local n = CH.Auction.Post(e.id, e.d)
+	if not n then
+		e.done, e.failed, e.d.why = true, true, "none left in your bags"
+	else
+		pending = { e = e, n = n, before = before, token = {} }
+		status:SetText(CH.Theme.Color("accent", string.format("Posting %d x %s, waiting for the AH ...", n, itemName(e.id))))
+		waitFor(pending.token)
+	end
 	AUI.Refresh()
 end
 
@@ -120,6 +168,7 @@ function AUI.CancelNext()
 end
 
 function AUI.SkipNext()
+	if pending and confirmNext then settle(false, "skipped at the price warning"); return end
 	local e = nextEntry(mode == "cancel" and "cancel" or "post")
 	if e then e.done = true; e.d.why = "skipped" end
 	AUI.Refresh()
@@ -147,6 +196,10 @@ CH.On("AUCTION_HOUSE_SHOW", function()
 	frame:Show()
 end)
 CH.On("AUCTION_HOUSE_CLOSED", function() if frame then frame:Hide() end end)
+CH.On("AUCTION_HOUSE_AUCTION_CREATED", function() if pending and not confirmNext then settle(true) end end)
+-- an error while waiting is only a likely reason: the bag check at the end decides
+CH.On("UI_ERROR_MESSAGE", function(_, _, msg) if pending and not confirmNext and type(msg) == "string" then pending.err = msg end end)
+CH.On("AUCTION_HOUSE_CLOSED", function() if pending then settle(false, "the AH closed before it answered") end end)
 CH.On("AUCTION_HOUSE_POST_WARNING", function()
 	confirmNext = true
 	if status then status:SetText(CH.Theme.Color("bad", "The AH wants a confirmation for this price: press Post again to confirm, Skip to drop it.")) end

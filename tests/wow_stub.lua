@@ -246,3 +246,13 @@ C_Container = { GetContainerNumSlots = function(bag) return STUB.bagItems[bag] a
 function EquipCursorItem(slot) STUB.equipped = STUB.equipped or {}; STUB.equipped[slot] = STUB.cursor end
 function InCombatLockdown() return false end
 date = os.date
+
+-- Auction House (posting)
+STUB.ahPosts = {}
+ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+Enum.ItemCommodityStatus = { Item = 1, Commodity = 2 }
+C_AuctionHouse = {
+	GetItemCommodityStatus = function() return 1 end,
+	PostItem = function(loc, dur, qty, bid, buyout) table.insert(STUB.ahPosts, { dur = dur, qty = qty, buyout = buyout }) end,
+	PostCommodity = function(loc, dur, qty, unit) table.insert(STUB.ahPosts, { dur = dur, qty = qty, buyout = unit, commodity = true }) end,
+}
