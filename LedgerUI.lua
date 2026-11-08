@@ -338,10 +338,41 @@ function LUI.Build(p, fs, panel)
 	for _, n in ipairs(NAV) do
 		local target = n[2] or n[1]
 		local label = VIEWS[n[1]] and VIEWS[n[1]].label or n[1]
-		local b = T.Button(nav, label, n.sub and 128 or 144, n.sub and 18 or 20)
-		b:SetPoint("TOPLEFT", n.sub and 24 or 8, y)
+		if not n.sub and #p.nav > 0 then y = y - 6 end -- breathing room before each group
+		local b = T.Button(nav, label, n.sub and 120 or 144, n.sub and 18 or 20)
+		b:SetPoint("TOPLEFT", n.sub and 32 or 8, y)
 		b:SetScript("OnClick", function() setView(target) end)
-		b.view, b.parent = n[1], not n.sub and n[2] and n[1] or nil
+		b.view, b.parent, b.sub = n[1], not n.sub and n[2] and n[1] or nil, n.sub
+		-- left-aligned labels: groups flush left, their views indented under a guide line
+		local f = b.text or (b.GetFontString and b:GetFontString())
+		if f then
+			f:ClearAllPoints()
+			f:SetPoint("LEFT", 8, 0)
+			f:SetPoint("RIGHT", -4, 0)
+			f:SetJustifyH("LEFT")
+			if n.sub and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
+		end
+		if n.sub then
+			local c = T.line
+			local v = nav:CreateTexture(nil, "ARTWORK")
+			v:SetColorTexture(c[1], c[2], c[3], 1)
+			v:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y + 3)
+			v:SetSize(1, 21)
+			local h = nav:CreateTexture(nil, "ARTWORK")
+			h:SetColorTexture(c[1], c[2], c[3], 1)
+			h:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y - 9)
+			h:SetSize(12, 1)
+			b.guide = { v, h }
+		end
+		local mark = b:CreateTexture(nil, "OVERLAY")
+		mark:SetPoint("TOPLEFT", 1, -1)
+		mark:SetPoint("BOTTOMLEFT", 1, 1)
+		mark:SetWidth(2)
+		b.mark = mark
+		b:HookScript("OnLeave", function(self)
+			local fs, c = self.text or (self.GetFontString and self:GetFontString()), self.navColor
+			if fs and c then fs:SetTextColor(c[1], c[2], c[3]) end
+		end)
 		table.insert(p.nav, b)
 		y = y - (n.sub and 21 or 25)
 	end
@@ -425,8 +456,14 @@ function LUI.Refresh()
 	for _, b in ipairs(p.nav) do
 		local on = b.view == view or (b.parent and v.parent == b.parent)
 		local f = b.text or (b.GetFontString and b:GetFontString())
-		local c = on and T.accent or T.fg
+		-- group names always read gold; the open view also gets a gold bar on its left edge
+		local c = (on or not b.sub) and T.accent or T.fg
+		b.navColor = c
 		if f and f.SetTextColor then f:SetTextColor(c[1], c[2], c[3]) end
+		if b.mark then
+			b.mark:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+			b.mark:SetShown(b.view == view)
+		end
 	end
 	local charLabel = char or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
