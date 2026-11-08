@@ -91,6 +91,23 @@ function CH.TooltipLines(link)
 	elseif now then
 		table.insert(lines, { "AuctionIQ buy price", m(now) })
 	end
+	local mk = CH.Prices.Market(itemID(link))
+	if mk and mk.market then
+		local where = mk.source == "commodity" and "region" or "realm"
+		table.insert(lines, { "Clearinghouse market", CH.Theme.Color("muted", where .. ", " .. (mk.days or 0) .. " days") })
+		table.insert(lines, { "  Market now", m(mk.market) })
+		if mk.avg7 and (mk.days or 0) > 1 then
+			local ch = mk.change7 and string.format("  %+.0f%% in 7 days", mk.change7 * 100) or ""
+			table.insert(lines, { "  7-day average" .. ch, m(mk.avg7), "muted", mk.change7 and (mk.change7 >= 0 and "ok" or "bad") or "muted" })
+		end
+		if mk.qty then table.insert(lines, { "  Listed now", tostring(mk.qty), "muted", "muted" }) end
+	end
+	local oeR, oeG = CH.Prices.Get("oerealm", link), CH.Prices.Get("oeregion", link)
+	if oeR or oeG then
+		table.insert(lines, { "Oribos Exchange", "" })
+		if oeR then table.insert(lines, { "  Realm", m(oeR), "muted", "muted" }) end
+		if oeG then table.insert(lines, { "  Region", m(oeG), "muted", "muted" }) end
+	end
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
 		craftLines(lines, row, acc, at)

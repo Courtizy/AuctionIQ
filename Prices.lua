@@ -14,6 +14,9 @@ local FORMULA = {
 	avgsell = "avgsell",
 	chvalue = "min(" .. NOW .. "," .. POST .. ")",
 	crafting = "crafting",
+	-- Oribos Exchange (Undermine Exchange's addon), through TSM, when it's installed
+	oerealm = "oerealm",
+	oeregion = "oeregion",
 }
 
 local Prices = { FORMULA = FORMULA }
@@ -65,6 +68,13 @@ function Prices.CraftProfit(item, quantity)
 	local value, cost = Prices.Get("chvalue", item), Prices.Get("crafting", item)
 	if not value or not cost then return nil end
 	return value * CH.AH_CUT * (quantity or 1) - cost * (quantity or 1)
+end
+
+--- The Clearinghouse app's market history for an item (see the Clearinghouse addon), or nil.
+function Prices.Market(id)
+	if type(ClearinghouseMarket) ~= "table" or not id then return nil end
+	local ok, v = pcall(ClearinghouseMarket.Get, id)
+	return ok and v or nil
 end
 
 function Prices.ClearCache()
