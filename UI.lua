@@ -472,7 +472,7 @@ local function build()
 	frame.title:SetText(T.Color("accent", "Clearinghouse"))
 	frame.TitleText = frame.title
 	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Briefing" } }) do
+	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" } }) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
 		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)

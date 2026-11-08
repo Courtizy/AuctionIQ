@@ -8,7 +8,7 @@ takes over the jobs that today need both TSM and CraftSim.
 
 - **Tooltips on every item:** the Clearinghouse value after the 5% auction cut, the price to buy it
   as a reagent, and the profit or loss of crafting it, with coin icons.
-- **Briefing window** (`/ch`, the minimap button, or the addon compartment): gold on every
+- **Main window** (`/ch`, the minimap button, or the addon compartment): gold on every
   character, Concentration on every profession with when it will be full, and each profession's
   best crafts.
 - **One window with tabs** (Advisor, Scan, Paths, Queue, Results), docked to the right of the
@@ -35,7 +35,7 @@ takes over the jobs that today need both TSM and CraftSim.
   Alchemy, Enchanting, Jewelcrafting and Inscription for now.
 - **Craft results** (`/ch results`): what your crafts really gave (Multicraft, Resourcefulness,
   Ingenuity) against what the advisor expected.
-- **Cooldowns** across the warband, in the briefing.
+- **Cooldowns** across the warband, in the report.
 - **Craft queue and shopping list** (`/ch queue`, or Queue on the advisor): click an advisor row to
   queue one, shift-click to queue as many as you can make. Fill queues the open profession's five best
   crafts. Craft makes the queued crafts with the advisor's reagents and Concentration, and finished
@@ -45,7 +45,7 @@ takes over the jobs that today need both TSM and CraftSim.
 
 | Command | Does |
 |---|---|
-| `/ch` | open or close the briefing |
+| `/ch` | open or close the main window |
 | `/ch tooltip` | tooltip lines on or off |
 | `/ch coins` | coin icons or g/s/c text |
 | `/ch minimap` | hide or show the minimap button |
@@ -71,7 +71,7 @@ Craft cost is TSM's own `crafting` price.
 
 ## Requirements
 
-TradeSkillMaster, for prices. Without it the briefing still tracks gold and Concentration.
+TradeSkillMaster, for prices. Without it the report still tracks gold and Concentration.
 
 ## Roadmap
 
@@ -92,9 +92,9 @@ a stubbed WoW environment and checks prices, tooltips, profession tracking and t
 
 MIT licence.
 
-## Briefing and export
+## Report and export
 
-The Briefing page opens with the books for the last 7, 30 and 90 days side by side (sales after the
+The Report page opens with the books for the last 7, 30 and 90 days side by side (sales after the
 cut, purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by
-product line, then the brief itself. `/ch brief` opens it. The Ledger's Export button turns the
+product line, then the daily rundown (last 24 hours, mail, what to post, restock, cooldowns). `/ch report` opens it. The Ledger's Export button turns the
 table you're looking at (with its filters) into CSV text to copy out.
