@@ -6,15 +6,37 @@ local _, CH = ...
 local GUI = {}
 CH.GroupsUI = GUI
 local page, selected, treeOffset, itemOffset = nil, "Crafted", 0, 0
-local TREE_ROWS, ITEM_ROWS, RH = 26, 20, 18
+local TREE_ROWS, ITEM_ROWS, RH = 26, 16, 18
 local X0 = 232
 
 local function money(c) return c and CH.FormatMoney(c) or CH.Theme.Color("muted", "-") end
 
 local OP_FIELDS = {
-	{ "post", "Post it", "bool" }, { "undercut", "Undercut (copper)", "num", 1 }, { "duration", "Hours (1=12 2=24 3=48)", "num", 1 },
-	{ "floorPct", "Min, x the floor", "num", 0.05 }, { "maxMult", "Max, x normal", "num", 0.5 }, { "cap", "Keep up (blank = par)", "num", 1 },
+	{ "post", "Post it", "bool" }, { "undercut", "Undercut", "num", 100 }, { "duration", "Hours (1=12 2=24 3=48)", "num", 1 },
+	{ "cap", "Post cap (blank = par)", "num", 1 }, { "keepQuantity", "Keep in bags", "num", 1 }, { "maxExpires", "Max expires (0 = off)", "num", 1 },
+	{ "learn", "Learn from sales", "bool" }, { "floorPct", "Min, x the floor", "num", 0.05 }, { "maxMult", "Max, x normal", "num", 0.5 },
 }
+-- Price formulas (TSM's syntax, see Formula.lua); blank = the floor and multipliers above.
+local FORMULAS = { { "minPrice", "Min" }, { "normalPrice", "Normal" }, { "maxPrice", "Max" } }
+
+-- The operation the selected group uses: op, name.
+local function currentOp()
+	local _, name = CH.Groups.Operation(CH.Groups.Items(selected)[1] or 0)
+	name = name or "Default"
+	return CH.Groups.Store().ops[name], name
+end
+
+--- Set one of the selected operation's formulas (blank clears it). Returns true, or false and why.
+function GUI.SetFormula(field, text)
+	local op = currentOp()
+	text = text and text:match("^%s*(.-)%s*$") or ""
+	if text == "" then op[field] = nil; CH.UI.Refresh(); return true end
+	local ok, err = CH.Formula.Valid(text)
+	if not ok then CH.Print("that formula doesn't read: " .. tostring(err)); return false, err end
+	op[field] = text
+	CH.UI.Refresh()
+	return true
+end
 
 --- Items of the selected group as rows (for tests): { id, cells }.
 function GUI.Rows(path)
@@ -124,7 +146,16 @@ function GUI.Build(p, fs, panel)
 	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); CH.UI.Refresh() end)
 
 	-- operation settings for the selected group's operation
-	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 664, "LEFT", "GameFontNormal")
+	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 500, "LEFT", "GameFontNormal")
+	-- copy TSM's operations, custom sources and group assignments in, once
+	p.importTSM = T.Button(p, "Import TSM rules", 150, 18)
+	p.importTSM:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - 6)
+	p.importTSM:SetScript("OnClick", function()
+		local n, err = CH.Groups.ImportTSM()
+		if n then CH.Print(string.format("copied from TSM: %d operations, %d price sources, %d group assignments. They're AuctionIQ's now.", n.ops, n.sources, n.groups))
+		else CH.Print("couldn't import: " .. tostring(err)) end
+		CH.UI.Refresh()
+	end)
 	p.opFields = {}
 	for i, f in ipairs(OP_FIELDS) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
@@ -135,10 +166,14 @@ function GUI.Build(p, fs, panel)
 		local val = fs(p, x + 170, y - 3, 44, "CENTER")
 		local plus = T.Button(p, "+", 18, 18); plus:SetPoint("TOPLEFT", x + 216, y)
 		local function change(dir)
-			local _, name = CH.Groups.Operation(CH.Groups.Items(selected)[1] or 0)
-			local op = CH.Groups.Store().ops[name or "Default"]
-			if f[3] == "bool" then op[f[1]] = not (op[f[1]] ~= false)
-			else op[f[1]] = math.max(0, (op[f[1]] or (f[1] == "cap" and 0) or 0) + dir * f[4]) end
+			local op = currentOp()
+			local v = op[f[1]]
+			if f[3] == "bool" then
+				if f[1] == "learn" then op.learn = not op.learn else op[f[1]] = not (v ~= false) end
+			else
+				if type(v) == "string" then v = CH.Formula.Value(v, CH.Groups.Items(selected)[1] or 0) or 0 end
+				op[f[1]] = math.max(0, (v or 0) + dir * f[4])
+			end
 			if f[1] == "cap" and op.cap == 0 then op.cap = nil end
 			CH.UI.Refresh()
 		end
@@ -146,6 +181,22 @@ function GUI.Build(p, fs, panel)
 		plus:SetScript("OnClick", function() change(1) end)
 		p.opFields[i] = { val = val, f = f }
 	end
+	p.formulas = {}
+	local fy = -44 - ITEM_ROWS * RH - 30 - 3 * 24 - 6
+	for i, f in ipairs(FORMULAS) do
+		local y = fy - (i - 1) * 24
+		local label = fs(p, X0, y - 3, 56, "LEFT")
+		label:SetText(f[2])
+		local eb = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+		eb:SetSize(600, 20)
+		eb:SetPoint("TOPLEFT", X0 + 62, y + 1)
+		eb:SetAutoFocus(false)
+		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus(); GUI.SetFormula(f[1], self:GetText()) end)
+		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); CH.UI.Refresh() end)
+		p.formulas[i] = { box = eb, f = f }
+	end
+	p.formulaHelp = fs(p, X0, fy - 3 * 24 - 2, 664, "LEFT", "GameFontDisableSmall")
+	p.formulaHelp:SetText("TSM syntax, e.g. max(150% vendorsell, saleavg). Blank = floor and multipliers.")
 end
 
 function GUI.Refresh()
@@ -181,12 +232,18 @@ function GUI.Refresh()
 	name = name or "Default"
 	if p.opButton.text then p.opButton.text:SetText("Operation: " .. name) end
 	local op = s.ops[name]
-	p.opTitle:SetText("Operation " .. T.Color("accent", name) .. T.Color("muted", "  (shared by its groups; floor: " .. (op.floor or "market") .. ")"))
+	p.opTitle:SetText("Operation " .. T.Color("accent", name) .. T.Color("muted", op.imported and "  (from TSM, now yours; shared by its groups)"
+		or ("  (shared by its groups; floor: " .. (op.floor or "market") .. ")")))
 	for _, e in ipairs(p.opFields) do
 		local v = op[e.f[1]]
-		if e.f[3] == "bool" then e.val:SetText(v ~= false and T.Color("ok", "yes") or T.Color("bad", "no"))
+		if e.f[1] == "learn" then e.val:SetText(v and T.Color("ok", "yes") or T.Color("muted", "no"))
+		elseif e.f[3] == "bool" then e.val:SetText(v ~= false and T.Color("ok", "yes") or T.Color("bad", "no"))
 		elseif e.f[1] == "cap" and not v then e.val:SetText("par")
+		elseif e.f[1] == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and CH.FormatMoney(v) or (v .. "c"))
 		else e.val:SetText(tostring(v or 0)) end
+	end
+	for _, e in ipairs(p.formulas) do
+		if not (e.box.HasFocus and e.box:HasFocus() == true) then e.box:SetText(op[e.f[1]] or "") end
 	end
 	return rows
 end

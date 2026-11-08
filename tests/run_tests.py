@@ -429,6 +429,57 @@ c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, 
 check("cancel: your own alts never trigger a repost", c.action == "keep")
 c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = false } }"))
 check("cancel: someone else cheaper does", c.action == "cancel")
+# Formulas in TSM's syntax
+FV = lambda f, id=302: L.eval(f"Clearinghouse.Formula.Value({f!r}, {id})")
+check("formula: money, percent, functions", FV("1g50s") == 15000 and FV("150% 2g") == 30000 and FV("max(1g, 2g, 3s)") == 20000
+      and FV("first(nosuchsource, 5s)") == 500 and FV("ifgte(10, 5, 1g, 2g)") == 10000 and FV("check(0, 1g, 2g)") == 20000
+      and FV("0.25*avg(4g, 8g)") == 15000 and FV("400%2c") == 8)
+check("formula: a missing source makes the whole thing missing, bad syntax reads as invalid",
+      FV("2 * nosuchsource") is None and not L.eval("(Clearinghouse.Formula.Valid('max(1g,'))"))
+
+# TSM's auctioning setup, imported once (TSM's data only read)
+run("""
+Clearinghouse.Auction.RecordOwned({})
+TradeSkillMasterDB["_currentProfile"] = { ["Courtizy - Emerald Dream"] = "Warband" }
+TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302"] = "Alch`Flasks", ["i:301"] = "Loot`Pets" }
+TradeSkillMasterDB["p@Warband@userData@groups"] = { [""] = { Auctioning = { "Sell Loot", override = true } },
+  ["Alch"] = { Auctioning = { "Flask Op", override = true } }, ["Alch`Flasks"] = { Auctioning = { "Flask Op" } }, ["Loot"] = { Auctioning = { "Sell Loot", override = true } } }
+TradeSkillMasterDB["g@ @userData@sharedOperations"] = { Auctioning = {
+  ["Flask Op"] = { minPrice = "2950000", normalPrice = "flaskstep", maxPrice = "4000000", postCap = "2", undercut = "1s", duration = 2,
+    keepQuantity = "0", maxExpires = "0", priceReset = "none", aboveMax = "maxPrice" },
+  ["Sell Loot"] = { minPrice = "1g", normalPrice = "5g", maxPrice = "10g", postCap = "5", undercut = "1s", duration = 3,
+    keepQuantity = "1", maxExpires = "1", priceReset = "none", aboveMax = "maxPrice" } } }
+TradeSkillMasterDB["g@ @userData@customPriceSources"] = { flaskstep = "ifgte(numexpires, 1, 90% 3500000, 3500000)" }
+Clearinghouse.Groups.ResetTSM()
+Clearinghouse.Ledger.ClearStats()
+""")
+imp = L.eval("Clearinghouse.Groups.ImportTSM()")
+check("import: TSM operations, custom sources and group assignments copied", imp.ops == 2 and imp.sources == 1 and imp.groups >= 3)
+run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil; TradeSkillMasterDB['g@ @userData@customPriceSources'] = nil")
+tp = CH.Groups.Prices(302)
+check("import: TSM's groups win and price by the copied formulas, with TSM gone",
+      CH.Groups.Path(302) == "TSM/Alch/Flasks" and tp.op == "Flask Op" and tp.min == 2950000 and tp.max == 4000000 and tp.cap == 2 and tp.undercut == 100)
+check("import: a custom source steps the price down after an expiry", tp.normal == 3150000)
+d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+check("rules: under min and set not to reset means no post", d.action == "skip" and "min" in d.why)
+d = CH.Auction.Decide(302, L.eval("{ { price = 3600000, qty = 3, mine = false } }"), 10)
+check("rules: undercut and post cap", d.action == "post" and d.price == 3599900 and d.qty == 2)
+d = CH.Auction.Decide(302, L.eval("{ { price = 9000000, qty = 3, mine = false } }"), 10)
+check("rules: above max posts at max", d.action == "post" and d.price == 4000000)
+run("Clearinghouse.Groups.Store().ops['Flask Op'].priceReset = 'normalPrice'")
+d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+check("rules: below min resets to normal when set", d.action == "post" and d.price == 3150000)
+run("Clearinghouse.Groups.Store().ops['Flask Op'].maxExpires = 1")
+d = CH.Auction.Decide(302, L.eval("{ }"), 5)
+check("rules: max expires stops posting after too many expiries without a sale", d.action == "skip" and "expired 1 times" in d.why)
+run("Clearinghouse.Groups.Store().ops['Flask Op'].maxExpires = 0; Clearinghouse.Groups.Store().ops['Sell Loot'].maxExpires = 0")
+d = CH.Auction.Decide(301, L.eval("{ }"), 5)
+check("rules: keep in bags holds some back", d.action == "post" and d.qty == 4)
+run("Clearinghouse.Groups.Store().ops['Flask Op'].learn = true; STUB.ledgerLearn = true")
+lf, lwhy = L.eval("Clearinghouse.Groups.Learn(302)"), None
+check("learn: too few sales and expiries changes nothing", lf == 1)
+run("Clearinghouse.Groups.Store().ops['Flask Op'].learn = false")
+run("Clearinghouse.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; Clearinghouse.Groups.ResetTSM()")
 run("Clearinghouse.GroupsUI.Select('Crafted'); Clearinghouse.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
 check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())

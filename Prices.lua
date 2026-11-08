@@ -111,6 +111,18 @@ function Prices.MarketAny(id)
 		source = fromTSM and "tsm" or "oribos" }
 end
 
+--- One TSM price source for an item (dbmarket, crafting ...), or nil without TSM. Cached like Get.
+function Prices.Raw(name, id)
+	if not Prices.Available() or not id then return nil end
+	local key = "raw|" .. name .. "|" .. id
+	local now = GetTime()
+	if cacheTime[key] and now - cacheTime[key] < CACHE_SECONDS then return cache[key] or nil end
+	local ok, v = pcall(TSM_API.GetCustomPriceValue, name, "i:" .. id)
+	v = ok and v or nil
+	cache[key], cacheTime[key] = v or false, now
+	return v
+end
+
 function Prices.ClearCache()
 	cache, cacheTime, customOK = {}, {}, {}
 end
