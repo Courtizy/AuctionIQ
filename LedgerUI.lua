@@ -35,25 +35,38 @@ local VIEWS = {
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
 	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 4, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
-	pl = { label = "Product P&L", parent = "Goblin CFO", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
+	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
-	dead = { label = "Dead stock", parent = "Goblin CFO", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
+	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
-	holdings = { label = "Holdings", parent = "Goblin CFO", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
+	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
-	par = { label = "Par levels", parent = "Goblin CFO", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
+	par = { label = "Par levels", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
-	when = { label = "When it sells", parent = "Goblin CFO", sort = 2, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
+	when = { label = "When it sells", sort = 2, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
 		{ "Best hours", 382, 110 }, { "Share then", 496, 80 }, { "Post by", 580, 144 } } },
-	rivals = { label = "Competition", parent = "Goblin CFO", sort = 2, cols = { { "Item", 0, 220 }, { "Cancels", 224, 60 }, { "Seen", 288, 50 },
+	rivals = { label = "Competition", sort = 2, cols = { { "Item", 0, 220 }, { "Cancels", 224, 60 }, { "Seen", 288, 50 },
 		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
-	overhead = { label = "Overhead", parent = "Goblin CFO", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
+	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
+	report = { label = "Report", cols = {} },
+	market = { label = "Market prices", sort = 7, cols = { { "Item", 0, 220 }, { "Held", 224, 50 }, { "Market now", 278, 96 },
+		{ "7-day avg", 378, 96 }, { "7 days", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
+	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
-local NAV = { { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
-	{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
-	{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
-	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "par", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "when", sub = true }, { "rivals", sub = true }, { "overhead", sub = true } }
+-- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
+-- Markets and Analytics.
+local SECTIONS = {
+	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
+		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
+		{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
+		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
+	markets = { { "market" }, { "rivals" }, { "when" } },
+	analytics = { { "par" }, { "dead" }, { "time" } },
+}
+local section = "ledger"
+local lastView = { ledger = "inventory", markets = "market", analytics = "par" }
+LUI.SECTIONS = SECTIONS
 LUI.VIEWS = VIEWS
 
 -- Formatting ----------------------------------------------------------------------------------
@@ -280,6 +293,50 @@ function LUI.Rows(v, opts)
 		return out, string.format("Trading profit %s, overhead %s, after overhead %s", signed(o.profit), money(-o.total), signed(o.afterOverhead))
 	end
 
+	if v == "market" then
+		local ids, held = {}, {}
+		for _, e in ipairs(L.Inventory(nil, opts.char)) do
+			if e.id and not e.bound then held[e.id] = e.total; ids[e.id] = true end
+		end
+		for _, r in ipairs(L.Records("Sales")) do if r.id and r.time >= now - 30 * 86400 then ids[r.id] = true end end
+		local any = false
+		for id in pairs(ids) do
+			local m = CH.Prices.Market and CH.Prices.Market(id)
+			if m then
+				any = true
+				local text, name = LUI.ItemText(id)
+				if keepName(name) then
+					local h, mk = held[id] or 0, m.market or m.min
+					local ch = m.change7
+					table.insert(out, { id = id, cells = { text, h, money(mk), money(m.avg7),
+						ch and CH.Theme.Color(ch >= 0 and "ok" or "bad", string.format("%+d%%", math.floor(ch * 100 + 0.5))) or CH.Theme.Color("muted", "-"),
+						m.qty or "-", h > 0 and mk and money(mk * h) or "" },
+						sort = { name, h, mk or 0, m.avg7 or 0, ch or 0, m.qty or 0, (mk or 0) * h } })
+				end
+			end
+		end
+		if not any then
+			return out, CH.Theme.Color("muted", "No market data yet: run the Clearinghouse app and press Sync now, then /reload.")
+		end
+		local at, realm = 0, ""
+		if ClearinghouseMarket and ClearinghouseMarket.Info then at, realm = ClearinghouseMarket.Info() end
+		return out, "Items you hold or sold this month" .. CH.Theme.Color("muted", "   Clearinghouse app data for " .. realm
+			.. (at > 0 and (", " .. LUI.Ago(at, now) .. " old") or ""))
+	end
+
+	if v == "time" then
+		local x = CH.Planner.Time(opts.days and since or (now - 30 * 86400))
+		for k, h in pairs(x.kinds) do
+			if keepName(k) then
+				table.insert(out, { cells = { k, string.format("%.1f", h), x.hours > 0 and string.format("%d%%", math.floor(h / x.hours * 100 + 0.5)) or "" },
+					sort = { k, h, h } })
+			end
+		end
+		return out, string.format("%.1f hours", x.hours) .. (x.profit and ("   profit after overhead " .. signed(x.profit)) or "")
+			.. (x.perHour and ("   " .. signed(math.floor(x.perHour)) .. " an hour") or "")
+			.. CH.Theme.Color("muted", "   time counts while the AH, mailbox or a profession is open")
+	end
+
 	-- expired / cancelled
 	local n = 0
 	for _, r in ipairs(L.Records(v == "expired" and "Expired" or "Cancelled")) do
@@ -309,6 +366,7 @@ end
 -- Building ------------------------------------------------------------------------------------
 local function setView(v)
 	view, offset = v, 0
+	lastView[section] = v
 	sortCol, sortDesc = VIEWS[v].sort, not VIEWS[v].asc
 	CH.UI.Refresh()
 end
@@ -335,15 +393,16 @@ function LUI.Build(p, fs, panel)
 	sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc
 	local nav = panel(p, 0, 0, 160, p:GetHeight() or 552)
 	p.nav = {}
+	for sec, list in pairs(SECTIONS) do
 	local y = -8
-	for _, n in ipairs(NAV) do
+	for _, n in ipairs(list) do
 		local target = n[2] or n[1]
 		local label = VIEWS[n[1]] and VIEWS[n[1]].label or n[1]
-		if not n.sub and #p.nav > 0 then y = y - 6 end -- breathing room before each group
+		if n[2] and y ~= -8 then y = y - 6 end -- breathing room before each group
 		local b = T.Button(nav, label, n.sub and 120 or 144, n.sub and 18 or 20)
 		b:SetPoint("TOPLEFT", n.sub and 32 or 8, y)
 		b:SetScript("OnClick", function() setView(target) end)
-		b.view, b.parent, b.sub = n[1], not n.sub and n[2] and n[1] or nil, n.sub
+		b.view, b.parent, b.sub, b.section, b.guide = n[1], not n.sub and n[2] and n[1] or false, n.sub or false, sec, false
 		-- left-aligned labels: groups flush left, their views indented under a guide line
 		local f = b.text or (b.GetFontString and b:GetFontString())
 		if f then
@@ -377,26 +436,31 @@ function LUI.Build(p, fs, panel)
 		table.insert(p.nav, b)
 		y = y - (n.sub and 21 or 25)
 	end
+	end
+	-- the table and its controls; hidden while the Report shows in their place
+	local body = CreateFrame("Frame", nil, p)
+	body:SetAllPoints(p)
+	p.body = body
 
-	local search = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+	local search = CreateFrame("EditBox", nil, body, "InputBoxTemplate")
 	search:SetSize(250, 20)
 	search:SetPoint("TOPLEFT", X0 + 6, -4)
 	search:SetAutoFocus(false)
 	search:SetScript("OnTextChanged", function(self) filter = self:GetText() or ""; offset = 0; CH.UI.Refresh() end)
 	search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	p.hint = fs(p, X0 + 10, -8, 200, "LEFT", "GameFontDisableSmall")
+	p.hint = fs(body, X0 + 10, -8, 200, "LEFT", "GameFontDisableSmall")
 	search:SetScript("OnEditFocusGained", function() p.hint:SetText("") end)
 	search:SetScript("OnEditFocusLost", function(self) if (self:GetText() or "") == "" then p.hint:SetText("Filter by name") end end)
 	p.hint:SetText("Filter by name")
 
-	p.charButton = T.Button(p, "All characters", 150, 20)
+	p.charButton = T.Button(body, "All characters", 150, 20)
 	p.charButton:SetPoint("TOPLEFT", X0 + 268, -4)
 	p.charButton:SetScript("OnClick", function(self)
 		local list = { { "All characters", false, selected = char == nil } }
 		for _, c in ipairs(CH.Ledger.Characters()) do table.insert(list, { c.name, c.name, selected = char == c.name }) end
 		pick(self, "Character", list, function(v) char = v or nil; offset = 0; CH.UI.Refresh() end)
 	end)
-	p.timeButton = T.Button(p, "Last 30 Days", 110, 20)
+	p.timeButton = T.Button(body, "Last 30 Days", 110, 20)
 	p.timeButton:SetPoint("TOPLEFT", X0 + 424, -4)
 	p.timeButton:SetScript("OnClick", function(self)
 		local list = {}
@@ -404,14 +468,14 @@ function LUI.Build(p, fs, panel)
 		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; CH.UI.Refresh() end)
 	end)
 
-	p.exportButton = T.Button(p, "Export", 70, 20)
+	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
 	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
 
 	-- sortable headers
 	p.heads = {}
 	for j = 1, 8 do
-		local h = CreateFrame("Button", nil, p)
+		local h = CreateFrame("Button", nil, body)
 		h:SetHeight(16)
 		h.text = fs(h, 0, -2, 10, "LEFT", "GameFontNormalSmall")
 		h:SetScript("OnClick", function()
@@ -424,7 +488,7 @@ function LUI.Build(p, fs, panel)
 	p.rows = {}
 	for i = 1, ROWS do
 		local r = { cells = {} }
-		local hit = CreateFrame("Button", nil, p)
+		local hit = CreateFrame("Button", nil, body)
 		hit:SetPoint("TOPLEFT", X0, -50 - (i - 1) * RH)
 		hit:SetSize(TW, RH)
 		hit:SetScript("OnEnter", function(self)
@@ -440,10 +504,10 @@ function LUI.Build(p, fs, panel)
 		bg:SetAllPoints()
 		bg:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.03 or 0)
 		r.hit = hit
-		for j = 1, 8 do r.cells[j] = fs(p, 0, -52 - (i - 1) * RH, 10) end
+		for j = 1, 8 do r.cells[j] = fs(body, 0, -52 - (i - 1) * RH, 10) end
 		p.rows[i] = r
 	end
-	p.footer = fs(p, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
+	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
 	p:EnableMouseWheel(true)
 	p:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 5); CH.UI.Refresh() end)
 end
@@ -454,6 +518,12 @@ function LUI.Refresh()
 	if not p then return {} end
 	local T = CH.Theme
 	local v = VIEWS[view]
+	for _, b in ipairs(p.nav) do
+		local mine = b.section == section
+		b:SetShown(mine)
+		if b.guide then for _, g in ipairs(b.guide) do g:SetShown(mine) end end
+	end
+	p.body:SetShown(view ~= "report")
 	for _, b in ipairs(p.nav) do
 		local on = b.view == view or (b.parent and v.parent == b.parent)
 		local f = b.text or (b.GetFontString and b:GetFontString())
@@ -466,10 +536,11 @@ function LUI.Refresh()
 			b.mark:SetShown(b.view == view)
 		end
 	end
+	if view == "report" then return {}, "" end
 	local charLabel = char or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
-	p.timeButton:SetShown(view ~= "inventory")
+	p.timeButton:SetShown(view ~= "inventory" and view ~= "market" and view ~= "par")
 
 	for j, h in ipairs(p.heads) do
 		local c = v.cols[j]
@@ -527,9 +598,29 @@ function LUI.ParClick(id, mod)
 	return CH.Par.Target(id)
 end
 
+--- Which tab's views the page shows: "ledger" (the Clearinghouse), "markets" or "analytics".
+function LUI.SetSection(sec)
+	if not SECTIONS[sec] then return end
+	if section ~= sec then
+		section = sec
+		view, offset = lastView[sec], 0
+		sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc
+	end
+end
+function LUI.Section() return section end
+function LUI.View() return view end
+--- The tab a view lives in.
+function LUI.SectionOf(v)
+	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
+end
+
 --- Switch the view, filters and sort from code (tests, slash commands).
 function LUI.Set(opts)
-	if opts.view then view = opts.view; sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc end
+	if opts.view then
+		section = LUI.SectionOf(opts.view) or section
+		view = opts.view; lastView[section] = view
+		sortCol = VIEWS[view].sort; sortDesc = not VIEWS[view].asc
+	end
 	if opts.filter ~= nil then filter = opts.filter end
 	if opts.char ~= nil then char = opts.char or nil end
 	if opts.days ~= nil then days = opts.days or nil end

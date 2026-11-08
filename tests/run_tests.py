@@ -467,7 +467,7 @@ check("rename: old Clearinghouse data moves into AuctionIQ", L.eval("AuctionIQDB
 run("AuctionIQDB = _G.__saved; Clearinghouse.db = AuctionIQDB; Clearinghouse.migrated = nil; ClearinghouseDB = nil")
 run("Clearinghouse.UI.Page('ledger')")
 check("theme: the Clearinghouse tab is plum", L.eval("Clearinghouse.Theme.palette == 'clearinghouse' and Clearinghouse.Theme.hex.bg == '1c1222'"))
-run("Clearinghouse.UI.Page('briefing')")
+run("Clearinghouse.UI.Page('markets')")
 check("theme: other pages are AuctionIQ navy", L.eval("Clearinghouse.Theme.palette == 'auctioniq' and Clearinghouse.Theme.hex.bg == '0e1729'"))
 # Clearinghouse companion data in the tooltip
 run("""ClearinghouseMarket = { Get = function(id) if id == 302 then return { market = 123400, avg7 = 110000, change7 = 0.12, qty = 40, days = 9, source = 'realm' } end end }""")
@@ -511,6 +511,31 @@ run("Clearinghouse.UI.CharacterMenu(nil, 'Warband'); Clearinghouse.UI.CharacterM
 check("and back in", LG.Gold() == 10000000)
 run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
 check("ledger and briefing pages draw", CH.UI.IsShown())
+
+# Phase 1: six tabs, old names still work, shared table page sections
+LUI = CH.LedgerUI
+run("Clearinghouse.UI.Page('briefing')")
+check("report opens inside the Clearinghouse tab", LUI.Section() == "ledger" and LUI.View() == "report" and CH.Theme.palette == "clearinghouse")
+run("Clearinghouse.UI.Page('analytics', 'dead')")
+check("analytics shows its own views", LUI.Section() == "analytics" and LUI.View() == "dead")
+run("Clearinghouse.UI.Page('markets')")
+check("markets opens on market prices", LUI.Section() == "markets" and LUI.View() == "market")
+mfoot = L.eval("select(2, Clearinghouse.LedgerUI.Rows('market', {}))")
+check("market prices without the app say how to get them", "Clearinghouse app" in plain(mfoot))
+run("ClearinghouseMarket = { Get = function(id) if id == 301 then return { market = 20000, min = 19000, avg7 = 18000, change7 = 0.11, qty = 40 } end end, Info = function() return 0, 'Emerald Dream', 'us' end }")
+mrows = L.eval("(Clearinghouse.LedgerUI.Rows('market', {}))")
+check("market prices list held or sold items with app data", len(list(mrows.values())) >= 1 and "+11%" in plain(list(mrows.values())[0].cells[5]))
+run("ClearinghouseMarket = nil")
+tfoot = L.eval("select(2, Clearinghouse.LedgerUI.Rows('time', { days = 30 }))")
+check("gold per hour moved to analytics", "hours" in plain(tfoot))
+run("Clearinghouse.UI.Page('ledger')")
+check("the Clearinghouse remembers its last view", LUI.Section() == "ledger" and LUI.View() == "report")
+run("Clearinghouse.UI.Page('groups')"); run("Clearinghouse.UI.Page('plan')"); run("Clearinghouse.UI.Page('dashboard')")
+check("old page names open the new tabs", CH.UI.IsShown())
+nxt = list(CH.Next.List().values())
+check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier <= nxt[i + 1].tier for i in range(len(nxt) - 1)))
+check("crafting tab text has Concentration and best crafts", "Concentration" in plain(CH.UI.CraftingText()) and "Best crafts" in plain(CH.UI.CraftingText()))
+check("the report still has everything", "Best crafts" in plain(CH.UI.BriefingText()) and "Gold" in plain(CH.UI.BriefingText()))
 
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")

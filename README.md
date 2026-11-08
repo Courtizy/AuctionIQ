@@ -7,6 +7,21 @@ A World of Warcraft addon that puts crafting and auction advice in one place: wh
 post and cancel, what it costs, and what it really sells for. It reads prices from TradeSkillMaster, and over time it
 takes over the jobs that today need both TSM and CraftSim.
 
+## The window
+
+One window, six tabs:
+
+| Tab | What it answers |
+|-----|-----------------|
+| Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below par, reposts). Click a card to go where the work is. The activity log is one click away. |
+| Markets | Market prices from the Clearinghouse app (now, 7-day average, change, listings), competition, when items sell. |
+| Crafting | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and buttons for Scan, Paths, Queue, Results and the advisor. |
+| Trading | Groups, operations and mail routes. |
+| Analytics | Par levels, dead stock, gold per hour. |
+| Clearinghouse | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions, profit by product, holdings, overhead, CSV export. |
+
+`/aiq today`, `markets`, `crafting`, `trading`, `analytics` and `ledger` open a tab; `/aiq report` opens the Report.
+
 ## What it does
 
 - **Tooltips on every item:** the AuctionIQ value after the 5% auction cut, the price to buy it
@@ -109,7 +124,7 @@ MIT licence.
 
 ## Report and export
 
-The Report page opens with the books for the last 7, 30 and 90 days side by side (sales after the
+The Report (first in the Clearinghouse tab) opens with the books for the last 7, 30 and 90 days side by side (sales after the
 cut, purchases, overhead, cash profit, net worth change), the top sellers and crafted profit by
 product line, then the daily rundown (last 24 hours, mail, what to post, restock, cooldowns). `/aiq report` opens it. The Ledger's Export button turns the
 table you're looking at (with its filters) into CSV text to copy out.

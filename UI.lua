@@ -6,7 +6,7 @@ CH.UI = UI
 local frame, text
 local W, H = 920, 600
 local pages, pageButtons = {}, {}
-local page = "dashboard"
+local page = "today"
 local range = "1M"
 local RANGES = { { "1D", 1 }, { "1W", 7 }, { "1M", 30 }, { "3M", 91 }, { "6M", 182 }, { "1Y", 365 }, { "All", nil } }
 
@@ -23,6 +23,86 @@ local function sortedCharacters()
 	end
 	table.sort(list, function(a, b) return (a.gold or 0) > (b.gold or 0) end)
 	return list
+end
+
+-- Concentration, best crafts and buy-instead-of-craft: the Report's crafting part, also the
+-- Crafting tab's summary.
+local function craftSections(out, chars, now)
+	local T = CH.Theme
+	table.insert(out, "")
+	table.insert(out, CH.Theme.Color("accent", "Concentration"))
+	local any, idle = false, 0
+	for _, c in ipairs(chars) do
+		for _, p in pairs(c.professions or {}) do
+			local cur, max = CH.ConcentrationNow(p, now)
+			if cur then
+				any = true
+				local full = cur >= max
+				if full then idle = idle + 1 end
+				local hours = full and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR)
+				table.insert(out, string.format("   %s%s|r %s  %d / %d  %s", classColor(c.class), c.name or c.key, p.name or "?", cur, max,
+					full and CH.Theme.Color("bad", "FULL, spend it") or ("full in " .. hours .. "h")))
+			end
+		end
+	end
+	if not any then
+		table.insert(out, "   Open each character's professions once to see Concentration here.")
+	elseif idle > 0 then
+		table.insert(out, "   " .. CH.Theme.Color("bad", idle .. " at full. Idle Concentration is gold left on the table."))
+	end
+
+	table.insert(out, "")
+	table.insert(out, CH.Theme.Color("accent", "Best crafts") .. CH.Theme.Color("muted", "  profit per craft after the 5% cut, top quality"))
+	local listed = false
+	for _, c in ipairs(chars) do
+		for _, p in pairs(c.professions or {}) do
+			-- the recipe scan (best reagents, average profit) when there is one, else the quick top-quality list
+			local scanned = p.scan and p.scan.rows
+			local list = scanned or p.crafts or {}
+			local n = 0
+			for _, r in ipairs(list) do
+				if n >= 3 then break end
+				if r.profit and r.profit > 0 then
+					n = n + 1
+					listed = true
+					table.insert(out, string.format("   %s%s|r %s: %s%s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?",
+						scanned and r.quality and (" Q" .. r.quality) or "", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
+				end
+			end
+		end
+	end
+	if not listed then
+		table.insert(out, CH.Prices.Available() and "   Open a profession window to rank its recipes."
+			or "   Needs TradeSkillMaster for prices.")
+	end
+
+	local buys = {}
+	for _, c in ipairs(chars) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				local bc = CH.Scan and CH.Scan.BuyOrCraft(r)
+				if bc and bc.save and bc.save > 0 then table.insert(buys, { r = r, bc = bc }) end
+			end
+		end
+	end
+	if #buys > 0 then
+		table.sort(buys, function(a, b) return a.bc.save > b.bc.save end)
+		table.insert(out, "")
+		table.insert(out, T.Color("accent", "Buy instead of craft") .. T.Color("muted", "  the cheapest listing is under your crafting cost"))
+		for i, b in ipairs(buys) do
+			if i > 4 then break end
+			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", CH.FormatMoney(b.bc.buy), CH.FormatMoney(b.bc.craft)))
+		end
+	end
+
+end
+
+--- The Crafting tab's summary text.
+function UI.CraftingText(now)
+	local out = {}
+	craftSections(out, sortedCharacters(), now or time())
+	while out[1] == "" do table.remove(out, 1) end
+	return table.concat(out, "\n")
 end
 
 --- The briefing as text: gold, Concentration, best crafts. Also used by the tests.
@@ -111,71 +191,7 @@ function UI.BriefingText(now)
 		table.insert(out, "   " .. classColor(c.class) .. (c.name or c.key) .. "|r  " .. CH.FormatMoney(c.gold or 0))
 	end
 
-	table.insert(out, "")
-	table.insert(out, CH.Theme.Color("accent", "Concentration"))
-	local any, idle = false, 0
-	for _, c in ipairs(chars) do
-		for _, p in pairs(c.professions or {}) do
-			local cur, max = CH.ConcentrationNow(p, now)
-			if cur then
-				any = true
-				local full = cur >= max
-				if full then idle = idle + 1 end
-				local hours = full and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR)
-				table.insert(out, string.format("   %s%s|r %s  %d / %d  %s", classColor(c.class), c.name or c.key, p.name or "?", cur, max,
-					full and CH.Theme.Color("bad", "FULL, spend it") or ("full in " .. hours .. "h")))
-			end
-		end
-	end
-	if not any then
-		table.insert(out, "   Open each character's professions once to see Concentration here.")
-	elseif idle > 0 then
-		table.insert(out, "   " .. CH.Theme.Color("bad", idle .. " at full. Idle Concentration is gold left on the table."))
-	end
-
-	table.insert(out, "")
-	table.insert(out, CH.Theme.Color("accent", "Best crafts") .. CH.Theme.Color("muted", "  profit per craft after the 5% cut, top quality"))
-	local listed = false
-	for _, c in ipairs(chars) do
-		for _, p in pairs(c.professions or {}) do
-			-- the recipe scan (best reagents, average profit) when there is one, else the quick top-quality list
-			local scanned = p.scan and p.scan.rows
-			local list = scanned or p.crafts or {}
-			local n = 0
-			for _, r in ipairs(list) do
-				if n >= 3 then break end
-				if r.profit and r.profit > 0 then
-					n = n + 1
-					listed = true
-					table.insert(out, string.format("   %s%s|r %s: %s%s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?",
-						scanned and r.quality and (" Q" .. r.quality) or "", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
-				end
-			end
-		end
-	end
-	if not listed then
-		table.insert(out, CH.Prices.Available() and "   Open a profession window to rank its recipes."
-			or "   Needs TradeSkillMaster for prices.")
-	end
-
-	local buys = {}
-	for _, c in ipairs(chars) do
-		for _, p in pairs(c.professions or {}) do
-			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				local bc = CH.Scan and CH.Scan.BuyOrCraft(r)
-				if bc and bc.save and bc.save > 0 then table.insert(buys, { r = r, bc = bc }) end
-			end
-		end
-	end
-	if #buys > 0 then
-		table.sort(buys, function(a, b) return a.bc.save > b.bc.save end)
-		table.insert(out, "")
-		table.insert(out, T.Color("accent", "Buy instead of craft") .. T.Color("muted", "  the cheapest listing is under your crafting cost"))
-		for i, b in ipairs(buys) do
-			if i > 4 then break end
-			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", CH.FormatMoney(b.bc.buy), CH.FormatMoney(b.bc.craft)))
-		end
-	end
+	craftSections(out, chars, now)
 
 	if CH.Planner then
 		local up = CH.Planner.Upcoming(now, 7)
@@ -319,8 +335,14 @@ local function buildDashboard(p)
 	p.d = d
 	-- activity log
 	local log = panel(p, 0, 0, 250, H - 70)
-	local head = fs(log, 10, -10, 230, "LEFT", "GameFontNormal")
-	head:SetText("Activity Log")
+	d.mode = "next"
+	d.modeButtons = {}
+	for i, m in ipairs({ { "next", "Do next" }, { "activity", "Activity" } }) do
+		local b = T.Button(log, m[2], 112, 20)
+		b:SetPoint("TOPLEFT", 8 + (i - 1) * 118, -6)
+		b:SetScript("OnClick", function() d.mode, d.logOffset = m[1], 0; UI.Refresh() end)
+		d.modeButtons[m[1]] = b
+	end
 	d.cards = {}
 	for i = 1, 7 do
 		local c = {}
@@ -328,8 +350,14 @@ local function buildDashboard(p)
 		c.who = fs(log, 10, y, 140)
 		c.time = fs(log, 150, y, 90, "RIGHT")
 		c.l1 = fs(log, 20, y - 16, 220)
+		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
 		c.l2 = fs(log, 20, y - 30, 220)
 		c.l3 = fs(log, 20, y - 44, 220, "RIGHT")
+		-- a Do next card opens where the work is
+		c.hit = CreateFrame("Button", nil, log)
+		c.hit:SetPoint("TOPLEFT", 4, y + 4)
+		c.hit:SetSize(242, 64)
+		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
 		d.cards[i] = c
 	end
 	d.logOffset = 0
@@ -449,6 +477,7 @@ local function buildBriefing(p)
 	CH.ReportUI.Build(p, fs, panel)
 	local scroll = CreateFrame("ScrollFrame", nil, p)
 	scroll:SetPoint("TOPLEFT", 4, -176)
+	local RW = W - 24 - 172 - 16 -- the Report sits in the Clearinghouse tab, right of its nav
 	scroll:SetPoint("BOTTOMRIGHT", -4, 0)
 	scroll:EnableMouseWheel(true)
 	scroll:SetScript("OnMouseWheel", function(self, delta)
@@ -456,17 +485,22 @@ local function buildBriefing(p)
 		self:SetVerticalScroll(y)
 	end)
 	local child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(W - 40, 10)
+	child:SetSize(RW, 10)
 	scroll:SetScrollChild(child)
 	text = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	text:SetPoint("TOPLEFT")
-	text:SetWidth(W - 40)
+	text:SetWidth(RW)
 	text:SetJustifyH("LEFT")
 	text:SetSpacing(4)
 	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
 end
 
-local TABS = { { "dashboard", "Dashboard" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" }, { "ledger", "Clearinghouse" } }
+local TABS = { { "today", "Today" }, { "markets", "Markets" }, { "crafting", "Crafting" }, { "trading", "Trading" },
+	{ "analytics", "Analytics" }, { "ledger", "Clearinghouse" } }
+-- which page frame each tab shows; Markets, Analytics and the Clearinghouse share the table page
+local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "groups", analytics = "ledger", ledger = "ledger" }
+-- old page names (commands, other modules) and where they live now
+local OLD = { dashboard = { "today" }, groups = { "trading" }, plan = { "crafting" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 
 --- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
 --- after the widest title so a title change never pushes into them.
@@ -500,7 +534,7 @@ local function build()
 	-- AuctionIQ's pages first, then its Clearinghouse ledger last
 	for _, pg in ipairs(TABS) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
-		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
+		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -511,6 +545,11 @@ local function build()
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
+		if b == buildBriefing then
+			p:ClearAllPoints()
+			p:SetPoint("TOPLEFT", 12 + 172, -36)
+			p:SetSize(W - 24 - 172, H - 48)
+		end
 		b(p)
 	end
 	frame.foot = fs(frame, 12, -H + 18, W - 24, "LEFT", "GameFontDisableSmall")
@@ -662,8 +701,28 @@ local function refreshDashboard()
 	local wc = data.worthChange
 	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
 	d.note:SetText("Cash profit counts reagents as spent, like TSM. Net worth change counts stock you still hold.")
-	-- activity cards
+	-- left column: Do next, or the activity log
+	for k, b in pairs(d.modeButtons) do colorButton(b, k == d.mode) end
+	if d.mode == "next" then
+		local list = CH.Next.List()
+		d.logOffset = math.max(0, math.min(d.logOffset, #list - #d.cards))
+		for i, c in ipairs(d.cards) do
+			local e = list[i + d.logOffset]
+			c.hit.go = e and e.go
+			if e then
+				c.who:SetText(T.Color(e.tier == 1 and "accent" or "fg", e.title))
+				c.time:SetText(e.gold and e.gold > 0 and money(e.gold) or "")
+				c.l1:SetText(e.detail)
+				c.l2:SetText("")
+				c.l3:SetText(e.go and T.Color("muted", "open") or "")
+			else
+				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")
+				c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
+			end
+		end
+	else
 	for i, c in ipairs(d.cards) do
+		c.hit.go = nil
 		local a = data.activity[i + d.logOffset]
 		if a then
 			c.who:SetText(a.player or "?")
@@ -677,6 +736,7 @@ local function refreshDashboard()
 		else
 			c.who:SetText(""); c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
 		end
+	end
 	end
 	return data
 end
@@ -693,27 +753,39 @@ function UI.Refresh()
 		frame.palette = want
 		frame.title:SetText(CH.Theme.Color("accent", want == "clearinghouse" and "Clearinghouse" or "AuctionIQ"))
 	end
-	for k, p in pairs(pages) do p:SetShown(k == page) end
+	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
+	local report = page == "ledger" and CH.LedgerUI.View() == "report"
+	for k, p in pairs(pages) do p:SetShown(k == FRAME[page] or (report and k == "briefing")) end
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
-	frame.foot:SetText(CH.Theme.Color("muted", "/aiq scan, /aiq paths, /aiq queue, /aiq results open the crafting tabs.  /aiq help for more.")
+	frame.foot:SetText(CH.Theme.Color("muted", "/aiq today, markets, crafting, trading, analytics, report.  /aiq help for more.")
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
-	if page == "dashboard" then return refreshDashboard()
-	elseif page == "ledger" then return refreshLedger()
-	elseif page == "groups" then return CH.GroupsUI.Refresh()
-	elseif page == "plan" then return CH.PlanUI.Refresh()
-	else
+	if page == "today" then return refreshDashboard()
+	elseif page == "trading" then return CH.GroupsUI.Refresh()
+	elseif page == "crafting" then return CH.PlanUI.Refresh()
+	elseif report then
+		refreshLedger()
 		CH.ReportUI.Refresh()
 		text:SetText(UI.BriefingText())
 		text:GetParent():SetHeight(text:GetStringHeight() + 10)
-	end
+	else return refreshLedger() end
 end
 
---- Show a page: "dashboard", "ledger" or "briefing".
-function UI.Page(name)
+--- Open a tab, and optionally one of its views: UI.Go("analytics", "par").
+function UI.Go(tab, view)
+	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
+	if not FRAME[tab] then return end
+	page = tab
+	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view }) end
+	if frame then UI.Refresh() end
+end
+
+--- Show a tab: "today", "markets", "crafting", "trading", "analytics" or "ledger" (the
+--- Clearinghouse). The old names (dashboard, groups, plan, briefing, report) still work.
+function UI.Page(name, view)
 	if not frame then build() end
-	page = name or page
+	if name then UI.Go(name, view) end
 	if not frame:IsShown() then frame:Show() else UI.Refresh() end
 	return UI.Refresh()
 end

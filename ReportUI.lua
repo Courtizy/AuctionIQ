@@ -97,24 +97,24 @@ end
 --- The books, drawn at the top of the Briefing page (height 170).
 function RUI.Build(p, fs, panel)
 	page = p
-	local box = panel(p, 0, 0, 560, 166)
+	local box = panel(p, 0, 0, 444, 166)
 	p.head = {}
 	for i, s in ipairs(SPANS) do
-		p.head[i] = fs(box, 240 + (i - 1) * 106, -8, 100, "RIGHT", "GameFontNormal")
+		p.head[i] = fs(box, 194 + (i - 1) * 82, -8, 78, "RIGHT", "GameFontNormal")
 		p.head[i]:SetText(s[1])
 	end
 	p.lines = {}
 	for i = 1, 5 do
 		local y = -30 - (i - 1) * 20
-		local r = { label = fs(box, 10, y, 230), cells = {} }
-		for j = 1, #SPANS do r.cells[j] = fs(box, 240 + (j - 1) * 106, y, 100, "RIGHT") end
+		local r = { label = fs(box, 10, y, 184), cells = {} }
+		for j = 1, #SPANS do r.cells[j] = fs(box, 194 + (j - 1) * 82, y, 78, "RIGHT") end
 		p.lines[i] = r
 	end
-	p.note = fs(box, 10, -134, 540, "LEFT", "GameFontDisableSmall")
-	p.note:SetText("Cash profit counts reagents bought as spent; net worth change counts stock you still hold. Export any table from the Ledger.")
+	p.note = fs(box, 10, -134, 424, "LEFT", "GameFontDisableSmall")
+	p.note:SetText("Cash profit counts reagents as spent; net worth change counts stock you still hold.")
 	if p.note.SetMaxLines then p.note:SetMaxLines(2) end
-	local side = panel(p, 572, 0, 324, 166)
-	p.side = fs(side, 10, -8, 304, "LEFT")
+	local side = panel(p, 452, 0, 272, 166)
+	p.side = fs(side, 10, -8, 252, "LEFT")
 	p.side:SetJustifyV("TOP")
 	if p.side.SetMaxLines then p.side:SetMaxLines(10) end
 end
