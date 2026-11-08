@@ -288,8 +288,41 @@ local function buildDashboard(p)
 		d.rangeButtons[r[1]] = b
 		bx = bx - 40
 	end
+	-- who counts: each character and the warband bank can be switched off
+	local who = T.Button(p, "Characters", 84, 18)
+	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, -4)
+	who:SetScript("OnClick", function(self) UI.CharacterMenu(self) end)
+	who:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
+	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	d.who = who
 	local chart = panel(p, x0, -48, cw, 210)
 	d.chart = chart
+	-- hover: a marker on the nearest point and a tooltip with who held what
+	local mark = chart:CreateTexture(nil, "OVERLAY")
+	mark:SetColorTexture(T.fg[1], T.fg[2], T.fg[3], 1)
+	mark:SetSize(7, 7)
+	mark:Hide()
+	local vline = chart:CreateTexture(nil, "ARTWORK")
+	vline:SetColorTexture(T.muted[1], T.muted[2], T.muted[3], 0.5)
+	vline:SetWidth(1)
+	vline:Hide()
+	d.mark, d.vline = mark, vline
+	local hover = CreateFrame("Frame", nil, chart)
+	hover:SetAllPoints()
+	hover:EnableMouse(true)
+	hover:SetScript("OnEnter", function(self)
+		self:SetScript("OnUpdate", function(f)
+			local left = f.GetLeft and f:GetLeft()
+			if not left or not GetCursorPosition then return end
+			local x = GetCursorPosition() / (f:GetEffectiveScale() or 1) - left
+			UI.ChartHover(x)
+		end)
+	end)
+	hover:SetScript("OnLeave", function(self)
+		self:SetScript("OnUpdate", nil)
+		mark:Hide(); vline:Hide(); GameTooltip:Hide()
+		d.hoverIndex = nil
+	end)
 	d.grid, d.gridLabels, d.lines, d.xLabels = {}, {}, {}, {}
 	for i = 1, 5 do
 		local g = chart:CreateTexture(nil, "BACKGROUND")
@@ -473,7 +506,59 @@ local function drawChart(d, data)
 		lab:SetPoint("TOPLEFT", chart, "TOPLEFT", left + plotW * frac - 40, top - ch - 6)
 		lab:SetText(date and date(range == "1D" and "%H:%M" or "%b %d", t) or "")
 	end
+	d.px, d.series, d.chartTop, d.chartH = px, series, top, ch
 	return px
+end
+
+--- The chart point nearest x (pixels from the chart's left): shows the marker and a tooltip.
+--- Returns the point, for tests.
+function UI.ChartHover(x)
+	local d = pages.dashboard and pages.dashboard.d
+	if not d or not d.px or #d.px == 0 then return nil end
+	local best, bestD
+	for i, p in ipairs(d.px) do
+		local dist = math.abs(p[1] - x)
+		if not bestD or dist < bestD then best, bestD = i, dist end
+	end
+	local pt, p = d.series[best], d.px[best]
+	if d.hoverIndex ~= best then
+		d.hoverIndex = best
+		d.mark:ClearAllPoints()
+		d.mark:SetPoint("CENTER", d.chart, "TOPLEFT", p[1], p[2])
+		d.mark:Show()
+		d.vline:ClearAllPoints()
+		d.vline:SetPoint("TOPLEFT", d.chart, "TOPLEFT", p[1], d.chartTop)
+		d.vline:SetHeight(d.chartH)
+		d.vline:Show()
+		local T = CH.Theme
+		local lines = { { date and date(range == "1D" and "%b %d %H:%M" or "%a %b %d, %Y", pt.t) or "", "" }, { "Total", CH.FormatMoney(pt.v) } }
+		local by = {}
+		for _, b in ipairs(pt.by or {}) do if b.v > 0 then table.insert(by, b) end end
+		table.sort(by, function(a, b) return a.v > b.v end)
+		for _, b in ipairs(by) do table.insert(lines, { "  " .. b.name, T.Color("muted", CH.FormatMoney(b.v)) }) end
+		CH.Window.Tooltip(d.chart, lines)
+	end
+	return pt
+end
+
+--- The character picker: tick who counts in the gold. Without the game's menus, toggles name.
+function UI.CharacterMenu(owner, name)
+	local L = CH.Ledger
+	if name then L.SetIncluded(name, not L.Included(name)); return UI.Refresh() end
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle("Count gold from")
+		for _, h in ipairs(L.Holders()) do
+			root:CreateCheckbox(h.name .. "  " .. CH.FormatMoney(h.money),
+				function() return L.Included(h.name) end,
+				function() L.SetIncluded(h.name, not L.Included(h.name)); UI.Refresh() end)
+		end
+		root:CreateDivider()
+		root:CreateButton("Everyone", function()
+			for _, h in ipairs(L.Holders()) do L.SetIncluded(h.name, true) end
+			UI.Refresh()
+		end)
+	end)
 end
 
 local function refreshDashboard()
@@ -487,7 +572,12 @@ local function refreshDashboard()
 	end
 	local data = UI.DashboardData()
 	d.title:SetText("Gold")
-	d.sub:SetText(T.Color("muted", "All characters on " .. (GetRealmName and GetRealmName() or "") .. " + warband bank, now ") .. CH.FormatMoney(data.gold))
+	local holders, on = CH.Ledger.Holders(), 0
+	for _, h in ipairs(holders) do if h.included then on = on + 1 end end
+	local who = on == #holders and ("All characters on " .. (GetRealmName and GetRealmName() or "") .. " + warband bank")
+		or string.format("%d of %d (characters + warband bank)", on, #holders)
+	d.sub:SetText(T.Color("muted", who .. ", now ") .. CH.FormatMoney(data.gold))
+	d.hoverIndex = nil
 	drawChart(d, data)
 	d.stats.high:SetText(money(data.high))
 	d.stats.low:SetText(money(data.low))

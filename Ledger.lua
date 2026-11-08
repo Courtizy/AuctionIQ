@@ -55,9 +55,17 @@ end
 
 --- Gold now: every character on the realm plus the warband bank.
 function Lg.Gold()
-	local total = warbandMoney()
-	for _, c in ipairs(Lg.Characters()) do total = total + c.money end
+	local total = Lg.Included and Lg.Included(Lg.WARBAND) and warbandMoney() or 0
+	for _, c in ipairs(Lg.Characters()) do if Lg.Included(c.name) then total = total + c.money end end
 	return total
+end
+
+--- Gold now per character and the warband bank: { { name, money, included } }.
+function Lg.Holders()
+	local out = {}
+	for _, c in ipairs(Lg.Characters()) do table.insert(out, { name = c.name, money = c.money, included = Lg.Included(c.name) }) end
+	table.insert(out, { name = Lg.WARBAND, money = warbandMoney(), included = Lg.Included(Lg.WARBAND) })
+	return out
 end
 
 -- CSV parsing ---------------------------------------------------------------------------------
@@ -111,34 +119,59 @@ local function goldLog(scope)
 	return out
 end
 
---- Total gold over time, sampled at n points from `from` to `to` (seconds). Each character's
---- log holds its gold from each change on; the warband bank's log is added in too.
+Lg.WARBAND = "Warband"
+
+local function store0()
+	CH.db.ledger = CH.db.ledger or { days = {}, worth = {} }
+	CH.db.ledger.exclude = CH.db.ledger.exclude or {}
+	return CH.db.ledger
+end
+
+--- Whether a character (or Lg.WARBAND) counts in the gold totals and chart. All do by default.
+function Lg.Included(name) return not store0().exclude[name] end
+function Lg.SetIncluded(name, on) store0().exclude[name] = (not on) or nil end
+
+-- Gold logs for everyone included: { { name, log } }.
+local function logs()
+	local out = {}
+	for _, c in ipairs(Lg.Characters()) do
+		if Lg.Included(c.name) then table.insert(out, { name = c.name, log = goldLog(c.key) }) end
+	end
+	if Lg.Included(Lg.WARBAND) then
+		local wb = {}
+		for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
+		table.insert(out, { name = Lg.WARBAND, log = wb })
+	end
+	return out
+end
+
+local function at(log, t)
+	local v = 0
+	for _, e in ipairs(log) do if e.t <= t then v = e.v else break end end
+	return v
+end
+
+--- Total gold over time for everyone included, sampled at n points from `from` to `to`
+--- (seconds). Each point also has `by` = { { name, v } } for the chart's hover.
 function Lg.GoldSeries(from, to, n)
-	local logs = {}
-	for _, c in ipairs(Lg.Characters()) do table.insert(logs, goldLog(c.key)) end
-	local wb = {}
-	for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
-	table.insert(logs, wb)
+	local all = logs()
 	n = math.max(2, n or 60)
 	local out = {}
 	for i = 0, n - 1 do
 		local t = from + (to - from) * i / (n - 1)
-		local total = 0
-		for _, log in ipairs(logs) do
-			local v = 0
-			for _, e in ipairs(log) do if e.t <= t then v = e.v else break end end
+		local total, by = 0, {}
+		for _, l in ipairs(all) do
+			local v = at(l.log, t)
 			total = total + v
+			by[#by + 1] = { name = l.name, v = v }
 		end
-		out[#out + 1] = { t = t, v = total }
+		out[#out + 1] = { t = t, v = total, by = by }
 	end
 	return out
 end
 
 -- Daily archive -------------------------------------------------------------------------------
-local function store()
-	CH.db.ledger = CH.db.ledger or { days = {}, worth = {} }
-	return CH.db.ledger
-end
+local store = store0
 
 local function dayOf(t) return math.floor(t / DAY) end
 
