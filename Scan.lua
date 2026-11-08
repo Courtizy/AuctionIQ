@@ -30,7 +30,7 @@ local function summary(result)
 	local units = Sc.DailyUnits(item)
 	local made = result.made or 1
 	return {
-		recipeID = result.recipeID, name = result.name, made = made,
+		recipeID = result.recipeID, name = result.name, made = made, tiers = result.model and result.model.maxQ,
 		quality = b and b.quality, profit = b and b.profit, cost = b and b.cost, item = item,
 		pct = b and b.cost and b.cost > 0 and b.profit / b.cost or nil,
 		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,

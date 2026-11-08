@@ -97,9 +97,9 @@ CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
 local LUI = {}
 CH.LogUI = LUI
 local frame, rows
-local N, W = 14, 560
-local COLS = { { "Recipe", 12, 170 }, { "Crafts", 184, 44 }, { "Multicraft", 230, 76 }, { "Resourceful", 308, 76 },
-	{ "Ingenuity", 386, 64 }, { "Profit vs expected", 452, 100 } }
+local N, W = 14, 680
+local COLS = { { "Recipe", 12, 200 }, { "Crafts", 214, 50 }, { "Multicraft", 266, 86 }, { "Resourceful", 354, 90 },
+	{ "Ingenuity", 446, 80 }, { "Profit vs expected", 528, 140 } }
 
 local function pct(a, b)
 	if not a then return CH.Theme.Color("muted", "-") end

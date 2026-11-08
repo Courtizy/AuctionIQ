@@ -132,12 +132,6 @@ function A.QualityAt(model, skill)
 	return q
 end
 
-local function noteThresholds(model, op)
-	local q = op and op.craftingQuality
-	if not q then return end
-	if op.lowerSkillThreshold and q > 1 then model.thresholds[q] = op.lowerSkillThreshold end
-	if op.upperSkillTreshold and q < model.maxQ and op.upperSkillTreshold > 0 then model.thresholds[q + 1] = op.upperSkillTreshold end
-end
 
 --- Asks the game everything the advisor needs about one recipe. opts: allocationGUID (recraft),
 --- order = { orderID, minQuality, provided = {reagentInfo...}, providedSlots = {[slot]=true},
@@ -174,7 +168,6 @@ function A.Measure(recipeID, opts)
 	model.skill0 = skillOf(op0)
 	model.difficulty = model.stats0.difficulty
 	model.craftingDataID = op0.craftingDataID
-	noteThresholds(model, op0)
 
 	-- What the spec adds that the game doesn't report: perk bonuses to Multicraft items,
 	-- Resourcefulness savings, Ingenuity refunds and Concentration cost.
@@ -194,7 +187,6 @@ function A.Measure(recipeID, opts)
 		for q = 2, #slot.items do
 			local p = copyPicks(base); p[i] = { [q] = slot.qty }
 			local op = operation(model, p)
-			noteThresholds(model, op)
 			local perUnit = op and (skillOf(op) - model.skill0) / slot.qty or 0
 			model.perUnit[i][q] = perUnit
 			local extra = (price("chmat", slot.items[q]) or math.huge) - (price("chmat", slot.items[1]) or 0)
@@ -230,13 +222,11 @@ function A.Measure(recipeID, opts)
 		if #options > 0 then table.insert(model.finishing, options) end
 	end
 
-	-- Fill gaps in the quality thresholds with the usual fractions of difficulty.
+	-- Skill each quality needs, as fractions of difficulty (CraftSim's GetQualityThresholds).
 	local frac = St().THRESHOLDS[model.maxQ]
 	for k = 2, model.maxQ do
-		if not model.thresholds[k] then
-			local f = frac and frac[k] or (k - 1) / (model.maxQ - 1)
-			model.thresholds[k] = model.difficulty * f
-		end
+		local f = frac and frac[k] or (k - 1) / (model.maxQ - 1)
+		model.thresholds[k] = model.difficulty * f
 	end
 	return model
 end
@@ -307,15 +297,16 @@ local function build(model, delta, fin, live)
 	local function record(picks)
 		local q, op
 		if live then
+			-- Quality from skill against difficulty, as CraftSim does: Midnight's craftingQuality isn't 1, 2.
 			op = operation(model, picks, false, fin)
-			q = op and (op.craftingQuality or 1)
+			q = op and A.QualityAt(model, skillOf(op))
 		else
 			q = A.QualityAt(model, skillAt(model, picks, base0))
 		end
 		if not q or found[q] then return end
 		local c = cost(model, picks)
 		if not c then return end
-		found[q] = { quality = q, picks = copyPicks(picks), cost = c, op = op, skill = skillAt(model, picks, base0) }
+		found[q] = { quality = q, picks = copyPicks(picks), cost = c, op = op, skill = op and skillOf(op) or skillAt(model, picks, base0) }
 		table.insert(order, q)
 	end
 	local picks = lowest(model.qual)
@@ -348,7 +339,7 @@ local function build(model, delta, fin, live)
 			local cc, cq
 			if live then
 				local opc = operation(model, f.picks, true, fin)
-				cc, cq = opc and opc.concentrationCost or 0, opc and opc.craftingQuality or q
+				cc, cq = opc and opc.concentrationCost or 0, q + 1
 			else
 				cc = St().ConcentrationCost(model.craftingDataID, model.difficulty, f.skill, s.concReduce)
 				if not cc then
@@ -452,7 +443,7 @@ function A.CostLines(result, picks, fin)
 			local n = picks[i][q] or 0
 			if n > 0 then
 				local unit = price("chmat", slot.items[q])
-				table.insert(out, { name = itemName(slot.items[q]), rank = q, n = n, unit = unit, total = unit and unit * n })
+				table.insert(out, { name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n })
 			end
 		end
 	end
@@ -504,15 +495,15 @@ end
 --- points you have now). Returns the count and a line per reagent: name, rank, have, need.
 function A.MaxCraftable(result, r, concNow)
 	local max, lines = math.huge, {}
-	local function use(id, rank, need)
+	local function use(id, rank, need, tiers)
 		local h = have(id)
 		max = math.min(max, math.floor(h / need))
-		table.insert(lines, { name = itemName(id), rank = rank, have = h, need = need })
+		table.insert(lines, { name = itemName(id), rank = rank, tiers = tiers, have = h, need = need })
 	end
 	for i, slot in ipairs(result.qual) do
 		for q = #slot.items, 1, -1 do
 			local n = r.picks[i][q] or 0
-			if n > 0 then use(slot.items[q], q, n) end
+			if n > 0 then use(slot.items[q], q, n, #slot.items) end
 		end
 	end
 	for _, slot in ipairs(result.fixed) do use(slot.items[1], nil, slot.qty) end

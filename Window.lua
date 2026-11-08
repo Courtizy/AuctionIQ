@@ -112,8 +112,14 @@ function W.Tooltip(owner, lines)
 	GameTooltip:Show()
 end
 
-function W.QualityIcon(q, size)
+--- Quality icon. tiers is how many qualities the item has: Midnight's two-quality items and
+--- reagents use their own icons (the ones in their chat links), older ones the five-tier set.
+function W.QualityIcon(q, size, tiers)
 	if not q then return "" end
-	if CreateAtlasMarkup then return CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", size or 16, size or 16) end
-	return "Q" .. q
+	if not CreateAtlasMarkup then return "Q" .. q end
+	size = size or 16
+	if tiers == 2 then
+		return CreateAtlasMarkup("Professions-ChatIcon-Quality-12-Tier" .. q, math.floor(size * 17 / 15 + 0.5), size)
+	end
+	return CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", size, size)
 end
