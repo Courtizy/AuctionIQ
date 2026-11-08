@@ -6,6 +6,19 @@ local QUI = {}
 CH.QueueUI = QUI
 local panel, qrows, srows, shopHead, empty
 local QROWS, SROWS, W = 8, 8, 540
+local qOffset, sOffset = 0, 0
+
+-- A hover area over a list row that shows the game's item tooltip (with AuctionIQ's lines).
+local function itemHover(parent, x, y, w)
+	local hit = CreateFrame("Button", nil, parent)
+	hit:SetPoint("TOPLEFT", x, y + 2)
+	hit:SetSize(w, 18)
+	hit:SetScript("OnEnter", function(self)
+		if self.id and GameTooltip.SetItemByID then GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetItemByID(self.id); GameTooltip:Show() end
+	end)
+	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	return hit
+end
 
 local function classColor(class)
 	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
@@ -117,6 +130,7 @@ local function build()
 		local r = {}
 		local ry = y - (i - 1) * 18
 		r.name = CH.Window.OneLine(text(panel, 12, ry, 250))
+		r.hit = itemHover(panel, 12, ry, 250)
 		r.who = CH.Window.OneLine(text(panel, 266, ry, 90))
 		r.profit = CH.Window.OneLine(text(panel, 360, ry, 86, "RIGHT"))
 		r.craft = T.Button(panel, "Deliver", 58, 16)
@@ -126,6 +140,10 @@ local function build()
 		qrows[i] = r
 	end
 
+	local qwheel = CreateFrame("Frame", nil, panel)
+	qwheel:SetPoint("TOPLEFT", 0, y + 2)
+	qwheel:SetSize(W, QROWS * 18)
+	CH.Window.Wheel(qwheel, QROWS, function() return qOffset end, function(v) qOffset = v end, function() return #CH.db.queue end, QUI.Refresh)
 	y = y - QROWS * 18 - 8
 	shopHead = text(panel, 12, y, W - 24, "LEFT", "GameFontNormalSmall")
 	local cols = { { "Reagent", 12, 250, "LEFT" }, { "Need", 264, 54 }, { "Have", 320, 54 }, { "Buy", 376, 54 }, { "Cost", 432, 96 } }
@@ -139,8 +157,13 @@ local function build()
 		local ry = y - i * 18
 		local r = {}
 		for j, c in ipairs(cols) do r[j] = CH.Window.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
+		r.hit = itemHover(panel, 12, ry, 250)
 		srows[i] = r
 	end
+	local swheel = CreateFrame("Frame", nil, panel)
+	swheel:SetPoint("TOPLEFT", 0, y - 16)
+	swheel:SetSize(W, SROWS * 18)
+	CH.Window.Wheel(swheel, SROWS, function() return sOffset end, function(v) sOffset = v end, function() return #(CH.Queue.ShoppingList()) end, QUI.Refresh)
 	T.Fonts(panel)
 	CH.Window.Attach("queue", panel)
 end
@@ -150,11 +173,14 @@ function QUI.Refresh()
 	if not panel or not panel:IsShown() then return end
 	local T = CH.Theme
 	local q = CH.db.queue
-	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Queue (" .. CH.Queue.Count() .. ")"))
+	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Queue (" .. CH.Queue.Count() .. ")"
+		.. (#q > QROWS and string.format(", rows %d-%d of %d, scroll", qOffset + 1, math.min(#q, qOffset + QROWS), #q) or "")))
 	empty:SetText(#q == 0 and T.Color("muted", "Empty. Click a row in the crafting advisor to queue one, shift-click to queue as many as you can make.") or "")
 	local lines = { queue = {}, shop = {} }
+	qOffset = math.max(0, math.min(qOffset, #q - QROWS))
 	for i, r in ipairs(qrows) do
-		local e = q[i]
+		local e = q[i + qOffset]
+		r.hit.id = e and e.item
 		local show = e ~= nil
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
@@ -186,8 +212,11 @@ function QUI.Refresh()
 	end
 	local shop, total = CH.Queue.ShoppingList()
 	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", "  buy for " .. CH.FormatMoney(total) .. " at chmat") or ""))
+	sOffset = math.max(0, math.min(sOffset, #shop - SROWS))
+	if #shop > SROWS then shopHead:SetText(shopHead:GetText() .. CH.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shop, sOffset + SROWS), #shop))) end
 	for i, r in ipairs(srows) do
-		local s = shop[i]
+		local s = shop[i + sOffset]
+		r.hit.id = s and s.itemID
 		if s then
 			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)

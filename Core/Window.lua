@@ -103,6 +103,16 @@ function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
 	return rows
 end
 
+--- Scroll a list with the mouse wheel over frame: get() and set(n) hold the offset, total() the
+--- row count and n the rows shown; refresh() redraws.
+function W.Wheel(frame, n, get, set, total, refresh)
+	frame:EnableMouseWheel(true)
+	frame:SetScript("OnMouseWheel", function(_, d)
+		set(math.max(0, math.min(math.max(0, total() - n), get() - d * 3)))
+		refresh()
+	end)
+end
+
 --- Show tooltip lines ({left, right} or {left}) on owner.
 function W.Tooltip(owner, lines)
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")

@@ -358,6 +358,17 @@ local function buildDashboard(p)
 		c.hit:SetPoint("TOPLEFT", 4, y + 4)
 		c.hit:SetSize(242, 64)
 		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
+		-- the card's text in full: long lines are cut to fit the card
+		c.hit:SetScript("OnEnter", function(self)
+			local lines = {}
+			for _, f in ipairs({ c.who, c.l1, c.l2, c.l3 }) do
+				local s = f:GetText()
+				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
+			end
+			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to go there.") }) end
+			if #lines > 0 then CH.Window.Tooltip(self, lines) end
+		end)
+		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		d.cards[i] = c
 	end
 	d.logOffset = 0

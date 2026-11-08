@@ -510,6 +510,23 @@ run('STUB.Fire("UI_ERROR_MESSAGE", 1, "Item not found"); STUB.RunTimers()')
 check("post: no confirmation and still in bags means failed, with the game's reason",
       e.failed and e.done and e.d.why == "Item not found")
 
+# A long post scan scrolls, and every row (not only the first) explains itself on hover
+run("""
+local plan = Clearinghouse.AuctionUI.Plan()
+for k in pairs(plan) do plan[k] = nil end
+for i = 1, 25 do table.insert(plan, { id = 302, other = 90000, d = { action = "skip", why = "row " .. i } }) end
+Clearinghouse.AuctionUI.Refresh()
+""")
+h1 = [plain(l[1]) for l in L.eval("Clearinghouse.AuctionUI.HoverLines(1)").values()]
+check("auction hover: the why in full, the cheapest rival and the operation's prices",
+      "Skip: row 1" in h1 and "Cheapest outside your account" in h1 and any(x.startswith("Operation") for x in h1) and "  Min / normal / max" in h1)
+check("auction hover: the last row has its own story too", plain(L.eval("Clearinghouse.AuctionUI.HoverLines(18)")[2][1]) == "Skip: row 18")
+run("Clearinghouse.AuctionUI.Build().scripts.OnMouseWheel(nil, -1)")
+check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("Clearinghouse.AuctionUI.HoverLines(1)")[2][1]) == "Skip: row 4")
+run("local plan = Clearinghouse.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; Clearinghouse.AuctionUI.Refresh()")
+tl = [plain(l[1]) for l in CH.TooltipLines("i:302").values()]
+check("tooltip: shows how AuctionIQ will post it", "Posting" in tl and "  Min / normal / max" in tl)
+
 run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
 check("mail: a group's route reaches its sub-groups", CH.Mail.Destination(302)[0] == "Luxaren" and CH.Mail.Destination(201) is None)
 check("mail panel builds", CH.MailUI.Build() is not None)
