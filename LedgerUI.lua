@@ -41,13 +41,15 @@ local VIEWS = {
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
 	holdings = { label = "Holdings", parent = "Goblin CFO", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
+	par = { label = "Par levels", parent = "Goblin CFO", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Par", 298, 60 },
+		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Goblin CFO", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 }
 local NAV = { { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 	{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 	{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
-	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } }
+	{ "Goblin CFO", "pl" }, { "pl", sub = true }, { "par", sub = true }, { "dead", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } }
 LUI.VIEWS = VIEWS
 
 -- Formatting ----------------------------------------------------------------------------------
@@ -213,6 +215,22 @@ function LUI.Rows(v, opts)
 		return out, "Unrealized gain on stock you bought: " .. signed(gain)
 	end
 
+	if v == "par" then
+		local short, worth = 0, 0
+		for _, e in ipairs(CH.Par.List(now)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				if e.short > 0 then short, worth = short + 1, worth + e.value end
+				table.insert(out, { id = e.id, cells = { text, string.format("%.0f", e.weekly), e.target, e.held,
+					e.short > 0 and CH.Theme.Color("bad", e.short) or CH.Theme.Color("ok", "0"), e.short > 0 and money(e.value) or "",
+					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", "a week of sales") },
+					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
+			end
+		end
+		return out, string.format("%d items below par, %s of stock to make or buy", short, money(worth))
+			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
+	end
+
 	if v == "overhead" then
 		local o = L.Overhead(since, opts.char)
 		local span = math.max(1, (now - (opts.days and since or (now - 365 * 86400))) / 86400)
@@ -346,6 +364,7 @@ function LUI.Build(p, fs, panel)
 			end
 		end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		hit:SetScript("OnClick", function(self) if view == "par" and self.id then LUI.ParClick(self.id) end end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
 		bg:SetAllPoints()
 		bg:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.03 or 0)
@@ -416,6 +435,19 @@ function LUI.Refresh()
 	local more = #rows > ROWS and T.Color("muted", string.format("   rows %d-%d of %d, scroll for more", offset + 1, math.min(#rows, offset + ROWS), #rows)) or ""
 	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
+end
+
+--- Par levels view: shift-click raises an item's par by 1, ctrl-click lowers it, alt-click goes
+--- back to the automatic one (a week of sales).
+function LUI.ParClick(id, mod)
+	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")
+		or (IsShiftKeyDown and IsShiftKeyDown() and "shift")
+	local cur = CH.Par.Target(id) or 0
+	if mod == "alt" then CH.Par.Set(id, nil)
+	elseif mod == "ctrl" then CH.Par.Set(id, cur - 1)
+	elseif mod == "shift" then CH.Par.Set(id, cur + 1) end
+	CH.UI.Refresh()
+	return CH.Par.Target(id)
 end
 
 --- Switch the view, filters and sort from code (tests, slash commands).

@@ -41,6 +41,21 @@ function UI.BriefingText(now)
 				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth)))
 			end
 			for _, t in ipairs(r.top) do table.insert(out, "   " .. item(t.id) .. "  " .. CH.FormatMoney(t.gold)) end
+			local below = CH.Par and CH.Par.List(now) or {}
+			table.sort(below, function(a, b) return a.value > b.value end)
+			local nShort = 0
+			for _, e in ipairs(below) do if e.short > 0 then nShort = nShort + 1 end end
+			if nShort > 0 then
+				table.insert(out, "")
+				table.insert(out, T.Color("accent", "Below par") .. T.Color("muted", "  " .. nShort .. " items; the Queue's Fill crafts up to par"))
+				local shown = 0
+				for _, e in ipairs(below) do
+					if e.short > 0 and shown < 6 then
+						shown = shown + 1
+						table.insert(out, string.format("   %s  %d of %d, short %d", item(e.id), e.held, e.target, e.short))
+					end
+				end
+			end
 			if #r.restock > 0 then
 				table.insert(out, "")
 				table.insert(out, T.Color("accent", "Restock") .. T.Color("muted", "  sold this week, none left on any character"))
@@ -430,6 +445,7 @@ local function build()
 	end
 	frame.foot = fs(frame, 12, -H + 18, W - 24, "LEFT", "GameFontDisableSmall")
 	frame:SetScript("OnShow", function()
+		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
 		UI.Refresh()
 	end)

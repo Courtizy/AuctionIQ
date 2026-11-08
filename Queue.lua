@@ -129,8 +129,11 @@ function Q.FillPlan(profID, opts)
 		return results[id]
 	end
 	local function demand(r, itemID)
-		local units = CH.Scan.DailyUnits(itemID)
-		return math.max(0, math.ceil((units - have(itemID or 0) - (queued[itemID or 0] or 0)) / (r.made or 1)))
+		-- up to your par level when the item has one (counting stock on every character), else a day's sales
+		local par = CH.Par and itemID and CH.Par.Target(itemID)
+		local units = par or CH.Scan.DailyUnits(itemID)
+		local held = par and CH.Par.Held(itemID) or have(itemID or 0)
+		return math.max(0, math.ceil((units - held - (queued[itemID or 0] or 0)) / (r.made or 1)))
 	end
 	local function add(r, row, n, isConc)
 		if not done[r.recipeID] then
