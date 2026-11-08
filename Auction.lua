@@ -80,7 +80,7 @@ end
 function A.Decide(id, results, held)
 	local p = CH.Groups.Prices(id)
 	note(id, results, p.normal)
-	if not p.post then return { action = "skip", why = "its group doesn't post" } end
+	if not p.post then return { action = "skip", why = p.tsm and (p.why or "TSM doesn't post it") or "its group doesn't post" } end
 	if not p.normal then return { action = "skip", why = "no price" } end
 	local other, mine = lowest(results)
 	local price, why
@@ -90,10 +90,25 @@ function A.Decide(id, results, held)
 		price, why = other - p.undercut, "undercutting the cheapest"
 		if mine and mine <= other then price, why = mine, "yours is cheapest: matching it" end
 		if p.min and price < p.min then
-			return { action = "skip", why = string.format("cheapest is under your min (%s, %s)", CH.FormatMoney(p.min), p.why or "") }
+			-- TSM's "below minimum" setting; without TSM rules (or set to don't post) it skips
+			local reset = p.priceReset
+			if reset == "minPrice" or reset == "normalPrice" or reset == "maxPrice" then
+				price, why = p[({ minPrice = "min", normalPrice = "normal", maxPrice = "max" })[reset]], "under min: TSM resets to " .. reset
+			else
+				return { action = "skip", why = string.format("cheapest is under your min (%s, %s)", CH.FormatMoney(p.min), p.why or "") }
+			end
 		end
 	end
-	if p.max and price > p.max then price, why = p.max, "capped at max" end
+	if p.max and price > p.max then
+		local above = p.aboveMax
+		if above == "minPrice" or above == "normalPrice" then
+			price, why = p[above == "minPrice" and "min" or "normal"], "above max: TSM posts at " .. above
+		elseif above == "none" then
+			return { action = "skip", why = "above max (TSM: don't post)" }
+		else
+			price, why = p.max, "capped at max"
+		end
+	end
 	if p.min and price < p.min then price = p.min end
 	-- the AH only takes whole silver: round down, but never under your min
 	price = math.floor(price / 100) * 100
@@ -102,6 +117,10 @@ function A.Decide(id, results, held)
 	local room = p.cap - A.Listed(id)
 	if room <= 0 then return { action = "skip", why = string.format("Warband already has %d up (cap %d)", A.Listed(id), p.cap) } end
 	local qty = math.min(room, held or room)
+	if p.keep and p.keep > 0 and held then
+		qty = math.min(qty, held - p.keep)
+		if qty <= 0 then return { action = "skip", why = string.format("keeping %d (TSM keep quantity)", p.keep) } end
+	end
 	if qty <= 0 then return { action = "skip", why = "none in bags" } end
 	return { action = "post", price = math.floor(price), qty = qty, why = why, duration = p.duration }
 end

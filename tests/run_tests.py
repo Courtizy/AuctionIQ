@@ -429,6 +429,32 @@ c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, 
 check("cancel: your own alts never trigger a repost", c.action == "keep")
 c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = false } }"))
 check("cancel: someone else cheaper does", c.action == "cancel")
+# TSM's auctioning operations, read only
+run("""
+Clearinghouse.Auction.RecordOwned({})
+TradeSkillMasterDB["_currentProfile"] = { ["Courtizy - Emerald Dream"] = "Default" }
+TradeSkillMasterDB["p@Default@userData@items"] = { ["i:302"] = "Alch`Flasks" }
+TradeSkillMasterDB["p@Default@userData@groups"] = { ["Alch"] = { Auctioning = { "Flask Op", override = true } }, ["Alch`Flasks"] = { Auctioning = { override = false } } }
+TradeSkillMasterDB["p@Default@userData@operations"] = { Auctioning = { ["Flask Op"] = { minPrice = "2950000", normalPrice = "3500000",
+  maxPrice = "4000000", postCap = "2", undercut = "100", duration = 2, keepQuantity = "0", priceReset = "none", aboveMax = "maxPrice" } } }
+Clearinghouse.Groups.ResetTSM()
+""")
+tp = CH.Groups.Prices(302)
+check("TSM rules: an item in a TSM group takes TSM's operation", tp.min == 2950000 and tp.normal == 3500000 and tp.max == 4000000 and tp.cap == 2 and tp.op == "TSM: Flask Op")
+d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+check("TSM rules: under TSM's min and reset off means no post", d.action == "skip" and "min" in d.why)
+d = CH.Auction.Decide(302, L.eval("{ { price = 3600000, qty = 3, mine = false } }"), 10)
+check("TSM rules: TSM's undercut and post cap", d.action == "post" and d.price == 3599900 and d.qty == 2)
+d = CH.Auction.Decide(302, L.eval("{ { price = 9000000, qty = 3, mine = false } }"), 10)
+check("TSM rules: above max posts at max", d.action == "post" and d.price == 4000000)
+run("TradeSkillMasterDB['p@Default@userData@operations'].Auctioning['Flask Op'].priceReset = 'normalPrice'")
+d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+check("TSM rules: below min resets to normal when TSM says so", d.action == "post" and d.price == 3500000)
+run("TradeSkillMasterDB['p@Default@userData@groups']['Alch'].Auctioning = { override = true }; Clearinghouse.Groups.ResetTSM()")
+check("TSM rules: no TSM auctioning operation, no post", not CH.Groups.Prices(302).post)
+run("Clearinghouse.Groups.Store().tsmRules = 'off'")
+check("TSM rules: off uses AuctionIQ's own operation", CH.Groups.Prices(302).post and CH.Groups.Prices(302).normal == 3000000)
+run("Clearinghouse.Groups.Store().tsmRules = 'tsm'; TradeSkillMasterDB['p@Default@userData@items'] = nil; Clearinghouse.Groups.ResetTSM()")
 run("Clearinghouse.GroupsUI.Select('Crafted'); Clearinghouse.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
 check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())

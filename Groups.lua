@@ -34,33 +34,81 @@ local function store()
 		if not s.ops[k] then local c = {}; for f, x in pairs(v) do c[f] = x end; s.ops[k] = c end
 	end
 	if s.useTSM == nil then s.useTSM = true end
+	-- TSM's auctioning operations for items in TSM groups: "strict" (both must agree), "tsm" or "off"
+	s.tsmRules = s.tsmRules or "tsm"
 	return s
 end
 G.Store = store
 
+-- TSM's current profile name, or nil.
+local function tsmProfile(db)
+	local cur = db["_currentProfile"]
+	if type(cur) ~= "table" then return nil end
+	local me = (UnitName and UnitName("player") or "") .. " - " .. (GetRealmName and GetRealmName() or "")
+	if cur[me] then return cur[me] end
+	for _, p in pairs(cur) do return p end
+end
+
 -- TSM's groups for the current profile, read only: { [itemID] = "TSM/A/B" }.
-local tsmCache
+local tsmCache, tsmRaw
 function G.TSMGroups()
 	if tsmCache then return tsmCache end
-	tsmCache = {}
+	tsmCache, tsmRaw = {}, {}
 	local db = TradeSkillMasterDB
 	if type(db) ~= "table" then return tsmCache end
-	local profile
-	local cur = db["_currentProfile"]
-	if type(cur) == "table" then
-		local me = (UnitName and UnitName("player") or "") .. " - " .. (GetRealmName and GetRealmName() or "")
-		profile = cur[me]
-		if not profile then for _, p in pairs(cur) do profile = p; break end end
-	end
+	local profile = tsmProfile(db)
 	local items = profile and db["p@" .. profile .. "@userData@items"]
 	if type(items) ~= "table" then return tsmCache end
 	for itemString, path in pairs(items) do
 		local id = tonumber(tostring(itemString):match("^i:(%d+)"))
 		if id and type(path) == "string" and path ~= "" then
 			tsmCache[id] = "TSM" .. SEP .. path:gsub("`", SEP)
+			tsmRaw[id] = path
 		end
 	end
 	return tsmCache
+end
+
+--- Forget the TSM groups read so far (they're read once per session).
+function G.ResetTSM() tsmCache, tsmRaw = nil, nil end
+
+local function tsmValue(v, item)
+	if v == nil then return nil end
+	if type(v) == "number" then return v end
+	local n = tonumber(v)
+	if n then return n end
+	if not CH.Prices.Available() then return nil end
+	local ok, r = pcall(TSM_API.GetCustomPriceValue, v, item)
+	return ok and r or nil
+end
+
+--- TSM's auctioning operation for an item in a TSM group, read only, or nil:
+--- { name, min, normal, max, cap, undercut, duration, post }. Prices are TSM custom prices for the item.
+function G.TSMAuction(id)
+	G.TSMGroups()
+	local path = tsmRaw and tsmRaw[id]
+	local db = TradeSkillMasterDB
+	if not path or type(db) ~= "table" then return nil end
+	local profile = tsmProfile(db)
+	local groups = profile and db["p@" .. profile .. "@userData@groups"]
+	local ops = profile and db["p@" .. profile .. "@userData@operations"]
+	if type(groups) ~= "table" then return nil end
+	-- the nearest group up the path with Auctioning operations of its own (TSM's override)
+	local name, p = nil, path
+	while p do
+		local g = groups[p]
+		local a = type(g) == "table" and g.Auctioning
+		if type(a) == "table" and (a.override or not p:find("`")) then name = a[1]; break end
+		p = p:match("^(.*)`[^`]*$")
+	end
+	if not name then return { post = false, why = "no TSM auctioning operation" } end
+	local op = type(ops) == "table" and type(ops.Auctioning) == "table" and ops.Auctioning[name]
+	if type(op) ~= "table" then return { post = false, name = name, why = "TSM operation missing" } end
+	local item = "i:" .. id
+	return { name = name, post = true, min = tsmValue(op.minPrice, item), normal = tsmValue(op.normalPrice, item),
+		max = tsmValue(op.maxPrice, item), cap = tsmValue(op.postCap, item), undercut = tsmValue(op.undercut, item),
+		duration = tonumber(op.duration), keep = tsmValue(op.keepQuantity, item),
+		priceReset = op.priceReset, aboveMax = op.aboveMax }
 end
 
 --- Rebuild the automatic groups from your scans and TSM's records:
@@ -181,6 +229,28 @@ function G.Prices(id)
 	if not floor then floor, why = CH.Prices.Get("chmat", item), "buy price" end
 	local min = floor and math.floor(floor * (op.floorPct or 1))
 	local cap = op.cap or (CH.Par and CH.Par.Target(id)) or 5
-	return { min = min, normal = normal, max = normal and math.floor(normal * (op.maxMult or 3)), cap = cap,
+	local out = { min = min, normal = normal, max = normal and math.floor(normal * (op.maxMult or 3)), cap = cap,
 		undercut = op.undercut or 1, duration = op.duration or 2, post = op.post ~= false, op = name, why = why }
+	local mode = store().tsmRules
+	local t = mode ~= "off" and G.TSMAuction(id)
+	if not t then return out end
+	out.tsm = t
+	if mode == "tsm" then
+		out.post, out.op = t.post, "TSM: " .. (t.name or "none")
+		if not t.post then out.why = t.why; return out end
+		out.min, out.why = t.min or out.min, t.min and "TSM min" or out.why
+		out.normal, out.max = t.normal or out.normal, t.max or out.max
+		out.cap, out.undercut, out.duration = t.cap or out.cap, t.undercut or out.undercut, t.duration or out.duration
+		out.keep, out.priceReset, out.aboveMax = t.keep, t.priceReset, t.aboveMax
+		return out
+	end
+	-- stricter of the two: post only if both would, the higher min, the lower cap
+	if not t.post then out.post, out.why, out.op = false, t.why, name .. " + TSM"; return out end
+	out.op = name .. " + TSM"
+	if t.min and (not out.min or t.min > out.min) then out.min, out.why = t.min, "TSM min" end
+	if t.cap and t.cap < out.cap then out.cap = t.cap end
+	if t.normal then out.normal = t.normal end
+	if t.max then out.max = t.max end
+	if out.max and out.min and out.max < out.min then out.max = out.min end
+	return out
 end

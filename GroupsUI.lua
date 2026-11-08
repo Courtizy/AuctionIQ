@@ -124,7 +124,15 @@ function GUI.Build(p, fs, panel)
 	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); CH.UI.Refresh() end)
 
 	-- operation settings for the selected group's operation
-	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 664, "LEFT", "GameFontNormal")
+	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 500, "LEFT", "GameFontNormal")
+	-- TSM's auctioning operations for items in TSM groups: follow them, the stricter of both, or ignore
+	p.tsmRules = T.Button(p, "TSM rules: follow", 150, 18)
+	p.tsmRules:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - 6)
+	p.tsmRules:SetScript("OnClick", function()
+		local st = CH.Groups.Store()
+		st.tsmRules = ({ tsm = "strict", strict = "off", off = "tsm" })[st.tsmRules] or "tsm"
+		CH.UI.Refresh()
+	end)
 	p.opFields = {}
 	for i, f in ipairs(OP_FIELDS) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
@@ -154,6 +162,7 @@ function GUI.Refresh()
 	local T = CH.Theme
 	local s = CH.Groups.Store()
 	if p.tsmButton.text then p.tsmButton.text:SetText(s.useTSM and "TSM groups: on" or "TSM groups: off") end
+	if p.tsmRules.text then p.tsmRules.text:SetText(({ tsm = "TSM rules: follow", strict = "TSM rules: stricter", off = "TSM rules: off" })[s.tsmRules] or "TSM rules: follow") end
 	local tree = CH.Groups.Tree()
 	treeOffset = math.max(0, math.min(treeOffset, #tree - TREE_ROWS))
 	for i, b in ipairs(p.tree) do
