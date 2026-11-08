@@ -29,6 +29,41 @@ end
 function UI.BriefingText(now)
 	now = now or time()
 	local chars, out = sortedCharacters(), {}
+	local T = CH.Theme
+	local function item(id) return CH.LedgerUI and CH.LedgerUI.ItemText(id) or ("item " .. id) end
+	if CH.Ledger and CH.Ledger.Available() then
+		local ok, r = pcall(CH.Ledger.Report, now)
+		if ok and r then
+			table.insert(out, T.Color("accent", "Last 24 hours") .. T.Color("muted", "  from TSM's accounting"))
+			table.insert(out, string.format("   Sold %d for %s, bought %d for %s, cash %s", r.sold, CH.FormatMoney(r.earned), r.bought,
+				CH.FormatMoney(r.spent), T.Color(r.earned - r.spent >= 0 and "ok" or "bad", CH.FormatMoney(r.earned - r.spent))))
+			if r.worth then
+				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth)))
+			end
+			for _, t in ipairs(r.top) do table.insert(out, "   " .. item(t.id) .. "  " .. CH.FormatMoney(t.gold)) end
+			if #r.restock > 0 then
+				table.insert(out, "")
+				table.insert(out, T.Color("accent", "Restock") .. T.Color("muted", "  sold this week, none left on any character"))
+				for _, e in ipairs(r.restock) do
+					table.insert(out, string.format("   %s  %d sold, %s", item(e.id), e.sold, CH.FormatMoney(e.gold)))
+				end
+			end
+			if #r.expired > 0 or #r.stale > 0 then
+				table.insert(out, "")
+				table.insert(out, T.Color("accent", "Came back unsold"))
+				for i, e in ipairs(r.expired) do
+					if i > 5 then break end
+					table.insert(out, string.format("   %s  x%d  %s", item(e.id), e.n, T.Color("muted", "repost it")))
+				end
+				for i, e in ipairs(r.stale) do
+					if i > 4 then break end
+					table.insert(out, string.format("   %s  %s", item(e.id),
+						T.Color("bad", e.times .. " expiries in 2 weeks: cut the price, vendor it or stop making it")))
+				end
+			end
+			table.insert(out, "")
+		end
+	end
 	local total = 0
 	for _, c in ipairs(chars) do total = total + (c.gold or 0) end
 	table.insert(out, CH.Theme.Color("accent", "Gold") .. "  " .. CH.FormatMoney(total) .. " across " .. #chars .. " characters")
@@ -81,6 +116,25 @@ function UI.BriefingText(now)
 	if not listed then
 		table.insert(out, CH.Prices.Available() and "   Open a profession window to rank its recipes."
 			or "   Needs TradeSkillMaster for prices.")
+	end
+
+	local buys = {}
+	for _, c in ipairs(chars) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				local bc = CH.Scan and CH.Scan.BuyOrCraft(r)
+				if bc and bc.save and bc.save > 0 then table.insert(buys, { r = r, bc = bc }) end
+			end
+		end
+	end
+	if #buys > 0 then
+		table.sort(buys, function(a, b) return a.bc.save > b.bc.save end)
+		table.insert(out, "")
+		table.insert(out, T.Color("accent", "Buy instead of craft") .. T.Color("muted", "  the cheapest listing is under your crafting cost"))
+		for i, b in ipairs(buys) do
+			if i > 4 then break end
+			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", CH.FormatMoney(b.bc.buy), CH.FormatMoney(b.bc.craft)))
+		end
 	end
 
 	local cds = CH.Cooldowns and CH.Cooldowns.All(now) or {}

@@ -360,6 +360,11 @@ check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4
 w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
 LG.Snapshot()
 check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.now") - 6 * 86400)[0] == 0 and w1[0] > 10000000)
+rep = LG.Report()
+check("morning report: last day's sales and what came back", rep.sold == 2 and rep.earned == 6000000 and rep.bought == 10
+      and list(rep.expired.values())[0].id == 302 and len(list(rep.restock.values())) == 0)
+bt = plain(CH.UI.BriefingText())
+check("briefing opens with the last 24 hours", bt.startswith("Last 24 hours") and "Came back unsold" in bt and "repost it" in bt)
 LU = CH.LedgerUI
 rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))
 check("ledger sales: in the time frame only, with the total", len(list(rows.values())) == 2 and plain(foot) == "3 items sold: 700g")

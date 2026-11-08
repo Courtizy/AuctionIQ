@@ -322,6 +322,56 @@ function Lg.WorthChange(since)
 	return (now.gold + now.inventory) - (first.gold + first.inventory), first, now, firstK
 end
 
+-- Morning report -----------------------------------------------------------------------------
+--- What changed and what needs doing: last day's sales and buys, items you sold this week and
+--- now hold none of, and what came back unsold (and what keeps coming back).
+function Lg.Report(now)
+	now = now or time()
+	local day, week, fortnight = now - DAY, now - 7 * DAY, now - 14 * DAY
+	local r = { sold = 0, earned = 0, bought = 0, spent = 0, top = {}, restock = {}, expired = {}, stale = {} }
+	local byItem = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.time >= day then
+			r.sold, r.earned = r.sold + s.quantity, r.earned + s.amount
+			if s.id then byItem[s.id] = (byItem[s.id] or 0) + s.amount end
+		end
+	end
+	for _, b in ipairs(Lg.Records("Buys")) do
+		if b.time >= day then r.bought, r.spent = r.bought + b.quantity, r.spent + b.amount end
+	end
+	for id, g in pairs(byItem) do table.insert(r.top, { id = id, gold = g }) end
+	table.sort(r.top, function(a, b) return a.gold > b.gold end)
+	for i = #r.top, 4, -1 do r.top[i] = nil end
+	-- sold this week, none left anywhere
+	local held = {}
+	for _, e in ipairs(Lg.Inventory()) do if e.id then held[e.id] = e.total end end
+	local weekly = {}
+	for _, s in ipairs(Lg.Records("Sales")) do
+		if s.time >= week and s.id and (held[s.id] or 0) == 0 then
+			local e = weekly[s.id] or { id = s.id, sold = 0, gold = 0 }
+			weekly[s.id] = e
+			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+		end
+	end
+	for _, e in pairs(weekly) do table.insert(r.restock, e) end
+	table.sort(r.restock, function(a, b) return a.gold > b.gold end)
+	for i = #r.restock, 6, -1 do r.restock[i] = nil end
+	-- came back in the last day; and what has come back 3+ times in two weeks
+	local back, count = {}, {}
+	for _, e in ipairs(Lg.Records("Expired")) do
+		if e.id and e.time >= fortnight then
+			count[e.id] = (count[e.id] or 0) + 1
+			if e.time >= day then back[e.id] = (back[e.id] or 0) + e.quantity end
+		end
+	end
+	for id, n in pairs(back) do table.insert(r.expired, { id = id, n = n }) end
+	table.sort(r.expired, function(a, b) return a.n > b.n end)
+	for id, n in pairs(count) do if n >= 3 then table.insert(r.stale, { id = id, times = n }) end end
+	table.sort(r.stale, function(a, b) return a.times > b.times end)
+	r.worth = Lg.WorthChange(day)
+	return r
+end
+
 CH.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
 		if Lg.Available() then pcall(Lg.Archive); pcall(Lg.Snapshot) end
