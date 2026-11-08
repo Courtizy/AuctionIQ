@@ -75,7 +75,7 @@ function PUI.Refresh()
 	for _, e in ipairs(Pl.Upcoming()) do
 		table.insert(lines, T.Color("accent", e.date:sub(6)) .. "  " .. e.name .. (e.hint and T.Color("muted", "\n      " .. e.hint) or ""))
 	end
-	p.upcoming:SetText(#lines > 0 and table.concat(lines, "\n") or T.Color("muted", "Nothing in the game calendar. Add your own: /ch event 2026-12-01 Season 2 starts"))
+	p.upcoming:SetText(#lines > 0 and table.concat(lines, "\n") or T.Color("muted", "Nothing in the game calendar. Add your own: /aiq event 2026-12-01 Season 2 starts"))
 	local out = {}
 	for _, span in ipairs({ { "Last 7 days", 7 }, { "Last 30 days", 30 } }) do
 		local x = Pl.Time(time() - span[2] * 86400)

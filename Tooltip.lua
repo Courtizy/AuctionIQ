@@ -1,4 +1,4 @@
--- Clearinghouse tooltip lines on every item.
+-- AuctionIQ tooltip lines on every item.
 local _, CH = ...
 
 
@@ -75,7 +75,7 @@ function CH.TooltipLines(link)
 	local now, post = CH.Prices.Get("chmat", link), CH.Prices.Get("chpost", link)
 	if value then
 		-- sale price, the cut, what you keep
-		table.insert(lines, { "Clearinghouse value", "" })
+		table.insert(lines, { "AuctionIQ value", "" })
 		if now and post then
 			table.insert(lines, { "    Buy now (lowest listing)", m(now), "muted", "muted" })
 			table.insert(lines, { "    Post price", m(post), "muted", "muted" })
@@ -89,7 +89,7 @@ function CH.TooltipLines(link)
 		local sold = CH.Prices.Get("avgsell", link)
 		if sold then table.insert(lines, { "    Your average sale", m(sold), "muted", "muted" }) end
 	elseif now then
-		table.insert(lines, { "Clearinghouse buy price", m(now) })
+		table.insert(lines, { "AuctionIQ buy price", m(now) })
 	end
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then

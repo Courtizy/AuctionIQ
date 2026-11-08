@@ -1,4 +1,4 @@
--- Clearinghouse main window, opened with /ch or from the addon compartment, like TSM's.
+-- AuctionIQ main window, opened with /aiq or from the addon compartment, like TSM's.
 local _, CH = ...
 
 local UI = {}
@@ -469,10 +469,10 @@ end
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
-	frame.title:SetText(T.Color("accent", "Clearinghouse"))
+	frame.title:SetText(T.Color("accent", "AuctionIQ"))
 	frame.TitleText = frame.title
 	local x = 150
-	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Ledger" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" } }) do
+	for _, pg in ipairs({ { "dashboard", "Dashboard" }, { "ledger", "Clearinghouse" }, { "groups", "Groups" }, { "plan", "Plan" }, { "briefing", "Report" } }) do
 		local b = T.Button(frame.bar, pg[2], 84, 20)
 		b:SetPoint("LEFT", x, 0)
 		b:SetScript("OnClick", function() page = pg[1]; UI.Refresh() end)
@@ -663,7 +663,7 @@ function UI.Refresh()
 	for k, p in pairs(pages) do p:SetShown(k == page) end
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
-	frame.foot:SetText(CH.Theme.Color("muted", "/ch scan, /ch paths, /ch queue, /ch results open the crafting tabs.  /ch help for more.")
+	frame.foot:SetText(CH.Theme.Color("muted", "/aiq scan, /aiq paths, /aiq queue, /aiq results open the crafting tabs.  /aiq help for more.")
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
 	if page == "dashboard" then return refreshDashboard()
 	elseif page == "ledger" then return refreshLedger()

@@ -1,13 +1,13 @@
 ## Interface: 120105
-## Title: Clearinghouse
-## Notes: Crafting and auction advice in one place: what to craft, what it costs, what it sells for. Uses TradeSkillMaster prices.
+## Title: AuctionIQ
+## Notes: Economic intelligence for the Auction House: what to craft, buy, post and cancel, with the Clearinghouse ledger behind it. Uses TradeSkillMaster prices.
 ## Author: Courtizy
 ## Version: @project-version@
-## IconTexture: Interface\AddOns\Clearinghouse\Media\Icon
+## IconTexture: Interface\AddOns\AuctionIQ\Media\Icon
 ## Category-enUS: Auctions
-## SavedVariables: ClearinghouseDB
-## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI
-## AddonCompartmentFunc: Clearinghouse_OnAddonCompartmentClick
+## SavedVariables: AuctionIQDB
+## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI, Clearinghouse
+## AddonCompartmentFunc: AuctionIQ_OnAddonCompartmentClick
 ## X-License: MIT
 
 Core.lua

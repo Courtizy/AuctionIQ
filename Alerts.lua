@@ -20,7 +20,7 @@ local function fire(key, text, now)
 	if s.last[key] and now - s.last[key] < REPEAT then return false end
 	s.last[key] = now
 	CH.Print(text)
-	if UIErrorsFrame and UIErrorsFrame.AddMessage then UIErrorsFrame:AddMessage("Clearinghouse: " .. text, 1, 0.82, 0.3) end
+	if UIErrorsFrame and UIErrorsFrame.AddMessage then UIErrorsFrame:AddMessage("AuctionIQ: " .. text, 1, 0.82, 0.3) end
 	return true
 end
 

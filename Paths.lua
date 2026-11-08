@@ -370,7 +370,7 @@ function P.Describe(plan)
 	if (plan.finalConc or 0) > 0 then
 		table.insert(L, string.format("Concentration earns %s a point at best (now %s).", m(plan.finalConc), m(plan.startConc)))
 	end
-	table.insert(L, T.Color("muted", string.format("Gold a day counts up to %d sold a day per item (/ch cap to change) and a day's Concentration on the best recipe.",
+	table.insert(L, T.Color("muted", string.format("Gold a day counts up to %d sold a day per item (/aiq cap to change) and a day's Concentration on the best recipe.",
 		CH.db.settings.scan.dailyCap or 10)))
 	return L
 end

@@ -1,6 +1,8 @@
--- Clearinghouse: core, saved data and slash commands.
+-- AuctionIQ: core, saved data and slash commands. Clearinghouse is its ledger (the books).
 local addonName, CH = ...
-_G.Clearinghouse = CH
+_G.AuctionIQ = CH
+_G.Clearinghouse = CH -- the old name, for macros and the tests
+CH.ICON = "Interface\\AddOns\\" .. addonName .. "\\Media\\Icon"
 
 CH.version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
 CH.AH_CUT = 0.95
@@ -21,7 +23,7 @@ local function copyDefaults(dst, src)
 end
 
 function CH.Print(msg)
-	print("|cffe0a83aClearinghouse|r: " .. tostring(msg))
+	print("|cffe0a83aAuctionIQ|r: " .. tostring(msg))
 end
 
 local COIN = {
@@ -97,20 +99,28 @@ end)
 
 CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
-	ClearinghouseDB = copyDefaults(ClearinghouseDB or {}, DEFAULTS)
-	CH.db = ClearinghouseDB
+	-- First login after the rename: take over the data the addon kept as Clearinghouse. The old
+	-- folder is left as a stub that only loads ClearinghouseDB; it isn't changed, so it stays a backup.
+	if AuctionIQDB == nil and type(ClearinghouseDB) == "table" then
+		AuctionIQDB = CopyTable and CopyTable(ClearinghouseDB) or ClearinghouseDB
+		CH.migrated = true
+	end
+	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
+	CH.db = AuctionIQDB
 end)
 
 CH.On("PLAYER_LOGIN", function()
 	updateGold()
+	if CH.migrated then CH.Print("moved your Clearinghouse data over. Once it all looks right, you can delete the Clearinghouse folder in AddOns.") end
 	if not CH.Prices.Available() then
 		CH.Print("TradeSkillMaster isn't loaded, so prices are off. Install TSM to see values and profits.")
 	end
 end)
 CH.On("PLAYER_MONEY", updateGold)
 
-SLASH_CLEARINGHOUSE1 = "/clearinghouse"
-SLASH_CLEARINGHOUSE2 = "/ch"
+SLASH_CLEARINGHOUSE1 = "/aiq"
+SLASH_CLEARINGHOUSE2 = "/auctioniq"
+SLASH_CLEARINGHOUSE3 = "/ch"
 SlashCmdList.CLEARINGHOUSE = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
 	if msg == "tooltip" then
@@ -122,7 +132,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		if CH.UI.IsShown() then CH.UI.Refresh() end
 	elseif msg:match("^event ") then
 		local day, name = msg:match("^event (%d+%-%d+%-%d+) (.+)$")
-		if day then CH.Planner.AddEvent(day, name); CH.Print("added " .. day .. " " .. name) else CH.Print("/ch event 2026-12-01 Season 2 starts") end
+		if day then CH.Planner.AddEvent(day, name); CH.Print("added " .. day .. " " .. name) else CH.Print("/aiq event 2026-12-01 Season 2 starts") end
 	elseif msg:match("^task ") then
 		local name = msg:match("^task (.+)$")
 		table.insert(CH.Planner.Store().tasks, name)
@@ -146,16 +156,16 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	elseif msg:match("^cap") then
 		local n = tonumber(msg:match("(%d+)"))
 		if n then CH.db.settings.scan.dailyCap = n end
-		CH.Print("gold a day counts up to " .. CH.db.settings.scan.dailyCap .. " sold a day per item. /ch cap 20 to change.")
+		CH.Print("gold a day counts up to " .. CH.db.settings.scan.dailyCap .. " sold a day per item. /aiq cap 20 to change.")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/ch opens the window. /ch tooltip turns the tooltip lines on or off. /ch coins switches between coin icons and g/s/c. /ch minimap hides or shows the minimap button. /ch advisor turns the crafting advisor on or off. /ch queue opens the craft queue and shopping list. /ch scan ranks every recipe of the open profession. /ch plan potions plans knowledge points for what you want to sell. /ch results shows what your crafts really gave. /ch cap 20 sets how many a day you'd sell of one item. /ch alerts turns alerts on or off. /ch report opens the report.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. /aiq alerts turns alerts on or off. /aiq report opens the report.")
 	else
 		CH.UI.Toggle()
 	end
 end
 
-function Clearinghouse_OnAddonCompartmentClick()
+function AuctionIQ_OnAddonCompartmentClick()
 	CH.UI.Toggle()
 end

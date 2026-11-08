@@ -1,4 +1,4 @@
-# Clearinghouse look
+# AuctionIQ look
 
 The addon and the companion page are one product, so they share these rules. A colour changes in
 `Theme.lua` and in the page's CSS together.
@@ -12,7 +12,7 @@ The addon and the companion page are one product, so they share these rules. A c
 
 ## With ElvUI and ToxiUI
 
-When ElvUI is loaded, Clearinghouse uses it instead of its own look:
+When ElvUI is loaded, AuctionIQ uses it instead of its own look:
 
 - Windows use ElvUI's `Transparent` template and title bars its `Default` template. ToxiUI hooks those
   templates, so its soft shadow, inner shadow and noise come along when its theme is on.
@@ -30,7 +30,7 @@ When ElvUI is loaded, Clearinghouse uses it instead of its own look:
 | line   | `#2c3342` | borders and rules |
 | fg     | `#e6e8ee` | body text |
 | muted  | `#9aa2b3` | hints, page name, footer |
-| accent | `#e0a83a` | Clearinghouse gold: name, headings, tooltip labels |
+| accent | `#e0a83a` | AuctionIQ gold: name, headings, tooltip labels |
 | ok     | `#6cc58f` | profit |
 | bad    | `#ef7d72` | loss, FULL Concentration |
 

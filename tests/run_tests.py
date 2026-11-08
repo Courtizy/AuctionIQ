@@ -7,13 +7,13 @@ from pathlib import Path
 from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
-files = [l.strip().replace("\\", "/") for l in (ROOT / "Clearinghouse.toc").read_text().splitlines() if l.strip().endswith(".lua")]
+files = [l.strip().replace("\\", "/") for l in (ROOT / "AuctionIQ.toc").read_text().splitlines() if l.strip().endswith(".lua")]
 L = LuaRuntime(unpack_returned_tuples=True)
 L.execute((ROOT / "tests" / "wow_stub.lua").read_text())
 ns = L.table()
 for f in files:
     chunk = L.eval("function(src, name) return assert(loadstring and loadstring(src, name) or load(src, name)) end")((ROOT / f).read_text(), f)
-    chunk("Clearinghouse", ns)
+    chunk("AuctionIQ", ns)
 
 fails = []
 def check(name, cond):
@@ -22,7 +22,7 @@ def check(name, cond):
         fails.append(name)
 
 run = L.execute
-run('STUB.Fire("ADDON_LOADED", "Clearinghouse"); STUB.Fire("PLAYER_LOGIN")')
+run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().Clearinghouse
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
@@ -43,7 +43,7 @@ run('Clearinghouse.db.settings.coins = false')
 check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
 check("tooltip shows value, buy now / post and profit",
-      lines == ["Clearinghouse value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
+      lines == ["AuctionIQ value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
                "  AH cut (5%)=-25g", "  Value after cut=475g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
@@ -457,6 +457,11 @@ check("briefing opens with the books", len(list(CH.ReportUI.Refresh().values()))
 csvtext, nrows = CH.ReportUI.CSV("sales", L.eval("{ }"))
 run("Clearinghouse.ReportUI.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
+# rename: a fresh AuctionIQ takes over the old Clearinghouse saved data
+run("""_G.__saved = AuctionIQDB; AuctionIQDB = nil; ClearinghouseDB = { queue = {}, marker = 42 }
+STUB.Fire("ADDON_LOADED", "AuctionIQ")""")
+check("rename: old Clearinghouse data moves into AuctionIQ", L.eval("AuctionIQDB.marker == 42 and Clearinghouse.db == AuctionIQDB and Clearinghouse.migrated and AuctionIQ == Clearinghouse"))
+run("AuctionIQDB = _G.__saved; Clearinghouse.db = AuctionIQDB; Clearinghouse.migrated = nil; ClearinghouseDB = nil")
 run("Clearinghouse.Auction.RecordOwned({})")
 LU = CH.LedgerUI
 rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))

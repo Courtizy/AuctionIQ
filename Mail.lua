@@ -53,7 +53,7 @@ function M.SendNext()
 			C_Container.PickupContainerItem(list[i].bag, list[i].slot)
 			ClickSendMailItemButton(i)
 		end
-		SendMail(to, "Clearinghouse", "")
+		SendMail(to, "AuctionIQ", "")
 		return to, math.min(#list, 12)
 	end
 end
