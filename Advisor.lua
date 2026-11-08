@@ -1,44 +1,58 @@
 -- Crafting advisor: for one recipe, the cheapest reagents that reach each result quality, what each
--- craft is worth, and what Concentration earns per point. Same method as CraftSim:
+-- craft earns on average, and what Concentration earns per point. Same method as CraftSim:
 --   * skill per reagent: ask the game (GetCraftingOperationInfo) with one slot raised to each quality
 --   * cheapest mix per quality: raise reagent units cheapest-gold-per-skill first
---   * Concentration value = profit when concentrating / average Concentration cost, where the average
---     cost takes off what Ingenuity refunds (chance x 50%)
+--   * average profit counts Multicraft's extra items and Resourcefulness's saved reagents (Stats.lua)
+--   * Concentration value = average profit when concentrating / average Concentration cost after
+--     Ingenuity refunds, with spec perks that raise the refund
+--   * finishing reagents: every combination is tried and the best kept
+-- Measure() asks the game once; Evaluate() can then be re-run with simulated stats (more skill, a
+-- spec plan, other gear) without asking again.
 local _, CH = ...
 
 local A = {}
 CH.Advisor = A
 
-local INGENUITY_REFUND = 0.5
+local unpack = unpack or table.unpack
 
 local function api() return C_TradeSkillUI end
+local function St() return CH.Stats end
 
 local function price(kind, itemID)
 	return itemID and CH.Prices.Get(kind, "i:" .. itemID)
 end
 
--- Required reagent slots, split into those with qualities (we choose) and fixed ones (we just pay).
-function A.Slots(schematic)
-	local qual, fixed = {}, {}
-	local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic or 1
+local function reagentType(name, fallback)
+	return Enum and Enum.CraftingReagentType and Enum.CraftingReagentType[name] or fallback
+end
+
+--- Required reagent slots, split into those with qualities (we choose) and fixed ones (we just pay),
+--- plus finishing slots. Slots the customer fills on a crafting order are left out.
+function A.Slots(schematic, provided)
+	local qual, fixed, finishing = {}, {}, {}
+	local basic, fin = reagentType("Basic", 1), reagentType("Finishing", 2)
 	for _, s in ipairs(schematic.reagentSlotSchematics or {}) do
-		if s.reagentType == basic and s.required ~= false and s.reagents and #s.reagents > 0 then
-			local items = {}
-			for _, r in ipairs(s.reagents) do
-				local id = r.itemID or (r.reagent and r.reagent.itemID)
-				if id then table.insert(items, id) end
-			end
+		local items = {}
+		for _, r in ipairs(s.reagents or {}) do
+			local id = r.itemID or (r.reagent and r.reagent.itemID)
+			if id then table.insert(items, id) end
+		end
+		if not (provided and provided[s.dataSlotIndex]) and #items > 0 then
 			local slot = { index = s.dataSlotIndex, qty = s.quantityRequired or 1, items = items }
-			table.insert(#items > 1 and qual or fixed, slot)
+			if s.reagentType == basic and s.required ~= false then
+				table.insert(#items > 1 and qual or fixed, slot)
+			elseif s.reagentType == fin then
+				table.insert(finishing, slot)
+			end
 		end
 	end
-	return qual, fixed
+	return qual, fixed, finishing
 end
 
 -- picks[i][q] = units of quality q in quality slot i
-local function reagentInfos(qual, picks)
+local function reagentInfos(model, picks, fin)
 	local t = {}
-	for i, slot in ipairs(qual) do
+	for i, slot in ipairs(model.qual) do
 		for q, id in ipairs(slot.items) do
 			local n = picks[i][q] or 0
 			if n > 0 then
@@ -46,13 +60,25 @@ local function reagentInfos(qual, picks)
 			end
 		end
 	end
+	for _, f in ipairs(fin or {}) do
+		table.insert(t, { reagent = { itemID = f.itemID }, itemID = f.itemID, dataSlotIndex = f.slot, quantity = 1 })
+	end
+	for _, r in ipairs(model.provided or {}) do table.insert(t, r) end
 	return t
 end
 
-local function operation(recipeID, qual, picks, concentrate)
-	local ok, info = pcall(api().GetCraftingOperationInfo, recipeID, reagentInfos(qual, picks), nil, concentrate or false)
+local function operation(model, picks, concentrate, fin)
+	local ui = api()
+	local infos = reagentInfos(model, picks, fin)
+	local ok, info
+	if model.orderID and ui.GetCraftingOperationInfoForOrder then
+		ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
+	else
+		ok, info = pcall(ui.GetCraftingOperationInfo, model.recipeID, infos, model.allocationGUID, concentrate or false)
+	end
 	return ok and info or nil
 end
+A.Operation = operation
 
 local function skillOf(info) return (info.baseSkill or 0) + (info.bonusSkill or 0) end
 
@@ -68,9 +94,10 @@ local function copyPicks(p)
 	return c
 end
 
-local function cost(qual, fixed, picks)
+-- Reagents this recipe needs that Resourcefulness can save (all required ones we pay for).
+local function cost(model, picks)
 	local total = 0
-	for i, slot in ipairs(qual) do
+	for i, slot in ipairs(model.qual) do
 		for q, id in ipairs(slot.items) do
 			local n = picks[i][q] or 0
 			if n > 0 then
@@ -80,7 +107,7 @@ local function cost(qual, fixed, picks)
 			end
 		end
 	end
-	for _, slot in ipairs(fixed) do
+	for _, slot in ipairs(model.fixed) do
 		local p = price("chmat", slot.items[1])
 		if not p then return nil end
 		total = total + slot.qty * p
@@ -88,62 +115,214 @@ local function cost(qual, fixed, picks)
 	return total
 end
 
-local function ingenuityChance(info)
-	local name = string.lower(ITEM_MOD_INGENUITY_SHORT or "Ingenuity")
-	for _, s in ipairs(info.bonusStats or {}) do
-		if string.lower(s.bonusStatName or "") == name then return (s.ratingPct or 0) / 100 end
+local function skillAt(model, picks, base)
+	local s = base
+	for i, row in pairs(picks) do
+		for q, n in pairs(row) do s = s + n * (model.perUnit[i][q] or 0) end
 	end
-	return 0
+	return s
 end
 
---- Every reachable result quality with its cheapest reagents, value and profit, with and without
---- Concentration. Returns nil, reason when the recipe can't be judged.
-function A.Analyze(recipeID)
+--- Quality a skill reaches, from the thresholds the game reported (or the usual fractions).
+function A.QualityAt(model, skill)
+	local q = 1
+	for k = 2, model.maxQ do
+		if model.thresholds[k] and skill >= model.thresholds[k] - 1e-6 then q = k end
+	end
+	return q
+end
+
+local function noteThresholds(model, op)
+	local q = op and op.craftingQuality
+	if not q then return end
+	if op.lowerSkillThreshold and q > 1 then model.thresholds[q] = op.lowerSkillThreshold end
+	if op.upperSkillTreshold and q < model.maxQ and op.upperSkillTreshold > 0 then model.thresholds[q + 1] = op.upperSkillTreshold end
+end
+
+--- Asks the game everything the advisor needs about one recipe. opts: allocationGUID (recraft),
+--- order = { orderID, minQuality, provided = {reagentInfo...}, providedSlots = {[slot]=true},
+--- commission, rewards }, professionID.
+function A.Measure(recipeID, opts)
+	opts = opts or {}
 	local ui = api()
 	if not ui or not ui.GetCraftingOperationInfo then return nil, "This game version has no crafting simulation." end
 	if not CH.Prices.Available() then return nil, "Needs TradeSkillMaster for prices." end
 	local info = ui.GetRecipeInfo(recipeID)
-	local schematic = ui.GetRecipeSchematic(recipeID, false)
+	local schematic = ui.GetRecipeSchematic(recipeID, opts.allocationGUID ~= nil)
 	if not info or not schematic then return nil, "No recipe data." end
-	local qual, fixed = A.Slots(schematic)
+	local order = opts.order
+	local qual, fixed, finishing = A.Slots(schematic, order and order.providedSlots)
 	local outputs = info.qualityItemIDs or {}
-	local made = ((schematic.quantityMin or 1) + (schematic.quantityMax or schematic.quantityMin or 1)) / 2
+	local model = {
+		recipeID = recipeID, name = info.name, info = info, qual = qual, fixed = fixed, finishingSlots = finishing,
+		outputs = outputs, output = schematic.outputItemID, maxQ = math.max(1, #outputs),
+		made = ((schematic.quantityMin or 1) + (schematic.quantityMax or schematic.quantityMin or 1)) / 2,
+		allocationGUID = opts.allocationGUID, order = order, orderID = order and order.orderID,
+		provided = order and order.provided, professionID = opts.professionID, thresholds = {},
+		supportsQualities = info.supportsQualities ~= false and #outputs > 1,
+	}
+	if opts.allocationGUID then
+		model.made = 1
+		model.recraftFrom = opts.recraftQuality
+	end
 
 	local base = lowest(qual)
-	local op0 = operation(recipeID, qual, base)
+	local op0 = operation(model, base)
 	if not op0 then return nil, "The game gave no crafting result for this recipe." end
+	model.op0 = op0
+	model.stats0 = St().FromOperation(op0)
+	model.skill0 = skillOf(op0)
+	model.difficulty = model.stats0.difficulty
+	model.craftingDataID = op0.craftingDataID
+	noteThresholds(model, op0)
+
+	-- What the spec adds that the game doesn't report: perk bonuses to Multicraft items,
+	-- Resourcefulness savings, Ingenuity refunds and Concentration cost.
+	local profID = opts.professionID
+	local tree = profID and CH.Spec and CH.Spec.Tree(profID)
+	model.tree = tree
+	if tree then
+		local s = CH.Spec.RecipeStats(profID, tree, CH.Spec.Ranks(tree), recipeID)
+		model.stats0.mcExtra, model.stats0.resExtra = s.mcExtra, s.resExtra
+		model.stats0.refundExtra, model.stats0.concReduce = s.refundExtra, s.concReduce
+	end
 
 	-- Skill each unit adds at each reagent quality, measured like CraftSim.
-	local moves = {}
+	model.perUnit, model.moves = {}, {}
 	for i, slot in ipairs(qual) do
+		model.perUnit[i] = { [1] = 0 }
 		for q = 2, #slot.items do
 			local p = copyPicks(base); p[i] = { [q] = slot.qty }
-			local op = operation(recipeID, qual, p)
-			local perUnit = op and (skillOf(op) - skillOf(op0)) / slot.qty or 0
+			local op = operation(model, p)
+			noteThresholds(model, op)
+			local perUnit = op and (skillOf(op) - model.skill0) / slot.qty or 0
+			model.perUnit[i][q] = perUnit
 			local extra = (price("chmat", slot.items[q]) or math.huge) - (price("chmat", slot.items[1]) or 0)
 			if perUnit > 0 and extra < math.huge then
-				table.insert(moves, { slot = i, q = q, skill = perUnit, extra = math.max(0, extra) })
+				table.insert(model.moves, { slot = i, q = q, skill = perUnit, extra = math.max(0, extra) })
 			end
 		end
 	end
 	-- Cheapest gold per skill first. A unit only moves up, never back down.
-	table.sort(moves, function(a, b) return a.extra / a.skill < b.extra / b.skill end)
+	table.sort(model.moves, function(a, b) return a.extra / a.skill < b.extra / b.skill end)
+
+	-- Finishing reagents: what each adds, measured the same way.
+	model.finishing = {}
+	for _, slot in ipairs(finishing) do
+		local options = {}
+		for _, id in ipairs(slot.items) do
+			local p = price("chmat", id)
+			local own = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
+			if p or own > 0 then
+				local op = operation(model, base, false, { { itemID = id, slot = slot.index } })
+				if op then
+					local d = St().Diff(St().FromOperation(op), model.stats0)
+					local s = St().FromOperation(op)
+					d.supports = s.supports
+					d.mcExtra, d.resExtra, d.refundExtra, d.concReduce = 0, 0, 0, 0
+					local helps = d.skill > 0 or d.multicraft > 0 or d.resourcefulness > 0 or d.ingenuity > 0
+					if helps then
+						table.insert(options, { itemID = id, slot = slot.index, cost = p or 0, delta = d })
+					end
+				end
+			end
+		end
+		if #options > 0 then table.insert(model.finishing, options) end
+	end
+
+	-- Fill gaps in the quality thresholds with the usual fractions of difficulty.
+	local frac = St().THRESHOLDS[model.maxQ]
+	for k = 2, model.maxQ do
+		if not model.thresholds[k] then
+			local f = frac and frac[k] or (k - 1) / (model.maxQ - 1)
+			model.thresholds[k] = model.difficulty * f
+		end
+	end
+	return model
+end
+
+-- Every way to fill the finishing slots: none, or one option per slot.
+local function combos(model)
+	local out = { {} }
+	for _, options in ipairs(model.finishing) do
+		local nxt = {}
+		for _, c in ipairs(out) do
+			table.insert(nxt, c)
+			for _, o in ipairs(options) do
+				local c2 = { unpack(c) }
+				table.insert(c2, o)
+				table.insert(nxt, c2)
+			end
+		end
+		out = nxt
+	end
+	return out
+end
+
+local function finCost(fin)
+	local c = 0
+	for _, f in ipairs(fin) do c = c + f.cost end
+	return c
+end
+
+-- A row's value: item price after cut (or the order's commission) and the average profit.
+local function valueRow(model, row, stats, item, costR, fin)
+	local unit = price("chvalue", item)
+	local total = costR + finCost(fin)
+	row.cost, row.required, row.item, row.finishing, row.stats = total, costR, item, fin, stats
+	local order = model.order
+	if order then
+		-- Orders pay the commission; extra items from Multicraft go to the customer.
+		local s = St().Copy(stats); s.supports.multicraft = nil
+		local avg, parts = St().Average(0, 0, total, costR, s)
+		row.value = (order.commission or 0) + (order.rewards or 0)
+		row.profit, row.parts = row.value + avg, parts
+		row.short = order.minQuality and row.quality < order.minQuality or nil
+		return row
+	end
+	if not unit then row.value, row.profit = nil, nil; return row end
+	unit = unit * CH.AH_CUT
+	local avg, parts = St().Average(unit, model.made, total, costR, stats)
+	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
+	if model.recraftFrom then
+		local old = price("chvalue", model.outputs[model.recraftFrom])
+		row.oldValue = old and old * CH.AH_CUT
+		row.profit = row.oldValue and (row.profit - row.oldValue) or nil
+	end
+	return row
+end
+
+-- One pass: cheapest reagents for each quality with this finishing set. live asks the game for
+-- quality and Concentration; otherwise the model works them out from skill (for simulations).
+local function build(model, delta, fin, live)
+	local stats = St().Add(St().Copy(model.stats0), delta)
+	for _, f in ipairs(fin) do
+		St().Add(stats, f.delta)
+		for k, v in pairs(f.delta.supports or {}) do stats.supports[k] = stats.supports[k] or v end
+	end
+	local base0 = model.skill0 + (delta and delta.skill or 0)
+	for _, f in ipairs(fin) do base0 = base0 + f.delta.skill end
 
 	local found, order = {}, {}
 	local function record(picks)
-		local op = operation(recipeID, qual, picks)
-		local q = op and (op.craftingQuality or 1)
+		local q, op
+		if live then
+			op = operation(model, picks, false, fin)
+			q = op and (op.craftingQuality or 1)
+		else
+			q = A.QualityAt(model, skillAt(model, picks, base0))
+		end
 		if not q or found[q] then return end
-		local c = cost(qual, fixed, picks)
+		local c = cost(model, picks)
 		if not c then return end
-		found[q] = { quality = q, picks = copyPicks(picks), cost = c, op = op }
+		found[q] = { quality = q, picks = copyPicks(picks), cost = c, op = op, skill = skillAt(model, picks, base0) }
 		table.insert(order, q)
 	end
-	record(base)
-	local picks = copyPicks(base)
-	for _, m in ipairs(moves) do
+	local picks = lowest(model.qual)
+	record(picks)
+	for _, m in ipairs(model.moves) do
 		local row = picks[m.slot]
-		for _ = 1, qual[m.slot].qty do
+		for _ = 1, model.qual[m.slot].qty do
 			local from
 			for q = m.q - 1, 1, -1 do if (row[q] or 0) > 0 then from = q; break end end
 			if not from then break end
@@ -157,59 +336,116 @@ function A.Analyze(recipeID)
 	local rows = {}
 	for _, q in ipairs(order) do
 		local f = found[q]
-		local item = outputs[q] or schematic.outputItemID
-		local value = price("chvalue", item)
-		local worth = value and value * made * CH.AH_CUT
-		table.insert(rows, { quality = q, picks = f.picks, cost = f.cost, value = worth, profit = worth and worth - f.cost, item = item })
-		-- The same reagents with Concentration: the game says what it costs and the quality it lands on.
-		local opc = info.supportsQualities ~= false and operation(recipeID, qual, f.picks, true)
-		local cc = opc and opc.concentrationCost or 0
-		local cq = opc and opc.craftingQuality or q
-		if cc > 0 and cq > q then -- Concentration that doesn't lift the quality is wasted
-			local citem = outputs[cq] or item
-			local cvalue = price("chvalue", citem)
-			local cworth = cvalue and cvalue * made * CH.AH_CUT
-			local avgCost = cc * (1 - ingenuityChance(opc) * INGENUITY_REFUND)
-			local profit = cworth and cworth - f.cost
-			table.insert(rows, { quality = cq, from = q, concentration = cc, picks = f.picks, cost = f.cost, value = cworth,
-				profit = profit, perPoint = profit and profit / avgCost, item = citem })
+		local s = stats
+		if live and f.op then
+			s = St().FromOperation(f.op)
+			s.mcExtra, s.resExtra, s.refundExtra, s.concReduce = stats.mcExtra, stats.resExtra, stats.refundExtra, stats.concReduce
+		end
+		local item = model.outputs[q] or model.output
+		table.insert(rows, valueRow(model, { quality = q, picks = f.picks, skill = f.skill }, s, item, f.cost, fin))
+		-- The same reagents with Concentration: it lifts the craft to the next quality.
+		if model.supportsQualities and q < model.maxQ then
+			local cc, cq
+			if live then
+				local opc = operation(model, f.picks, true, fin)
+				cc, cq = opc and opc.concentrationCost or 0, opc and opc.craftingQuality or q
+			else
+				cc = St().ConcentrationCost(model.craftingDataID, model.difficulty, f.skill, s.concReduce)
+				if not cc then
+					-- no curve for this recipe: fall back to what the game charges at these reagents now
+					local opc = operation(model, f.picks, true, fin)
+					cc = opc and opc.concentrationCost
+				end
+				cq = q + 1
+			end
+			if cc and cc > 0 and cq > q then -- Concentration that doesn't lift the quality is wasted
+				local citem = model.outputs[cq] or item
+				local r = valueRow(model, { quality = cq, from = q, concentration = cc, picks = f.picks, skill = f.skill }, s, citem, f.cost, fin)
+				local avgConc, ing = St().AverageConcentration(cc, s)
+				r.avgConcentration, r.ingenuity = avgConc, ing
+				r.perPoint = r.profit and avgConc > 0 and r.profit / avgConc or nil
+				table.insert(rows, r)
+			end
 		end
 	end
+	return rows
+end
 
-	-- Recommendations, as CraftSim shows them: best profit without Concentration, best gold per point with it.
+local function pickBest(rows)
 	local best, bestConc
 	for _, r in ipairs(rows) do
-		if r.profit then
+		if r.profit and not r.short then
 			if not r.concentration and (not best or r.profit > best.profit) then best = r end
 			if r.concentration and r.perPoint and r.perPoint > 0 and (not bestConc or r.perPoint > bestConc.perPoint) then bestConc = r end
 		end
 	end
-	if best then best.recommended = true end
-	if bestConc then bestConc.bestConcentration = true end
-	return { recipeID = recipeID, name = info.name, rows = rows, qual = qual, fixed = fixed, made = made, best = best, bestConc = bestConc }
+	return best, bestConc
 end
 
---- "3x Q2 Bismuth, 2x Q1 Mote" for a row's reagent picks; names from the item cache when known.
-function A.PicksText(result, picks)
-	local parts = {}
-	for i, slot in ipairs(result.qual) do
-		for q = #slot.items, 1, -1 do
-			local n = picks[i][q] or 0
-			if n > 0 then
-				local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(slot.items[q]) or ("item " .. slot.items[q])
-				table.insert(parts, string.format("%dx Q%d %s", n, q, name))
-			end
+--- Rows for every reachable quality with and without Concentration. opts.sim is a stat change
+--- (skill, ratings, perk extras) to simulate; without it the game is asked for quality and costs.
+function A.Evaluate(model, opts)
+	opts = opts or {}
+	local delta = opts.sim
+	local live = not delta and not opts.modelOnly
+	-- Choose finishing reagents on the model (cheap), then build the real rows with the winners.
+	local finPlain, finConc = {}, {}
+	local all = combos(model)
+	if #all > 1 then
+		local bp, bc
+		for _, fin in ipairs(all) do
+			local b, c = pickBest(build(model, delta, fin, false))
+			if b and (not bp or b.profit > bp) then bp, finPlain = b.profit, fin end
+			if c and (not bc or c.perPoint > bc) then bc, finConc = c.perPoint, fin end
 		end
 	end
-	return table.concat(parts, ", ")
+	local rows = build(model, delta, finPlain, live)
+	if finConc ~= finPlain then
+		local keep = {}
+		for _, r in ipairs(rows) do if not r.concentration then table.insert(keep, r) end end
+		for _, r in ipairs(build(model, delta, finConc, live)) do if r.concentration then table.insert(keep, r) end end
+		table.sort(keep, function(a, b)
+			if (a.from or a.quality) ~= (b.from or b.quality) then return (a.from or a.quality) < (b.from or b.quality) end
+			return not a.concentration and b.concentration
+		end)
+		rows = keep
+	end
+	local best, bestConc = pickBest(rows)
+	if best then best.recommended = true end
+	if bestConc then bestConc.bestConcentration = true end
+	return { recipeID = model.recipeID, name = model.name, rows = rows, qual = model.qual, fixed = model.fixed,
+		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order }
+end
+
+--- Measure and evaluate in one go.
+function A.Analyze(recipeID, opts)
+	local model, reason = A.Measure(recipeID, opts)
+	if not model then return nil, reason end
+	return A.Evaluate(model, opts)
 end
 
 local function itemName(id)
 	return C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id)
 end
+A.ItemName = itemName
+
+--- "3x Q2 Bismuth, 2x Q1 Mote" for a row's reagent picks; names from the item cache when known.
+function A.PicksText(result, picks, fin)
+	local parts = {}
+	for i, slot in ipairs(result.qual) do
+		for q = #slot.items, 1, -1 do
+			local n = picks[i][q] or 0
+			if n > 0 then
+				table.insert(parts, string.format("%dx Q%d %s", n, q, itemName(slot.items[q])))
+			end
+		end
+	end
+	for _, f in ipairs(fin or {}) do table.insert(parts, "+ " .. itemName(f.itemID)) end
+	return table.concat(parts, ", ")
+end
 
 --- Each reagent in a row: name, rank, units, price per unit, line total. Fixed reagents have no rank.
-function A.CostLines(result, picks)
+function A.CostLines(result, picks, fin)
 	local out = {}
 	for i, slot in ipairs(result.qual) do
 		for q = #slot.items, 1, -1 do
@@ -223,6 +459,9 @@ function A.CostLines(result, picks)
 	for _, slot in ipairs(result.fixed) do
 		local unit = price("chmat", slot.items[1])
 		table.insert(out, { name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty })
+	end
+	for _, f in ipairs(fin or {}) do
+		table.insert(out, { name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })
 	end
 	return out
 end
@@ -248,6 +487,13 @@ function A.PriceSources(itemID)
 	return out
 end
 
+--- Units of an item the region sells a day, from TSM (nil if unknown).
+function A.SoldPerDay(itemID)
+	if not TSM_API or not itemID then return nil end
+	local ok, v = pcall(TSM_API.GetCustomPriceValue, "dbregionsoldperday", "i:" .. itemID)
+	return ok and v or nil
+end
+
 local function have(id)
 	if not C_Item or not C_Item.GetItemCount then return 0 end
 	-- bags, bank, reagent bank and warband bank
@@ -270,6 +516,7 @@ function A.MaxCraftable(result, r, concNow)
 		end
 	end
 	for _, slot in ipairs(result.fixed) do use(slot.items[1], nil, slot.qty) end
+	for _, f in ipairs(r.finishing or {}) do use(f.itemID, nil, 1) end
 	if r.concentration and concNow then
 		max = math.min(max, math.floor(concNow / r.concentration))
 	end

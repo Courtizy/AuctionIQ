@@ -14,7 +14,24 @@ takes over the jobs that today need both TSM and CraftSim.
 - **Crafting advisor**, docked to the right of the profession window (drag it off to float it,
   Dock puts it back): for the selected recipe, every result quality with its cheapest reagents, the
   profit, and with Concentration the cost in points and the gold each point earns. It marks the best
-  profit and the best use of Concentration, worked out the same way CraftSim does.
+  profit and the best use of Concentration, worked out the same way CraftSim does:
+  - profit is the average per craft, counting Multicraft's extra items and the reagents
+    Resourcefulness saves
+  - Concentration's cost counts Ingenuity refunds, with your specialization's bonuses to them
+  - finishing reagents: every combination is tried and the best is used
+  - crafting orders (commission and patron rewards against your reagents, the customer's minimum
+    quality) and recrafts (the better item less the one you have)
+  - top gear: whether another profession tool or accessory in your bags would earn more, with an
+    Equip button
+  - Simulate: see the numbers with more skill, or with a knowledge point plan from Paths
+- **Recipe scan** (`/ch scan`, or Scan on the advisor): every learned recipe ranked by profit per
+  craft, gold per Concentration point, or gold a day (profit x what the region sells, up to your cap).
+- **Profession paths** (`/ch plan potions`, or Paths on the advisor): type what you want to sell and
+  get a knowledge point plan for the open profession, node by node, with the gold a day each step
+  adds and which recipes it improves. Alchemy, Enchanting, Jewelcrafting and Inscription for now.
+- **Craft results** (`/ch results`): what your crafts really gave (Multicraft, Resourcefulness,
+  Ingenuity) against what the advisor expected.
+- **Cooldowns** across the warband, in the briefing.
 - **Craft queue and shopping list** (`/ch queue`, or Queue on the advisor): click an advisor row to
   queue one, shift-click to queue as many as you can make. Fill queues the open profession's five best
   crafts. Craft makes the queued crafts with the advisor's reagents and Concentration, and finished
@@ -30,6 +47,10 @@ takes over the jobs that today need both TSM and CraftSim.
 | `/ch minimap` | hide or show the minimap button |
 | `/ch advisor` | crafting advisor on or off |
 | `/ch queue` | craft queue and shopping list |
+| `/ch scan` | rank every recipe of the open profession |
+| `/ch plan <goal>` | knowledge point plan, e.g. `/ch plan potions` |
+| `/ch results` | what your crafts really gave |
+| `/ch cap <n>` | most of one item you'd sell a day, for gold a day (default 10) |
 
 ## Prices
 
@@ -51,9 +72,10 @@ TradeSkillMaster, for prices. Without it the briefing still tracks gold and Conc
 ## Roadmap
 
 1. Shared price source (done)
-2. Core addon: briefing and tooltips (this version)
-3. Crafting advisor in the profession window
-4. Craft queue and shopping list
+2. Core addon: briefing and tooltips (done)
+3. Crafting advisor in the profession window (done)
+4. Craft queue and shopping list (done), then CraftSim's remaining features and profession paths
+   (this version)
 5. Flip finder
 6. Inventory and sales tracking
 7. Posting and cancelling

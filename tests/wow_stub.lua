@@ -55,9 +55,12 @@ end
 -- TSM: prices keyed by item string; "crafting" costs separately. chvalue is not a custom source here,
 -- so Clearinghouse must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
-for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
+for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1, [211] = 2, [212] = 6, [221] = 3, [222] = 8 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
 STUB.prices["i:301"] = { formula_value = 100 * 10000 }
-STUB.prices["i:302"] = { formula_value = 300 * 10000 }
+STUB.prices["i:302"] = { formula_value = 300 * 10000, sold = 5 }
+STUB.prices["i:301"].sold = 5
+STUB.prices["i:311"] = { formula_value = 20 * 10000, sold = 40 }
+STUB.prices["i:312"] = { formula_value = 50 * 10000, sold = 40 }
 TSM_API = {
 	ToItemString = function(item) local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id) end,
 	IsCustomPriceValid = function(s) return s ~= "chvalue" and s ~= "chmat" end,
@@ -67,6 +70,7 @@ TSM_API = {
 		if s:sub(1, 4) == "min(" then return p.formula_value end
 		if s:sub(1, 4) == "max(" then return p.mat end
 		if s == "dbmarket" then return p.formula_value end
+		if s == "dbregionsoldperday" then return p.sold end
 		return nil, "unknown"
 	end,
 }
@@ -79,7 +83,7 @@ function GameTooltip:AddDoubleLine(a, b) table.insert(self.lines, a .. "=" .. b)
 TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) STUB.tooltipFn = fn end }
 
 -- Professions
-STUB.bags = { [201] = 9, [202] = 8, [203] = 20, [204] = 12, [205] = 3 }
+STUB.bags = { [201] = 9, [202] = 8, [203] = 20, [204] = 12, [205] = 3, [211] = 30, [212] = 9, [221] = 2 }
 C_Item = { GetItemCount = function(id) return STUB.bags[id] or 0 end }
 C_CurrencyInfo = { GetCurrencyInfo = function() return { quantity = 400, maxQuantity = 1000 } end }
 C_TradeSkillUI = {
@@ -87,11 +91,15 @@ C_TradeSkillUI = {
 	IsTradeSkillLinked = function() return false end,
 	IsTradeSkillGuild = function() return false end,
 	IsNPCCrafting = function() return false end,
-	GetChildProfessionInfo = function() return { professionID = 2906, professionName = "Midnight Enchanting", skillLevel = 80, maxSkillLevel = 100 } end,
+	GetChildProfessionInfo = function() return { professionID = 2906, profession = 3, parentProfessionName = "Alchemy", professionName = "Midnight Enchanting", skillLevel = 80, maxSkillLevel = 100 } end,
+	GetProfessionSlots = function() return { 20, 21, 22 } end,
+	GetCategoryInfo = function(id) return ({ [50] = { name = "Potions" }, [60] = { name = "Flasks" } })[id] end,
+	GetRecipeCooldown = function(id) if id == 1 then return 7200, true, 0, 0 end return 0 end,
 	GetConcentrationCurrencyID = function() return 3000 end,
-	GetAllRecipeIDs = function() return { 1, 2, 3 } end,
+	GetAllRecipeIDs = function() return STUB.recipeIDs or { 1, 2, 3, 10, 11 } end,
 	GetRecipeInfo = function(id)
-		if id == 10 then return { learned = true, name = "Test Flask", supportsQualities = true, qualityItemIDs = { 301, 302 } } end
+		if id == 10 then return { learned = true, name = "Test Flask", supportsQualities = true, qualityItemIDs = { 301, 302 }, categoryID = 60 } end
+		if id == 11 then return { learned = true, name = "Test Potion", supportsQualities = true, qualityItemIDs = { 311, 312 }, categoryID = 50 } end
 		if id == 1 then return { learned = true, name = "Phoenix Oil", qualityItemIDs = { 99, 100 } } end
 		if id == 2 then return { learned = false, name = "Unlearned", qualityItemIDs = { 100 } } end
 		return { learned = true, name = "No price", qualityItemIDs = { 555 } }
@@ -105,20 +113,83 @@ C_TradeSkillUI = {
 				{ reagentType = 0, required = false, dataSlotIndex = 4, quantityRequired = 1, reagents = { { itemID = 999 } } },
 			} }
 		end
+		if id == 11 then
+			return { outputItemID = 311, quantityMin = 2, quantityMax = 2, reagentSlotSchematics = {
+				{ reagentType = 1, required = true, dataSlotIndex = 1, quantityRequired = 3, reagents = { { itemID = 211 }, { itemID = 212 } } },
+				{ reagentType = 2, required = false, dataSlotIndex = 5, quantityRequired = 1, reagents = { { itemID = 221 }, { itemID = 222 } } },
+			} }
+		end
 		return { outputItemID = 555 }
 	end,
 	-- Skill 100 plus 5 per top-quality unit in slot 1 and 2 per unit in slot 2; quality 2 from 130.
 	-- Concentration always lands on quality 2 and costs 20 + 2 per missing skill point.
 	CraftRecipe = function(id, n, reagents, _, _, conc) STUB.crafted = { id = id, n = n, reagents = reagents, conc = conc } end,
-	GetCraftingOperationInfo = function(_, infos, _, concentrate)
-		local bonus = 0
+	-- Test Potion (11): skill 100 + 10 per top-quality unit, +10 with finishing reagent 221; quality 2
+	-- from 130. 20% Multicraft (+15% with finishing reagent 222), 20% Resourcefulness, 30% Ingenuity.
+	GetCraftingOperationInfo = function(recipeID, infos, _, concentrate)
+		local bonus, mc = STUB.extraSkill or 0, 220
 		for _, r in ipairs(infos) do
 			local id = r.reagent and r.reagent.itemID
 			if id == 202 then bonus = bonus + 5 * r.quantity elseif id == 204 then bonus = bonus + 2 * r.quantity end
+			if id == 212 then bonus = bonus + 10 * r.quantity elseif id == 221 then bonus = bonus + 10 elseif id == 222 then mc = mc + 165 end
 		end
 		local skill = 100 + bonus
 		local q = skill >= 130 and 2 or 1
-		return { baseSkill = 100, bonusSkill = bonus, craftingQuality = concentrate and 2 or q,
-			concentrationCost = 20 + 2 * math.max(0, 130 - skill), bonusStats = {} }
+		local stats = {}
+		if recipeID == 11 then
+			stats = { { bonusStatName = "Multicraft", bonusStatValue = mc, ratingPct = mc / 11 },
+				{ bonusStatName = "Resourcefulness", bonusStatValue = 180, ratingPct = 20 },
+				{ bonusStatName = "Ingenuity", bonusStatValue = 300, ratingPct = 30 } }
+		end
+		return { baseSkill = 100, bonusSkill = bonus, baseDifficulty = 130, craftingQuality = concentrate and 2 or q,
+			lowerSkillThreshold = q == 2 and 130 or 0, upperSkillTreshold = q == 1 and 130 or 0,
+			concentrationCost = 20 + 2 * math.max(0, 130 - skill), bonusStats = stats }
 	end,
 }
+
+C_TradeSkillUI.GetCraftingOperationInfoForOrder = function(id, infos, orderID, conc)
+	STUB.orderCall = orderID
+	return C_TradeSkillUI.GetCraftingOperationInfo(id, infos, nil, conc)
+end
+function hooksecurefunc(t, name, fn)
+	if type(t) == "string" then t, name, fn = _G, t, name end
+	local orig = t[name]
+	t[name] = function(...) local r = { orig(...) }; fn(...); return table.unpack(r) end
+end
+unpack = unpack or table.unpack
+
+-- Specialization trees
+STUB.ranks = { [900] = 0, [901] = -1 }
+C_ProfSpecs = {
+	GetConfigIDForSkillLine = function() return 1 end,
+	GetCurrencyInfoForSkillLine = function() return { numAvailable = 10, currencyName = "Knowledge" } end,
+	GetUnlockRankForPerk = function(id) return ({ [9001] = 10 })[id] or 0 end,
+	GetSpecTabIDsForSkillLine = function() return { 1 } end,
+	GetRootPathForTab = function() return 900 end,
+	GetChildrenForPath = function(id) return id == 900 and { 901 } or {} end,
+}
+C_Traits = {
+	GetNodeInfo = function(_, id) return { activeRank = (STUB.ranks[id] or -1) + 1, entryIDs = { id } } end,
+	GetEntryInfo = function(_, id) return { definitionID = id } end,
+	GetDefinitionInfo = function(id) return { overrideName = "Node " .. id } end,
+}
+
+-- Profession gear: worn tool 401 (+5 skill), accessories 402 and 403; a better tool 404 (+30 skill) in the bags.
+STUB.items = {
+	[401] = { loc = "INVTYPE_PROFESSION_TOOL", skill = 5 }, [402] = { loc = "INVTYPE_PROFESSION_GEAR" },
+	[403] = { loc = "INVTYPE_PROFESSION_GEAR" }, [404] = { loc = "INVTYPE_PROFESSION_TOOL", skill = 30 },
+}
+STUB.worn = { [20] = "item:401", [21] = "item:402", [22] = "item:403" }
+STUB.bagItems = { [0] = { "item:404" } }
+local function idOf(link) return tonumber(tostring(link):match("item:(%d+)")) end
+C_Item.GetItemInfoInstant = function(link) local id = idOf(link); local it = STUB.items[id]; return id, nil, nil, it and it.loc, nil, 19, 2 end
+C_Item.GetItemStats = function() return {} end
+C_TooltipInfo = { GetHyperlink = function(link) local it = STUB.items[idOf(link)]
+	return { lines = { { leftText = it and it.skill and ("Equip: +" .. it.skill .. " Alchemy Skill") or "" } } } end }
+function GetInventoryItemLink(_, slot) return STUB.worn[slot] end
+C_Container = { GetContainerNumSlots = function(bag) return STUB.bagItems[bag] and #STUB.bagItems[bag] or 0 end,
+	GetContainerItemLink = function(bag, s) return STUB.bagItems[bag] and STUB.bagItems[bag][s] end,
+	PickupContainerItem = function(bag, s) STUB.cursor = STUB.bagItems[bag][s] end }
+function EquipCursorItem(slot) STUB.equipped = STUB.equipped or {}; STUB.equipped[slot] = STUB.cursor end
+function InCombatLockdown() return false end
+date = os.date

@@ -6,6 +6,12 @@ local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
+local HEIGHT = 384
+-- Simulation: extra skill, and a knowledge point plan from the Paths window.
+local sim = { skill = 0, plan = nil }
+local order -- the crafting order on screen, if any
+local live -- the result without simulation, to compare against
+local gearPick -- top gear for the recipe on screen
 -- name, x, width. Hover breakdowns on cost (3), sell (4), profit (5) and max (7).
 local COLS = { { "Quality", 0, 50 }, { "Conc.", 50, 40 }, { "Cost", 90, 72 }, { "Sells for", 162, 72 },
 	{ "Profit", 234, 104 }, { "Per pt", 338, 58 }, { "Max", 396, 34 } }
@@ -50,7 +56,7 @@ local function build()
 	T.Sync()
 	panel = CreateFrame("Frame", "ClearinghouseAdvisor", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
-	panel:SetSize(WIDTH, 330)
+	panel:SetSize(WIDTH, HEIGHT)
 	panel:SetFrameStrata("HIGH")
 	panel:SetMovable(true)
 	panel:SetClampedToScreen(true)
@@ -147,6 +153,57 @@ local function build()
 	notes:SetWidth(WIDTH - 24)
 	notes:SetJustifyH("LEFT")
 	notes:SetSpacing(3)
+
+	-- Top gear: equip the better set
+	panel.equip = T.Button(panel, "Equip", 54, 16)
+	panel.equip:SetPoint("BOTTOMRIGHT", -10, 64)
+	panel.equip:Hide()
+	panel.equip:SetScript("OnClick", function()
+		local g = gearPick
+		if g and g.set then
+			local ok, why = CH.Gear.Equip(g.set)
+			if not ok then CH.Print("can't change gear " .. (why or "")) end
+			C_Timer.After(1, function() AUI.Show() end)
+		end
+	end)
+
+	-- Simulation bar
+	local simBar = CreateFrame("Frame", nil, panel)
+	simBar:SetPoint("BOTTOMLEFT", 6, 36)
+	simBar:SetPoint("BOTTOMRIGHT", -6, 36)
+	simBar:SetHeight(22)
+	panel.simText = simBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	panel.simText:SetPoint("LEFT", 6, 0)
+	local function stepper(label, x, d)
+		local b = T.Button(simBar, label, 30, 18)
+		b:SetPoint("RIGHT", x, 0)
+		b:SetScript("OnClick", function()
+			sim.skill = math.max(0, sim.skill + (IsShiftKeyDown and IsShiftKeyDown() and d * 5 or d))
+			AUI.Show()
+		end)
+		return b
+	end
+	stepper("+1", -4, 1)
+	stepper("-1", -38, -1)
+	local off = T.Button(simBar, "Off", 34, 18)
+	off:SetPoint("RIGHT", -72, 0)
+	off:SetScript("OnClick", function() sim.skill = 0; sim.plan = nil; AUI.Show() end)
+
+	-- Tools
+	local x = 6
+	for _, t in ipairs({ { "Scan", function() CH.ScanUI.Toggle() end, "Every recipe in this profession, ranked." },
+		{ "Paths", function() CH.PathsUI.Toggle() end, "Where to spend knowledge points for what you want to sell." },
+		{ "Results", function() CH.LogUI.Toggle() end, "What your crafts really gave against what was expected." } }) do
+		local b = T.Button(panel, t[1], 60, 18)
+		b:SetPoint("BOTTOMLEFT", x, 10)
+		b:SetScript("OnClick", t[2])
+		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { t[3] } }) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		x = x + 64
+	end
+	panel.status = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	panel.status:SetPoint("BOTTOMRIGHT", -10, 14)
+	panel.status:SetJustifyH("RIGHT")
 	T.Fonts(panel)
 	AUI.Place()
 end
@@ -181,12 +238,22 @@ function AUI.Render(result, reason)
 		notes:SetText("")
 		return {}
 	end
-	panel.recipe:SetText(T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or ""))
+	local head = T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
+	if result.order then
+		local o = result.order
+		head = head .. T.Color("muted", "  order" .. (o.customer and (" for " .. o.customer) or "")
+			.. (o.minQuality and o.minQuality > 1 and ("  min Q" .. o.minQuality) or "") .. "  pays ") .. CH.FormatMoney((o.commission or 0) + (o.rewards or 0))
+	elseif result.model and result.model.recraftFrom then
+		head = head .. T.Color("muted", "  recraft from Q" .. result.model.recraftFrom)
+	end
+	if result.sim then head = head .. "  " .. T.Color("bad", "SIM") end
+	panel.recipe:SetText(head)
 	local out = {}
 	for i, r in ipairs(result.rows) do
 		if i > ROWS then break end
 		local row = rows[i]
-		local q = qualityIcon(r.quality) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc") or "")
+		local q = qualityIcon(r.quality) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc")
+			or r.short and T.Color("bad", " low") or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
 		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""
@@ -203,14 +270,35 @@ function AUI.Render(result, reason)
 	end
 	local lines = {}
 	if result.best then
-		table.insert(lines, T.Color("accent", "Recommended: ") .. CH.Advisor.PicksText(result, result.best.picks))
+		table.insert(lines, T.Color("accent", "Recommended: ") .. CH.Advisor.PicksText(result, result.best.picks, result.best.finishing))
+	elseif result.order then
+		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
 	end
 	if result.bestConc then
 		table.insert(lines, T.Color("accent", "With Concentration: ") .. CH.FormatMoney(result.bestConc.perPoint) .. " per point, using "
-			.. CH.Advisor.PicksText(result, result.bestConc.picks))
+			.. CH.Advisor.PicksText(result, result.bestConc.picks, result.bestConc.finishing))
 	end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
+	local g = gearPick
+	panel.equip:SetShown(g ~= nil and g.set ~= nil and not result.sim)
+	if g and g.set then
+		table.insert(lines, T.Color("accent", "Top gear: ") .. CH.Gear.SwapText(g.set) .. "  " .. T.Color("ok", "+" .. CH.FormatMoney(g.gain))
+			.. T.Color("muted", g.mode == "conc" and " a point" or " a craft"))
+	elseif g and g.current then
+		table.insert(lines, T.Color("muted", "Top gear: you're wearing the best set for this."))
+	end
 	notes:SetText(table.concat(lines, "\n"))
+	-- simulation bar
+	local st = {}
+	if sim.skill > 0 then table.insert(st, "+" .. sim.skill .. " skill") end
+	if sim.plan then table.insert(st, "plan for " .. (sim.plan.label or "?") .. " (" .. (sim.plan.budget or 0) .. " points)") end
+	panel.simText:SetText(T.Color("accent", "Simulate: ") .. (#st > 0 and table.concat(st, ", ") or T.Color("muted", "off")))
+	if result.sim and live and live.best and result.best and live.best.profit and result.best.profit then
+		local d = result.best.profit - live.best.profit
+		panel.status:SetText("vs now: " .. T.Color(d >= 0 and "ok" or "bad", (d >= 0 and "+" or "") .. CH.FormatMoney(d)) .. " a craft")
+	else
+		panel.status:SetText("")
+	end
 	return out
 end
 
@@ -225,11 +313,12 @@ function AUI.BreakdownLines(result, r, col)
 	local function add(l, rt) table.insert(lines, { l, rt }) end
 	if col == 3 then
 		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  bought at chmat"))
-		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks)) do
+		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
 			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank)),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
+		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
 		add(CH.Theme.Color("accent", name) .. rankText(r.quality))
@@ -245,13 +334,32 @@ function AUI.BreakdownLines(result, r, col)
 		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), "") end
 		add("After 5% auction cut", CH.FormatMoney(r.value))
 	elseif col == 5 then
-		add(CH.Theme.Color("accent", "Profit"))
-		add("Sells for, after cut", CH.FormatMoney(r.value))
+		add(CH.Theme.Color("accent", "Average profit") .. CH.Theme.Color("muted", "  per craft"))
+		add(result.order and "Commission and rewards" or "Sells for, after cut", CH.FormatMoney(r.value))
 		add("Less reagents", CH.FormatMoney(-r.cost))
+		local pp = r.parts
+		if pp and pp.mc > 0 and not result.order then
+			add(string.format("Multicraft  %d%% x %.1f more", math.floor(pp.mc * 100 + 0.5), pp.extraItems), "+" .. CH.FormatMoney(pp.mcGold))
+		end
+		if pp and pp.res > 0 then
+			add(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), "+" .. CH.FormatMoney(pp.resGold))
+		end
+		if r.oldValue then add("Less the item you recraft", CH.FormatMoney(-r.oldValue)) end
 		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
 		if r.profit and r.cost and r.cost > 0 then add("Return on reagents", string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
 		if r.concentration then
 			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+			if (r.ingenuity or 0) > 0 then
+				add(string.format("  Ingenuity %d%%, %.0f points on average", math.floor(r.ingenuity * 100 + 0.5), r.avgConcentration or r.concentration), "")
+			end
+		end
+		if result.sim and live then
+			for _, lr in ipairs(live.rows) do
+				if lr.quality == r.quality and (lr.concentration ~= nil) == (r.concentration ~= nil) and lr.profit and r.profit then
+					add(CH.Theme.Color("muted", "Now, without the simulation"), money(lr.profit))
+					break
+				end
+			end
 		end
 	else
 		local max, have = CH.Advisor.MaxCraftable(result, r, concNow())
@@ -282,17 +390,80 @@ function AUI.Show(recipeID)
 		if panel then panel:Hide() end
 		return
 	end
+	if recipeID and recipeID ~= current then order = nil end
 	current = recipeID or current
 	if not panel then build() end
 	AUI.Place()
 	if current then
-		local ok, result, reason = pcall(CH.Advisor.Analyze, current)
-		if ok then AUI.Render(result, reason) else AUI.Render(nil, "Couldn't work this recipe out.") end
+		local ok, result, reason = pcall(AUI.Compute, current)
+		if ok then
+			AUI.Render(result, reason)
+		else
+			AUI.Render(nil, "Couldn't work this recipe out.")
+			if CH.debugErrors ~= false then CH.Print("advisor error (please send this): " .. tostring(result)) end
+		end
 	else
 		AUI.Render(nil)
 	end
 	panel:Show()
 end
+
+--- The simulated stat change for a recipe, or nil when the simulation is off.
+function AUI.SimDelta(recipeID)
+	if sim.skill == 0 and not sim.plan then return nil end
+	local d = CH.Stats.New()
+	d.skill = sim.skill
+	local prof = CH.OpenProfessionID()
+	if sim.plan and sim.plan.ranks and prof == sim.plan.prof then
+		local tree = CH.Spec.Tree(prof)
+		if tree then CH.Stats.Add(d, CH.Spec.Delta(prof, tree, sim.plan.ranks, recipeID)) end
+	end
+	return d
+end
+
+--- Measure the recipe (as an order or recraft when that's what's open) and evaluate it, with the
+--- simulation if one is on. Also works out the top gear.
+function AUI.Compute(recipeID)
+	local prof = CH.OpenProfessionID()
+	local opts = { professionID = prof }
+	if order and order.spellID == recipeID then
+		opts.order = CH.Orders.FromOrder(order)
+	else
+		local rc = CH.Orders and CH.Orders.RecraftContext()
+		if rc then opts.allocationGUID, opts.recraftQuality = rc.guid, rc.quality end
+	end
+	local model, reason = CH.Advisor.Measure(recipeID, opts)
+	if not model then return nil, reason end
+	live = CH.Advisor.Evaluate(model)
+	local result = live
+	local d = AUI.SimDelta(recipeID)
+	if d then result = CH.Advisor.Evaluate(model, { sim = d }) end
+	gearPick = nil
+	if not opts.order and CH.Gear then
+		local ok, g = pcall(CH.Gear.Best, model, (live.bestConc and not live.best) and "conc" or nil)
+		if ok then gearPick = g end
+	end
+	return result
+end
+
+--- The result on screen (for the results log to compare against).
+function AUI.Current() return shown end
+
+--- Show a crafting order from the Orders tab.
+function AUI.ShowOrder(o)
+	order = o
+	if o and o.spellID then AUI.Show(o.spellID) end
+end
+
+--- Turn on the simulation of a knowledge point plan (from the Paths window).
+function AUI.SetPlan(plan)
+	sim.plan = plan
+	if not plan then return end
+	CH.Print("simulating the " .. (plan.label or "") .. " plan in the crafting advisor. Press Off on its Simulate bar to stop.")
+	if ProfessionsFrame and ProfessionsFrame:IsShown() then AUI.Show() end
+end
+
+function AUI.SetSimSkill(n) sim.skill = n or 0 end
 
 --- Click a row to queue one craft of it; shift-click to queue as many as you can make now.
 function AUI.RowClick(i)

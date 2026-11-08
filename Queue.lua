@@ -30,6 +30,10 @@ function Q.FromRow(result, r)
 		end
 	end
 	for _, slot in ipairs(result.fixed) do table.insert(shop, { itemID = slot.items[1], n = slot.qty }) end
+	for _, f in ipairs(r.finishing or {}) do
+		table.insert(reagents, { itemID = f.itemID, slot = f.slot, n = 1 })
+		table.insert(shop, { itemID = f.itemID, n = 1 })
+	end
 	local me = CH.Me()
 	return {
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
@@ -82,8 +86,19 @@ end
 --- Queue the best craft (by profit, without Concentration) of the top recipes in the open profession.
 function Q.FillFromBest(limit)
 	local added = 0
+	local best = CH.Scan and CH.Scan.Top(CH.OpenProfessionID(), limit or 5)
+	if best and #best > 0 then
+		for _, c in ipairs(best) do
+			local ok, result = pcall(CH.Advisor.Analyze, c.recipeID, { professionID = CH.OpenProfessionID() })
+			if ok and result and result.best and result.best.profit and result.best.profit > 0 then
+				Q.Add(result, result.best, 1)
+				added = added + 1
+			end
+		end
+		return added
+	end
 	for _, c in ipairs(CH.BestCrafts(limit or 5)) do
-		local ok, result = pcall(CH.Advisor.Analyze, c.recipeID)
+		local ok, result = pcall(CH.Advisor.Analyze, c.recipeID, { professionID = CH.OpenProfessionID() })
 		if ok and result and result.best and result.best.profit and result.best.profit > 0 then
 			Q.Add(result, result.best, 1)
 			added = added + 1
