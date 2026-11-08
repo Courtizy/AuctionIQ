@@ -5,6 +5,5 @@ ignore:
   - README.md
   - .github
   - migration
-  - companion
   - Media/Icon.svg
   - Media/Logo-512.png

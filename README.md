@@ -14,7 +14,7 @@ One window, six tabs:
 | Tab | What it answers |
 |-----|-----------------|
 | Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. The activity log is one click away. |
-| Markets | Market prices from the Clearinghouse app (now, 7-day average, change, listings), competition, when items sell. |
+| Markets | Compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. |
 | Crafting | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and buttons for Scan, Paths, Queue, Results and the advisor. |
 | Trading | Groups, operations and mail routes. |
 | Analytics | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour. |
@@ -64,8 +64,13 @@ One window, six tabs:
   crafts come off the queue. The shopping list totals the reagents for the whole warband's queue
   against what you have and prices what's left to buy by walking the listings: buying 200 of a
   reagent costs what the cheapest 200 listed cost, not 200 times the cheapest one. It uses your AH
-  search from the last 15 minutes, else the Clearinghouse app's last commodity scan, else `chmat`.
+  search from the last 15 minutes, else the last AH scan it saved for that item, else `chmat`.
   Hover a cost to see how far above the cheapest listing it is.
+- **Compare prices** (Markets): every item you hold, sold this month, need for the queue or searched
+  at the AH today, priced three ways side by side: your last AH scan (Blizzard's live data, saved
+  whenever you, AuctionIQ or TSM search the AH), TSM's realm value and Oribos Exchange's. Gap is the
+  scan against the other two; 15% under reads *cheap now*, 15% over *pricey now*, and TSM and
+  Oribos more than 25% apart reads *disagree*. Region averages are shown for reference.
 - Learns your characters and professions as you play. Open each profession window once.
 
 | Command | Does |
@@ -132,9 +137,7 @@ The code is split into one folder per component, each with its own `comp:` label
 | `Trading/` | Groups and operations, posting and cancelling, mail |
 | `Analytics/` | Stock targets (Par.lua); forecast vs actual lands here |
 | `Clearinghouse/` | The ledger tab and reports |
-| `Markets/` | The Markets tab: market prices, competition, when it sells |
-| `companion/` | The Clearinghouse desktop app and its addon (not packaged with AuctionIQ) |
-| `server/` | The key server the desktop app logs in to (Cloudflare Worker, not packaged) |
+| `Markets/` | The Markets tab: compare prices, market prices, competition, when it sells |
 
 `AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them.
 

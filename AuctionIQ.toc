@@ -16,7 +16,9 @@ Core\Window.lua
 Data\Prices.lua
 Data\Prob.lua
 Data\Expect.lua
+Data\Scans.lua
 Data\Depth.lua
+Data\Compare.lua
 Data\Formula.lua
 Data\Stats.lua
 Crafting\Specs\ConcentrationCurves.lua

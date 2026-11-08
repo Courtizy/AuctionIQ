@@ -1,1 +1,0 @@
-{ "name": "clearinghouse-keys", "private": true, "type": "module", "scripts": { "test": "node --test test/*.mjs" } }

@@ -96,9 +96,8 @@ function CH.TooltipLines(link)
 	end
 	local mk = CH.Prices.Market(itemID(link))
 	if mk and mk.market then
-		local where = mk.source == "commodity" and "region" or "realm"
-		table.insert(lines, { "Clearinghouse market", CH.Theme.Color("muted", where .. ", " .. (mk.days or 0) .. " days") })
-		table.insert(lines, { "  Market now", m(mk.market) })
+		table.insert(lines, { "Your AH scan", CH.Theme.Color("muted", CH.Scans.Age(mk.age) .. " old") })
+		table.insert(lines, { "  Market then", m(mk.market) })
 		if mk.avg7 and (mk.days or 0) > 1 then
 			local ch = mk.change7 and string.format("  %+.0f%% in 7 days", mk.change7 * 100) or ""
 			table.insert(lines, { "  7-day average" .. ch, m(mk.avg7), "muted", mk.change7 and (mk.change7 >= 0 and "ok" or "bad") or "muted" })

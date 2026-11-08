@@ -1,7 +1,6 @@
 # AuctionIQ look
 
-The addon and the companion page are one product, so they share these rules. A colour changes in
-`Theme.lua` and in the page's CSS together.
+Every page of the addon follows these rules. A colour changes in `Theme.lua`.
 
 ## Style
 

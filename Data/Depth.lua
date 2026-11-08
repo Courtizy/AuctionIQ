@@ -2,10 +2,10 @@
 -- covers its own stack, so a big buy walks up the book:
 --   cost(q) = sum over listings i of min(q_i, q - Q_(i-1)) * p_i      (Q_i = units in listings 1..i)
 -- Listings come from the AH when you've searched the item there in the last 15 minutes, else
--- from the Clearinghouse app's last commodity scan, else the cost is chmat x quantity.
+-- from the last full AH search AuctionIQ saved for it (Scans.lua), else the cost is chmat x quantity.
 local _, CH = ...
 
-local D = { LIVE_SECONDS = 15 * 60, APP_CAP = 25000 }
+local D = { LIVE_SECONDS = 15 * 60, SCAN_CAP = 25000 }
 CH.Depth = D
 
 local live = {} -- [id] = { at = time(), rows = { { price, qty } } } from AH searches
@@ -34,7 +34,7 @@ local function walk(rows, q)
 	return spent, got
 end
 
--- The app's ladder holds (qty, average price) points; cost between points is a straight line,
+-- A saved scan's ladder holds (qty, average price) points; cost between points is a straight line,
 -- which is never below the real walk because the real cost curve bends upward.
 local function ladder(points, q)
 	local pq, pc = 0, 0
@@ -46,22 +46,17 @@ local function ladder(points, q)
 	return pc, pq
 end
 
---- Listings to price an item from: rows, source ("ah" or "app") and their age in seconds.
+--- Listings to price an item from: rows, source ("ah" or "scan") and their age in seconds.
 function D.Book(id)
 	local l = live[id]
 	if l and time() - l.at <= D.LIVE_SECONDS and l.rows[1] then return l.rows, "ah", time() - l.at end
-	if type(ClearinghouseMarket) == "table" and ClearinghouseMarket.Depth then
-		local ok, pts = pcall(ClearinghouseMarket.Depth, id)
-		if ok and pts then
-			local at = ClearinghouseMarket.DepthTime and ClearinghouseMarket.DepthTime() or 0
-			return pts, "app", at > 0 and time() - at or nil
-		end
-	end
+	local pts, at = CH.Scans.Depth(id)
+	if pts then return pts, "scan", time() - at end
 	return nil
 end
 
 --- What buying q of an item costs, in copper, and how it was worked out:
---- { cost, unit (average), source = "ah" | "app" | "chmat", short = units the book can't fill,
+--- { cost, unit (average), source = "ah" | "scan" | "chmat", short = units the book can't fill,
 ---   first = cheapest unit price, age }. Units past the book are priced at its last price.
 --- nil when there is nothing to price it with.
 function D.Cost(id, q)
@@ -86,8 +81,8 @@ function D.Cost(id, q)
 	end
 	local short = q - got
 	if short > 0 then spent = spent + short * math.max(last, chmat or 0) end
-	-- the app keeps the book only up to its last point; past that it's a guess, not a shortage
-	if source == "app" and rows[#rows][1] >= D.APP_CAP then short = 0 end
+	-- a saved scan keeps the book only up to its last point; past that it's a guess, not a shortage
+	if source == "scan" and rows[#rows][1] >= D.SCAN_CAP then short = 0 end
 	spent = math.ceil(spent)
 	return { cost = spent, unit = spent / q, source = source, short = short, first = first, age = age }
 end
