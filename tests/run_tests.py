@@ -537,6 +537,14 @@ check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier
 check("crafting tab text has Concentration and best crafts", "Concentration" in plain(CH.UI.CraftingText()) and "Best crafts" in plain(CH.UI.CraftingText()))
 check("the report still has everything", "Best crafts" in plain(CH.UI.BriefingText()) and "Gold" in plain(CH.UI.BriefingText()))
 
+# recipe scan: how many you can make now, with finishing reagents and Concentration
+run("STUB.bags[901] = 10; STUB.bags[902] = 3; STUB.bags[903] = 1")
+cr = L.eval("{ Clearinghouse.Scan.Craftable({ accounts = { reagents = { { itemID = 901, n = 2 }, { itemID = 902, n = 1 } } }, concAccounts = { reagents = { { itemID = 901, n = 2 }, { itemID = 903, n = 1 } } }, concentration = 300 }, 650) }")
+check("scan: can make counts the scarcest reagent", cr[1] == 3 and cr[3] == 902)
+check("scan: with Concentration, a finishing reagent or the points cap it", cr[2] == 1 and cr[4] == 903)
+cr2 = L.eval("{ Clearinghouse.Scan.Craftable({ concAccounts = { reagents = { { itemID = 901, n = 1 } } }, concentration = 300 }, 650) }")
+check("scan: Concentration points can be the limit", cr2[2] == 2 and cr2[4] == "concentration")
+
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")
 inv2 = {e.id: e for e in LG.Inventory().values()}

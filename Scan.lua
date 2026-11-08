@@ -146,6 +146,33 @@ function Sc.Results(profID)
 	return p and p.scan
 end
 
+--- How many times you can make a scanned recipe now from what you own (bags, bank, reagent bank,
+--- warband bank), with the reagents and finishing reagents the scan picked as best. With
+--- Concentration it is also capped by the points you have. Returns plain, withConc, and the
+--- reagent that runs out first for each (its item ID).
+function Sc.Craftable(r, concNow)
+	local function count(acc)
+		if not acc or not acc.reagents or #acc.reagents == 0 then return nil end
+		local n, short = math.huge, nil
+		for _, rg in ipairs(acc.reagents) do
+			local need = rg.n or 1
+			if need > 0 then
+				local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(rg.itemID, true, false, true, true) or 0
+				local k = math.floor(have / need)
+				if k < n then n, short = k, rg.itemID end
+			end
+		end
+		return n == math.huge and 0 or n, short
+	end
+	local plain, plainShort = count(r.accounts)
+	local conc, concShort = count(r.concAccounts)
+	if conc and r.concentration and r.concentration > 0 and concNow then
+		local byPoints = math.floor(concNow / r.concentration)
+		if byPoints < conc then conc, concShort = byPoints, "concentration" end
+	end
+	return plain, conc, plainShort, concShort
+end
+
 --- Best n recipes by profit from the saved scan.
 function Sc.Top(profID, n)
 	local s = Sc.Results(profID)
