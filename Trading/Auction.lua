@@ -64,6 +64,7 @@ local function lowest(results)
 	end
 	return other, mine
 end
+A.Lowest = lowest
 
 --- What to do with an item you hold: { action = "post"|"skip", price, qty, why }.
 --- results: the AH's listings for it; held: how many you have to post.

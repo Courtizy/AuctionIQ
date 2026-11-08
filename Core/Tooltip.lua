@@ -115,6 +115,22 @@ function CH.TooltipLines(link)
 		if oeR then table.insert(lines, { "  Realm", m(oeR), "muted", "muted" }) end
 		if oeG then table.insert(lines, { "  Region", m(oeG), "muted", "muted" }) end
 	end
+	-- how AuctionIQ will post it: its group's operation and prices
+	local id = itemID(link)
+	local path = id and CH.Groups and CH.Groups.Path(id)
+	if path then
+		local ok, p = pcall(CH.Groups.Prices, id)
+		if ok and p then
+			table.insert(lines, { "Posting", CH.Theme.Color("muted", (p.op or "?") .. (p.post and "" or ", doesn't post") .. ", " .. path) })
+			if p.post and p.normal then
+				table.insert(lines, { "  Min / normal / max", m(p.min or 0) .. " / " .. m(p.normal) .. " / " .. m(p.max or p.normal), "muted" })
+			end
+			if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
+				local n = CH.Ledger.NumExpires(id)
+				table.insert(lines, { "  Expired since it last sold", string.format("%d of %d", n, p.maxExpires), n >= p.maxExpires and "bad" or "muted" })
+			end
+		end
+	end
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
 		craftLines(lines, row, acc, at)
