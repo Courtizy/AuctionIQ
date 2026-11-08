@@ -226,5 +226,11 @@ lr = list(CH.Log.Rows().values())[0]
 check("results log: craft, Multicraft proc and saved reagents counted",
       lr.crafts == 1 and lr.e.mcProcs == 1 and lr.e.saved == 300000 and lr.e.value == 2 * 3000000 * 0.95 and lr.expected == 730000)
 
+# Midnight reports craftingQuality as a quality ID (13, 14), not 1, 2: quality comes from skill instead
+run('STUB.qualityOffset = 12')
+mq = CH.Advisor.Analyze(10)
+check("quality from skill, not the game's quality ID", [r.quality for r in mq.rows.values()] == [1, 2, 2] and mq.best.item == 302 and mq.bestConc.perPoint == 27250)
+run('STUB.qualityOffset = nil')
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

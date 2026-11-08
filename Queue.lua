@@ -25,7 +25,7 @@ function Q.FromRow(result, r)
 			local n = r.picks[i][q] or 0
 			if n > 0 then
 				table.insert(reagents, { itemID = id, slot = slot.index, n = n })
-				table.insert(shop, { itemID = id, n = n, rank = q })
+				table.insert(shop, { itemID = id, n = n, rank = q, tiers = #slot.items })
 			end
 		end
 	end
@@ -37,7 +37,7 @@ function Q.FromRow(result, r)
 	local me = CH.Me()
 	return {
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
-		recipeID = result.recipeID, name = result.name, quality = r.quality,
+		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
 		concentration = r.concentration, profit = r.profit, cost = r.cost,
 		reagents = reagents, shop = shop, qty = 0,
 	}
@@ -109,11 +109,12 @@ end
 
 --- Reagents for the whole queue: need, have, buy and what buying costs. Sorted by cost, biggest first.
 function Q.ShoppingList()
-	local need, rank = {}, {}
+	local need, rank, tiers = {}, {}, {}
 	for _, e in ipairs(list()) do
 		for _, s in ipairs(e.shop) do
 			need[s.itemID] = (need[s.itemID] or 0) + s.n * e.qty
 			rank[s.itemID] = s.rank
+			tiers[s.itemID] = s.tiers
 		end
 	end
 	local out, total = {}, 0
@@ -123,7 +124,7 @@ function Q.ShoppingList()
 		local unit = CH.Prices.Get("chmat", "i:" .. id)
 		local cost = unit and unit * buy
 		total = total + (cost or 0)
-		table.insert(out, { itemID = id, rank = rank[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
+		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end
 	table.sort(out, function(a, b) return (a.cost or 0) > (b.cost or 0) end)

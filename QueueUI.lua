@@ -5,16 +5,16 @@ local _, CH = ...
 local QUI = {}
 CH.QueueUI = QUI
 local panel, qrows, srows, shopHead, empty
-local QROWS, SROWS, W = 8, 8, 454
+local QROWS, SROWS, W = 8, 8, 540
 
 local function classColor(class)
 	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
 	return c and c.colorStr and ("|c" .. c.colorStr) or "|cffffffff"
 end
 
-local function rank(q)
+local function rank(q, tiers)
 	if not q then return "" end
-	return CreateAtlasMarkup and (" " .. CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", 14, 14)) or (" Q" .. q)
+	return " " .. CH.Window.QualityIcon(q, 14, tiers)
 end
 
 local function place()
@@ -87,19 +87,19 @@ local function build()
 	for i = 1, QROWS do
 		local r = {}
 		local ry = y - (i - 1) * 18
-		r.name = text(panel, 12, ry, 200)
-		r.who = text(panel, 214, ry, 80)
-		r.profit = text(panel, 296, ry, 72, "RIGHT")
+		r.name = CH.Window.OneLine(text(panel, 12, ry, 250))
+		r.who = CH.Window.OneLine(text(panel, 266, ry, 90))
+		r.profit = CH.Window.OneLine(text(panel, 360, ry, 86, "RIGHT"))
 		r.craft = T.Button(panel, "Craft", 44, 16)
-		r.craft:SetPoint("TOPLEFT", 374, ry + 2)
+		r.craft:SetPoint("TOPLEFT", 454, ry + 2)
 		r.minus = T.Button(panel, "-", 18, 16)
-		r.minus:SetPoint("TOPLEFT", 422, ry + 2)
+		r.minus:SetPoint("TOPLEFT", 504, ry + 2)
 		qrows[i] = r
 	end
 
 	y = y - QROWS * 18 - 8
 	shopHead = text(panel, 12, y, W - 24, "LEFT", "GameFontNormalSmall")
-	local cols = { { "Reagent", 12, 196, "LEFT" }, { "Need", 210, 46 }, { "Have", 258, 46 }, { "Buy", 306, 46 }, { "Cost", 354, 88 } }
+	local cols = { { "Reagent", 12, 250, "LEFT" }, { "Need", 264, 54 }, { "Have", 320, 54 }, { "Buy", 376, 54 }, { "Cost", 432, 96 } }
 	y = y - 16
 	for _, c in ipairs(cols) do
 		local h = text(panel, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall")
@@ -109,7 +109,7 @@ local function build()
 	for i = 1, SROWS do
 		local ry = y - i * 18
 		local r = {}
-		for j, c in ipairs(cols) do r[j] = text(panel, c[2], ry, c[3], c[4] or "RIGHT") end
+		for j, c in ipairs(cols) do r[j] = CH.Window.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
 		srows[i] = r
 	end
 	T.Fonts(panel)
@@ -129,7 +129,7 @@ function QUI.Refresh()
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
 		if show then
-			r.name:SetText(string.format("%s%s x%d%s", e.name or "?", rank(e.quality), e.qty, e.concentration and T.Color("accent", " conc") or ""))
+			r.name:SetText(string.format("%s%s x%d%s", e.name or "?", rank(e.quality, e.tiers), e.qty, e.concentration and T.Color("accent", " conc") or ""))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
 			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
 			local can, why = CH.Queue.CanCraftHere(e)
@@ -152,7 +152,7 @@ function QUI.Refresh()
 	for i, r in ipairs(srows) do
 		local s = shop[i]
 		if s then
-			r[1]:SetText(s.name .. rank(s.rank))
+			r[1]:SetText(s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
 			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
 			r[4]:SetText(s.buy > 0 and T.Color("accent", tostring(s.buy)) or T.Color("muted", "0"))

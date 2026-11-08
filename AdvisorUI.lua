@@ -6,26 +6,21 @@ local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
-local HEIGHT = 384
+local HEIGHT = 430
 -- Simulation: extra skill, and a knowledge point plan from the Paths window.
 local sim = { skill = 0, plan = nil }
 local order -- the crafting order on screen, if any
 local live -- the result without simulation, to compare against
 local gearPick -- top gear for the recipe on screen
 -- name, x, width. Hover breakdowns on cost (3), sell (4), profit (5) and max (7).
-local COLS = { { "Quality", 0, 50 }, { "Conc.", 50, 40 }, { "Cost", 90, 72 }, { "Sells for", 162, 72 },
-	{ "Profit", 234, 104 }, { "Per pt", 338, 58 }, { "Max", 396, 34 } }
+local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, { "Sells for", 206, 86 },
+	{ "Profit", 292, 124 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
 local HOVER = { 3, 4, 5, 7 }
-local WIDTH = 454
+local WIDTH = 540
 
 local function settings() return CH.db.settings.advisor end
 
-local function qualityIcon(q)
-	if CreateAtlasMarkup then
-		return CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", 18, 18)
-	end
-	return "Q" .. q
-end
+local function qualityIcon(q, tiers) return CH.Window.QualityIcon(q, 18, tiers) end
 
 local function ownProfession()
 	local ui = C_TradeSkillUI
@@ -107,6 +102,7 @@ local function build()
 	panel.recipe:SetPoint("TOPLEFT", 12, -34)
 	panel.recipe:SetWidth(WIDTH - 24)
 	panel.recipe:SetJustifyH("LEFT")
+	CH.Window.OneLine(panel.recipe)
 
 	local y = -56
 	for _, c in ipairs(COLS) do
@@ -129,7 +125,7 @@ local function build()
 			fs:SetPoint("TOPLEFT", 12 + c[2], y - i * 20)
 			fs:SetWidth(c[3])
 			fs:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
-			r.cells[j] = fs
+			r.cells[j] = CH.Window.OneLine(fs)
 		end
 		local click = CreateFrame("Button", nil, panel)
 		click:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
@@ -252,7 +248,7 @@ function AUI.Render(result, reason)
 	for i, r in ipairs(result.rows) do
 		if i > ROWS then break end
 		local row = rows[i]
-		local q = qualityIcon(r.quality) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc")
+		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc")
 			or r.short and T.Color("bad", " low") or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
@@ -302,9 +298,9 @@ function AUI.Render(result, reason)
 	return out
 end
 
-local function rankText(q)
+local function rankText(q, tiers)
 	if not q then return "" end
-	return CreateAtlasMarkup and (" " .. CreateAtlasMarkup("Professions-Icon-Quality-Tier" .. q .. "-Small", 14, 14)) or (" Q" .. q)
+	return " " .. CH.Window.QualityIcon(q, 14, tiers)
 end
 
 --- Lines for a row's hover breakdown: col 3 reagents, col 4 profit. Also used by the tests.
@@ -314,14 +310,14 @@ function AUI.BreakdownLines(result, r, col)
 	if col == 3 then
 		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  bought at chmat"))
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank)),
+			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
-		add(CH.Theme.Color("accent", name) .. rankText(r.quality))
+		add(CH.Theme.Color("accent", name) .. rankText(r.quality, result.model and result.model.maxQ))
 		for _, src in ipairs(CH.Advisor.PriceSources(r.item)) do
 			local v = src.value
 			local text = not v and CH.Theme.Color("muted", "none")
@@ -366,7 +362,7 @@ function AUI.BreakdownLines(result, r, col)
 		add(CH.Theme.Color("accent", "Can craft " .. max) .. CH.Theme.Color("muted", "  bags, banks and warband bank"))
 		for _, h in ipairs(have) do
 			local ok = h.have >= h.need
-			add(h.name .. rankText(h.rank), CH.Theme.Color(ok and "fg" or "bad", string.format("%d have, %d each", h.have, h.need)))
+			add(h.name .. rankText(h.rank, h.tiers), CH.Theme.Color(ok and "fg" or "bad", string.format("%d have, %d each", h.have, h.need)))
 		end
 		if r.concentration then
 			add("Concentration", string.format("%s have, %d each", tostring(concNow() or "?"), r.concentration))

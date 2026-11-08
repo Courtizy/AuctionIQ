@@ -5,11 +5,11 @@ local _, CH = ...
 local SUI = {}
 CH.ScanUI = SUI
 local frame, rows, status
-local N, W, H = 16, 560, 18
+local N, W, H = 16, 660, 18
 local offset, sortKey, data = 0, "profit", {}
 
-local COLS = { { "Recipe", 12, 196 }, { "Profit", 210, 78 }, { "%", 290, 36 }, { "Per pt", 328, 62 },
-	{ "Sold/day", 392, 54 }, { "Gold/day", 448, 96 } }
+local COLS = { { "Recipe", 12, 240 }, { "Profit", 254, 96 }, { "%", 352, 48 }, { "Per pt", 402, 76 },
+	{ "Sold/day", 480, 70 }, { "Gold/day", 552, 96 } }
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "-") end
@@ -35,10 +35,10 @@ local function hover(owner, i)
 	if not r then return end
 	local T = CH.Theme
 	local lines = { { T.Color("accent", r.name or "?") } }
-	if r.quality then table.insert(lines, { "Best without Concentration", CH.Window.QualityIcon(r.quality, 14) .. " " .. CH.FormatMoney(r.profit) }) end
+	if r.quality then table.insert(lines, { "Best without Concentration", CH.Window.QualityIcon(r.quality, 14, r.tiers) .. " " .. CH.FormatMoney(r.profit) }) end
 	if r.cost then table.insert(lines, { "Reagents", CH.FormatMoney(r.cost) }) end
 	if r.perPoint then
-		table.insert(lines, { "Best with Concentration", CH.Window.QualityIcon(r.concQuality, 14) .. " " .. CH.FormatMoney(r.concProfit) })
+		table.insert(lines, { "Best with Concentration", CH.Window.QualityIcon(r.concQuality, 14, r.tiers) .. " " .. CH.FormatMoney(r.concProfit) })
 		table.insert(lines, { string.format("  %d points", r.concentration or 0), CH.FormatMoney(r.perPoint) .. " per point" })
 	end
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
@@ -89,7 +89,7 @@ function SUI.Refresh()
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
 		if d then
-			r.cells[1]:SetText(CH.Window.QualityIcon(d.quality, 14) .. " " .. (d.name or "?"))
+			r.cells[1]:SetText(CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. (d.name or "?"))
 			r.cells[2]:SetText(money(d.profit))
 			r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
 			r.cells[4]:SetText(d.perPoint and money(d.perPoint) or "")
