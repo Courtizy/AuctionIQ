@@ -21,7 +21,9 @@ local function newFrame()
 	function f:SetPoint(...) self.point = { ... } end
 	function f:SetTemplate(t) self.template = t end
 	function f:Show() self.shown = true; if self.scripts.OnShow then self.scripts.OnShow(self) end end
-	function f:Hide() self.shown = false end
+	function f:Hide() local was = self.shown; self.shown = false; if was and self.scripts.OnHide then self.scripts.OnHide(self) end end
+	function f:SetShown(v) if v then self:Show() else self:Hide() end end
+	function f:HookScript(k, fn) local old = self.scripts[k]; self.scripts[k] = function(...) if old then old(...) end fn(...) end end
 	function f:IsShown() return self.shown end
 	function f:CreateFontString()
 		local fs = { t = "" }

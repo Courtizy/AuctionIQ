@@ -141,8 +141,16 @@ function LUI.Toggle()
 		frame.note = CH.Window.Text(frame, 12, -34, W - 24)
 		rows = CH.Window.Table(frame, COLS, N, -54, 18, nil, nil, W)
 		CH.Theme.Fonts(frame)
+		CH.Window.Attach("results", frame)
 	end
-	if frame:IsShown() then frame:Hide() else frame:Show(); LUI.Refresh() end
+	if frame:IsShown() then frame:Hide() else LUI.Open() end
+end
+
+--- The Results tab.
+function LUI.Open()
+	if not frame then return LUI.Toggle() end
+	frame:Show()
+	LUI.Refresh()
 end
 
 Lg.Changed = function() LUI.Refresh() end

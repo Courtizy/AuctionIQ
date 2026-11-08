@@ -43,7 +43,7 @@ local function hover(owner, i)
 	end
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
 	table.insert(lines, { string.format("Gold a day at up to %d sold", CH.db.settings.scan.dailyCap or 10), CH.FormatMoney(r.perDay) })
-	table.insert(lines, { T.Color("muted", "Click to open, shift-click to queue the best craft.") })
+	table.insert(lines, { T.Color("muted", "Click to open it (see it on the Advisor tab), shift-click to queue the best craft.") })
 	CH.Window.Tooltip(owner, lines)
 end
 
@@ -69,6 +69,7 @@ local function build()
 		SUI.Refresh()
 	end)
 	T.Fonts(frame)
+	Wd.Attach("scan", frame)
 end
 
 --- Redraw from the saved scan. Returns the row texts, for tests.
@@ -112,8 +113,12 @@ function SUI.Start()
 end
 
 function SUI.Toggle()
+	if frame and frame:IsShown() then frame:Hide() else SUI.Open() end
+end
+
+--- The Scan tab: show the saved scan, or scan now if there isn't one for the open profession.
+function SUI.Open()
 	if not frame then build() end
-	if frame:IsShown() then frame:Hide(); return end
 	SUI.prof = CH.OpenProfessionID() or SUI.prof
 	frame:Show()
 	if CH.OpenProfessionID() and not CH.Scan.Results(CH.OpenProfessionID()) then SUI.Start() else SUI.Refresh() end

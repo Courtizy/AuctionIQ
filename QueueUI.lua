@@ -17,14 +17,11 @@ local function rank(q, tiers)
 	return " " .. CH.Window.QualityIcon(q, 14, tiers)
 end
 
-local function place()
-	panel:ClearAllPoints()
-	local adv = _G.ClearinghouseAdvisor
-	if adv and adv:IsShown() and CH.db.settings.advisor.docked ~= false then
-		panel:SetPoint("TOPLEFT", adv, "BOTTOMLEFT", 0, -2)
-	else
-		panel:SetPoint("CENTER", 0, 80)
-	end
+local function updatePop()
+	local popped = not CH.Window.InTabs("queue")
+	local b = panel.pop
+	local t = popped and "Tab" or "Pop out"
+	if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end
 end
 
 local function text(parent, x, y, w, justify, template)
@@ -46,8 +43,6 @@ local function build()
 	panel:SetClampedToScreen(true)
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
-	panel:SetScript("OnDragStart", panel.StartMoving)
-	panel:SetScript("OnDragStop", panel.StopMovingOrSizing)
 	panel:Hide()
 	table.insert(UISpecialFrames, "ClearinghouseQueue")
 
@@ -68,8 +63,17 @@ local function build()
 	local clear = T.Button(bar, "Clear", 46, 18)
 	clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	clear:SetScript("OnClick", function() CH.Queue.Clear() end)
+	local pop = T.Button(bar, "Pop out", 60, 18)
+	pop:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+	pop:SetScript("OnClick", function() CH.Window.ToggleQueuePop(); updatePop() end)
+	pop:SetScript("OnEnter", function(self)
+		CH.Window.Tooltip(self, { { CH.Window.InTabs("queue") and "Take the queue out of the tabs so it sits under them, next to the advisor."
+			or "Put the queue back in the tabs." } })
+	end)
+	pop:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	panel.pop = pop
 	local fill = T.Button(bar, "Fill", 40, 18)
-	fill:SetPoint("RIGHT", clear, "LEFT", -4, 0)
+	fill:SetPoint("RIGHT", pop, "LEFT", -4, 0)
 	fill:SetScript("OnClick", function()
 		local n = CH.Queue.FillFromBest(5)
 		CH.Print(n > 0 and ("queued the best craft of " .. n .. " recipes") or "open a profession to fill the queue from its best crafts")
@@ -113,6 +117,7 @@ local function build()
 		srows[i] = r
 	end
 	T.Fonts(panel)
+	CH.Window.Attach("queue", panel)
 end
 
 --- Redraw. Returns the queue and shopping lines it wrote, for the tests.
@@ -167,8 +172,9 @@ end
 
 function QUI.Show()
 	if not panel then build() end
-	place()
+	updatePop()
 	panel:Show()
+	CH.Window.Arrange()
 	return QUI.Refresh()
 end
 
@@ -180,4 +186,4 @@ function QUI.IsShown() return panel ~= nil and panel:IsShown() end
 
 CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end end
 CH.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
-CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then place(); QUI.Refresh() end end)
+CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then CH.Window.Arrange(); QUI.Refresh() end end)

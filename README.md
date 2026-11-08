@@ -11,8 +11,10 @@ takes over the jobs that today need both TSM and CraftSim.
 - **Briefing window** (`/ch`, the minimap button, or the addon compartment): gold on every
   character, Concentration on every profession with when it will be full, and each profession's
   best crafts.
-- **Crafting advisor**, docked to the right of the profession window (drag it off to float it,
-  Dock puts it back): for the selected recipe, every result quality with its cheapest reagents, the
+- **One window with tabs** (Advisor, Scan, Paths, Queue, Results), docked to the right of the
+  profession window (drag it off to float it, Dock on the tab row puts it back). Only one tab shows
+  at a time, so nothing piles up. Pop out the queue to keep it under the tabs while you work.
+- **Crafting advisor**: for the selected recipe, every result quality with its cheapest reagents, the
   profit, and with Concentration the cost in points and the gold each point earns. It marks the best
   profit and the best use of Concentration, worked out the same way CraftSim does:
   - profit is the average per craft, counting Multicraft's extra items and the reagents
@@ -24,9 +26,9 @@ takes over the jobs that today need both TSM and CraftSim.
   - top gear: whether another profession tool or accessory in your bags would earn more, with an
     Equip button
   - Simulate: see the numbers with more skill, or with a knowledge point plan from Paths
-- **Recipe scan** (`/ch scan`, or Scan on the advisor): every learned recipe ranked by profit per
+- **Recipe scan** (`/ch scan`, or the Scan tab): every learned recipe ranked by profit per
   craft, gold per Concentration point, or gold a day (profit x what the region sells, up to your cap).
-- **Profession paths** (`/ch plan potions`, or Paths on the advisor): type what you want to sell and
+- **Profession paths** (`/ch plan potions`, or the Paths tab): type what you want to sell and
   get a knowledge point plan for the open profession, node by node, with the gold a day each step
   adds and which recipes it improves. Alchemy, Enchanting, Jewelcrafting and Inscription for now.
 - **Craft results** (`/ch results`): what your crafts really gave (Multicraft, Resourcefulness,
