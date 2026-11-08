@@ -25,7 +25,8 @@ function Lg.Started(recipeID, count, concentrate)
 	end
 	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
 		expected = row and row.profit, cost = row and row.cost, mc = row and row.parts and row.parts.mc,
-		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name }
+		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
+		order = r and r.order ~= nil and r.recipeID == recipeID or nil }
 end
 
 --- One crafting result from the game (TRADE_SKILL_ITEM_CRAFTED_RESULT).
@@ -57,6 +58,11 @@ function Lg.Result(data)
 	if (data.concentrationSpent or 0) > 0 then e.concCrafts = e.concCrafts + 1 end
 	e.concSpent = e.concSpent + (data.concentrationSpent or 0)
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
+	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
+	if CH.Forecast and data.itemID and not (pending and pending.order) then
+		CH.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
+			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID })
+	end
 	if pending then
 		e.cost = e.cost + (pending.cost or 0)
 		e.expected = e.expected + (pending.expected or 0)

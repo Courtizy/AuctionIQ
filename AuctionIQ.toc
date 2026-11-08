@@ -28,6 +28,7 @@ Crafting\Cooldowns.lua
 Data\Ledger.lua
 Clearinghouse\LedgerUI.lua
 Analytics\Par.lua
+Analytics\Forecast.lua
 Trading\Groups.lua
 Trading\Auction.lua
 Trading\AuctionUI.lua

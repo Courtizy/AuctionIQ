@@ -271,6 +271,9 @@ local function valueRow(model, row, stats, item, costR, fin)
 		return row
 	end
 	if not unit then row.value, row.profit = nil, nil; return row end
+	-- your record: an item that keeps selling under forecast is valued at what it really fetches
+	local shade, why = CH.Forecast and CH.Forecast.Shade(item)
+	if shade then unit = unit * shade; row.shade, row.shadeWhy = shade, why end
 	unit = unit * CH.AH_CUT
 	local avg, parts = St().Average(unit, model.made, total, costR, stats)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts

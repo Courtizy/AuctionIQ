@@ -390,6 +390,33 @@ dead = list(LG.DeadStock(L.eval("STUB.now"), 1).values())
 check("dead stock: held, not sold in the window", [e.id for e in dead] == [301] and dead[0].advice.startswith("Slow"))
 o = LG.Overhead(-1e12)
 check("overhead: repairs, not your own transfers", o.total == 20000 and len(list(o.types.values())) == 1 and o.afterOverhead == o.profit - 20000)
+# Phase 2: forecast vs actual
+logged = [b for b in CH.Forecast.Store().values() if b.id == 302]
+check("forecast: a craft saves its forecast with the batch", len(logged) == 1 and logged[0].qty == 2 and logged[0].cost and logged[0].expectEach)
+run("""
+Clearinghouse.db.batches = {
+  { at = STUB.now - 2 * 86400, id = 302, qty = 1, cost = 1000000, expectEach = 4000000 },
+  { at = STUB.now - 86400, id = 302, qty = 3, cost = 3000000, expectEach = 4000000 },
+}
+Clearinghouse.Forecast.Clear()
+""")
+bs = list(CH.Forecast.Batches(302).values())
+check("forecast: sales match crafts oldest first", bs[0].sold == 1 and bs[1].sold == 1)
+pf = {e.id: e for e in CH.Forecast.Performance().values()}[302]
+check("forecast: made, sold, sold-each against forecast, realized profit",
+      pf.made == 4 and pf.sold == 2 and abs(pf.accuracy - 0.7125) < 1e-6 and abs(pf.realized - 3700000) < 1 and abs(pf.days - 1.4583) < 0.01)
+check("forecast: no shading until enough have sold", CH.Forecast.Shade(302) is None)
+run("Clearinghouse.Forecast.MIN_SOLD = 2")
+check("forecast: an item that sells under forecast is shaded down", abs(CH.Forecast.Shade(302)[0] - 0.7125) < 1e-6)
+prow, pfoot = CH.LedgerUI.Rows("perf", L.eval("{ }"))
+check("forecast: the Clearinghouse Performance view", len(list(prow.values())) == 1 and "Sold -29% vs forecast" in plain(pfoot))
+pick = "(function() local r = Clearinghouse.Advisor.Analyze(10, {}); for _, x in ipairs(r.rows) do if x.item == 302 and not x.concentration then return x.unit, x.shade, r.best.item end end end)()"
+run("Clearinghouse.Forecast.MIN_SOLD = 3"); u0 = L.eval(pick)
+run("Clearinghouse.Forecast.MIN_SOLD = 2"); u1 = L.eval(pick)
+check("forecast: the advisor values the item at what it really fetches", abs(u1[0] / u0[0] - 0.7125) < 1e-6 and abs(u1[1] - 0.7125) < 1e-6)
+check("forecast: a shaded item can lose its place as the best craft", u0[2] == 302 and u1[2] == 301)
+run("Clearinghouse.Forecast.MIN_SOLD = 3")
+
 rows, foot = CH.LedgerUI.Rows("pl", L.eval("{ }"))
 check("CFO views draw rows", len(list(rows.values())) == 1 and "best line: Flasks" in plain(foot))
 for v in ["dead", "holdings", "overhead"]:
@@ -741,7 +768,7 @@ def audit(where):
 for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
-for v in ["inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time"]:
+for v in ["inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf"]:
     run(f"Clearinghouse.UI.Page('ledger', '{v}')")
     audit("view " + v)
 run("Clearinghouse.UI.Page('today')")

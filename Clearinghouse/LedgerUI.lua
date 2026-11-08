@@ -37,6 +37,8 @@ local VIEWS = {
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Time frame", 630, 94 } } },
 	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
+	perf = { label = "Forecast vs actual", parent = "Profit", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
+		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
 	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
 	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
@@ -60,7 +62,7 @@ local SECTIONS = {
 	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
-		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
+		{ "Profit", "pl" }, { "pl", sub = true }, { "perf", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
 	markets = { { "market" }, { "rivals" }, { "when" } },
 	analytics = { { "par" }, { "dead" }, { "time" } },
 }
@@ -204,6 +206,27 @@ function LUI.Rows(v, opts)
 		return out, string.format("Crafted sales %s, profit %s%s", money(rev), signed(prof),
 			best and ("   best line: " .. best .. " " .. money(bv)) or "")
 			.. CH.Theme.Color("muted", "   * mostly today's prices: you bought few of its reagents")
+	end
+
+	if v == "perf" then
+		local made, sold, rev, exp, real, fc = 0, 0, 0, 0, 0, 0
+		for _, e in ipairs(CH.Forecast.Performance(opts.days and since or 0)) do
+			local text, name = LUI.ItemText(e.id)
+			if keepName(name) then
+				made, sold, rev, real, fc = made + e.made, sold + e.sold, rev + e.revenue, real + e.realized, fc + e.forecast
+				exp = exp + (e.expectEach and e.expectEach * e.sold or 0)
+				local acc = e.accuracy and (e.accuracy - 1)
+				table.insert(out, { id = e.id, cells = { text, e.made, e.sold, money(e.expectEach), money(e.actualEach),
+					acc and CH.Theme.Color(acc >= -0.05 and "ok" or "bad", string.format("%+d%%", math.floor(acc * 100 + 0.5))) or CH.Theme.Color("muted", "-"),
+					e.days and string.format("%.1f", e.days) or CH.Theme.Color("muted", "-"), signed(e.realized) },
+					sort = { name, e.made, e.sold, e.expectEach or 0, e.actualEach or 0, acc or 0, e.days or 1e9, e.realized } })
+			end
+		end
+		if made == 0 then
+			return out, CH.Theme.Color("muted", "Nothing yet: every craft from now on saves its forecast, and sales are matched to it oldest first.")
+		end
+		local acc = exp > 0 and string.format("%+d%%", math.floor((rev / exp - 1) * 100 + 0.5)) or "-"
+		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
 	end
 
 	if v == "dead" then

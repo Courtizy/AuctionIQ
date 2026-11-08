@@ -290,7 +290,11 @@ function AUI.BreakdownLines(result, r, col)
 				or CH.FormatMoney(v)
 			add("   " .. src.label, text)
 		end
-		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.value and r.value / CH.AH_CUT / (result.made or 1)))
+		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.value and r.value / CH.AH_CUT / (result.made or 1) / (r.shade or 1)))
+		if r.shade then
+			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")),
+				CH.FormatMoney(r.value / CH.AH_CUT / (result.made or 1)))
+		end
 		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), "") end
 		add("After 5% auction cut", CH.FormatMoney(r.value))
 	elseif col == 5 then
