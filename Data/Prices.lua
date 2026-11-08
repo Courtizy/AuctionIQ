@@ -68,11 +68,14 @@ function Prices.Get(kind, item)
 	return v
 end
 
---- Profit in copper for crafting `item` and selling it, after the auction cut. nil if unknown.
+--- Profit in copper for crafting `item` and selling it: its expected value (after the cut, lost
+--- deposits and carrying, see Expect.lua) less the cost. nil if unknown.
 function Prices.CraftProfit(item, quantity)
 	local value, cost = Prices.Get("chvalue", item), Prices.Get("crafting", item)
 	if not value or not cost then return nil end
-	return value * CH.AH_CUT * (quantity or 1) - cost * (quantity or 1)
+	local id = tonumber(tostring(Prices.ItemString(item) or ""):match("^i:(%d+)"))
+	local ev = id and CH.Expect and CH.Expect.Value(id, value) or value * CH.AH_CUT
+	return (ev - cost) * (quantity or 1)
 end
 
 --- The Clearinghouse app's market history for an item (see the Clearinghouse addon), or nil.

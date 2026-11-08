@@ -267,6 +267,23 @@ local function rankText(q, tiers)
 	return " " .. CH.Window.QualityIcon(q, 14, tiers)
 end
 
+--- The expected-value steps for one unit (Expect.Value's detail): cut, deposits, carrying.
+function AUI.ExpectLines(d)
+	local out = {}
+	if not d or not d.gross then return out end
+	local M, mut = CH.FormatMoney, function(t) return CH.Theme.Color("muted", t) end
+	table.insert(out, { "After 5% auction cut", M(d.gross) })
+	if d.p then
+		local b = d.belief
+		table.insert(out, { string.format("Sells %d%% of posts", math.floor(d.p * 100 + 0.5))
+			.. mut(b and b.n > 0 and string.format("  your %d posts + region", b.n) or "  region rate"), "" })
+		if d.deposits >= 1 then table.insert(out, { "  Deposits lost to expiries", "-" .. M(d.deposits) }) end
+		table.insert(out, { string.format("  Gold tied up %.1f days at %s%%/day", d.days, tostring(CH.Expect.Setting("carry") * 100)), "-" .. M(d.carry) })
+		table.insert(out, { "Expected each", M(d.gross - d.deposits - d.carry) })
+	end
+	return out
+end
+
 --- Lines for a row's hover breakdown: col 3 reagents, col 4 profit. Also used by the tests.
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
@@ -290,16 +307,15 @@ function AUI.BreakdownLines(result, r, col)
 				or CH.FormatMoney(v)
 			add("   " .. src.label, text)
 		end
-		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.value and r.value / CH.AH_CUT / (result.made or 1) / (r.shade or 1)))
+		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.price and r.price / (r.shade or 1)))
 		if r.shade then
-			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")),
-				CH.FormatMoney(r.value / CH.AH_CUT / (result.made or 1)))
+			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")), CH.FormatMoney(r.price))
 		end
-		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), "") end
-		add("After 5% auction cut", CH.FormatMoney(r.value))
+		for _, l in ipairs(AUI.ExpectLines(r.ev)) do add(l[1], l[2]) end
+		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), CH.FormatMoney(r.value)) end
 	elseif col == 5 then
 		add(CH.Theme.Color("accent", "Average profit") .. CH.Theme.Color("muted", "  per craft"))
-		add(result.order and "Commission and rewards" or "Sells for, after cut", CH.FormatMoney(r.value))
+		add(result.order and "Commission and rewards" or "Expected sale value", CH.FormatMoney(r.value))
 		add("Less reagents", CH.FormatMoney(-r.cost))
 		local pp = r.parts
 		if pp and pp.mc > 0 and not result.order then

@@ -60,7 +60,20 @@ function SUI.Build(p, fs, panel)
 		else say("Couldn't import: " .. tostring(err), true) end
 		CH.UI.Refresh()
 	end)
-	local note = fs(gen, 12, gy - 108, 256, "LEFT", "GameFontDisableSmall")
+	local my = gy - 112
+	fs(gen, 12, my, 256, "LEFT", "GameFontNormal"):SetText("Math")
+	p.model = {}
+	for i, m in ipairs(S.MODEL) do
+		local y = my - 24 - (i - 1) * 24
+		fs(gen, 12, y - 3, 170, "LEFT"):SetText(m[2])
+		local mm = T.Button(gen, "-", 18, 18); mm:SetPoint("TOPLEFT", 186, y)
+		local v = fs(gen, 204, y - 3, 42, "CENTER")
+		local mp = T.Button(gen, "+", 18, 18); mp:SetPoint("TOPLEFT", 248, y)
+		mm:SetScript("OnClick", function() S.Model(m[1], -1); SUI.Refresh() end)
+		mp:SetScript("OnClick", function() S.Model(m[1], 1); SUI.Refresh() end)
+		p.model[i] = { key = m[1], value = v }
+	end
+	local note = fs(gen, 12, my - 24 - #S.MODEL * 24 - 8, 256, "LEFT", "GameFontDisableSmall")
 	note:SetText("The /aiq commands still work too.")
 
 	-- Operations -----------------------------------------------------------------------------------
@@ -192,6 +205,7 @@ function SUI.Refresh()
 	local on = function(v) return v and T.Color("ok", "on") or T.Color("muted", "off") end
 	for _, g in ipairs(p.general) do label(g.b, on(S.Get(g.key))) end
 	p.cap:SetText(tostring(S.DailyCap()))
+	for _, m in ipairs(p.model or {}) do m.value:SetText(select(2, S.Model(m.key))) end
 	label(p.useTSM, on(S.UseTSM()))
 	label(p.preferTSM, on(S.PreferTSM()))
 

@@ -274,7 +274,10 @@ local function valueRow(model, row, stats, item, costR, fin)
 	-- your record: an item that keeps selling under forecast is valued at what it really fetches
 	local shade, why = CH.Forecast and CH.Forecast.Shade(item)
 	if shade then unit = unit * shade; row.shade, row.shadeWhy = shade, why end
-	unit = unit * CH.AH_CUT
+	-- expected gold: after the cut, less deposits lost to expiries and gold tied up until it sells
+	row.price = unit
+	local ev, detail = CH.Expect.Value(item, unit)
+	unit, row.ev = ev, detail
 	local avg, parts = St().Average(unit, model.made, total, costR, stats)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
 	if model.recraftFrom then

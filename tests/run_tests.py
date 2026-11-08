@@ -405,28 +405,43 @@ check("forecast: sales match crafts oldest first", bs[0].sold == 1 and bs[1].sol
 pf = {e.id: e for e in CH.Forecast.Performance().values()}[302]
 check("forecast: made, sold, sold-each against forecast, realized profit",
       pf.made == 4 and pf.sold == 2 and abs(pf.accuracy - 0.7125) < 1e-6 and abs(pf.realized - 3700000) < 1 and abs(pf.days - 1.4583) < 0.01)
-check("forecast: no shading until enough have sold", CH.Forecast.Shade(302) is None)
-run("Clearinghouse.Forecast.MIN_SOLD = 2")
-check("forecast: an item that sells under forecast is shaded down", abs(CH.Forecast.Shade(302)[0] - 0.7125) < 1e-6)
+check("forecast: no shading before anything has sold", CH.Forecast.Shade(999) is None)
+# each sale counts with a 30-day half-life, and the ratio is shrunk toward 1 by PRIOR units
+now = L.eval("STUB.now")
+wn = wexp = wrev = 0
+for b in bs:
+    if b.sold > 0:
+        w = 0.5 ** ((now - b.at) / (30 * 86400))
+        wn += w * b.sold; wexp += w * b.expectEach * b.sold; wrev += w * b.revenue
+r_ = wrev / wexp
+want = (wn * r_ + 5) / (wn + 5)
+sh = CH.Forecast.Shade(302)
+check("forecast: an item that sells under forecast is shaded down, shrunk toward 1",
+      abs(sh[0] - want) < 1e-9 and 0.7125 < sh[0] < 1 and "2 sold at" in sh[1])
 prow, pfoot = CH.LedgerUI.Rows("perf", L.eval("{ }"))
 check("forecast: the Clearinghouse Performance view", len(list(prow.values())) == 1 and "Sold -29% vs forecast" in plain(pfoot))
 pick = "(function() local r = Clearinghouse.Advisor.Analyze(10, {}); for _, x in ipairs(r.rows) do if x.item == 302 and not x.concentration then return x.unit, x.shade, r.best.item end end end)()"
-run("Clearinghouse.Forecast.MIN_SOLD = 3"); u0 = L.eval(pick)
-run("Clearinghouse.Forecast.MIN_SOLD = 2"); u1 = L.eval(pick)
-check("forecast: the advisor values the item at what it really fetches", abs(u1[0] / u0[0] - 0.7125) < 1e-6 and abs(u1[1] - 0.7125) < 1e-6)
+run("Clearinghouse.Forecast.PRIOR = 1e15"); u0 = L.eval(pick)
+run("Clearinghouse.Forecast.PRIOR = 5"); u5 = L.eval(pick)
+run("Clearinghouse.Forecast.PRIOR = 0"); u1 = L.eval(pick)
+check("forecast: the advisor values the item at what it really fetches", abs(u5[0] / u0[0] - want) < 1e-6 and abs(u1[0] / u0[0] - r_) < 1e-6)
 check("forecast: a shaded item can lose its place as the best craft", u0[2] == 302 and u1[2] == 301)
-run("Clearinghouse.Forecast.MIN_SOLD = 3")
+run("Clearinghouse.Forecast.PRIOR = 5")
 
 rows, foot = CH.LedgerUI.Rows("pl", L.eval("{ }"))
 check("CFO views draw rows", len(list(rows.values())) == 1 and "best line: Flasks" in plain(foot))
 for v in ["dead", "holdings", "overhead"]:
     CH.LedgerUI.Rows(v, L.eval("{ days = 30 }"))
 run("Clearinghouse.Par.Refresh()")
-check("par: a week of what you sold, by default", CH.Par.Target(302)[0] == 1 and CH.Par.Target(301)[0] == 1 and CH.Par.Target(201) is None)
+# 1 sold a week: Poisson(1) stays at or under 2 about 92% of the time, so 2 at 90%; half a week (301) needs 1
+check("stock target: a week's demand at a 90% service level, by default", CH.Par.Target(302)[0] == 2 and CH.Par.Target(301)[0] == 1 and CH.Par.Target(201) is None)
+run("Clearinghouse.Settings.Model('service', 9); Clearinghouse.Par.Refresh()")
+check("stock target: the service level is a setting (99% needs 4)", CH.Par.Target(302)[0] == 4 and CH.Settings.Model("service")[1] == "99%")
+run("Clearinghouse.Settings.Model('service', -9); Clearinghouse.Par.Refresh()")
 run("Clearinghouse.Par.Set(302, 6); Clearinghouse.Par.Refresh()")
 par = {e.id: e for e in CH.Par.List().values()}
 check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
-check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 1)
+check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 2)
 run("Clearinghouse.Par.Set(302, 6); Clearinghouse.Par.Refresh()")
 check("briefing lists what's below par", "Below stock target" in plain(CH.UI.BriefingText()))
 rows, foot = CH.LedgerUI.Rows("par", L.eval("{ }"))
@@ -620,7 +635,7 @@ check("ledger other income: own transfers shown but kept out of the total", len(
 rows, foot = LU.Rows("expense", L.eval("{ }"))
 check("ledger other expenses: repairs count", "Total: 2g" in plain(foot))
 rows, foot = LU.Rows("expired", L.eval("{ }"))
-check("ledger failed auctions", len(list(rows.values())) == 1 and plain(foot).startswith("1 items expired"))
+check("ledger failed auctions", len(list(rows.values())) == 1 and plain(foot).startswith("1 items expired") and "deposits lost" in plain(foot))
 rows, foot = LU.Rows("resale", L.eval("{ }"))
 check("ledger resale: only items both bought and sold", len(list(rows.values())) == 0 and "0 items resold" in plain(foot))
 inv = list(LU.Rows("inventory", L.eval("{ char = 'Courtizy' }"))[0].values())
@@ -775,6 +790,43 @@ run("Clearinghouse.UI.Page('today')")
 for w in ["ScanUI", "PathsUI", "QueueUI", "LogUI"]:
     run(f"if Clearinghouse.{w} and Clearinghouse.{w}.Toggle then pcall(Clearinghouse.{w}.Toggle) end")
     audit(w)
+# Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
+P = CH.Prob
+check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1e-9 and abs(P.BetaCDF(0.3, 1, 1) - 0.3) < 1e-9
+      and abs(P.BetaCDF(0.8, 9, 3) - 0.6174015488) < 1e-8)
+check("prob: Poisson quantile (2 a day for 7 days at 90% is 19)", P.PoissonQuantile(14, 0.9) == 19 and P.PoissonQuantile(0, 0.9) == 0
+      and P.PoissonQuantile(1, 0.5) == 1)
+check("prob: big means use the normal approximation", abs(P.PoissonQuantile(10000, 0.9) - 10128) <= 1 and abs(P.NormInv(0.975) - 1.95996) < 1e-4)
+st = P.SellThrough(16, 4, 0.5)
+check("prob: sell-through belief", abs(st.mean - 18 / 24) < 1e-9 and st.n == 20 and 0 < st.pUp < 1 and st.pDown < 0.01)
+run("""
+STUB.sellThrough = {}
+Clearinghouse.Ledger.SellThrough = function(id) local t = STUB.sellThrough[id]; if t then return t[1], t[2] end return 0, 0 end
+STUB.sellThrough[901] = { 40, 2 }; STUB.sellThrough[902] = { 3, 1 }; STUB.sellThrough[903] = { 2, 30 }; STUB.sellThrough[904] = { 1, 1 }
+""")
+f901, f902, f903, f904 = (CH.Groups.Learn(i) for i in (901, 902, 903, 904))
+check("learn: a strong record raises the price, by up to 5%", 1.03 <= f901[0] <= 1.05 and "sure" in f901[1])
+check("learn: four posts are not enough to move it", f902 == 1 and f904 == 1)
+check("learn: mostly expiring cuts it, by up to 10%", 0.9 <= f903[0] <= 0.93)
+run("""
+STUB.items[905] = STUB.items[905] or {}
+local gi = C_Item.GetItemInfo
+C_Item.GetItemInfo = function(id) if id == 905 then return "Thing", "link", 3, 1, 1, "", "", 20, "", 0, 400000 end return gi(id) end
+STUB.sellThrough[905] = { 5, 15 }
+""")
+ev, d = CH.Expect.Value(905, 1000000, 24)
+# p = (4*0.5 + 5) / (4 + 20) = 7/24; deposit 15% of 40g for 24h = 12g a listing
+p_ = 7 / 24
+want = 950000 - 120000 * (1 - p_) / p_ - 950000 * 0.01 * (24 / (24 * p_))
+check("expect: value = price after cut, less lost deposits and carrying", abs(ev - want) < 1 and abs(d.p - p_) < 1e-9 and abs(d.days - 1 / p_) < 1e-9)
+check("expect: no sale rate means just the cut", CH.Expect.Value(906, 1000000)[0] == 950000)
+check("expect: carrying cost is a setting", CH.Settings.Model("carry")[1] == "1.00%" and CH.Settings.Model("carry", 2)[1] == "1.50%")
+run("Clearinghouse.Settings.Model('carry', -2)")
+lines = [plain(l[1]) for l in CH.AdvisorUI.ExpectLines(d).values()]
+check("expect: the advisor hover shows each step", any("Deposits lost" in x for x in lines) and any("Gold tied up" in x for x in lines) and lines[-1] == "Expected each")
+check("failed auctions: deposits lost", CH.Expect.LostDeposit(905, 3) == 360000)
+run("STUB.sellThrough = nil")
+
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)
