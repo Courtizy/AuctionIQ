@@ -8,8 +8,8 @@ local frame, rows, status
 local N, W, H = 16, 836, 18
 local offset, sortKey, data = 0, "profit", {}
 
-local COLS = { { "Recipe", 12, 204 }, { "Profit (can make)", 218, 114 }, { "%", 334, 44 }, { "With Conc. (can make)", 380, 130 },
-	{ "Per pt", 512, 46 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
+local COLS = { { "Recipe", 12, 196 }, { "Profit (can make)", 210, 114 }, { "%", 326, 40 }, { "With Conc. (can make)", 368, 128 },
+	{ "Per pt", 498, 60 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
 local SORTS = { profit = "profit per craft", concProfit = "profit with Concentration", perPoint = "gold per Concentration point",
 	perDay = "gold a day", buySave = "how much buying beats crafting" }
 

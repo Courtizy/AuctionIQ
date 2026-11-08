@@ -28,6 +28,44 @@ end
 
 local function color(t, a) return t[1], t[2], t[3], a or 1 end
 
+--- Where each node of a tab sits. The game's own positions when it gives distinct ones; otherwise
+--- (profession trees often report every node at 0,0) a tidy tree: the root on top, each level a row,
+--- leaves spread evenly and each parent centred over its children.
+function TV.Layout(tab, L)
+	local out, seen = {}, {}
+	local distinct = 0
+	for _, id in ipairs(tab.nodes) do
+		local n = L[id]
+		local k = (n.x or 0) .. ":" .. (n.y or 0)
+		if not seen[k] then seen[k] = true; distinct = distinct + 1 end
+	end
+	if distinct == #tab.nodes and distinct > 1 then
+		for _, id in ipairs(tab.nodes) do out[id] = { x = L[id].x, y = L[id].y } end
+		return out
+	end
+	local kids, roots = {}, {}
+	for _, id in ipairs(tab.nodes) do
+		local p = L[id].parent
+		if p and L[p] then kids[p] = kids[p] or {}; table.insert(kids[p], id) else table.insert(roots, id) end
+	end
+	local nextLeaf = 0
+	local function place(id, depth)
+		local c = kids[id]
+		local x
+		if not c or #c == 0 then
+			x = nextLeaf; nextLeaf = nextLeaf + 1
+		else
+			local sum = 0
+			for _, k in ipairs(c) do sum = sum + place(k, depth + 1) end
+			x = sum / #c
+		end
+		out[id] = { x = x, y = depth }
+		return x
+	end
+	for _, r in ipairs(roots) do place(r, 0) end
+	return out
+end
+
 --- A tree view inside parent at x, y, w by h. Returns the view; view:Draw(tree, tabID, marks, prof)
 --- lays out that tab and returns the nodes it drew, for tests.
 function TV.New(parent, x, y, w, h)
@@ -51,6 +89,7 @@ function TV.New(parent, x, y, w, h)
 		b.ring:SetAllPoints()
 		b.rank = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 		b.rank:SetPoint("TOP", b, "BOTTOM", 0, -1)
+		b.rank.aiqOverhang = true -- sits under the node on purpose
 		b.badge = CreateFrame("Frame", nil, b, "BackdropTemplate")
 		b.badge:SetSize(16, 14)
 		b.badge:SetPoint("CENTER", b, "TOPRIGHT", -1, -1)
@@ -84,9 +123,10 @@ function TV.New(parent, x, y, w, h)
 		local drawn = {}
 		if not tab then return drawn end
 		local L = tree.layout
+		local XY = TV.Layout(tab, L)
 		local minX, maxX, minY, maxY
 		for _, id in ipairs(tab.nodes) do
-			local n = L[id]
+			local n = XY[id]
 			minX, maxX = math.min(minX or n.x, n.x), math.max(maxX or n.x, n.x)
 			minY, maxY = math.min(minY or n.y, n.y), math.max(maxY or n.y, n.y)
 		end
@@ -95,8 +135,9 @@ function TV.New(parent, x, y, w, h)
 		local pos, widgets = {}, {}
 		for i, id in ipairs(tab.nodes) do
 			local n = L[id]
-			local px = (sx > 0) and PAD + (n.x - minX) * sx or self.w / 2
-			local py = (sy > 0) and PAD + (n.y - minY) * sy or self.h / 2
+			local xy = XY[id]
+			local px = (sx > 0) and PAD + (xy.x - minX) * sx or self.w / 2
+			local py = (sy > 0) and PAD + (xy.y - minY) * sy or self.h / 2
 			pos[id] = { px, py }
 			local b = nodeWidget(i)
 			widgets[id] = b

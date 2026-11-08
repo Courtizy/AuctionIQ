@@ -101,7 +101,7 @@ function RUI.Build(p, fs, panel)
 	p.head = {}
 	for i, s in ipairs(SPANS) do
 		p.head[i] = fs(box, 194 + (i - 1) * 82, -8, 78, "RIGHT", "GameFontNormal")
-		p.head[i]:SetText(s[1])
+		p.head[i]:SetText((s[1]:gsub("^Last ", "")))
 	end
 	p.lines = {}
 	for i = 1, 5 do
@@ -111,7 +111,7 @@ function RUI.Build(p, fs, panel)
 		p.lines[i] = r
 	end
 	p.note = fs(box, 10, -134, 424, "LEFT", "GameFontDisableSmall")
-	p.note:SetText("Cash profit counts reagents as spent; net worth change counts stock you still hold.")
+	p.note:SetText("Cash profit counts reagents as spent; net worth counts stock held.")
 	if p.note.SetMaxLines then p.note:SetMaxLines(2) end
 	local side = panel(p, 452, 0, 272, 166)
 	p.side = fs(side, 10, -8, 252, "LEFT")

@@ -12,7 +12,7 @@ local X0 = 232
 local function money(c) return c and CH.FormatMoney(c) or CH.Theme.Color("muted", "-") end
 
 local OP_FIELDS = {
-	{ "post", "Post it", "bool" }, { "undercut", "Undercut (copper)", "num", 1 }, { "duration", "Duration (1=12h 2=24h 3=48h)", "num", 1 },
+	{ "post", "Post it", "bool" }, { "undercut", "Undercut (copper)", "num", 1 }, { "duration", "Hours (1=12 2=24 3=48)", "num", 1 },
 	{ "floorPct", "Min, x the floor", "num", 0.05 }, { "maxMult", "Max, x normal", "num", 0.5 }, { "cap", "Keep up (blank = par)", "num", 1 },
 }
 
@@ -78,7 +78,7 @@ function GUI.Build(p, fs, panel)
 	local rebuild = T.Button(tree, "Rebuild", 70, 18)
 	rebuild:SetPoint("TOPLEFT", 6, -6)
 	rebuild:SetScript("OnClick", function() local n = CH.Groups.Rebuild(); CH.Print("groups rebuilt: " .. n .. " items sorted"); CH.UI.Refresh() end)
-	local tsm = T.Button(tree, "TSM groups", 90, 18)
+	local tsm = T.Button(tree, "TSM groups", 110, 18)
 	tsm:SetPoint("TOPLEFT", 82, -6)
 	tsm:SetScript("OnClick", function() local s = CH.Groups.Store(); s.useTSM = not s.useTSM; CH.UI.Refresh() end)
 	p.tsmButton = tsm
@@ -98,8 +98,8 @@ function GUI.Build(p, fs, panel)
 			root:CreateButton("Inherit", function() CH.Groups.Assign(selected, nil); CH.UI.Refresh() end)
 		end)
 	end)
-	local cols = { { "Item", 0, 230 }, { "Min", 234, 88 }, { "Normal", 326, 88 }, { "Max", 418, 88 }, { "Keep up", 510, 54 },
-		{ "Listed", 568, 48 }, { "Operation", 620, 100 } }
+	local cols = { { "Item", 0, 220 }, { "Min", 224, 80 }, { "Normal", 308, 80 }, { "Max", 392, 80 }, { "Keep up", 476, 54 },
+		{ "Listed", 534, 48 }, { "Operation", 586, 78 } } -- 664 wide: right of the group tree
 	for _, c in ipairs(cols) do
 		local h = fs(p, X0 + c[2], -26, c[3], c[2] == 0 and "LEFT" or "RIGHT", "GameFontNormalSmall")
 		h:SetText(c[1])
@@ -109,7 +109,7 @@ function GUI.Build(p, fs, panel)
 		local r = { cells = {} }
 		local hit = CreateFrame("Button", nil, p)
 		hit:SetPoint("TOPLEFT", X0, -42 - (i - 1) * RH)
-		hit:SetSize(724, RH)
+		hit:SetSize(664, RH)
 		if hit.RegisterForClicks then hit:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
 		hit:SetScript("OnClick", function(self, button) if self.id and button == "RightButton" then moveMenu(self, self.id) end end)
 		hit:SetScript("OnEnter", function(self)
@@ -124,7 +124,7 @@ function GUI.Build(p, fs, panel)
 	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); CH.UI.Refresh() end)
 
 	-- operation settings for the selected group's operation
-	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 400, "LEFT", "GameFontNormal")
+	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 664, "LEFT", "GameFontNormal")
 	p.opFields = {}
 	for i, f in ipairs(OP_FIELDS) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
@@ -181,7 +181,7 @@ function GUI.Refresh()
 	name = name or "Default"
 	if p.opButton.text then p.opButton.text:SetText("Operation: " .. name) end
 	local op = s.ops[name]
-	p.opTitle:SetText("Operation " .. T.Color("accent", name) .. T.Color("muted", "  (shared by every group using it; min's floor: " .. (op.floor or "market") .. ")"))
+	p.opTitle:SetText("Operation " .. T.Color("accent", name) .. T.Color("muted", "  (shared by its groups; floor: " .. (op.floor or "market") .. ")"))
 	for _, e in ipairs(p.opFields) do
 		local v = op[e.f[1]]
 		if e.f[3] == "bool" then e.val:SetText(v ~= false and T.Color("ok", "yes") or T.Color("bad", "no"))
