@@ -62,7 +62,7 @@ function Next.List(now)
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
-				add({ title = "Below par", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
+				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
 					gold = e.value, tier = 2, go = { "analytics", "par" } })
 			end
 		end

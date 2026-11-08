@@ -13,11 +13,11 @@ One window, six tabs:
 
 | Tab | What it answers |
 |-----|-----------------|
-| Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below par, reposts). Click a card to go where the work is. The activity log is one click away. |
+| Today | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. The activity log is one click away. |
 | Markets | Market prices from the Clearinghouse app (now, 7-day average, change, listings), competition, when items sell. |
 | Crafting | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and buttons for Scan, Paths, Queue, Results and the advisor. |
 | Trading | Groups, operations and mail routes. |
-| Analytics | Par levels, dead stock, gold per hour. |
+| Analytics | Stock targets, dead stock, gold per hour. |
 | Clearinghouse | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions, profit by product, holdings, overhead, CSV export. |
 
 `/aiq today`, `markets`, `crafting`, `trading`, `analytics` and `ledger` open a tab; `/aiq report` opens the Report.
@@ -123,7 +123,7 @@ The code is split into one folder per component, each with its own `comp:` label
 | `Today/` | The opening page: what to do next |
 | `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
 | `Trading/` | Groups and operations, posting and cancelling, mail |
-| `Analytics/` | Par levels; forecast vs actual lands here |
+| `Analytics/` | Stock targets (Par.lua); forecast vs actual lands here |
 | `Clearinghouse/` | The ledger tab and reports |
 | `companion/` | The Clearinghouse desktop app and its addon (not packaged with AuctionIQ) |
 

@@ -209,7 +209,7 @@ function Q.FillPlan(profID, opts)
 		return results[id]
 	end
 	local function demand(r, itemID)
-		-- up to your par level when the item has one (counting stock on every character), else a day's sales
+		-- up to your stock target when the item has one (counting stock on every character), else a day's sales
 		local par = CH.Par and itemID and CH.Par.Target(itemID)
 		local units = par or CH.Scan.DailyUnits(itemID)
 		local held = par and CH.Par.Held(itemID) or have(itemID or 0)

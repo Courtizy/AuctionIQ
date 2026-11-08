@@ -1,6 +1,6 @@
--- Par levels: how many of each item you want on hand across your characters. By default a week of
--- what you actually sold (from TSM's sales), or a number you set. The Queue's Fill crafts up to par,
--- the Ledger's Par levels view and the briefing show what's short.
+-- Stock targets (internally "par"): how many of each item you want on hand across your characters. By default a week of
+-- what you actually sold (from TSM's sales), or a number you set. The Queue's Fill crafts up to the target,
+-- the Analytics Stock targets view and the briefing show what's short.
 local _, CH = ...
 
 local Par = {}

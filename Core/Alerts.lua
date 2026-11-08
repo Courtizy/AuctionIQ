@@ -41,7 +41,7 @@ function Al.Check(now)
 	if CH.Ledger and CH.Ledger.Available() then
 		-- sold out: an item you keep at par with none left
 		for _, e in ipairs(CH.Par.List(now)) do
-			if e.held == 0 and e.weekly > 0 then add("out:" .. e.id, (CH.LedgerUI and select(2, CH.LedgerUI.ItemText(e.id)) or e.id) .. " sold out (par " .. e.target .. ")") end
+			if e.held == 0 and e.weekly > 0 then add("out:" .. e.id, (CH.LedgerUI and select(2, CH.LedgerUI.ItemText(e.id)) or e.id) .. " sold out (target " .. e.target .. ")") end
 		end
 		-- price jumps on what you hold
 		for _, e in ipairs(CH.Ledger.Inventory()) do

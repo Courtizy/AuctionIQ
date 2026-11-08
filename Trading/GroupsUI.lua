@@ -13,7 +13,7 @@ local function money(c) return c and CH.FormatMoney(c) or CH.Theme.Color("muted"
 
 local OP_FIELDS = {
 	{ "post", "Post it", "bool" }, { "undercut", "Undercut", "num", 100 }, { "duration", "Hours (1=12 2=24 3=48)", "num", 1 },
-	{ "cap", "Post cap (blank = par)", "num", 1 }, { "keepQuantity", "Keep in bags", "num", 1 }, { "maxExpires", "Max expires (0 = off)", "num", 1 },
+	{ "cap", "Post cap (blank = target)", "num", 1 }, { "keepQuantity", "Keep in bags", "num", 1 }, { "maxExpires", "Max expires (0 = off)", "num", 1 },
 	{ "learn", "Learn from sales", "bool" }, { "floorPct", "Min, x the floor", "num", 0.05 }, { "maxMult", "Max, x normal", "num", 0.5 },
 }
 -- Price formulas (TSM's syntax, see Formula.lua); blank = the floor and multipliers above.
@@ -238,7 +238,7 @@ function GUI.Refresh()
 		local v = op[e.f[1]]
 		if e.f[1] == "learn" then e.val:SetText(v and T.Color("ok", "yes") or T.Color("muted", "no"))
 		elseif e.f[3] == "bool" then e.val:SetText(v ~= false and T.Color("ok", "yes") or T.Color("bad", "no"))
-		elseif e.f[1] == "cap" and not v then e.val:SetText("par")
+		elseif e.f[1] == "cap" and not v then e.val:SetText("target")
 		elseif e.f[1] == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and CH.FormatMoney(v) or (v .. "c"))
 		else e.val:SetText(tostring(v or 0)) end
 	end

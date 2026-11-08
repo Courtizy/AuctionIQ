@@ -213,7 +213,7 @@ function SUI.Refresh()
 		local k = e.f[1]
 		if e.f[3] == "num" then
 			local v = S.OpValue(selected, k)
-			if k == "cap" and v == 0 then e.val:SetText("par")
+			if k == "cap" and v == 0 then e.val:SetText("target")
 			elseif k == "maxExpires" and v == 0 then e.val:SetText("off")
 			elseif k == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and CH.FormatMoney(v, true) or (v .. "c"))
 			elseif type(v) == "string" then e.val:SetText("formula")
