@@ -7,6 +7,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from clearinghouse_app.auth import KeysAuth
 from clearinghouse_app.blizzard import Blizzard
 from clearinghouse_app.config import Settings
 from clearinghouse_app.store import Store
@@ -18,9 +19,10 @@ if not cid or not secret:
     sys.exit(0)
 with tempfile.TemporaryDirectory() as d:
     settings = Settings(region="us", realm="Emerald Dream")
-    syncer = Syncer(Store(Path(d) / "h.sqlite"), lambda: Blizzard(cid, secret, "us"))
+    syncer = Syncer(Store(Path(d) / "h.sqlite"), lambda: Blizzard(KeysAuth(cid, secret), "us"))
     res = syncer.run(settings, Path(d) / "Clearinghouse")
     print(res.message)
+    print(f"{len(Blizzard(KeysAuth(cid, secret), 'us').realms())} US realms in the realm picker")
     if not res.ok:
         sys.exit(1)
     size = (Path(d) / "Clearinghouse" / "Data.lua").stat().st_size

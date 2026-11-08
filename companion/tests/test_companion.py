@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from clearinghouse_app import export
+from clearinghouse_app.auth import ServerAuth
 from clearinghouse_app.blizzard import Blizzard, BlizzardError, Fetched, realm_slug, summarize
 from clearinghouse_app.config import Settings
 from clearinghouse_app.store import Store
@@ -31,9 +32,11 @@ def test_summarize_market_is_cheapest_15_percent():
     assert 3 not in s
 
 
-def test_blizzard_needs_keys():
+def test_blizzard_needs_a_login():
     with pytest.raises(BlizzardError):
-        Blizzard("", "", "us")
+        Blizzard(None, "us")
+    with pytest.raises(BlizzardError):
+        ServerAuth("https://x", "")
 
 
 def test_store_stats_history(tmp_path):
