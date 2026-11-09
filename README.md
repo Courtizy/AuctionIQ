@@ -19,169 +19,89 @@ makes you a better goblin.
 
 ---
 
-## Features
+One window, four tabs. Open it with `/aiq`, the minimap button or the addon compartment.
 
-- One window, four tabs: Dashboard, Research, Operations and Accounting. Research and Operations have sub-tabs across the top
-- Tooltips on every item: the value after the 5% cut, the price to buy it, and the profit of crafting it
-- A crafting advisor that works out profit the way CraftSim does, Concentration included
-- Work orders and first crafts priced up, with the ones that give a knowledge point marked 1KP
-- Every learned recipe ranked by profit, gold per Concentration point, or gold a day
-- Knowledge point plans drawn on the profession's own trees
-- A craft queue, with a shopping list priced by walking the AH listings
-- Prices compared three ways: your AH scans, TSM and Oribos Exchange
-- Stock targets, dead stock and gold per hour
-- A full ledger of sales, purchases, failed auctions and profit by product, with CSV export
-- …and more!
+## <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> Dashboard
 
-## Required AddOns
+What needs attention now.
 
-- [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master): prices and accounting. Without it, AuctionIQ still tracks gold and Concentration.
+- Four figures across the top: available gold, inventory value, queued crafts (with how many are
+  ready or short of reagents) and professions at full Concentration. Each one opens its page.
+- The gold chart.
+- A ranked **Do next** list: full Concentration, ready cooldowns, post-now windows, mail, restock,
+  items below their stock target and reposts. Click a card to go where the work is.
 
-## Supported AddOns
+## <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> Research
 
-- [Oribos Exchange](https://www.curseforge.com/wow/addons/oribos-exchange): a second opinion on realm and region prices in Compare prices and the tooltip.
+What to do, and why. Three sub-tabs across the top.
 
-## Installation
-
-1. Download the zip: from [Releases](https://github.com/Courtizy/AuctionIQ/releases) once there is one,
-   or for now **Code > Download ZIP** on this page.
-2. Unzip it into `World of Warcraft\_retail_\Interface\AddOns` and name the folder `AuctionIQ`
-   (a Download ZIP folder is called `AuctionIQ-main`; rename it).
-3. Install TradeSkillMaster if you don't have it.
-4. Log in and open each profession window once, so AuctionIQ learns your recipes.
-5. Type `/aiq` to open the window.
-
-
----
-
-## The window
-
-| Tab | What it answers |
-|-----|-----------------|
-| **Dashboard** | What needs attention now: four figures across the top (available gold, inventory value, queued crafts with how many are ready or short of reagents, professions at full Concentration; each opens its page), the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
-| **Research** | What to do, and why. **Markets:** compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. **Professions:** the weekly knowledge plan, a plan comparison (each recipe's quality, profit and gold a day now against your saved Paths plans), what's coming up, best crafts and Concentration, and the Scan, Paths, Queue and advisor windows. **Performance:** profit by line and character against the period before, profit drivers (price, volume or cost), forecast accuracy, capital efficiency, crafting efficiency (gold per Concentration point and crafting hour, procs against expected), scenarios (reagents up, prices down, break-even; both settable), gold per hour and craft results. |
-| **Operations** | The work planned or underway. **Work queue:** the execution plan (every craft, post and mail trip waiting, with its status and the window to do it at), the craft queue on every character with what holds each up, and the shopping list for it. **Inventory:** Ready to post (with EV and RZ beside the price), stock targets (a week of demand at a 90% service level, both settable) and dead stock. **Rules & routes:** what to mail to which character, including reagents for crafts queued elsewhere, and Groups and rules (opens Settings). The AH, profession and mailbox windows carry the work out. |
-| **Accounting** | The books, in plum and parchment: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
-
-Open it with `/aiq`, the minimap button or the addon compartment. The crafting tools (Advisor, Scan,
-Paths, Queue) dock to the right of the profession window. Drag them off to float them, and
-Dock on the tab row puts them back. Only one shows at a time, and the queue can pop out to stay
-under them while you work.
-
-## Crafting
-
-<details open>
-<summary><b>Crafting advisor</b>: every result quality, its cheapest reagents and its profit</summary>
-
-For the selected recipe, every result quality with its cheapest reagents, the profit, and with
-Concentration the cost in points and the gold each point earns. It marks the best profit and the
-best use of Concentration, worked out the same way CraftSim does:
-
-- profit is the average per craft, counting Multicraft's extra items and the reagents
-  Resourcefulness saves
-- an item is valued at what you can expect to get for it: the price after the cut, less the
-  deposits you'll lose to expiries before it sells and the cost of gold tied up meanwhile (1% a
-  day by default). How often it sells starts from the region's sale rate and moves toward your
-  own record as you post
-- Concentration's cost counts Ingenuity refunds, with your specialization's bonuses to them
-- finishing reagents: every combination is tried and the best is used, with whether to use the
-  ones you have or buy them
-- crafting orders (commission and patron rewards against your reagents, the customer's minimum
-  quality) and recrafts (the better item less the one you have)
-- top gear: whether another profession tool or accessory in your bags would earn more, with an
-  Equip button
-- Simulate: see the numbers with more skill, or with a knowledge point plan from Paths
-
-</details>
-
-<details>
-<summary><b>Recipe scan, work orders and first crafts</b></summary>
-
-`/aiq scan`, or the Scan tab. Click any column header to sort by it, and again to flip.
-
-- **Recipes**: every learned recipe ranked by profit per craft, gold per Concentration point, or
-  gold a day (profit times what the region sells, up to your daily cap).
-- **Work orders**: every order the game has shown you (search Patron and Personal on the Crafting
-  Orders tab first) with the commission after the consortium's cut, the rewards (valued after the
-  cut when they sell), the reagents you'd supply and the profit. Orders whose reward gives a
-  knowledge point are marked **1KP**.
-- **First crafts**: recipes that still give their first-craft knowledge point, at their cheapest
-  reagents, with what the point costs you after selling what it makes.
-
-Click a row to open it, shift-click to queue it. Queue all queues every order that pays or gives
-knowledge, or every first craft. On Work orders, **Claim next** walks the orders one click at a
-time: claim the order, craft it with the advisor's reagents, turn it in, then on to the next. If
-the game refuses a claim or a turn-in, the order goes back to that step.
-
-</details>
-
-<details>
-<summary><b>Profession paths</b>: a knowledge point plan for what you want to sell</summary>
-
-`/aiq plan potions`, or the Paths tab. Type what you want to sell and get a plan for the open
-profession, node by node, with the gold a day each step adds and which recipes it improves. The plan
-is drawn on the profession's own trees in the Paths tab, and marked with step badges on the game's
-Specializations tab. All eight crafting professions, from Blizzard's own game data. Each profession
-has its own goal groups (Enchants, Gems, Garments, Weapons...), and Enchanting has a
-**Disenchanting** goal: it plans the Disenchanting tree for a bigger share of rank 2 dust, shards and
-crystals. AuctionIQ records what your disenchants really give, so the plan uses your own amounts
-and rank 2 share from the last two weeks (`/aiq de 40 8 2` sets them by hand, `/aiq de auto` goes back).
-
-</details>
-
-<details>
-<summary><b>Craft queue and shopping list</b></summary>
-
-`/aiq queue`, or Queue on the advisor. Click an advisor row to queue one, shift-click to queue as
-many as you can make. Fill queues the open profession's five best crafts. Craft makes the queued
-crafts with the advisor's reagents and Concentration, and finished crafts come off the queue.
-
-The shopping list totals the reagents for the whole warband's queue against what you have, and
-prices what's left by walking the listings: buying 200 of a reagent costs what the cheapest 200
-listed cost, not 200 times the cheapest one. It uses your AH search from the last 15 minutes, else
-the last AH scan saved for that item, else `chmat`. Hover a cost to see how far above the cheapest
-listing it is.
-
-At the auction house, **Shop queue** in the Auctioning panel searches each reagent the queue still
-needs and skips any more than 25% over its usual price. **Buy** gets the AH's quote, **Confirm** buys
-it, and the row is done once the AH says the purchase went through.
-
-Crafts queued on another character get their reagents by mail: at the mailbox, Send mails each
-crafter only what they're short (their queued crafts' needs less what they and the Warband bank
-hold), splitting a stack when they need part of it. Operations, To mail lists the same.
-
-</details>
-
-<details>
-<summary><b>Craft results and cooldowns</b></summary>
-
-`/aiq results` opens Craft results in Research, Performance: what each character's crafts really gave
-(Multicraft, Resourcefulness, Ingenuity, output at market) against what the advisor expected.
-`/aiq results clear` empties this character's log. Cooldowns across the warband are in the report.
-
-</details>
-
-## Markets
-
-- **Compare prices**: every item you hold, sold this month, need for the queue or searched at the
-  AH today, priced three ways side by side: your last AH scan (Blizzard's live data, saved whenever
-  you, AuctionIQ or TSM search the AH), TSM's realm value and Oribos Exchange's. Gap is the scan
-  against the other two. 15% under reads *cheap now*, 15% over reads *pricey now*, and TSM and
-  Oribos more than 25% apart reads *disagree*. Region averages are shown for reference.
+**Markets**
+- **Compare prices**: every item you hold, sold this month, need for the queue or searched at the AH
+  today, priced three ways side by side: your last AH scan (saved whenever you, AuctionIQ or TSM search
+  the AH), TSM's realm value and Oribos Exchange's. 15% under reads *cheap now*, 15% over reads
+  *pricey now*, and TSM and Oribos more than 25% apart reads *disagree*.
 - **Market prices**: now, the 7-day average, the trend and listings for what you hold or sold.
 - **Competition**: who undercuts you and how often, from your post scans.
 - **When it sells**: the day and hours your sales cluster in, and when to post by.
 
-## Accounting, the books
+**Professions**
+- **Knowledge**: the weekly knowledge plan, what's coming up, best crafts and Concentration.
+- **Plan comparison**: each recipe's quality, profit and gold a day now against your saved plans.
+- The crafting tools dock to the right of the profession window (drag one off to float it, Dock puts
+  it back):
+  - **Advisor**: every result quality with its cheapest reagents and its average profit, worked out
+    the way CraftSim does (Multicraft, Resourcefulness, Ingenuity and Concentration included, every
+    finishing reagent combination tried). It covers crafting orders (commission and patron rewards
+    against your reagents, the customer's minimum quality), recrafts, and whether other profession
+    gear in your bags would earn more. Simulate shows the numbers with more skill or with a plan.
+  - **Scan**: every learned recipe ranked by profit per craft, gold per Concentration point or gold a
+    day; every work order the game has shown you, priced, with knowledge-point rewards marked
+    **1KP**; and the first crafts that still give a knowledge point, with what the point costs.
+  - **Paths**: type what you want to sell (`/aiq plan potions`) and get a knowledge point plan, node
+    by node, drawn on the profession's own trees, for all eight crafting professions. Enchanting's
+    **Disenchanting** goal uses what your own disenchants really give.
 
-The books: sales, purchases, income, expenses, expired and cancelled auctions (with the deposits
-each one cost), inventory, and the Goblin CFO views (profit by product, holdings, overhead). It reads
-TradeSkillMaster's accounting and never writes to it.
+**Performance**
+- Profit by line and character against the period before, and what moved it (price, volume or cost).
+- Forecast accuracy, capital efficiency, and crafting efficiency (gold per Concentration point and
+  per crafting hour, procs against expected).
+- Scenarios: reagents up, prices down and break-even, both settable (`/aiq scenario 10 10`).
+- Gold per hour and craft results (what each character's crafts really gave against the advisor).
 
-The **Report** opens with the last 7, 30 and 90 days side by side (sales after the cut, purchases,
-overhead, cash profit, net worth change), the top sellers and crafted profit by product line, then
-the daily rundown (last 24 hours, mail, what to post, restock, cooldowns). `/aiq report` opens it.
-**Export** turns the table you're looking at, with its filters, into CSV text to copy out.
+## <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> Operations
+
+The work planned or underway. Three sub-tabs across the top.
+
+**Work queue**
+- **Execution plan**: every craft, post and mail trip waiting, with its status and where to do it.
+- **Craft queue**: on every character, with what holds each craft up. Click an advisor row to queue
+  one, shift-click to queue as many as you can make. Craft uses the advisor's reagents and
+  Concentration, and finished crafts come off the queue. Orders go claim, craft, turn in, one click
+  at a time.
+- **Shopping list**: the warband's queue against what you hold, priced by walking the AH listings
+  (200 of a reagent costs what the cheapest 200 listed cost). At the AH, **Shop queue** searches each
+  reagent and skips any more than 25% over its usual price.
+
+**Inventory**
+- **Ready to post**, with EV (what one is worth to you at this price) and RZ (what you have really sold it for) beside the price.
+- **Stock targets**: a week of demand at a 90% service level, both settable.
+- **Dead stock**: what isn't selling.
+
+**Rules & routes**
+- **To mail**: what goes to which character, including reagents for crafts queued elsewhere. At the
+  mailbox, Send mails each crafter only what they're short.
+- **Groups and rules**: which items AuctionIQ posts, buys or mails, and how.
+
+## <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> Accounting
+
+The books, in plum and parchment. It reads TradeSkillMaster's accounting and never writes to it.
+
+- The **Report**: the last 7, 30 and 90 days side by side (sales after the cut, purchases, overhead,
+  cash profit, net worth change), the top sellers, crafted profit by product line, and the daily
+  rundown. `/aiq report` opens it.
+- Inventory, revenue, expenses, and failed auctions with the deposits they cost.
+- Profit by product, holdings and overhead.
+- **Export** turns the table you're looking at, with its filters, into CSV text to copy out.
 
 ## Prices
 
@@ -196,6 +116,27 @@ Add them to TSM as custom sources (`/tsm` > Settings > Custom Sources) to use th
 operations. If you don't, AuctionIQ passes the formulas to TSM itself, so the numbers match. Craft
 cost is TSM's own `crafting` price.
 
+## Required AddOns
+
+None.
+
+## Supported AddOns
+
+- [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master): prices and accounting.
+  Without it, AuctionIQ still tracks gold, Concentration and your own AH scans, but item values,
+  profits and the books are off.
+- [Oribos Exchange](https://www.curseforge.com/wow/addons/oribos-exchange): a second opinion on realm
+  and region prices in Compare prices and the tooltip.
+
+## Install
+
+1. Download the zip: from [Releases](https://github.com/Courtizy/AuctionIQ/releases) once there is one,
+   or for now **Code > Download ZIP** on this page.
+2. Unzip it into `World of Warcraft\_retail_\Interface\AddOns` and name the folder `AuctionIQ`
+   (a Download ZIP folder is called `AuctionIQ-main`; rename it).
+3. Log in and open each profession window once, so AuctionIQ learns your recipes.
+4. Type `/aiq` to open the window.
+
 ## Chat Commands
 
 `/aiq` - open or close the main window<br>
@@ -205,7 +146,8 @@ cost is TSM's own `crafting` price.
 `/aiq queue` - craft queue and shopping list<br>
 `/aiq scan` - rank every recipe of the open profession<br>
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
-`/aiq results` - what your crafts really gave<br>
+`/aiq results` - what your crafts really gave (`/aiq results clear` empties this character's log)<br>
+`/aiq scenario <reagents%> <price%>` - set the Scenarios view<br>
 `/aiq cap <n>` - most of one item you'd sell a day, for gold a day _(default 10)_<br>
 `/aiq de` - what Disenchanting plans count a day; `/aiq de 40 8 2` sets it by hand, `/aiq de auto` uses what you really disenchant _(the default)_<br>
 `/aiq tooltip` - tooltip lines on or off<br>
@@ -221,21 +163,11 @@ The plan lives in [GitHub milestones](https://github.com/Courtizy/AuctionIQ/mile
 
 ## Development
 
-Plain Lua, no libraries.
-
-### Tests
-
-`python3 tests/run_tests.py` (needs `pip install lupa`) loads the addon in a stubbed WoW environment
-and checks prices, tooltips, profession tracking, the views and the layout. It runs on every pull
-request.
-
-### Releases
-
-Tagging `v*` builds a release with the BigWigs packager.
+Plain Lua, no libraries. `AuctionIQ.toc` sets the load order: Core and Data first, then the tabs that use them. The look is described in [THEME.md](THEME.md).
 
 ### Code layout
 
-One folder per component, each with its own `comp:` label on GitHub:
+One folder per tab, plus Core and Data underneath them:
 
 | Folder | What it owns |
 | --- | --- |
@@ -246,10 +178,18 @@ One folder per component, each with its own `comp:` label on GitHub:
 | `Operations/` | The Operations tab: work queue and shopping, crafting orders, cooldowns, groups and operations, posting and cancelling, mail, stock targets |
 | `Accounting/` | The Accounting tab (the ledger) and reports |
 
-Media/ holds the icon, logo and tab art; tests/ and tools/ are for development and aren't packaged.
+Media/ holds the icon, logo and tab art (Media/readme has PNG copies of the tab symbols for this page); tests/ and tools/ are for development and aren't packaged.
 
-`AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them. The
-look is described in [THEME.md](THEME.md).
+## Tests
+
+`python3 tests/run_tests.py` (needs `pip install lupa`) loads the addon in a stubbed WoW environment
+and checks prices, tooltips, profession tracking, the views and the layout (nothing spills out of its
+panel or gets cut off). It runs on every pull request.
+
+## Releases
+
+Tagging `v*` builds a release with the BigWigs packager. `tests/`, `tools/` and the README are left
+out of the package.
 
 ## License
 

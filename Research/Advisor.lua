@@ -317,7 +317,11 @@ end
 
 -- One pass: cheapest reagents for each quality with this finishing set. live asks the game for
 -- quality and Concentration; otherwise the model works them out from skill (for simulations).
+-- Long work (a scan) can pause here and pick up next frame, so one heavy recipe can't freeze the game.
+local function yield() local s = CH.Scan; if s and s.Yield then s.Yield() end end
+
 local function build(model, delta, fin, live)
+	yield()
 	local stats = St().Add(St().Copy(model.stats0), delta)
 	for _, f in ipairs(fin) do
 		St().Add(stats, f.delta)
@@ -433,38 +437,42 @@ local function slotMixes(model, i)
 end
 
 --- The exact cheapest reagent mix for each quality the model can reach, from skill (picks[i][q]).
---- A knapsack over slots: best[s] = cheapest cost reaching s skill points (rounded down, so a mix is
---- never thought to reach more than it does), with a back-pointer per slot to rebuild the mix.
+--- Slot by slot, it keeps every (skill, cost) state that some cheaper state doesn't beat on skill:
+--- skill is kept exact (fractions too, since the game adds every slot's share before rounding the
+--- total), and a state is dropped only when another reaches at least as much skill for no more gold.
 function A.Cheapest(model, base)
 	if not model.perUnit or #model.qual == 0 then return {} end
-	local best, back = { [0] = 0 }, {}
+	local states = { { s = 0, c = 0 } }
 	for i = 1, #model.qual do
 		local mixes = slotMixes(model, i)
 		if #mixes == 0 then return {} end
-		local nxt, bk = {}, {}
-		for s0, c0 in pairs(best) do
-			for j, m in ipairs(mixes) do
-				local s1 = s0 + math.floor(m[1] + 1e-6)
-				local c1 = c0 + m[2]
-				if not nxt[s1] or c1 < nxt[s1] then nxt[s1] = c1; bk[s1] = { s0, j, m[3] } end
+		local nxt = {}
+		for _, st in ipairs(states) do
+			for _, m in ipairs(mixes) do
+				nxt[#nxt + 1] = { s = st.s + m[1], c = st.c + m[2], prev = st, row = m[3] }
 			end
 		end
-		best, back[i] = nxt, bk
+		-- the frontier: most skill first, cheaper first on ties; keep each state cheaper than all above it
+		table.sort(nxt, function(x, y) if math.abs(x.s - y.s) > 1e-9 then return x.s > y.s end return x.c < y.c end)
+		states = {}
+		local cheapest = math.huge
+		for _, st in ipairs(nxt) do
+			if st.c < cheapest - 1e-9 then states[#states + 1] = st; cheapest = st.c end
+		end
 	end
 	local out = {}
 	for k = 1, model.maxQ do
-		local need = k == 1 and -math.huge or (model.thresholds[k] or math.huge) - 1e-6
-		local pick, pc
-		for sk, c in pairs(best) do
-			if (base or 0) + sk >= need and (not pc or c < pc) then pick, pc = sk, c end
+		local need = k == 1 and -math.huge or (model.thresholds[k] or math.huge)
+		local pick
+		for _, st in ipairs(states) do
+			if math.floor((base or 0) + st.s + 1e-6) >= need and (not pick or st.c < pick.c) then pick = st end
 		end
 		if pick then
-			local picks, sk = {}, pick
+			local picks, st = {}, pick
 			for i = #model.qual, 1, -1 do
-				local b = back[i][sk]
 				local row = {}
-				for q, n in pairs(b[3]) do row[q] = n end
-				picks[i], sk = row, b[1]
+				for q, n in pairs(st.row) do row[q] = n end
+				picks[i], st = row, st.prev
 			end
 			out[#out + 1] = picks
 		end

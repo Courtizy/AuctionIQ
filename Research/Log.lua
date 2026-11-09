@@ -17,22 +17,38 @@ end
 local function price(kind, id) return id and CH.Prices.Get(kind, "i:" .. id) end
 
 -- The reagents a craft really used ({ itemID, quantity } infos from CraftRecipe), priced at chmat,
--- plus the fixed reagents the advisor knows about. nil when a reagent has no price.
-local function usedCost(r, reagents)
+-- plus the fixed reagents the advisor knows about. On a crafting order the slots the customer
+-- filled (provided) cost you nothing and are left out. nil when a reagent has no price.
+local function usedCost(r, reagents, provided)
 	if type(reagents) ~= "table" or not r then return nil end
+	provided = provided or {}
 	local total = 0
 	for _, x in ipairs(reagents) do
 		local id = x.itemID or (x.reagent and x.reagent.itemID)
-		local p = price("chmat", id)
-		if id and not p then return nil end
-		total = total + (p or 0) * (x.quantity or 0)
+		local slot = x.dataSlotIndex or (x.reagentInfo and x.reagentInfo.dataSlotIndex)
+		if not (slot and provided[slot]) then
+			local p = price("chmat", id)
+			if id and not p then return nil end
+			total = total + (p or 0) * (x.quantity or 0)
+		end
 	end
 	for _, slot in ipairs(r.fixed or {}) do
-		local p = price("chmat", slot.items and slot.items[1])
-		if not p then return nil end
-		total = total + p * (slot.qty or 0)
+		if not provided[slot.index] then
+			local p = price("chmat", slot.items and slot.items[1])
+			if not p then return nil end
+			total = total + p * (slot.qty or 0)
+		end
 	end
 	return total
+end
+
+-- The order a craft fills: { commission, rewards, providedSlots } from the advisor's order, else
+-- from the game's live order. nil when the craft isn't for an order, or the order can't be found.
+local function orderFor(r, orderID)
+	if r and r.order and (orderID == nil or CH.Orders.Same(r.order.orderID, orderID)) then return r.order end
+	if orderID == nil or not CH.Orders then return nil end
+	local live = CH.Orders.Live and CH.Orders.Live(orderID)
+	return live and CH.Orders.FromOrder(live) or { orderID = orderID }
 end
 
 -- The advisor row these reagents match (same units of each quality in each slot), if any.
@@ -67,11 +83,16 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		if type(reagents) == "table" and #reagents > 0 then row = matchRow(r, reagents, concentrate)
 		else row = concentrate and r.bestConc or r.best end
 	end
-	local cost = row and row.cost or usedCost(r, reagents)
+	local order = orderFor(r, orderID)
+	-- an advisor row priced for a different order (or for the AH) isn't this craft's cost
+	if row and order and not r.order then row = nil end
+	local cost = row and row.cost or usedCost(r, reagents, order and order.providedSlots)
 	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
 		expected = row and row.profit, cost = cost, mc = row and row.parts and row.parts.mc,
 		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
-		order = (orderID ~= nil) or (r and r.order ~= nil) or nil }
+		order = order and true or nil,
+		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
+		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil }
 end
 
 --- The craft just started, as logged (for tests and the results window).
@@ -93,8 +114,20 @@ function Lg.Result(data)
 	e.items = e.items + qty
 	local extra = data.multicraft or 0
 	if extra > 0 then e.mcProcs = e.mcProcs + 1; e.extraItems = e.extraItems + extra end
-	local unit = price("chvalue", data.itemID)
-	if unit then e.value = e.value + unit * CH.AH_CUT * qty end
+	-- An order's item goes to the customer, so what it made is the order's pay, once per order,
+	-- not the item at market. Kept apart too, so you can see what orders brought in.
+	local order = pending and pending.order
+	local income
+	if order then
+		income = pending.orderIncome or 0
+		pending.orderIncome = nil -- paid once, even when the game reports the craft in parts
+		e.orderCrafts = (e.orderCrafts or 0) + 1
+		e.orderIncome = (e.orderIncome or 0) + income
+	else
+		local unit = price("chvalue", data.itemID)
+		income = unit and unit * CH.AH_CUT * qty
+	end
+	if income then e.value = e.value + income end
 	local saved = 0
 	for _, r in ipairs(data.resourcesReturned or {}) do
 		local p = price("chmat", r.itemID)
@@ -107,7 +140,7 @@ function Lg.Result(data)
 	e.concSpent = e.concSpent + (data.concentrationSpent or 0)
 	-- what the Concentration crafts alone made (output at market + saved - reagents), for gold per point
 	if (data.concentrationSpent or 0) > 0 then
-		e.concGold = (e.concGold or 0) + (unit and unit * CH.AH_CUT * qty or 0) + saved - (pending and pending.cost or 0)
+		e.concGold = (e.concGold or 0) + (income or 0) + saved - (pending and pending.cost or 0)
 	end
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
 	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)

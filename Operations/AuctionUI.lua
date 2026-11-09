@@ -243,11 +243,17 @@ function AUI.DecideBuy(s, results)
 	local usual = CH.Prices.Get("chmat", "i:" .. s.itemID)
 	local why = string.format("need %d, have %d", s.need, s.have)
 	if not d or d.source ~= "ah" then return { action = "skip", qty = s.buy, why = "no listings on the AH" } end
-	if d.short > 0 then why = why .. string.format(", only %d listed", s.buy - d.short) end
+	-- only what's listed can be bought: price that, and keep the shortage apart
+	local short = d.short
+	if short > 0 then
+		why = why .. string.format(", only %d listed", s.buy - short)
+		if s.buy - short <= 0 then return { action = "skip", qty = s.buy, short = short, why = "none listed" } end
+		d = CH.Depth.Cost(s.itemID, s.buy - short)
+	end
 	if usual and d.unit > usual * AUI.SHOP_OVER then
 		return { action = "skip", qty = s.buy, unit = d.unit, why = string.format("%d%% over the usual %s", math.floor((d.unit / usual - 1) * 100 + 0.5), money(usual)) }
 	end
-	return { action = "buy", qty = s.buy - d.short, unit = d.unit, cost = d.cost, why = why }
+	return { action = "buy", qty = s.buy - short, unit = d.unit, cost = d.cost, short = short > 0 and short or nil, why = why }
 end
 
 function AUI.ShopScan()
@@ -265,9 +271,13 @@ function AUI.ShopScan()
 		table.insert(plan, { id = id, d = AUI.DecideBuy(byID[id], results) })
 	end, function()
 		table.sort(plan, function(a, b) return (a.d.action == "buy" and 0 or 1) < (b.d.action == "buy" and 0 or 1) end)
-		local n, total = 0, 0
-		for _, e in ipairs(plan) do if e.d.action == "buy" then n, total = n + 1, total + (e.d.cost or 0) end end
-		status:SetText(string.format("%d to buy for about %s. Press Buy for a quote, then Confirm.", n, money(total)))
+		local n, total, short = 0, 0, 0
+		for _, e in ipairs(plan) do
+			if e.d.action == "buy" then n, total = n + 1, total + (e.d.cost or 0) end
+			if e.d.short then short = short + 1 end
+		end
+		status:SetText(string.format("%d to buy for about %s. Press Buy for a quote, then Confirm.", n, money(total))
+			.. (short > 0 and CH.Theme.Color("bad", string.format("  %d reagent%s not fully listed: still short after buying.", short, short == 1 and " is" or "s are")) or ""))
 	end)
 end
 

@@ -39,6 +39,7 @@ local function accounts(result, r)
 	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
 		made = result.made, unit = r.unit, sales = r.value, cost = r.cost, extraItems = (p.mc or 0) * (p.extraItems or 0),
 		mcGold = p.mcGold, resGold = p.resGold, profit = r.profit, reagents = reagents,
+		deposit = r.ev and r.ev.deposits, -- deposits lost to expiries, per item sold: they don't move with the price
 		queue = ok and e and e.reagents or nil } -- the reagents by slot, to queue this craft without the profession open
 end
 Sc.Accounts = accounts
@@ -128,7 +129,24 @@ function Sc.Recipes()
 	return out
 end
 
---- Scan the open profession. onStep(done, total) while it runs, onDone(rows) at the end.
+-- The recipe being worked out, as a coroutine, and when this frame's share of work began.
+local work, frameStart
+local clock = debugprofilestop
+
+--- Called from inside the advisor's longer loops: when the scan has used this frame's budget, pause
+--- the recipe there and carry on next frame. Does nothing outside a scan.
+function Sc.Yield()
+	if work and clock and coroutine.running() == work and clock() - frameStart >= BUDGET_MS then
+		coroutine.yield()
+	end
+end
+
+--- Stop a scan that's running; what it has found so far isn't saved.
+function Sc.Stop() if running then running = "stop" end end
+
+--- Scan the open profession. onStep(done, total) while it runs, onDone(rows) at the end. Each frame
+--- works for up to BUDGET_MS (at least PER_FRAME recipes without a clock), and a recipe that takes
+--- longer pauses part-way and resumes next frame.
 function Sc.Run(onStep, onDone)
 	if running then return false end
 	local profID = CH.OpenProfessionID()
@@ -137,33 +155,46 @@ function Sc.Run(onStep, onDone)
 	local ids = Sc.Recipes()
 	local i, rows = 0, {}
 	Sc.models[profID] = Sc.models[profID] or {}
-	running = true
-	local clock = debugprofilestop
+	running, clock = true, debugprofilestop
+	local function finish(why)
+		running, work = false, nil
+		if not why then
+			table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
+			local p = CH.Me().professions[profID]
+			if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows) } end
+		end
+		if onDone then onDone(rows, why) end
+	end
+	local function begin(id)
+		return coroutine.create(function()
+			local model = CH.Advisor.Measure(id, { professionID = profID })
+			if not model then return nil end
+			Sc.models[profID][id] = model
+			return model, CH.Advisor.Evaluate(model)
+		end)
+	end
 	local function step()
+		if running == "stop" then return finish("stopped") end
 		-- the profession changed under us: this scan's results would be for the wrong one
-		if CH.OpenProfessionID() ~= profID then running = false; if onDone then onDone(rows, "stopped: the profession changed") end; return end
-		local start, n = clock and clock(), 0
-		while n < PER_FRAME or (clock and clock() - start < BUDGET_MS) do
-			n = n + 1
-			i = i + 1
-			local id = ids[i]
-			if not id then
-				running = false
-				table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
-				local p = CH.Me().professions[profID]
-				if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows) } end
-				if onDone then onDone(rows) end
-				return
+		if CH.OpenProfessionID() ~= profID then return finish("stopped: the profession changed") end
+		frameStart = clock and clock()
+		local n = 0
+		while true do
+			if not work then
+				if not (n < PER_FRAME or (clock and clock() - frameStart < BUDGET_MS)) then break end
+				i = i + 1
+				local id = ids[i]
+				if not id then return finish() end
+				work, n = begin(id), n + 1
 			end
-			local ok, model = pcall(CH.Advisor.Measure, id, { professionID = profID })
-			if ok and model then
-				Sc.models[profID][id] = model
-				local ok2, result = pcall(CH.Advisor.Evaluate, model)
-				if ok2 and result and (result.best or result.bestConc) then
-					local row = summary(result)
-					row.line, row.expansion = Sc.Expansion(id)
-					table.insert(rows, row)
-				end
+			local ok, _, result = coroutine.resume(work)
+			if coroutine.status(work) ~= "dead" then break end -- paused: out of time this frame
+			work = nil
+			-- a recipe that errors is skipped, as before
+			if ok and result and (result.best or result.bestConc) then
+				local row = summary(result)
+				row.line, row.expansion = Sc.Expansion(ids[i])
+				table.insert(rows, row)
 			end
 		end
 		if onStep then onStep(i, #ids) end
