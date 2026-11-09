@@ -10,7 +10,8 @@ CH.LedgerUI = LUI
 local X0, TW = 172, 724 -- table left edge and width inside the page
 -- a column's width, kept clear of the scroll bar down the table's right edge
 local function cellWidth(c) return math.min(c[3], TW - 10 - c[2]) end
-local ROWS, RH = 23, 18 -- 23 rows leave room for the footer under the sub-tab row
+local ROWS, RH = 23, 18 -- rows shown: as many as the window height has room for (LUI.SetRows)
+local MAX_ROWS = 60
 
 local view = "inventory"
 local filter, char, days = "", nil, 30
@@ -535,7 +536,7 @@ function LUI.Build(p, fs, panel)
 	end
 	-- rows, each with a hover area for the item's tooltip
 	p.rows = {}
-	for i = 1, ROWS do
+	for i = 1, MAX_ROWS do
 		local r = { cells = {} }
 		local hit = CreateFrame("Button", nil, body)
 		hit:SetPoint("TOPLEFT", X0, -50 - (i - 1) * RH)
@@ -558,6 +559,7 @@ function LUI.Build(p, fs, panel)
 	end
 	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
 	p.bar = CH.Window.ScrollBar(body, X0 + TW - 3, -50, ROWS * RH, true)
+	LUI.SetRows(ROWS)
 	p:EnableMouseWheel(true)
 	p:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 5); CH.UI.Refresh() end)
 end
@@ -626,7 +628,8 @@ function LUI.Refresh()
 	offset = math.max(0, math.min(offset, #rows - ROWS))
 	if p.bar then p.bar:Set(offset, ROWS, #rows) end
 	for i, r in ipairs(p.rows) do
-		local d = rows[i + offset]
+		local d = i <= ROWS and rows[i + offset] or nil
+		r.hit:SetShown(i <= ROWS)
 		r.hit.id = d and d.id
 		for j, cell in ipairs(r.cells) do
 			local c = v.cols[j]
@@ -644,6 +647,22 @@ function LUI.Refresh()
 	local more = #rows > ROWS and T.Color("muted", string.format("   rows %d-%d of %d, scroll for more", offset + 1, math.min(#rows, offset + ROWS), #rows)) or ""
 	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
+end
+
+--- How many table rows to show (the window got taller or shorter). Returns the count.
+function LUI.SetRows(n)
+	ROWS = math.max(10, math.min(MAX_ROWS, n or ROWS))
+	local p = page
+	if p and p.footer then
+		p.footer:ClearAllPoints()
+		p.footer:SetPoint("TOPLEFT", X0, -52 - ROWS * RH - 8)
+		if p.bar and p.bar.SetLength then p.bar:SetLength(ROWS * RH) end
+		for i, r in ipairs(p.rows) do
+			r.hit:SetShown(i <= ROWS)
+			if i > ROWS then for _, c in ipairs(r.cells) do c:SetText("") end end
+		end
+	end
+	return ROWS
 end
 
 --- Stock targets view: shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
