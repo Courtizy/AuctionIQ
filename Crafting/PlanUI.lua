@@ -107,6 +107,42 @@ function PUI.Refresh()
 	return rows
 end
 
--- Research, Professions: this page, beside the nav
-CH.LedgerUI.Register("research", { professions = { label = "Knowledge", page = "plan", noTime = true, cols = {} } },
-	{ "professions" }, "Professions")
+-- Plan comparison: each saved knowledge plan (made in Paths), recipe by recipe, now against planned
+local function q(x, share)
+	if share then return string.format("%d%%", math.floor(share * 100 + 0.5)) end
+	return x and ("Q" .. x) or "-"
+end
+
+local function planRows(ctx)
+	local T, LUI = CH.Theme, CH.LedgerUI
+	local out, notes = {}, {}
+	for _, sum in pairs(CH.db.plans or {}) do
+		local gain = (sum.final or 0) - (sum.start or 0)
+		table.insert(notes, string.format("%s %s (%s, %d points): %s to %s a day", sum.char or "?", sum.profName or "?", sum.label or "?",
+			sum.budget or 0, CH.FormatMoney(sum.start or 0), CH.FormatMoney(sum.final or 0)) .. T.Color(gain >= 0 and "ok" or "bad", string.format(" (%s%s)", gain >= 0 and "+" or "", CH.FormatMoney(gain))))
+		for _, r in ipairs(sum.rows or {}) do
+			if ctx.keepName(r.name) then
+				local dDay = (r.toDay or 0) - (r.fromDay or 0)
+				local qual = q(r.fromQ, r.fromShare) .. " > " .. q(r.toQ, r.toShare)
+				if (r.toQ or 0) > (r.fromQ or 0) then qual = T.Color("ok", qual) end
+				table.insert(out, { id = r.id, cells = { r.name or "?", sum.profName or "?", qual, r.fromProfit and LUI.Signed(r.fromProfit) or "-",
+					r.toProfit and LUI.Signed(r.toProfit) or "-", CH.FormatMoney(r.fromDay or 0), CH.FormatMoney(r.toDay or 0),
+					T.Color(dDay > 0 and "ok" or dDay < 0 and "bad" or "muted", (dDay > 0 and "+" or "") .. CH.FormatMoney(dDay)) },
+					sort = { r.name or "", sum.profName or "", (r.toQ or 0) - (r.fromQ or 0), r.fromProfit or 0, r.toProfit or 0, r.fromDay or 0, r.toDay or 0, dDay } })
+			end
+		end
+	end
+	if not notes[1] then
+		return out, T.Color("muted", "No plans yet. Open a profession, then Paths, and plan for what you sell: it shows up here, current against planned.")
+	end
+	table.sort(notes)
+	return out, table.concat(notes, "   ") .. T.Color("muted", "   Estimated from your scans. Spend points in the game's Specializations panel.")
+end
+
+-- Research, Professions: this page beside the nav, and the plan comparison
+CH.LedgerUI.Register("research", {
+	professions = { label = "Knowledge", page = "plan", noTime = true, cols = {} },
+	plans = { label = "Plan comparison", sort = 8, noTime = true, rows = planRows, cols = { { "Recipe", 0, 196 }, { "Profession", 200, 84 },
+		{ "Quality", 288, 64 }, { "Profit now", 356, 80 }, { "Planned", 440, 80 }, { "A day now", 524, 64 }, { "Planned", 592, 64 },
+		{ "Change", 660, 64 } } },
+}, { "professions", "plans" }, "Professions")

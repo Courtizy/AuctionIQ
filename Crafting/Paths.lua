@@ -671,10 +671,35 @@ function P.Marks(plan)
 	return out
 end
 
--- The last plan made for each profession this session, shown on the trees.
+--- A plan, small enough to save: what it's for, gold a day and Concentration value now and with it,
+--- its steps, and each recipe now and planned. Research, Professions compares them.
+function P.Summary(plan)
+	if not (plan and plan.prof and plan.final) then return nil end
+	local me = CH.Me and CH.Me() or {}
+	local out = { prof = plan.prof, profName = CH.SpecData and CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or tostring(plan.prof),
+		label = plan.label or plan.goal, char = me.name, at = time(), budget = plan.budget, start = plan.start, final = plan.final,
+		startConc = plan.startConc, finalConc = plan.finalConc, steps = {}, rows = {} }
+	for _, s in ipairs(plan.steps or {}) do table.insert(out.steps, { name = s.name, from = s.from, to = s.to, cost = s.cost }) end
+	for id, a in pairs(plan.startPer or {}) do
+		local b = (plan.finalPer or {})[id] or a
+		table.insert(out.rows, { id = id, name = a.name or b.name, fromQ = a.quality, toQ = b.quality, fromShare = a.share, toShare = b.share,
+			fromProfit = a.profit, toProfit = b.profit, fromDay = a.perDay or 0, toDay = b.perDay or 0 })
+	end
+	return out
+end
+
+-- The last plan made for each profession this session, shown on the trees; a summary of it is saved
+-- per character and profession for Research.
 P.current = {}
 function P.SetCurrent(plan)
-	if plan and plan.prof then P.current[plan.prof] = plan end
+	if plan and plan.prof then
+		P.current[plan.prof] = plan
+		local sum = P.Summary(plan)
+		if sum and CH.db then
+			CH.db.plans = CH.db.plans or {}
+			CH.db.plans[(sum.char or "?") .. ":" .. sum.prof] = sum
+		end
+	end
 	if P.Changed then P.Changed(plan and plan.prof) end
 end
 function P.Current(prof) return prof and P.current[prof] end

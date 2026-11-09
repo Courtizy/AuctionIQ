@@ -243,6 +243,11 @@ check("spec: the trees' layout is read per tab, with links",
 marks = CH.Paths.Marks(plan)
 check("plan marks: each node's planned rank and steps", marks[900].to == max(s.to for s in plan.steps.values() if s.node == 900) and marks[900].steps[1] == 1)
 CH.Paths.SetCurrent(plan)
+saved = [v for v in L.eval("Clearinghouse.db.plans").values() if v.prof == 2906]
+check("plan: a summary is saved for Research", len(saved) == 1 and saved[0].final == plan.final and len(list(saved[0].rows.values())) >= 1 and saved[0].steps[1].name == "Node 900")
+prow, pfoot = L.eval("Clearinghouse.LedgerUI.Rows('plans', {})")
+prow = list(prow.values())
+check("plan comparison: each recipe now against planned, and the plan's gold a day", len(prow) >= 1 and ">" in plain(prow[0].cells[3]) and "a day" in plain(pfoot))
 run('Clearinghouse.PathsUI.Open()')
 drawn = list(CH.PathsUI.DrawTree().values())
 check("paths tab draws the tree with the plan on it",
@@ -650,6 +655,9 @@ run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
 pr, pf = L.eval("Clearinghouse.LedgerUI.Rows('post', {})")
 mr, mf = L.eval("Clearinghouse.LedgerUI.Rows('mail', {})")
 check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf) and len(list(mr.values())) > 0 and "to send" in plain(mf))
+wk = list(CH.TradingUI.WorkPlan().values())
+check("execution plan: a mail trip per sender and receiver, and posts from Ready to post", any(w.kind == "mail" and w.char == "Courtizy" and w.task == "Mail to Luxaren" and w.where == "Mailbox" for w in wk)
+      and all(w.kind != "post" or w.where == "Auction House" for w in wk))
 run("Clearinghouse.Mail.Route('Crafted', nil)")
 check("auction panel builds", CH.AuctionUI.Build() is not None)
 # Posting waits for the AH's answer
@@ -820,6 +828,12 @@ Clearinghouse.db.queue = { { char = Clearinghouse.CharacterKey(), name = 'A', qt
   { char = 'Other-Realm', name = 'C', qty = 1, shop = {} } }""")
 fig = CH.UI.DashboardFigures()
 check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
+work = list(CH.TradingUI.WorkPlan().values())
+crafts = {w.task: w for w in work if w.kind == "craft"}
+check("execution plan: crafts with their status, another character's marked switch", crafts["Craft A"].status == "ready to craft"
+      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Profession window")
+wrows, wfoot = L.eval("Clearinghouse.LedgerUI.Rows('work', {})")
+check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
 run("Clearinghouse.UI.Page('today')")
 qf = L.eval("Clearinghouse.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("Clearinghouse.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
@@ -1119,7 +1133,7 @@ def audit(where):
 for tab in ["today", "research", "operations", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "work", "plans"]:
     run(f"Clearinghouse.UI.Page('ledger', '{v}')")
     audit("view " + v)
 run("Clearinghouse.UI.Page('today')")
