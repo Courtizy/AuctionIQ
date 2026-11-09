@@ -373,12 +373,13 @@ local function buildDashboard(p)
 		local x = 8 + ((i - 1) % 2) * (CW + 8)
 		local y = -32 - math.floor((i - 1) / 2) * 56
 		c.bg = panel(top, x, y, CW, 52)
-		c.who = fs(top, x + 8, y - 6, CW - 200)
-		c.time = fs(top, x + CW - 196, y - 6, 100, "RIGHT")
-		c.l1 = fs(top, x + 8, y - 22, CW - 104)
+		-- the text sits on the card itself: a card is a frame of its own, drawn over its parent's text
+		c.who = fs(c.bg, 8, -6, CW - 200)
+		c.time = fs(c.bg, CW - 196, -6, 100, "RIGHT")
+		c.l1 = fs(c.bg, 8, -22, CW - 104)
 		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
-		c.l2 = fs(top, x + 8, y - 36, CW - 104)
-		c.l3 = fs(top, x + CW - 92, y - 22, 84, "RIGHT")
+		c.l2 = fs(c.bg, 8, -36, CW - 104)
+		c.l3 = fs(c.bg, CW - 92, -22, 84, "RIGHT")
 		-- the card opens where the work is; its button does the work
 		c.hit = CreateFrame("Button", nil, top)
 		c.hit:SetPoint("TOPLEFT", x, y)
