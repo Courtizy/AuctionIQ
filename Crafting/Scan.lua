@@ -37,7 +37,8 @@ local function accounts(result, r)
 	local p = r.parts or {}
 	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
 		made = result.made, unit = r.unit, sales = r.value, cost = r.cost, extraItems = (p.mc or 0) * (p.extraItems or 0),
-		mcGold = p.mcGold, resGold = p.resGold, profit = r.profit, reagents = reagents }
+		mcGold = p.mcGold, resGold = p.resGold, profit = r.profit, reagents = reagents,
+		queue = ok and e and e.reagents or nil } -- the reagents by slot, to queue this craft without the profession open
 end
 Sc.Accounts = accounts
 

@@ -8,23 +8,66 @@ CH.Next = Next
 
 local function name(id) return CH.LedgerUI and select(2, CH.LedgerUI.ItemText(id)) or ("item " .. tostring(id)) end
 
---- { { title, detail, gold, tier, go = { tab, view } } }, best first.
+-- Card buttons: each does the job itself where it can (queue the craft, open Auctioning).
+local function queueAct(label, charKey, char, row, conc, qty)
+	local e = CH.Queue and CH.Queue.FromScan(charKey, char, row, conc)
+	if not e then return nil end
+	return { label = label, run = function()
+		CH.Queue.AddEntry(e, qty)
+		CH.Print(string.format("queued %d x %s%s for %s", qty, row.name or "?", conc and " with Concentration" or "", char.name or charKey))
+		if CH.QueueUI and CH.QueueUI.Show then pcall(CH.QueueUI.Show) end
+	end }
+end
+
+local function postAct(label)
+	return { label = label, run = function()
+		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
+			CH.AuctionUI.Build():Show()
+			CH.AuctionUI.PostScan()
+		else
+			CH.Print("open the auction house: Auctioning opens beside it with a post scan ready")
+		end
+	end }
+end
+
+-- Queue enough crafts to make n of an item, from the best saved scan that makes it.
+local function makeAct(id, n)
+	if not (CH.Queue and n and n > 0) then return nil end
+	local k, c, r = CH.Queue.ScanRowFor(id)
+	if not r then return nil end
+	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
+	return queueAct("Queue " .. crafts, k, c, r, false, crafts)
+end
+
+--- { { title, detail, gold, tier, go = { tab, view }, act = { label, run } } }, best first.
 function Next.List(now)
 	now = now or time()
 	local out = {}
 	local function add(e) table.insert(out, e) end
 
 	-- 1. value that leaks while it waits
-	for _, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(CH.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
-			local cur, max = CH.ConcentrationNow and CH.ConcentrationNow(p, now)
+			-- (not "a and f()": that keeps only f's first value, and max would always be nil)
+			local cur, max
+			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
 			if cur and max and max > 0 and cur >= max then
-				local best
-				for _, r in ipairs(p.scan and p.scan.rows or p.crafts or {}) do
-					if r.profit and r.profit > 0 and (not best or r.profit > best.profit) then best = r end
+				-- the craft that turns a point into the most gold, else the best plain craft
+				local best, conc
+				for _, r in ipairs(p.scan and p.scan.rows or {}) do
+					if r.perPoint and r.perPoint > 0 and r.concProfit and (not conc or r.perPoint > conc.perPoint) then conc = r end
 				end
+				if not conc then
+					for _, r in ipairs(p.scan and p.scan.rows or p.crafts or {}) do
+						if r.profit and r.profit > 0 and (not best or r.profit > best.profit) then best = r end
+					end
+				end
+				local pick = conc or best
+				local n = conc and conc.concentration and conc.concentration > 0 and math.max(1, math.floor(cur / conc.concentration)) or 1
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
-					.. (best and (": " .. (best.name or "?")) or ""), gold = best and best.profit, tier = 1, go = { "crafting" } })
+					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or ""),
+					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "crafting" },
+					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
 		end
 	end
@@ -40,7 +83,7 @@ function Next.List(now)
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
-					gold = e.gold, tier = 1, go = { "markets", "when" } })
+					gold = e.gold, tier = 1, go = { "markets", "when" }, act = postAct("Post") })
 			end
 		end
 
@@ -48,12 +91,13 @@ function Next.List(now)
 		local ok, r = pcall(CH.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
-				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2, go = { "crafting" } })
+				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2, go = { "crafting" },
+					act = makeAct(e.id, e.sold) })
 			end
 			for _, e in ipairs(r.expired or {}) do
 				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
 				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n), gold = unit and unit * e.n, tier = 2,
-					go = { "ledger", "expired" } })
+					go = { "ledger", "expired" }, act = postAct("Repost") })
 			end
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
@@ -63,7 +107,7 @@ function Next.List(now)
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
-					gold = e.value, tier = 2, go = { "analytics", "par" } })
+					gold = e.value, tier = 2, go = { "analytics", "par" }, act = makeAct(e.id, e.short) })
 			end
 		end
 	end
