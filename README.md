@@ -3,7 +3,7 @@
 </p>
 
 <p align="center"><b>Economic intelligence for the Auction House.</b><br>
-AuctionIQ helps you decide what to do. Accounting, its ledger, tells you what actually happened.</p>
+AuctionIQ helps you decide what to do, then keeps the books on what actually happened.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-In%20development-e0a83a?style=for-the-badge" alt="Status: in development">
@@ -15,7 +15,7 @@ AuctionIQ helps you decide what to do. Accounting, its ledger, tells you what ac
 A World of Warcraft addon that puts crafting and auction advice in one place: what to craft, buy,
 post and cancel, what it costs, and what it really sells for. It reads prices from TradeSkillMaster
 and Oribos Exchange, checks them against what the Auction House actually shows you, and over time
-takes over the jobs that today need both TSM and CraftSim.
+makes you a better goblin.
 
 ---
 
