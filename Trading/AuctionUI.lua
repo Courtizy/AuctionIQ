@@ -38,6 +38,7 @@ function AUI.Refresh()
 		local e = plan[i + offset]
 		if e then
 			local text = CH.Window.ItemIcon(e.id, 14) .. ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(e.id)) or ("item " .. e.id))
+				.. (e.level and T.Color("muted", " ilvl " .. e.level) or "")
 			r.cells[1]:SetText(e.done and not e.failed and T.Color("muted", text) or text)
 			if e.d.action == "post" then
 				r.cells[2]:SetText(e.d.qty .. " x " .. money(e.d.price))
@@ -58,33 +59,31 @@ function AUI.Refresh()
 	if mode and todo == 0 and not AUI.busy then status:SetText(T.Color("muted", "Nothing left to " .. mode .. ".")) end
 end
 
--- Search each item in turn, then decide.
+-- Search each item in turn (gear once per item level: { id, level }), then decide.
 local function searchAll(ids, decide, finish)
 	local i = 0
 	AUI.busy = true
 	local function step()
 		i = i + 1
-		local id = ids[i]
-		if not id then AUI.busy = false; finish(); AUI.Refresh(); return end
+		local item = ids[i]
+		if not item then AUI.busy = false; finish(); AUI.Refresh(); return end
+		local id, level = type(item) == "table" and item.id or item, type(item) == "table" and item.level or nil
 		status:SetText(CH.Theme.Color("accent", string.format("Searching %d / %d ...", i, #ids)))
 		CH.Auction.Search(id, function(results)
-			decide(id, results)
+			decide(id, results, level, item)
 			AUI.Refresh()
 			C_Timer.After(0.2, step)
-		end)
+		end, level)
 	end
 	step()
 end
 
 function AUI.PostScan()
 	plan, mode, offset = {}, "post", 0
-	local held = CH.Auction.Postable()
-	local ids = {}
-	for id in pairs(held) do table.insert(ids, id) end
-	table.sort(ids)
-	searchAll(ids, function(id, results)
+	local _, items = CH.Auction.Postable()
+	searchAll(items, function(id, results, level, item)
 		local other, mine = CH.Auction.Lowest(results)
-		table.insert(plan, { id = id, d = CH.Auction.Decide(id, results, held[id]), other = other, mine = mine, held = held[id] })
+		table.insert(plan, { id = id, level = level, d = CH.Auction.Decide(id, results, item.count, level), other = other, mine = mine, held = item.count })
 	end, function()
 		table.sort(plan, function(a, b) return (a.d.action == "post" and 0 or 1) < (b.d.action == "post" and 0 or 1) end)
 		local n = 0
@@ -100,14 +99,15 @@ function AUI.CancelScan()
 		local byItem, ids = {}, {}
 		for _, a in ipairs(list) do
 			if CH.Groups.Path(a.id) then
-				if not byItem[a.id] then byItem[a.id] = {}; table.insert(ids, a.id) end
-				table.insert(byItem[a.id], a)
+				local key = a.id .. ":" .. (a.level or 0) -- gear: each item level against its own listings
+				if not byItem[key] then byItem[key] = {}; table.insert(ids, { id = a.id, level = a.level, key = key }) end
+				table.insert(byItem[key], a)
 			end
 		end
-		searchAll(ids, function(id, results)
-			for _, a in ipairs(byItem[id]) do
+		searchAll(ids, function(id, results, level, item)
+			for _, a in ipairs(byItem[item.key]) do
 				local other = CH.Auction.Lowest(results)
-				table.insert(plan, { id = id, auctionID = a.auctionID, price = a.price, other = other, d = CH.Auction.DecideCancel(id, a.price, results) })
+				table.insert(plan, { id = id, level = level, auctionID = a.auctionID, price = a.price, other = other, d = CH.Auction.DecideCancel(id, a.price, results, level) })
 			end
 		end, function()
 			local n = 0
@@ -117,7 +117,9 @@ function AUI.CancelScan()
 	end)
 end
 
-local function itemName(id) return (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id) end
+local function itemName(id, level)
+	return ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)) .. (level and (" (ilvl " .. level .. ")") or "")
+end
 
 -- The AH answered (or we gave up waiting): ok = it listed, else why not.
 local function settle(ok, why)
@@ -133,11 +135,11 @@ local function settle(ok, why)
 		else
 			e.d.why = string.format("posted %d of %d, press Post for the next", e.posted, e.d.qty)
 		end
-		status:SetText(CH.Theme.Color("ok", string.format("Posted %d x %s.", p.n, itemName(e.id))))
+		status:SetText(CH.Theme.Color("ok", string.format("Posted %d x %s.", p.n, itemName(e.id, e.level))))
 	else
 		e.done, e.failed = true, true
 		e.d.why = why
-		status:SetText(CH.Theme.Color("bad", string.format("%s was not posted: %s", itemName(e.id), why)))
+		status:SetText(CH.Theme.Color("bad", string.format("%s was not posted: %s", itemName(e.id, e.level), why)))
 	end
 	AUI.Refresh()
 end
@@ -147,7 +149,7 @@ AUI.Settle = settle
 local function waitFor(token)
 	C_Timer.After(WAIT, function()
 		if not pending or pending.token ~= token or confirmNext then return end
-		if CH.Auction.InBags(pending.e.id) < pending.before then settle(true) else settle(false, pending.err or "the AH didn't take it, it's still in your bags") end
+		if CH.Auction.InBags(pending.e.id, pending.e.level) < pending.before then settle(true) else settle(false, pending.err or "the AH didn't take it, it's still in your bags") end
 	end)
 end
 
@@ -162,13 +164,13 @@ function AUI.PostNext()
 	if pending then return end
 	local e = nextEntry("post")
 	if not e then return end
-	local before = CH.Auction.InBags(e.id)
-	local n = CH.Auction.Post(e.id, e.d)
+	local before = CH.Auction.InBags(e.id, e.level)
+	local n = CH.Auction.Post(e.id, e.d, e.level)
 	if not n then
 		e.done, e.failed, e.d.why = true, true, "none left in your bags"
 	else
 		pending = { e = e, n = n, before = before, token = {} }
-		status:SetText(CH.Theme.Color("accent", string.format("Posting %d x %s, waiting for the AH ...", n, itemName(e.id))))
+		status:SetText(CH.Theme.Color("accent", string.format("Posting %d x %s, waiting for the AH ...", n, itemName(e.id, e.level))))
 		waitFor(pending.token)
 	end
 	AUI.Refresh()
@@ -192,7 +194,7 @@ function AUI.HoverLines(i)
 	local e = plan[i + offset]
 	if not e then return nil end
 	local T, m = CH.Theme, money
-	local lines = { { T.Color("accent", itemName(e.id)) } }
+	local lines = { { T.Color("accent", itemName(e.id, e.level)) } }
 	local d = e.d
 	if d.action == "post" then
 		table.insert(lines, { "Posts", string.format("%d x %s", d.qty, m(d.price)) })
@@ -203,7 +205,7 @@ function AUI.HoverLines(i)
 	table.insert(lines, { (e.failed and "Failed: " or e.done and "Done: " or (d.action:gsub("^%l", string.upper) .. ": ")) .. (d.why or "") })
 	if e.other then table.insert(lines, { "Cheapest outside your account", m(e.other) }) end
 	if e.mine then table.insert(lines, { "Your cheapest listing", m(e.mine) }) end
-	local p = CH.Groups.Prices(e.id)
+	local p = CH.Groups.Prices(e.id, nil, e.level)
 	table.insert(lines, { T.Color("accent", "Operation " .. (p.op or "?")) })
 	table.insert(lines, { "  Min / normal / max", m(p.min) .. " / " .. m(p.normal) .. " / " .. m(p.max) })
 	table.insert(lines, { "  Post cap, live now", string.format("%d, %d up", p.cap or 0, CH.Auction.Listed(e.id)) })

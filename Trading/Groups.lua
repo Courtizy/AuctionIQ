@@ -263,13 +263,13 @@ end
 --- Posting prices and rules for an item: { min, normal, max, cap, undercut, duration, post, op, why,
 --- keep, maxExpires, priceReset, aboveMax, learned }. opName prices it by that operation instead of its own. An operation with formulas (minPrice,
 --- normalPrice, maxPrice: see Formula.lua) prices by them; without, by its floor and multipliers.
-function G.Prices(id, opName)
+function G.Prices(id, opName, level)
 	local op, name = G.Operation(id)
 	if opName and store().ops[opName] then op, name = store().ops[opName], opName end
 	op = op or store().ops.Default
 	local F = CH.Formula
-	local item = "i:" .. id
-	local normal = op.normalPrice and F.Value(op.normalPrice, id) or CH.Prices.Get("chvalue", item)
+	local item = level and ("i:" .. id .. "::i" .. level) or ("i:" .. id)
+	local normal = op.normalPrice and F.Value(op.normalPrice, id, nil, level) or CH.Prices.Get("chvalue", item)
 	local learned
 	if op.learn and normal then
 		local f, why = G.Learn(id)
@@ -277,7 +277,7 @@ function G.Prices(id, opName)
 	end
 	local min, why
 	if op.minPrice then
-		min, why = F.Value(op.minPrice, id, { normal = normal }), "min " .. tostring(op.minPrice)
+		min, why = F.Value(op.minPrice, id, { normal = normal }, level), "min " .. tostring(op.minPrice)
 	else
 		local floor
 		if op.floor == "cost" then
@@ -291,10 +291,10 @@ function G.Prices(id, opName)
 		min = floor and floor * (op.floorPct or 1)
 	end
 	local max
-	if op.maxPrice then max = F.Value(op.maxPrice, id, { normal = normal, min = min })
+	if op.maxPrice then max = F.Value(op.maxPrice, id, { normal = normal, min = min }, level)
 	else max = normal and normal * (op.maxMult or 3) end
 	local cap = op.cap or (CH.Par and CH.Par.Target(id)) or 5
-	local undercut = type(op.undercut) == "number" and op.undercut or F.Value(op.undercut, id) or 1
+	local undercut = type(op.undercut) == "number" and op.undercut or F.Value(op.undercut, id, nil, level) or 1
 	return { min = min and math.floor(min), normal = normal and math.floor(normal), max = max and math.floor(max), cap = cap,
 		undercut = undercut, duration = op.duration or 2, post = op.post ~= false and cap > 0, op = name, why = why,
 		keep = op.keepQuantity or 0, maxExpires = op.maxExpires or 0, priceReset = op.priceReset or "none",

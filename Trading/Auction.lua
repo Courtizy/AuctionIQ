@@ -78,8 +78,8 @@ local function note(id, results, normal)
 	CH.Ledger.NoteCompetition(id, other ~= nil and normal ~= nil and other < normal, owners)
 end
 
-function A.Decide(id, results, held)
-	local p = CH.Groups.Prices(id)
+function A.Decide(id, results, held, level)
+	local p = CH.Groups.Prices(id, nil, level)
 	note(id, results, p.normal)
 	if not p.post then return { action = "skip", why = (p.op or "its operation") .. " doesn't post it" } end
 	if not p.normal then return { action = "skip", why = "no price" } end
@@ -134,8 +134,8 @@ function A.Decide(id, results, held)
 end
 
 --- Whether to cancel one of your auctions: { action = "cancel"|"keep", why }.
-function A.DecideCancel(id, price, results)
-	local p = CH.Groups.Prices(id)
+function A.DecideCancel(id, price, results, level)
+	local p = CH.Groups.Prices(id, nil, level)
 	local other = lowest(results)
 	if not other or other >= price then return { action = "keep", why = "still cheapest outside your account" } end
 	local repost = other - p.undercut
@@ -146,47 +146,68 @@ end
 -- The game side --------------------------------------------------------------------------------
 local AH = C_AuctionHouse
 
--- Bag slots holding an item: { { bag, slot, count } }.
-function A.BagSlots(id)
-	local out = {}
-	if not C_Container then return out end
-	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
-		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
-			local info = C_Container.GetContainerItemInfo(bag, slot)
-			if info and info.itemID == id and not info.isBound then table.insert(out, { bag = bag, slot = slot, count = info.stackCount or 1 }) end
-		end
-	end
-	return out
+-- Gear (weapons, armour, profession tools) lists on the AH by item level, and each rank of a
+-- crafted rod or tool is its own item level: its level, or nil for anything else.
+local GEAR = { [2] = true, [4] = true, [19] = true }
+function A.Level(id, link)
+	if not (id and link and C_Item and C_Item.GetItemInfoInstant and C_Item.GetDetailedItemLevelInfo) then return nil end
+	local classID = select(6, C_Item.GetItemInfoInstant(id))
+	if not GEAR[classID] then return nil end
+	local level = C_Item.GetDetailedItemLevelInfo(link)
+	return level and level > 0 and level or nil
 end
 
--- Items in your bags that belong to a group: { [id] = count }.
-function A.Postable()
+-- Bag slots holding an item (at one item level, if given): { { bag, slot, count } }.
+function A.BagSlots(id, level)
 	local out = {}
 	if not C_Container then return out end
 	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local info = C_Container.GetContainerItemInfo(bag, slot)
-			if info and info.itemID and not info.isBound and CH.Groups.Path(info.itemID) then
-				out[info.itemID] = (out[info.itemID] or 0) + (info.stackCount or 1)
+			if info and info.itemID == id and not info.isBound and (not level or A.Level(id, info.hyperlink) == level) then
+				table.insert(out, { bag = bag, slot = slot, count = info.stackCount or 1 })
 			end
 		end
 	end
 	return out
 end
 
-local function isCommodity(id)
-	local slots = A.BagSlots(id)
+-- Items in your bags that belong to a group: { [id] = count }, and the same split by item level
+-- for gear: { { id, level (nil if not gear), count } }, by item then level.
+function A.Postable()
+	local out, byKey, list = {}, {}, {}
+	if not C_Container then return out, list end
+	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
+		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+			local info = C_Container.GetContainerItemInfo(bag, slot)
+			if info and info.itemID and not info.isBound and CH.Groups.Path(info.itemID) then
+				local id, n = info.itemID, info.stackCount or 1
+				out[id] = (out[id] or 0) + n
+				local level = A.Level(id, info.hyperlink)
+				local key = id .. ":" .. (level or 0)
+				if not byKey[key] then byKey[key] = { id = id, level = level, count = 0 }; table.insert(list, byKey[key]) end
+				byKey[key].count = byKey[key].count + n
+			end
+		end
+	end
+	table.sort(list, function(a, b) if a.id ~= b.id then return a.id < b.id end return (a.level or 0) > (b.level or 0) end)
+	return out, list
+end
+
+local function isCommodity(id, level)
+	local slots = A.BagSlots(id, level)
 	if not slots[1] or not ItemLocation then return true end
 	local loc = ItemLocation:CreateFromBagAndSlot(slots[1].bag, slots[1].slot)
 	return AH.GetItemCommodityStatus(loc) == Enum.ItemCommodityStatus.Commodity
 end
 
--- Search one item; calls back with its results once the AH answers (or after 3 seconds).
+-- Search one item (gear at one item level); calls back with its results once the AH answers (or
+-- after 3 seconds).
 local waiting
-function A.Search(id, done)
+function A.Search(id, done, level)
 	if not AH then return done({}) end
-	local key = AH.MakeItemKey(id)
-	waiting = { id = id, key = key, done = done, commodity = isCommodity(id) }
+	local key = AH.MakeItemKey(id, level)
+	waiting = { id = id, key = key, done = done, commodity = isCommodity(id, level), level = level }
 	AH.SendSearchQuery(key, { { sortOrder = Enum.AuctionHouseSortOrder.Price, reverseSort = false } }, true)
 	local w = waiting
 	C_Timer.After(3, function() if waiting == w then waiting = nil; done(A.Results(id, key, w.commodity)) end end)
@@ -211,8 +232,8 @@ function A.Results(id, key, commodity)
 	return out
 end
 
-local function answered(id)
-	if waiting and waiting.id == id then
+local function answered(id, level)
+	if waiting and waiting.id == id and (not level or not waiting.level or level == waiting.level) then
 		local w = waiting
 		waiting = nil
 		w.done(A.Results(w.id, w.key, w.commodity))
@@ -230,25 +251,26 @@ end)
 CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(_, key)
 	local id = key and key.itemID
 	if not id then return end
-	CH.Scans.Record(id, A.Results(id, key, false), false)
-	answered(id)
+	-- a search at one item level is that rank's price: don't save it as the item's scan
+	if not (key.itemLevel and key.itemLevel > 0) then CH.Scans.Record(id, A.Results(id, key, false), false) end
+	answered(id, key.itemLevel and key.itemLevel > 0 and key.itemLevel or nil)
 end)
 
---- How many of an item are in your bags (unbound).
-function A.InBags(id)
+--- How many of an item are in your bags (unbound), at one item level if given.
+function A.InBags(id, level)
 	local n = 0
-	for _, s in ipairs(A.BagSlots(id)) do n = n + (s.count or 1) end
+	for _, s in ipairs(A.BagSlots(id, level)) do n = n + (s.count or 1) end
 	return n
 end
 
 --- Post one decision (must run from a click). Sends it and returns how many it asked to list, or
 --- nil when there is nothing to post. Whether the AH took it comes back as an event (see AuctionUI).
-function A.Post(id, d)
-	local slots = A.BagSlots(id)
+function A.Post(id, d, level)
+	local slots = A.BagSlots(id, level)
 	if not slots[1] or not ItemLocation then return nil end
 	local loc = ItemLocation:CreateFromBagAndSlot(slots[1].bag, slots[1].slot)
 	local price = math.max(100, math.floor(d.price / 100) * 100)
-	if isCommodity(id) then
+	if isCommodity(id, level) then
 		AH.PostCommodity(loc, d.duration, d.qty, price)
 		return d.qty
 	end
@@ -275,7 +297,9 @@ CH.On("OWNED_AUCTIONS_UPDATED", function()
 	for i = 1, AH.GetNumOwnedAuctions() or 0 do
 		local a = AH.GetOwnedAuctionInfo(i)
 		if a and a.status == 0 and a.itemKey then
-			table.insert(list, { auctionID = a.auctionID, id = a.itemKey.itemID, qty = a.quantity or 1, price = a.buyoutAmount or a.bidAmount })
+			local lvl = a.itemKey.itemLevel
+			table.insert(list, { auctionID = a.auctionID, id = a.itemKey.itemID, qty = a.quantity or 1, price = a.buyoutAmount or a.bidAmount,
+				level = lvl and lvl > 0 and GEAR[select(6, C_Item.GetItemInfoInstant(a.itemKey.itemID)) or 0] and lvl or nil })
 		end
 	end
 	A.RecordOwned(list)

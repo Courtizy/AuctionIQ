@@ -182,7 +182,8 @@ function F.Custom()
 end
 
 local function source(name, ctx, ev)
-	local id, item = ctx.id, "i:" .. ctx.id
+	local id, level = ctx.id, ctx.level
+	local item = level and ("i:" .. id .. "::i" .. level) or ("i:" .. id)
 	if ctx.extra and ctx.extra[name] ~= nil then return ctx.extra[name] end
 	local custom = F.Custom()[name]
 	if custom then
@@ -193,7 +194,7 @@ local function source(name, ctx, ev)
 		ctx.depth = ctx.depth - 1
 		return v
 	end
-	if name == "crafting" then return CH.Groups and CH.Groups.CostEach and CH.Groups.CostEach(id) or CH.Prices.Raw("crafting", id) end
+	if name == "crafting" then return CH.Groups and CH.Groups.CostEach and CH.Groups.CostEach(id) or CH.Prices.Raw("crafting", id, level) end
 	if name == "vendorsell" then
 		local sell = C_Item and C_Item.GetItemInfo and select(11, C_Item.GetItemInfo(id))
 		return sell and sell > 0 and sell or nil
@@ -206,9 +207,9 @@ local function source(name, ctx, ev)
 	if name == "avgsell" then return CH.Ledger and CH.Ledger.Available() and CH.Ledger.AvgSell and CH.Ledger.AvgSell(id) or nil end
 	if name == "chvalue" or name == "chmat" then return CH.Prices.Get(name, item) end
 	if TSM_ONLY[name] then
-		return CH.Prices.Raw(name, id)
+		return CH.Prices.Raw(name, id, level)
 	end
-	return CH.Prices.Raw(name, id)
+	return CH.Prices.Raw(name, id, level)
 end
 
 local function ev(node, ctx)
@@ -231,12 +232,13 @@ end
 
 --- A formula's value for an item in copper (or a plain number), or nil when it has none.
 --- extra: values for names that should win over the sources (for example { normal = 1234 }).
-function F.Value(src, id, extra)
+--- level: price gear at this item level (TSM's i:ID::iLEVEL), as each rank of a crafted rod is.
+function F.Value(src, id, extra, level)
 	if src == nil or id == nil then return nil end
 	if type(src) == "number" then return src end
 	local tree = F.Compile(src)
 	if not tree then return nil end
-	local ok, v = pcall(ev, tree, { id = id, extra = extra })
+	local ok, v = pcall(ev, tree, { id = id, extra = extra, level = level })
 	return ok and v or nil
 end
 

@@ -105,7 +105,10 @@ STUB.prices["i:301"].sold = 5
 STUB.prices["i:311"] = { formula_value = 20 * 10000, sold = 40 }
 STUB.prices["i:312"] = { formula_value = 50 * 10000, sold = 40 }
 TSM_API = {
-	ToItemString = function(item) local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id) end,
+	ToItemString = function(item)
+		if tostring(item):match("^i:%d+::i%d+$") then return item end
+		local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id)
+	end,
 	IsCustomPriceValid = function(s) return s ~= "chvalue" and s ~= "chmat" end,
 	GetCustomPriceValue = function(s, item)
 		local p = STUB.prices[item]; if not p then return nil, "no data" end
