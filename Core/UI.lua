@@ -5,8 +5,9 @@ local UI = {}
 CH.UI = UI
 local frame, text
 local W, H = 920, 600
-local MIN_H, MAX_H = 600, 1200 -- the window can be dragged taller, for more rows
+local MIN_W, MAX_W, MIN_H, MAX_H = 920, 1800, 600, 1200 -- the corner grip resizes within these
 local pages, pageButtons = {}, {}
+local build -- the window, laid out for its size (below)
 local page = "today"
 local range = "1M"
 local RANGES = { { "1D", 1 }, { "1W", 7 }, { "1M", 30 }, { "3M", 91 }, { "6M", 182 }, { "1Y", 365 }, { "All", nil } }
@@ -415,7 +416,8 @@ local function buildDashboard(p)
 
 	-- gold: the chart and its stats on the left, sales and expenses on the right
 	local y0 = -210
-	local cw = 560
+	local cw = math.floor(PW * 560 / 896) -- the chart takes the same share of a wider window
+	local extra = H - 600 -- and the height a taller one adds
 	d.title = fs(p, 0, y0 - 2, 200, "LEFT", "GameFontNormalLarge")
 	d.sub = fs(p, 0, y0 - 24, cw, "LEFT")
 	d.rangeButtons = {}
@@ -435,7 +437,7 @@ local function buildDashboard(p)
 	who:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
 	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.who = who
-	local chart = panel(p, 0, y0 - 44, cw, 190)
+	local chart = panel(p, 0, y0 - 44, cw, 190 + extra)
 	d.chart = chart
 	-- hover: a marker on the nearest point and a tooltip with who held what
 	local mark = chart:CreateTexture(nil, "OVERLAY")
@@ -471,7 +473,7 @@ local function buildDashboard(p)
 		d.grid[i] = g
 		d.gridLabels[i] = fs(chart, 4, 0, 56, "RIGHT", "GameFontDisableSmall")
 	end
-	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -174, 80, "CENTER", "GameFontDisableSmall") end
+	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -174 - extra, 80, "CENTER", "GameFontDisableSmall") end
 
 	-- stat row under the chart
 	d.stats = {}
@@ -479,9 +481,10 @@ local function buildDashboard(p)
 		{ "52W LOW", "low" }, { "DAILY CHANGE", "dailyChange" }, { "TOP PURCHASE", "topBuy" } }
 	for i, l in ipairs(labels) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-		local lab = fs(p, col * 188, y0 - 242 - row * 18, 104, "LEFT", "GameFontNormalSmall")
+		local sx = math.floor(col * cw / 3)
+		local lab = fs(p, sx, y0 - 242 - extra - row * 18, 104, "LEFT", "GameFontNormalSmall")
 		lab:SetText(l[1])
-		d.stats[l[2]] = fs(p, col * 188 + 104, y0 - 242 - row * 18, 80, "RIGHT")
+		d.stats[l[2]] = fs(p, sx + 104, y0 - 242 - extra - row * 18, math.floor(cw / 3) - 108, "RIGHT")
 	end
 
 	-- sales / expenses / profit
@@ -622,23 +625,41 @@ function UI.SetScale(scale)
 	return scale
 end
 
---- Make the window h tall (600 to 1200, and no taller than the screen). Returns the height.
-function UI.SetHeight(h)
-	local screen = UIParent.GetHeight and UIParent:GetHeight()
-	local max = MAX_H
-	if type(screen) == "number" and screen > 0 and frame then max = math.min(MAX_H, math.floor(screen / (frame:GetScale() or 1)) - 20) end
-	H = math.floor(math.max(MIN_H, math.min(max, h or MIN_H)))
-	settings().height = H
-	if frame then
-		pin(1, 1)
-		frame:SetHeight(H)
-		UI.LayoutSubTabs()
-		if frame:IsShown() then UI.Refresh() end
-	end
-	return H
+--- Resize the window to w by h (920 to 1800 wide, 600 to 1200 tall, and within the screen). Every
+--- page is laid out again for the new size. Returns the size.
+function UI.SetSize(w, h)
+	local sw = UIParent.GetWidth and UIParent:GetWidth()
+	local sh = UIParent.GetHeight and UIParent:GetHeight()
+	local sc = frame and frame:GetScale() or 1
+	local maxW = (type(sw) == "number" and sw > 0) and math.min(MAX_W, math.floor(sw / sc) - 20) or MAX_W
+	local maxH = (type(sh) == "number" and sh > 0) and math.min(MAX_H, math.floor(sh / sc) - 20) or MAX_H
+	W = math.floor(math.max(MIN_W, math.min(math.max(MIN_W, maxW), w or W)))
+	H = math.floor(math.max(MIN_H, math.min(math.max(MIN_H, maxH), h or H)))
+	settings().width, settings().height = W, H
+	UI.Rebuild()
+	return W, H
 end
 
+function UI.SetHeight(h) local _, nh = UI.SetSize(W, h); return nh end
+function UI.Size() return W, H end
 function UI.Height() return H end
+
+--- Build the window again at the current size, on the same page, in the same place.
+function UI.Rebuild()
+	if not frame then return end
+	local old = frame
+	local shown = old:IsShown()
+	local left, top = old:GetLeft(), old:GetTop()
+	old:SetScript("OnShow", nil)
+	old:Hide()
+	pages, pageButtons = {}, {}
+	build()
+	if left and top then
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+	end
+	if shown then frame:Show() end
+end
 
 function UI.AddSizer(f)
 	local grip = CreateFrame("Button", nil, f)
@@ -652,31 +673,41 @@ function UI.AddSizer(f)
 	end
 	grip:SetScript("OnMouseDown", function(self)
 		local x, y = GetCursorPosition()
-		self.fromX, self.fromY, self.fromScale, self.fromH = x, y, f:GetScale() or 1, H
+		self.fromX, self.fromY, self.fromScale, self.fromW, self.fromH = x, y, f:GetScale() or 1, W, H
 		self.scaling = IsShiftKeyDown and IsShiftKeyDown()
 		self:SetScript("OnUpdate", function(g)
 			local cx, cy = GetCursorPosition()
 			local px = (UIParent:GetEffectiveScale() or 1) * g.fromScale -- screen pixels per window unit
 			if g.scaling then
 				UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / px / W))
-			elseif math.floor(g.fromH + (g.fromY - cy) / px) ~= H then
-				UI.SetHeight(g.fromH + (g.fromY - cy) / px)
+			else
+				-- the outline follows the cursor; the pages are laid out again on release
+				g.toW = math.max(MIN_W, math.min(MAX_W, g.fromW + (cx - g.fromX) / px))
+				g.toH = math.max(MIN_H, math.min(MAX_H, g.fromH + (g.fromY - cy) / px))
+				f:SetSize(g.toW, g.toH)
 			end
 		end)
 	end)
-	grip:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
-	grip:SetScript("OnDoubleClick", function() UI.SetScale(1); UI.SetHeight(MIN_H) end)
-	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to make the window taller or shorter. Shift-drag to make everything bigger or smaller. Double-click for the normal size." } }) end)
+	grip:SetScript("OnMouseUp", function(self)
+		self:SetScript("OnUpdate", nil)
+		if not self.scaling and self.toW then UI.SetSize(self.toW, self.toH); self.toW = nil end
+	end)
+	grip:SetScript("OnDoubleClick", function() UI.SetScale(1); UI.SetSize(MIN_W, MIN_H) end)
+	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to resize the window. Shift-drag to make everything bigger or smaller. Double-click for the normal size." } }) end)
 	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.sizer = grip
 	local saved = CH.db and CH.db.settings.window
 	if saved and saved.scale and saved.scale ~= 1 then f:SetScale(saved.scale) end
-	if saved and saved.height then H = math.max(MIN_H, math.min(MAX_H, saved.height)); f:SetHeight(H) end
 	return grip
 end
 
-local function build()
+function build()
 	local T = CH.Theme
+	local saved = CH.db and CH.db.settings.window
+	if saved then
+		W = math.max(MIN_W, math.min(MAX_W, saved.width or W))
+		H = math.max(MIN_H, math.min(MAX_H, saved.height or H))
+	end
 	frame = CH.Window.New("AuctionIQFrame", "", W, H)
 	-- above the windows docked to the profession window (and other addons' crafting windows), and
 	-- brought to the front when clicked

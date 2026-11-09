@@ -12,6 +12,9 @@ local ROWS, TASKS = 14, 4
 function PUI.Build(p, fs, panel)
 	local T = CH.Theme
 	page = p
+	-- the page grows with the window: Coming up takes the extra width, the crafts the extra height
+	local PW = math.max(724, math.floor(p:GetWidth() or 724))
+	local extra = math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600)
 	local kp = panel(p, 0, 0, 476, 330)
 	local h = fs(kp, 10, -8, 456, "LEFT", "GameFontNormal")
 	h:SetText("Knowledge this week" .. T.Color("muted", "  tick what's done; clears at the reset"))
@@ -35,12 +38,13 @@ function PUI.Build(p, fs, panel)
 		end
 		p.rows[i] = r
 	end
-	local up = panel(p, 484, 0, 240, 330)
-	local uh = fs(up, 10, -8, 220, "LEFT", "GameFontNormal"); uh:SetText("Coming up" .. T.Color("muted", "  next 14 days"))
-	p.upcoming = fs(up, 10, -30, 220, "LEFT")
+	local UW = PW - 484
+	local up = panel(p, 484, 0, UW, 330)
+	local uh = fs(up, 10, -8, UW - 20, "LEFT", "GameFontNormal"); uh:SetText("Coming up" .. T.Color("muted", "  next 14 days"))
+	p.upcoming = fs(up, 10, -30, UW - 20, "LEFT")
 	p.upcoming:SetJustifyV("TOP")
 	if p.upcoming.SetMaxLines then p.upcoming:SetMaxLines(16) end
-	local tm = panel(p, 0, -340, 724, 144)
+	local tm = panel(p, 0, -340, PW, 144 + extra)
 	local scroll = CreateFrame("ScrollFrame", nil, tm)
 	scroll:SetPoint("TOPLEFT", 10, -8)
 	scroll:SetPoint("BOTTOMRIGHT", -10, 6)
@@ -49,11 +53,11 @@ function PUI.Build(p, fs, panel)
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScrollRange(), self:GetVerticalScroll() - delta * 30)))
 	end)
 	local child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(704, 10)
+	child:SetSize(PW - 20, 10)
 	scroll:SetScrollChild(child)
 	p.crafts = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	p.crafts:SetPoint("TOPLEFT")
-	p.crafts:SetWidth(704)
+	p.crafts:SetWidth(PW - 20)
 	p.crafts:SetJustifyH("LEFT")
 	p.crafts:SetSpacing(3)
 	-- the crafting windows
@@ -65,7 +69,7 @@ function PUI.Build(p, fs, panel)
 		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
 		local w = b[1]:len() * 7 + 24
 		local btn = T.Button(p, b[1], w, 20)
-		btn:SetPoint("TOPLEFT", x, -494)
+		btn:SetPoint("TOPLEFT", x, -494 - extra)
 		btn:SetScript("OnClick", b[2])
 		btn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { b[3] } }) end)
 		btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
