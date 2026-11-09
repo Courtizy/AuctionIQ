@@ -87,26 +87,53 @@ function M.WaitingAll()
 end
 
 -- Open all: take money and items from every mail that isn't cash on delivery, one every 0.3s.
-local opening
+-- Each take is checked: if the inbox doesn't change after a few tries (bags full, an item you
+-- can't carry) it stops and says why, and it stops when the mailbox closes.
+local opening, finish
+local function inboxSig()
+	local n, sum = GetInboxNumItems(), 0
+	for i = 1, n do
+		local _, _, _, _, money, _, _, items = GetInboxHeaderInfo(i)
+		sum = sum + (money or 0) + (tonumber(items) or (items and 1 or 0)) * 1e12
+	end
+	return n .. ":" .. sum
+end
 function M.OpenAll(done)
 	if opening or not GetInboxNumItems then return end
 	opening = true
-	local gold, taken = 0, 0
+	local startMoney = GetMoney and GetMoney()
+	local gold, taken, tries, lastSig, pendingGold = 0, 0, 0, nil, 0
+	finish = function(why)
+		if not opening then return end
+		opening, finish = false, nil
+		if startMoney and GetMoney then gold = GetMoney() - startMoney end
+		M.Waiting()
+		if done then done(taken, gold, why) end
+	end
 	local function step()
+		if not opening then return end
+		local sig = inboxSig()
+		if lastSig then
+			if sig == lastSig then
+				tries = tries + 1
+				if tries >= 3 then return finish("stopped: your bags are full, or a mail can't be taken") end
+			else
+				taken, gold, tries = taken + 1, gold + pendingGold, 0
+			end
+		end
 		local n = GetInboxNumItems()
 		for i = n, 1, -1 do
 			local _, _, _, _, money, cod, _, hasItem = GetInboxHeaderInfo(i)
 			if (cod or 0) == 0 and ((money or 0) > 0 or hasItem) then
-				if (money or 0) > 0 then gold = gold + money end
-				taken = taken + 1
+				pendingGold = money or 0
+				lastSig = sig
 				AutoLootMailItem(i)
 				C_Timer.After(0.3, step)
 				return
 			end
 		end
-		opening = false
-		M.Waiting()
-		if done then done(taken, gold) end
+		finish()
 	end
 	step()
 end
+CH.On("MAIL_CLOSED", function() if finish then finish("stopped: the mailbox closed") end end)
