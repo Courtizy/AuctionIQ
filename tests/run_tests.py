@@ -1056,6 +1056,10 @@ check("order list: a knowledge reward marks it 1KP and sorts ahead of plain prof
 check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * CH.Prices.Get("chvalue", "i:902") * CH.AH_CUT) < 1
       and [r.value for r in by[78].rewards.values()][0] is None)
 check("order list: profit and reagent cost come from the advisor's best craft", by[77].profit == by[77].row.profit and by[77].cost == by[77].row.cost and by[77].profit > 0)
+pb = L.eval("""AuctionIQ.Advisor.PickBest({ { quality = 1, profit = -100, short = true },
+  { quality = 2, profit = -500, concentration = 80, perPoint = -6 } })""")
+check("orders: when only Concentration reaches the rank asked, the order is reachable at its loss",
+      pb[0] is None and pb[1] is not None and pb[1].profit == -500)
 check("order list: who it's from", by[77]["from"] == "Pat" and by[78]["from"] == "Patron")
 run("AuctionIQ.ScanUI.SetMode('orders')")
 orows = list(CH.ScanUI.Refresh().values())
