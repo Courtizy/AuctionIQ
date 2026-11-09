@@ -3,7 +3,7 @@
 </p>
 
 <p align="center"><b>Economic intelligence for the Auction House.</b><br>
-AuctionIQ helps you decide what to do. Clearinghouse, its ledger, tells you what actually happened.</p>
+AuctionIQ helps you decide what to do. Accounting, its ledger, tells you what actually happened.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-In%20development-e0a83a?style=for-the-badge" alt="Status: in development">
@@ -21,7 +21,7 @@ takes over the jobs that today need both TSM and CraftSim.
 
 ## Features
 
-- One window, four tabs: Dashboard, Research, Operations and Clearinghouse. Research and Operations have sub-tabs across the top
+- One window, four tabs: Dashboard, Research, Operations and Accounting. Research and Operations have sub-tabs across the top
 - Tooltips on every item: the value after the 5% cut, the price to buy it, and the profit of crafting it
 - A crafting advisor that works out profit the way CraftSim does, Concentration included
 - Work orders and first crafts priced up, with the ones that give a knowledge point marked 1KP
@@ -69,7 +69,7 @@ so. After that, delete the Clearinghouse folder.
 | **Dashboard** | What needs attention now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
 | **Research** | What to do, and why. **Markets:** compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. **Professions:** the weekly knowledge plan, what's coming up, best crafts and Concentration, and the Scan, Paths, Queue and advisor windows. **Performance:** profit by line and character against the period before, profit drivers (price, volume or cost), forecast accuracy, capital efficiency, crafting efficiency (gold per Concentration point and crafting hour, procs against expected), scenarios (reagents up, prices down, break-even; both settable), gold per hour and craft results. |
 | **Operations** | The work planned or underway. **Work queue:** the craft queue on every character with what holds each up, and the shopping list for it. **Inventory:** Ready to post (with EV and RZ beside the price), stock targets (a week of demand at a 90% service level, both settable) and dead stock. **Rules & routes:** what to mail to which character, including reagents for crafts queued elsewhere, and Groups and rules (opens Settings). The AH, profession and mailbox windows carry the work out. |
-| **Clearinghouse** | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
+| **Accounting** | The books, in plum and parchment: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 
 Open it with `/aiq`, the minimap button or the addon compartment. The crafting tools (Advisor, Scan,
 Paths, Queue) dock to the right of the profession window. Drag them off to float them, and
@@ -180,11 +180,7 @@ hold), splitting a stack when they need part of it. Operations, To mail lists th
 - **Competition**: who undercuts you and how often, from your post scans.
 - **When it sells**: the day and hours your sales cluster in, and when to post by.
 
-## Clearinghouse, the ledger
-
-<p align="center">
-  <img src="Media/Clearinghouse-Branded.png" width="240" alt="Clearinghouse">
-</p>
+## Accounting, the books
 
 The books: sales, purchases, income, expenses, expired and cancelled auctions (with the deposits
 each one cost), inventory, and the Goblin CFO views (profit by product, holdings, overhead). It reads
@@ -257,7 +253,7 @@ One folder per component, each with its own `comp:` label on GitHub:
 | `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
 | `Trading/` | Groups and operations, posting and cancelling, mail |
 | `Analytics/` | Stock targets, forecast matching and the Analytics views |
-| `Clearinghouse/` | The ledger tab and reports |
+| `Clearinghouse/` | The Accounting tab (the ledger) and reports |
 | `Markets/` | The Markets tab: compare prices, market prices, competition, when it sells |
 
 `AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them. The

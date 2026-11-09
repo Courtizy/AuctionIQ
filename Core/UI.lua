@@ -507,7 +507,7 @@ local function buildBriefing(p)
 	CH.ReportUI.Build(p, fs, panel)
 	local scroll = CreateFrame("ScrollFrame", nil, p)
 	scroll:SetPoint("TOPLEFT", 4, -176)
-	local RW = W - 24 - 172 - 16 -- the Report sits in the Clearinghouse tab, right of its nav
+	local RW = W - 24 - 172 - 16 -- the Report sits in the Accounting tab, right of its nav
 	scroll:SetPoint("BOTTOMRIGHT", -4, 0)
 	scroll:EnableMouseWheel(true)
 	scroll:SetScript("OnMouseWheel", function(self, delta)
@@ -528,7 +528,7 @@ end
 -- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
 -- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Clearinghouse: what
 -- happened. The AH, profession and mailbox windows carry out what Operations plans.
-local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Clearinghouse" } }
+local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
 -- which page frame each tab shows; Research, Operations and the Clearinghouse share the table page
 local FRAME = { today = "dashboard", research = "ledger", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
@@ -543,11 +543,11 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 UI.TABS, UI.OLD = TABS, OLD
 
---- The window title: the icon and name of AuctionIQ, or of the Clearinghouse on its tab.
+--- The window title: the icon and name of AuctionIQ, or of Accounting (the books) on its tab.
 local function titleText(which)
 	local ch = which == "clearinghouse"
-	local icon = "|TInterface\\AddOns\\AuctionIQ\\Media\\" .. (ch and "Clearinghouse" or "Icon") .. ":16:16:0:0|t "
-	return icon .. CH.Theme.Color("accent", ch and "Clearinghouse" or "AuctionIQ")
+	local icon = "|TInterface\\AddOns\\AuctionIQ\\Media\\" .. (ch and "Accounting" or "Icon") .. ":16:16:0:0|t "
+	return icon .. CH.Theme.Color("accent", ch and "Accounting" or "AuctionIQ")
 end
 UI.TitleText = titleText
 
