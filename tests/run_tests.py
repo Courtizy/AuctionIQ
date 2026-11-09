@@ -826,7 +826,7 @@ check("dashboard: the queued figure shows", plain(L.eval("Clearinghouse.UI.Pages
 run("Clearinghouse.UI.Pages().dashboard.d.figures.queued.hit.scripts.OnClick()")
 check("dashboard: clicking it opens Operations, Work queue", CH.LedgerUI.View() == "queue" and CH.LedgerUI.Section() == "operations")
 run("Clearinghouse.db.queue = STUB.oldQueue; Clearinghouse.UI.Page('markets')")
-check("tabs: Dashboard, Research, Operations, Clearinghouse", [t[2] for t in L.eval("Clearinghouse.UI.TABS").values()] == ["Dashboard", "Research", "Operations", "Clearinghouse"])
+check("tabs: Dashboard, Research, Operations, Accounting", [t[2] for t in L.eval("Clearinghouse.UI.TABS").values()] == ["Dashboard", "Research", "Operations", "Accounting"])
 check("research sub-tabs: Markets, Professions, Performance", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Markets", "Professions", "Performance"])
 run("Clearinghouse.UI.Page('operations')")
 check("operations sub-tabs: Work queue, Inventory, Rules & routes", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Work queue", "Inventory", "Rules & routes"])

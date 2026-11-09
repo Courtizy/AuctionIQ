@@ -80,6 +80,23 @@ function SUI.Build(p, fs, panel)
 	end
 	local note = fs(gen, 12, my - 24 - #S.MODEL * 24 - 8, 256, "LEFT", "GameFontDisableSmall")
 	note:SetText("The /aiq commands still work too.")
+	-- About: the logo, the version and where it lives
+	local ay0 = my - 24 - #S.MODEL * 24 - 30
+	local logo = gen:CreateTexture(nil, "ARTWORK")
+	logo:SetTexture("Interface\\AddOns\\AuctionIQ\\Media\\Logo-Branded")
+	logo:SetTexCoord(0, 1, 0, 193 / 256)
+	logo:SetSize(118, 89)
+	logo:SetPoint("TOPLEFT", 12, ay0)
+	p.logo = logo
+	p.about = {}
+	local ver = tostring(CH.version or "dev")
+	if ver:find("^@") then ver = "dev build" end -- unpackaged: the toc still says @project-version@
+	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 18 }, { "crafters and traders.", 30 },
+		{ "On GitHub:", 48 }, { "Courtizy/AuctionIQ", 60 } }) do
+		p.about[i] = fs(gen, 138, ay0 - 6 - t[2], 130, "LEFT", "GameFontDisableSmall")
+		t = t[1]
+		p.about[i]:SetText(t)
+	end
 
 	-- Operations -----------------------------------------------------------------------------------
 	local ops = panel(p, 292, 0, 604, 360)

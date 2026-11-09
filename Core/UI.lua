@@ -525,7 +525,7 @@ local function buildBriefing(p)
 	CH.ReportUI.Build(p, fs, panel)
 	local scroll = CreateFrame("ScrollFrame", nil, p)
 	scroll:SetPoint("TOPLEFT", 4, -176)
-	local RW = W - 24 - 172 - 16 -- the Report sits in the Clearinghouse tab, right of its nav
+	local RW = W - 24 - 172 - 16 -- the Report sits in the Accounting tab, right of its nav
 	scroll:SetPoint("BOTTOMRIGHT", -4, 0)
 	scroll:EnableMouseWheel(true)
 	scroll:SetScript("OnMouseWheel", function(self, delta)
@@ -546,7 +546,7 @@ end
 -- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
 -- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Clearinghouse: what
 -- happened. The AH, profession and mailbox windows carry out what Operations plans.
-local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Clearinghouse" } }
+local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
 -- which page frame each tab shows; Research, Operations and the Clearinghouse share the table page
 local FRAME = { today = "dashboard", research = "ledger", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
@@ -561,13 +561,19 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 UI.TABS, UI.OLD = TABS, OLD
 
+--- The window title: AuctionIQ and its gavel, on every tab (Accounting keeps its plum colours).
+local function titleText()
+	return "|TInterface\\AddOns\\AuctionIQ\\Media\\Icon:16:16:0:0|t " .. CH.Theme.Color("accent", "AuctionIQ")
+end
+UI.TitleText = titleText
+
 --- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
 --- after the widest title so a title change never pushes into them.
 local function layoutTabs()
 	local title = frame.title
 	local keep = title:GetText()
 	local widest = 0
-	for _, t in ipairs({ CH.Theme.Color("accent", "AuctionIQ"), CH.Theme.Color("accent", "Clearinghouse") }) do
+	for _, t in ipairs({ titleText() }) do
 		title:SetText(t)
 		widest = math.max(widest, title:GetStringWidth() or 0)
 	end
@@ -588,11 +594,12 @@ end
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
-	frame.title:SetText(T.Color("accent", "AuctionIQ"))
+	frame.title:SetText(titleText())
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Clearinghouse ledger last
 	for _, pg in ipairs(TABS) do
-		local b = T.Button(frame.bar, pg[2], 84, 20)
+		-- a small symbol before each name, the same size and style on every tab
+		local b = T.Button(frame.bar, "|TInterface\\AddOns\\AuctionIQ\\Media\\Tab-" .. pg[2] .. ":14:14:0:0|t " .. pg[2], 84, 20)
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
@@ -888,7 +895,7 @@ function UI.Refresh()
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
 		frame.palette = want
-		frame.title:SetText(CH.Theme.Color("accent", want == "clearinghouse" and "Clearinghouse" or "AuctionIQ"))
+		frame.title:SetText(titleText())
 	end
 	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
 	-- a view that is a page of its own (the Report, Professions) shows beside the nav

@@ -155,7 +155,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		CH.Print("weekly task added: " .. name)
 	elseif msg == "theme" then
 		CH.db.settings.theme = CH.db.settings.theme ~= "elvui" and "elvui" or "aiq"
-		CH.Print(CH.db.settings.theme == "elvui" and "using ElvUI's colours. /reload to apply everywhere." or "using the AuctionIQ and Clearinghouse colours. /reload to apply everywhere.")
+		CH.Print(CH.db.settings.theme == "elvui" and "using ElvUI's colours. /reload to apply everywhere." or "using the AuctionIQ and Accounting colours. /reload to apply everywhere.")
 		CH.Theme.Use(CH.Theme.palette)
 		if CH.UI.IsShown() then CH.UI.Refresh() end
 	elseif msg == "alerts" then
@@ -205,12 +205,12 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		if r and CH.AnalyticsViews then CH.AnalyticsViews.SetScenario(tonumber(r) / 100, tonumber(p) / 100) end
 		CH.UI.Page("research", "scenarios")
 	elseif msg == "report" or msg == "brief" or msg == "briefing" then CH.UI.Page("report")
-	elseif msg == "ledger" or msg == "clearinghouse" or msg == "books" then CH.UI.Page("ledger")
+	elseif msg == "accounting" or msg == "ledger" or msg == "clearinghouse" or msg == "books" then CH.UI.Page("ledger")
 	elseif msg == "settings" or msg == "options" or msg == "config" then CH.UI.Page("settings")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, research, operations or ledger opens that tab (markets, crafting, trading and analytics still work); /aiq report opens the Report in the Clearinghouse. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, research, operations or accounting opens that tab (markets, crafting, trading and analytics still work); /aiq report opens the Report in Accounting. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
 	else
 		CH.UI.Toggle()
 	end
