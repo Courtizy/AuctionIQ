@@ -48,6 +48,8 @@ end
 function M.SendNext()
 	local box = M.Outbox()
 	for to, list in pairs(box) do
+		-- attachments only take when the Send Mail tab is the one showing
+		if SendMailFrame and not SendMailFrame:IsShown() and MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, nil, 2) end
 		if ClearSendMail then ClearSendMail() end
 		for i = 1, math.min(#list, ATTACHMENTS_MAX_SEND or 12) do
 			C_Container.PickupContainerItem(list[i].bag, list[i].slot)
