@@ -89,7 +89,9 @@ function SUI.Build(p, fs, panel)
 	logo:SetPoint("TOPLEFT", 12, ay0)
 	p.logo = logo
 	p.about = {}
-	for i, t in ipairs({ { "Version " .. tostring(CH.version), 0 }, { "Gold-making for", 18 }, { "crafters and traders.", 30 },
+	local ver = tostring(CH.version or "dev")
+	if ver:find("^@") then ver = "dev build" end -- unpackaged: the toc still says @project-version@
+	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 18 }, { "crafters and traders.", 30 },
 		{ "On GitHub:", 48 }, { "Courtizy/AuctionIQ", 60 } }) do
 		p.about[i] = fs(gen, 138, ay0 - 6 - t[2], 130, "LEFT", "GameFontDisableSmall")
 		t = t[1]
