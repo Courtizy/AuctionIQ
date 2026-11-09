@@ -1,45 +1,134 @@
--- Recipe scan window: every learned recipe of the open profession ranked by profit, gold per
--- Concentration point or gold a day. Click a row to open the recipe, shift-click to queue its best craft.
+-- Recipe scan window, three lists under one bar:
+--   Recipes      every learned recipe ranked by profit, gold per Concentration point or gold a day
+--   Work orders  every order the game has listed, with what it really pays and 1KP when it gives knowledge
+--   First crafts recipes that still give their first-craft knowledge point, and what each point costs
+-- Click a column header to sort by it (again to flip). Click a row to open the recipe, shift-click
+-- to queue it.
 local _, CH = ...
 
 local SUI = {}
 CH.ScanUI = SUI
-local frame, rows, status
+local frame, status
 local N, W, H = 16, 836, 18
-local offset, sortKey, data = 0, "profit", {}
+local offset, data = 0, {}
 local showOlder = true
+local mode = "recipes"
+local tables, heads = {}, {}
 
-local COLS = { { "Recipe", 12, 196 }, { "Profit (can make)", 210, 114 }, { "%", 326, 40 }, { "With Conc. (can make)", 368, 128 },
-	{ "Per pt", 498, 60 }, { "Sold/day", 560, 64 }, { "Gold/day", 626, 98 }, { "Buy or craft", 728, 96 } }
-local SORTS = { profit = "profit per craft", concProfit = "profit with Concentration", perPoint = "gold per Concentration point",
-	perDay = "gold a day", buySave = "how much buying beats crafting" }
+-- { label, x, width, sort key, justify }
+local COLS = {
+	recipes = { { "Recipe", 12, 196, "name" }, { "Profit", 210, 114, "profit" }, { "%", 326, 40, "pct" },
+		{ "With Conc.", 368, 128, "concProfit" }, { "Per pt", 498, 60, "perPoint" }, { "Sold/day", 560, 64, "soldPerDay" },
+		{ "Gold/day", 626, 98, "perDay" }, { "Buy or craft", 728, 96, "buySave" } },
+	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
+		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
+	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Sells for", 466, 120, "value" },
+		{ "Point costs", 588, 130, "net" } },
+}
+local SORT = { recipes = { key = "profit" }, orders = { key = "default" }, first = { key = "net" } }
+local NAMES = { name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
+	perPoint = "gold per Concentration point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
+	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
+	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit" }
+
+--- Sort rows by key (numbers biggest first, names A-Z; asc flips it). Missing values go last.
+local function sortRows(list, key, asc)
+	if key == "default" then return list end
+	table.sort(list, function(a, b)
+		local x, y = a[key], b[key]
+		if x == nil or y == nil then
+			if x == nil and y == nil then return (a.name or "") < (b.name or "") end
+			return y == nil
+		end
+		if type(x) == "string" then
+			x, y = x:lower(), tostring(y):lower()
+			if asc then return x > y end
+			return x < y
+		end
+		if asc then return x < y end
+		return x > y
+	end)
+	return list
+end
+SUI.SortRows = sortRows
 
 local function money(c)
 	if not c then return CH.Theme.Color("muted", "-") end
 	return CH.Theme.Color(c >= 0 and "ok" or "bad", CH.FormatMoney(c))
 end
 
+local function queueRow(r)
+	if mode == "recipes" then
+		local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
+		if not (ok and result and result.best) then return false end
+		CH.Queue.Add(result, result.best, 1)
+	elseif not r.row or not r.result then
+		return false
+	elseif mode == "orders" then
+		CH.Queue.Add(r.result, r.row, 1, { orderID = r.orderID, customer = r.from, special = r.kp })
+	else
+		CH.Queue.Add(r.result, r.row, 1, { firstCraft = true })
+	end
+	CH.Print("queued 1 x " .. (r.name or "?"))
+	return true
+end
+
 local function click(i)
 	local r = data[i + offset]
 	if not r then return end
+	if mode ~= "recipes" then
+		if IsShiftKeyDown and IsShiftKeyDown() then queueRow(r)
+		elseif C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(r.recipeID) end
+		return
+	end
 	if r.header then
 		if not r.current then showOlder = false; offset = 0; SUI.Refresh() end
 		return
 	end
 	if IsShiftKeyDown and IsShiftKeyDown() then
-		local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
-		if ok and result and result.best then
-			CH.Queue.Add(result, result.best, 1)
-			CH.Print("queued 1 x " .. (r.name or "?"))
-		end
+		queueRow(r)
 	elseif C_TradeSkillUI.OpenRecipe then
 		C_TradeSkillUI.OpenRecipe(r.recipeID)
 	end
 end
 
+local function kpTag(yes) return yes and CH.Theme.Color("accent", " 1KP") or "" end
+
+--- Hover lines for a work order or first craft row (also used by the tests).
+function SUI.OrderLines(d)
+	local T, M = CH.Theme, CH.FormatMoney
+	local lines = { { T.Color("accent", d.name or "?") .. kpTag(d.kp or not d.orderID) } }
+	if d.orderID then
+		table.insert(lines, { d.kind .. " order", d.from })
+		if d.minQuality then table.insert(lines, { "Asks for at least", CH.Window.QualityIcon(d.minQuality, 14, d.tiers) }) end
+		table.insert(lines, { "Commission, after the consortium's cut", M(d.commission) })
+		for _, rw in ipairs(d.rewards) do
+			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
+			table.insert(lines, { "  " .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
+				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+		end
+		if d.ok then
+			table.insert(lines, { "Your reagents", M(d.cost or 0) })
+			table.insert(lines, { "Profit", money(d.profit) })
+			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
+		else
+			table.insert(lines, { T.Color("bad", "No craft reaches the quality this order asks for.") })
+		end
+		table.insert(lines, { T.Color("muted", "Profit counts only rewards that sell. Click to open, shift-click to queue.") })
+	else
+		table.insert(lines, { "First craft gives", T.Color("accent", "1 knowledge point") })
+		table.insert(lines, { "Cheapest reagents", M(d.cost or 0) })
+		table.insert(lines, { "The item sells for, after the cut", d.value and M(d.value) or T.Color("muted", "no price") })
+		if d.net then table.insert(lines, { d.net >= 0 and "Profit on top of the point" or "The point costs you", money(d.net >= 0 and d.net or -d.net) }) end
+		table.insert(lines, { T.Color("muted", "Click to open, shift-click to queue. Queue all adds every one.") })
+	end
+	return lines
+end
+
 local function hover(owner, i)
 	local r = data[i + offset]
 	if not r then return end
+	if mode ~= "recipes" then CH.Window.Tooltip(owner, SUI.OrderLines(r)); return end
 	local T = CH.Theme
 	if r.header then
 		CH.Window.Tooltip(owner, { { T.Color("accent", r.expansion) }, { T.Color("muted", r.current
@@ -87,26 +176,59 @@ local function hover(owner, i)
 	CH.Window.Tooltip(owner, lines)
 end
 
+local function setMode(m)
+	mode = (mode == m and m ~= "recipes") and "recipes" or m -- a lit list button toggles back to Recipes
+	offset = 0
+	SUI.Refresh()
+end
+SUI.SetMode = function(m) mode = m; offset = 0; return SUI.Refresh() end
+function SUI.Mode() return mode end
+
+--- Sort by a column (as a header click does): a new column sorts it biggest first, the same one flips.
+function SUI.SortBy(key)
+	local s = SORT[mode]
+	if s.key == key then s.asc = not s.asc else s.key, s.asc = key, false end
+	offset = 0
+	return SUI.Refresh()
+end
+
 local function build()
-	local Wd = CH.Window
+	local Wd, T = CH.Window, CH.Theme
 	frame = Wd.New("ClearinghouseScan", "Recipe scan", W, 92 + N * H)
-	local T = CH.Theme
 	local x = -26
-	for _, s in ipairs({ { "buySave", "Buy?" }, { "perDay", "Per day" }, { "perPoint", "Per pt" }, { "concProfit", "Conc." }, { "profit", "Profit" } }) do
-		local b = T.Button(frame.bar, s[2], 56, 18)
+	local function barButton(label, width, fn)
+		local b = T.Button(frame.bar, label, width, 18)
 		b:SetPoint("RIGHT", x, 0)
-		b:SetScript("OnClick", function() sortKey = s[1]; offset = 0; SUI.Refresh() end)
-		x = x - 60
+		b:SetScript("OnClick", fn)
+		x = x - width - 4
+		return b
 	end
-	local older = T.Button(frame.bar, "Older: shown", 100, 18)
-	older:SetPoint("RIGHT", x - 54, 0)
-	older:SetScript("OnClick", function() showOlder = not showOlder; offset = 0; SUI.Refresh() end)
-	SUI.olderButton = older
-	local scan = T.Button(frame.bar, "Scan", 50, 18)
-	scan:SetPoint("RIGHT", x, 0)
-	scan:SetScript("OnClick", function() SUI.Start() end)
+	SUI.allButton = barButton("Queue all", 72, function() SUI.QueueAll() end)
+	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)
+	SUI.ordersButton = barButton("Work orders", 90, function() setMode("orders") end)
+	barButton("Scan", 50, function() SUI.Start() end)
+	SUI.olderButton = barButton("Older: shown", 100, function() showOlder = not showOlder; offset = 0; SUI.Refresh() end)
 	status = Wd.Text(frame, 12, -34, W - 24)
-	rows = Wd.Table(frame, COLS, N, -54, H, click, hover, W)
+	for m, cols in pairs(COLS) do
+		local blank = {}
+		for j, c in ipairs(cols) do blank[j] = { "", c[2], c[3], c[5] } end
+		tables[m] = Wd.Table(frame, blank, N, -54, H, click, hover, W)
+		heads[m] = {}
+		for j, c in ipairs(cols) do
+			local hb = CreateFrame("Button", nil, frame)
+			hb:SetPoint("TOPLEFT", c[2], -52)
+			hb:SetSize(c[3], 16)
+			hb.text = Wd.OneLine(Wd.Text(frame, c[2], -54, c[3], c[5] or (j == 1 and "LEFT" or "RIGHT"), "GameFontDisableSmall"))
+			hb:SetScript("OnClick", function() SUI.SortBy(c[4]) end)
+			hb:SetScript("OnEnter", function(self) local tip = { { "Sort by " .. (NAMES[c[4]] or c[1]) } }
+				if c[4] == "profit" or c[4] == "concProfit" then tip[2] = { T.Color("muted", "The number in brackets is how many you can make now.") } end
+				tip[#tip + 1] = { T.Color("muted", "Click again to flip it.") }
+				Wd.Tooltip(self, tip) end)
+			hb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			hb.key, hb.label = c[4], c[1]
+			heads[m][j] = hb
+		end
+	end
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
@@ -116,9 +238,91 @@ local function build()
 	Wd.Attach("scan", frame)
 end
 
+-- Show only the active list's table and headers, with an arrow on the sorted column.
+local function showTable()
+	local T = CH.Theme
+	for m, rows in pairs(tables) do
+		local on = m == mode
+		for _, r in ipairs(rows) do
+			for _, c in ipairs(r.cells) do c:SetText("") end
+			if r.button then r.button:SetShown(on) end
+		end
+		for _, hb in ipairs(heads[m]) do
+			hb:SetShown(on)
+			local sorted = on and SORT[m].key == hb.key
+			hb.text:SetText(not on and "" or sorted and T.Color("accent", hb.label .. (SORT[m].asc and " ^" or " v")) or hb.label)
+		end
+	end
+	if SUI.olderButton then SUI.olderButton:SetShown(mode == "recipes") end
+	if SUI.allButton then SUI.allButton:SetShown(mode ~= "recipes") end
+	for m, b in pairs({ orders = SUI.ordersButton, first = SUI.firstButton }) do
+		if b and b.SetAlpha then b:SetAlpha(mode == m and 1 or 0.65) end
+	end
+	return tables[mode]
+end
+
+--- Queue every work order that pays or gives knowledge, or every first craft. Returns how many.
+function SUI.QueueAll()
+	local n = 0
+	for _, d in ipairs(data) do
+		if mode == "first" or (mode == "orders" and d.ok and ((d.profit or 0) >= 0 or d.kp)) then
+			if queueRow(d) then n = n + 1 end
+		end
+	end
+	if n == 0 then CH.Print(mode == "first" and "no first crafts to queue" or "no work orders pay or give knowledge") end
+	return n
+end
+
+-- Work orders and first crafts.
+local function refreshLists()
+	local T = CH.Theme
+	local rows = showTable()
+	data = sortRows(mode == "orders" and CH.Orders.List() or CH.Orders.FirstCrafts(), SORT[mode].key, SORT[mode].asc)
+	offset = math.max(0, math.min(offset, #data - N))
+	if mode == "orders" then
+		local pays, kp = 0, 0
+		for _, d in ipairs(data) do
+			if d.ok and (d.profit or 0) >= 0 then pays = pays + 1 end
+			if d.kp then kp = kp + 1 end
+		end
+		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp))
+			or T.Color("muted", "No work orders listed. Search Patron and Personal on the Crafting Orders tab, then come back."))
+	else
+		local cost = 0
+		for _, d in ipairs(data) do if d.net and d.net < 0 then cost = cost - d.net end end
+		status:SetText(#data > 0 and string.format("%d first crafts left (%s knowledge points), %s to make them all after selling what they make",
+			#data, T.Color("accent", #data), CH.FormatMoney(cost))
+			or T.Color("muted", "No first crafts left in this profession, or open a profession to see them."))
+	end
+	local out = {}
+	for i, r in ipairs(rows) do
+		local d = data[i + offset]
+		if d and mode == "orders" then
+			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?")
+				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
+			r.cells[2]:SetText(d.from)
+			r.cells[3]:SetText(money(d.commission))
+			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
+			r.cells[5]:SetText(d.ok and CH.FormatMoney(d.cost or 0) or T.Color("muted", "-"))
+			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", "can't reach"))
+			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
+			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
+		elseif d then
+			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?") .. kpTag(true))
+			r.cells[2]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
+			r.cells[3]:SetText(d.value and CH.FormatMoney(d.value) or T.Color("muted", "no price"))
+			r.cells[4]:SetText(d.net and (d.net >= 0 and T.Color("ok", "free, +" .. CH.FormatMoney(d.net)) or T.Color("bad", CH.FormatMoney(-d.net))) or T.Color("muted", "-"))
+			table.insert(out, string.format("%s net=%s", d.name, d.net and math.floor(d.net) or "-"))
+		end
+	end
+	return out
+end
+
 --- Redraw from the saved scan. Returns the row texts, for tests.
 function SUI.Refresh()
 	if not frame then return {} end
+	if mode ~= "recipes" then return refreshLists() end
+	local rows = showTable()
 	local T = CH.Theme
 	local profID = CH.OpenProfessionID() or SUI.prof
 	local s = CH.Scan.Results(profID)
@@ -146,7 +350,7 @@ function SUI.Refresh()
 	table.sort(order, function(a, b) return a > b end)
 	local split = #order > 1 or (#order == 1 and order[1] ~= math.huge)
 	for _, key in ipairs(order) do
-		local g = CH.Scan.Sort(groups[key], sortKey)
+		local g = sortRows(groups[key], SORT.recipes.key, SORT.recipes.asc)
 		if split then
 			local cur = key == math.huge
 			table.insert(data, { header = true, current = cur, n = #g,
@@ -154,10 +358,10 @@ function SUI.Refresh()
 		end
 		for _, r in ipairs(g) do table.insert(data, r) end
 	end
-	if SUI.olderButton then SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden") end
+	SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	if not CH.Scan.IsRunning() then
 		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.%s", count,
-			date and date("%H:%M", s.at) or "", SORTS[sortKey] or sortKey,
+			date and date("%H:%M", s.at) or "", NAMES[SORT.recipes.key] or SORT.recipes.key,
 			hidden > 0 and string.format(" %d from older expansions hidden.", hidden) or ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
@@ -165,7 +369,6 @@ function SUI.Refresh()
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
 		if d and d.header then
-			for _, c in ipairs(r.cells) do c:SetText("") end
 			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion))
 			r.cells[2]:SetText(T.Color("muted", string.format(d.current and "current, %d" or "older, %d", d.n)))
 			table.insert(out, "== " .. d.expansion)
@@ -186,8 +389,6 @@ function SUI.Refresh()
 				r.cells[8]:SetText(bc and bc.craft and T.Color("muted", "Craft") or "")
 			end
 			table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
-		else
-			for _, c in ipairs(r.cells) do c:SetText("") end
 		end
 	end
 	return out
@@ -195,6 +396,7 @@ end
 
 function SUI.Start()
 	if not frame then build() end
+	mode = "recipes"
 	local ok = CH.Scan.Run(function(done, total)
 		status:SetText(CH.Theme.Color("accent", string.format("Scanning %d / %d ...", done, total)))
 	end, function() SUI.Refresh() end)

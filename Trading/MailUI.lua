@@ -3,7 +3,7 @@ local _, CH = ...
 
 local MUI = {}
 CH.MailUI = MUI
-local frame, status, list, sendButton
+local frame, status, list, sendButton, routeButton
 
 function MUI.Refresh()
 	if not frame then return end
@@ -25,9 +25,12 @@ function MUI.Refresh()
 	local routes = {}
 	for path, to in pairs(CH.Mail.Store().routes) do table.insert(routes, path .. " → " .. to) end
 	table.sort(routes)
-	list:SetText((#lines > 0 and table.concat(lines, "\n") or CH.Theme.Color("muted", "Nothing to send from this character."))
-		.. "\n\n" .. CH.Theme.Color("muted", "Routes (set on the Groups page: right-click a group):\n" .. (#routes > 0 and table.concat(routes, "\n") or "none yet")))
+	local why = #routes == 0 and "Nothing to send yet: press Routes to pick which character gets each group."
+		or "Nothing in your bags belongs to a routed group."
+	list:SetText((#lines > 0 and table.concat(lines, "\n") or CH.Theme.Color("muted", why))
+		.. "\n\n" .. CH.Theme.Color("muted", "Routes (Routes button, or right-click a group on the Trading tab):\n" .. (#routes > 0 and table.concat(routes, "\n") or "none yet")))
 	sendButton:SetEnabled(n > 0)
+	MUI.sendCount = n
 end
 
 local function build()
@@ -49,6 +52,9 @@ local function build()
 		if to then status:SetText(string.format("Sent %d to %s.", n, to)) end
 		C_Timer.After(1, MUI.Refresh)
 	end)
+	routeButton = T.Button(frame, "Routes", 80, 22)
+	routeButton:SetPoint("TOPLEFT", 194, -36)
+	routeButton:SetScript("OnClick", function(self) MUI.RouteMenu(self) end)
 	frame.waiting = Wd.Text(frame, 12, -64, 336)
 	status = Wd.Text(frame, 12, -82, 336)
 	list = Wd.Text(frame, 12, -104, 336)
@@ -67,5 +73,26 @@ end)
 CH.On("MAIL_CLOSED", function() if frame then frame:Hide() end end)
 CH.On("MAIL_INBOX_UPDATE", function() if frame and frame:IsShown() then MUI.Refresh() end end)
 CH.On("BAG_UPDATE_DELAYED", function() if frame and frame:IsShown() then MUI.Refresh() end end)
+
+--- Routes from the mailbox: each group (two levels deep) with your characters to send it to.
+function MUI.RouteMenu(owner)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+	local routes = CH.Mail.Store().routes
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		root:CreateTitle("Send each group to")
+		local tree = CH.Groups.Tree()
+		if not tree[1] then root:CreateTitle("No groups yet: press Rebuild on the Trading tab.") end
+		for _, g in ipairs(tree) do
+			if g.depth <= 2 then
+				local sub = root:CreateButton(string.rep("  ", g.depth) .. g.name .. (routes[g.path] and ("  > " .. routes[g.path]) or ""))
+				for _, c in ipairs(CH.Ledger.Characters()) do
+					sub:CreateRadio(c.name, function() return routes[g.path] == c.name end,
+						function() CH.Mail.Route(g.path, c.name); MUI.Refresh() end)
+				end
+				sub:CreateButton("Don't mail", function() CH.Mail.Route(g.path, nil); MUI.Refresh() end)
+			end
+		end
+	end)
+end
 
 function MUI.Build() if not frame then build() end return frame end
