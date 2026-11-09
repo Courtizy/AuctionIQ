@@ -340,7 +340,7 @@ check("results log: craft, Multicraft proc and saved reagents counted",
 run('Clearinghouse.ScanUI.Open()')
 check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")
 labels = list(CH.Window.Arrange().values())
-check("tabs: the row lists every window", labels == ["Advisor", "Scan", "Paths", "Queue", "Results"])
+check("tabs: the row lists every window", labels == ["Advisor", "Scan", "Orders", "Paths", "Queue", "Results"])
 run('Clearinghouse.AdvisorUI.Show(10)')
 check("tabs: a recipe click updates the advisor without leaving Scan", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
 run('Clearinghouse.AdvisorUI.Open()')
@@ -783,6 +783,13 @@ run("Clearinghouse.Queue.Clear(); STUB.recipeIDs = { 10 }; local g = C_TradeSkil
 n1 = L.eval("(Clearinghouse.Queue.FillFirstCrafts())")
 fq = list(CH.db.queue.values())
 check("first crafts: unmade recipes queue once each, cheapest, marked 1KP", n1 == 1 and fq[0].firstCraft and fq[0].qty == 1 and not fq[0].concentration)
+fc = list(CH.Orders.FirstCrafts().values())
+check("first crafts list: each recipe with its cheapest reagents and what the point costs", len(fc) == 1 and fc[0].recipeID == 10 and fc[0].cost == fq[0].cost
+      and abs(fc[0].net - ((fc[0].value or 0) - fc[0].cost)) < 1e-6)
+run("Clearinghouse.Queue.Clear(); Clearinghouse.OrdersUI.SetMode('first')")
+frows = list(CH.OrdersUI.Refresh().values())
+check("orders tab: first crafts mode lists the recipe", CH.OrdersUI.IsShown() and CH.Window.Active() == "orders" and len(frows) == 1 and "net=" in frows[0])
+check("orders tab: Queue all queues every first craft", CH.OrdersUI.QueueAll() == 1 and list(CH.db.queue.values())[0].firstCraft)
 run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; STUB.recipeIDs = nil; Clearinghouse.Queue.Clear()")
 run("C_CraftingOrders = { GetCrafterOrders = function() return { { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Patron', reagents = {} } } end, ClaimOrder = function(id) STUB.claimed = id end, FulfillOrder = function(id) STUB.fulfilled = id end }")
 n2 = L.eval("(Clearinghouse.Queue.FillOrders())")
@@ -797,7 +804,31 @@ run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
 check("orders: after the craft it's Deliver", CH.Queue.OrderStep(oq[0]) == "Deliver")
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
 check("orders: Deliver fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
-run("C_CraftingOrders = nil")
+# Orders tab: every listed order with what it pays and whether it gives a knowledge point
+run("""STUB.items = STUB.items or {}
+C_Item.GetItemNameByID = function(id) if id == 901 then return "Alchemist's Knowledge Notes" end if id == 902 then return "Spark Shard" end end
+STUB.prices['i:902'] = { formula_value = 200000 }
+C_CraftingOrders.GetCrafterOrders = function() return {
+  { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Pat', orderType = 2, reagents = {} },
+  { orderID = 78, spellID = 10, minQuality = 1, tipAmount = 100, consortiumCut = 0, orderType = 3, reagents = {},
+    npcOrderRewards = { { itemLink = 'item:901', count = 1 }, { itemLink = 'item:902', count = 2 } } },
+  { orderID = 79, spellID = 10, minQuality = 9, tipAmount = 100, consortiumCut = 0, orderType = 3, reagents = {} } } end""")
+ol = list(CH.Orders.List().values())
+by = {o.orderID: o for o in ol}
+check("order list: every order, the ones you can fill first", len(ol) == 3 and ol[-1].orderID == 79 and not by[79].ok)
+check("order list: a knowledge reward marks it 1KP and sorts ahead of plain profit", by[78].kp and ol[0].orderID == 78 and not by[77].kp)
+check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * CH.Prices.Get("chvalue", "i:902") * CH.AH_CUT) < 1
+      and [r.value for r in by[78].rewards.values()][0] is None)
+check("order list: profit and reagent cost come from the advisor's best craft", by[77].profit == by[77].row.profit and by[77].cost == by[77].row.cost and by[77].profit > 0)
+check("order list: who it's from", by[77]["from"] == "Pat" and by[78]["from"] == "Patron")
+run("Clearinghouse.OrdersUI.SetMode('orders')")
+orows = list(CH.OrdersUI.Refresh().values())
+check("orders tab: lists orders with 1KP flagged", len(orows) == 3 and "kp=true" in orows[0])
+tip = [plain(l[1]) for l in CH.OrdersUI.Lines(by[78]).values()]
+check("orders tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
+run("Clearinghouse.Queue.Clear()")
+check("orders tab: Queue all queues orders that pay or give knowledge", CH.OrdersUI.QueueAll() == 2)
+run("Clearinghouse.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = nil")
 
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")

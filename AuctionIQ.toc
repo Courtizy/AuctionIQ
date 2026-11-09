@@ -58,6 +58,7 @@ Crafting\AdvisorUI.lua
 Crafting\Queue.lua
 Crafting\QueueUI.lua
 Crafting\ScanUI.lua
+Crafting\OrdersUI.lua
 Crafting\Log.lua
 Crafting\Paths.lua
 Crafting\TreeView.lua
