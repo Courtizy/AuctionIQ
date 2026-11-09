@@ -645,7 +645,7 @@ mp = list(CH.TradingUI.MailPlan().values())
 check("trading: to mail lists items on a character other than their route", any(r.id == 302 and r["from"] == "Courtizy" and r.to == "Luxaren" for r in mp))
 run("Clearinghouse.Mail.Route('Crafted', nil)")
 run("Clearinghouse.UI.Page('trading', 'post')")
-check("trading tab opens on Ready to post", CH.LedgerUI.View() == "post")
+check("old trading tab opens Operations on Ready to post", CH.LedgerUI.View() == "post" and CH.LedgerUI.Section() == "operations")
 run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
 pr, pf = L.eval("Clearinghouse.LedgerUI.Rows('post', {})")
 mr, mf = L.eval("Clearinghouse.LedgerUI.Rows('mail', {})")
@@ -803,16 +803,26 @@ check("and back in", LG.Gold() == 10000000)
 run("Clearinghouse.UI.Page('ledger'); Clearinghouse.UI.Page('briefing')")
 check("ledger and briefing pages draw", CH.UI.IsShown())
 
-# Phase 1: six tabs, old names still work, shared table page sections
+# Four tabs, old names still work, shared table page sections
 LUI = CH.LedgerUI
 run("Clearinghouse.UI.Page('briefing')")
 check("report opens inside the Clearinghouse tab", LUI.Section() == "ledger" and LUI.View() == "report" and CH.Theme.palette == "clearinghouse")
 run("Clearinghouse.UI.Page('analytics', 'perf')")
-check("analytics shows its own views", LUI.Section() == "analytics" and LUI.View() == "perf")
+check("analytics opens Research, Performance", LUI.Section() == "research" and LUI.View() == "perf" and LUI.Group() == "Performance")
 run("Clearinghouse.UI.Page('analytics', 'dead')")
-check("a view that moved opens on its new tab: dead stock in Trading", LUI.Section() == "trading" and LUI.View() == "dead")
+check("a view that moved opens on its new tab: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Inventory")
 run("Clearinghouse.UI.Page('markets')")
-check("markets opens on compare prices", LUI.Section() == "markets" and LUI.View() == "compare")
+check("markets opens Research on compare prices", LUI.Section() == "research" and LUI.View() == "compare")
+check("tabs: Dashboard, Research, Operations, Clearinghouse", [t[2] for t in L.eval("Clearinghouse.UI.TABS").values()] == ["Dashboard", "Research", "Operations", "Clearinghouse"])
+check("research sub-tabs: Markets, Professions, Performance", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Markets", "Professions", "Performance"])
+run("Clearinghouse.UI.Page('operations')")
+check("operations sub-tabs: Work queue, Inventory, Rules & routes", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Work queue", "Inventory", "Rules & routes"])
+navshown = [b.label for b in L.eval("Clearinghouse.UI.Pages().ledger.nav").values() if b.shown]
+check("the nav lists only the open sub-tab's views", LUI.Group() is not None and len(navshown) >= 1 and len(navshown) <= 3)
+run("Clearinghouse.UI.Page('ledger')")
+check("the Clearinghouse has no sub-tabs", len(list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values())) == 0)
+run("Clearinghouse.UI.Page('crafting')")
+check("old crafting tab opens Research, Professions beside the nav", LUI.View() == "professions" and L.eval("Clearinghouse.UI.Pages().plan:IsShown()") is True)
 mfoot = L.eval("select(2, Clearinghouse.LedgerUI.Rows('market', {}))")
 mrows0 = list(L.eval("(Clearinghouse.LedgerUI.Rows('market', {}))").values())
 check("market prices without the app come from TSM", len(mrows0) >= 1 and "TSM (60-day avg)" in plain(mfoot) and "Clearinghouse app" not in plain(mfoot))
@@ -1093,10 +1103,10 @@ def audit(where):
     roots = L.eval("(function() local r = {} for _, f in ipairs(STUB.frames) do if (f.parent == nil or f.parent == UIParent) and f.w > 0 then table.insert(r, f) end end return r end)()")
     for p in L.eval("STUB.Audit")(roots).values():
         audit_all.append(where + ": " + p)
-for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
+for tab in ["today", "research", "operations", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions"]:
     run(f"Clearinghouse.UI.Page('ledger', '{v}')")
     audit("view " + v)
 run("Clearinghouse.UI.Page('today')")
@@ -1267,9 +1277,24 @@ check("analytics crafting: gold per Concentration point from the Concentration c
 sc = [x for x in L.eval(f"Clearinghouse.AnalyticsViews.Scenarios({ctx})").values() if x.name == "Test Flask" and x.char == "Alt"][0]
 check("analytics scenarios: reagents +10% and price -10% from the scan", abs(sc.reagentsUp - 500) < 1e-6 and abs(sc.priceDown - 400) < 1e-6 and abs(sc.both + 100) < 1e-6 and abs(sc.breakEven - 0.2) < 1e-9)
 run("Clearinghouse.UI.Page('analytics', 'performance')")
-check("analytics: Performance view opens", LUI.View() == "performance" and LUI.Section() == "analytics")
-nav = [n[1] for n in L.eval("Clearinghouse.LedgerUI.SECTIONS.analytics").values()]
-check("analytics nav: performance first, craft results last, no stock targets", nav[0] == "performance" and nav[-1] == "results" and "par" not in nav and "perf" in nav)
+check("analytics: Performance view opens", LUI.View() == "performance" and LUI.Section() == "research")
+nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("Clearinghouse.LedgerUI.SECTIONS.research").items() if isinstance(k, int))]
+perfnav = nav[nav.index("Performance") + 1:]
+check("performance nav: performance first, craft results last, no stock targets", perfnav[0] == "performance" and perfnav[-1] == "results" and "par" not in perfnav and "perf" in perfnav)
+# Scenarios: editable, saved, and the headings follow
+run("Clearinghouse.UI.Page('research', 'scenarios')")
+ctl = L.eval("Clearinghouse.UI.Pages().ledger.controls")
+check("scenarios: two setting buttons show", ctl[1].shown and ctl[2].shown and plain(ctl[1].label) == "Reagents +10%")
+run("Clearinghouse.UI.Pages().ledger.controls[1].scripts.OnClick(Clearinghouse.UI.Pages().ledger.controls[1], 'LeftButton')")
+sc2 = [x for x in L.eval(f"Clearinghouse.AnalyticsViews.Scenarios({ctx})").values() if x.name == "Test Flask" and x.char == "Alt"][0]
+check("scenarios: left-click raises reagents to +15% and the numbers follow", abs(sc2.reagentsUp - 250) < 1e-6
+      and L.eval("Clearinghouse.db.scenario.reagents") == 0.15 and plain(L.eval("Clearinghouse.AnalyticsViews.VIEWS.scenarios.cols[4][1]")) == "Reagents +15%")
+run("Clearinghouse.UI.Pages().ledger.controls[2].scripts.OnClick(Clearinghouse.UI.Pages().ledger.controls[2], 'RightButton')")
+check("scenarios: right-click lowers prices to -5%", L.eval("Clearinghouse.AnalyticsViews.Scenario().price") == 0.05)
+run("SlashCmdList.CLEARINGHOUSE('scenario 10 10')")
+check("scenarios: /aiq scenario 10 10 sets both", L.eval("Clearinghouse.AnalyticsViews.Scenario().reagents") == 0.10 and L.eval("Clearinghouse.AnalyticsViews.Scenario().price") == 0.10)
+run("Clearinghouse.UI.Page('operations', 'queue')")
+check("scenario controls hide on other views", not L.eval("Clearinghouse.UI.Pages().ledger.controls")[1].shown)
 run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales3; Clearinghouse.Ledger.ClearStats()
 Clearinghouse.db.characters['Alt-Realm'] = nil""")
 

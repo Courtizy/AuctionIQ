@@ -1,6 +1,7 @@
--- Crafting tab of the main window: the weekly knowledge checklist for every character and
--- profession, what's coming up, best crafts and Concentration, and buttons for the crafting windows
--- (the advisor stays docked to the profession window). Gold per hour moved to Analytics.
+-- Research, Professions: the weekly knowledge checklist for every character and profession,
+-- what's coming up, best crafts and Concentration, and buttons for the crafting windows (Paths
+-- plans knowledge trees; the advisor stays docked to the profession window). It sits right of
+-- Research's nav, 724 wide.
 local _, CH = ...
 
 local PUI = {}
@@ -11,35 +12,35 @@ local ROWS, TASKS = 14, 4
 function PUI.Build(p, fs, panel)
 	local T = CH.Theme
 	page = p
-	local kp = panel(p, 0, 0, 560, 330)
-	local h = fs(kp, 10, -8, 540, "LEFT", "GameFontNormal")
-	h:SetText("Knowledge this week" .. T.Color("muted", "  tick what you've done; it clears at the weekly reset"))
+	local kp = panel(p, 0, 0, 476, 330)
+	local h = fs(kp, 10, -8, 456, "LEFT", "GameFontNormal")
+	h:SetText("Knowledge this week" .. T.Color("muted", "  tick what's done; clears at the reset"))
 	p.heads = {}
-	for j, c in ipairs({ { "Character", 10, 90 }, { "Profession", 102, 130 }, { "Gained", 234, 50 }, { "Unspent", 286, 54 } }) do
+	for j, c in ipairs({ { "Character", 10, 86 }, { "Profession", 98, 110 }, { "Gained", 210, 48 }, { "Unspent", 260, 50 } }) do
 		local f = fs(kp, c[2], -30, c[3], j <= 2 and "LEFT" or "RIGHT", "GameFontNormalSmall"); f:SetText(c[1])
 	end
 	p.taskHeads = {}
-	for t = 1, TASKS do p.taskHeads[t] = fs(kp, 346 + (t - 1) * 52, -30, 50, "CENTER", "GameFontNormalSmall") end
+	for t = 1, TASKS do p.taskHeads[t] = fs(kp, 314 + (t - 1) * 40, -30, 40, "CENTER", "GameFontNormalSmall") end
 	p.rows = {}
 	for i = 1, ROWS do
 		local y = -48 - (i - 1) * 19
 		local r = { cells = {}, ticks = {} }
-		r.cells[1] = fs(kp, 10, y, 90); r.cells[2] = fs(kp, 102, y, 130)
-		r.cells[3] = fs(kp, 234, y, 50, "RIGHT"); r.cells[4] = fs(kp, 286, y, 54, "RIGHT")
+		r.cells[1] = fs(kp, 10, y, 86); r.cells[2] = fs(kp, 98, y, 110)
+		r.cells[3] = fs(kp, 210, y, 48, "RIGHT"); r.cells[4] = fs(kp, 260, y, 50, "RIGHT")
 		for t = 1, TASKS do
-			local b = T.Button(kp, "", 46, 16)
-			b:SetPoint("TOPLEFT", 348 + (t - 1) * 52, y + 2)
+			local b = T.Button(kp, "", 36, 16)
+			b:SetPoint("TOPLEFT", 316 + (t - 1) * 40, y + 2)
 			b:SetScript("OnClick", function(self) if self.k then CH.Planner.Tick(self.k[1], self.k[2], self.k[3]); CH.UI.Refresh() end end)
 			r.ticks[t] = b
 		end
 		p.rows[i] = r
 	end
-	local up = panel(p, 572, 0, 324, 330)
-	local uh = fs(up, 10, -8, 300, "LEFT", "GameFontNormal"); uh:SetText("Coming up" .. T.Color("muted", "  next 14 days"))
-	p.upcoming = fs(up, 10, -30, 304, "LEFT")
+	local up = panel(p, 484, 0, 240, 330)
+	local uh = fs(up, 10, -8, 220, "LEFT", "GameFontNormal"); uh:SetText("Coming up" .. T.Color("muted", "  next 14 days"))
+	p.upcoming = fs(up, 10, -30, 220, "LEFT")
 	p.upcoming:SetJustifyV("TOP")
 	if p.upcoming.SetMaxLines then p.upcoming:SetMaxLines(16) end
-	local tm = panel(p, 0, -342, 896, 168)
+	local tm = panel(p, 0, -340, 724, 144)
 	local scroll = CreateFrame("ScrollFrame", nil, tm)
 	scroll:SetPoint("TOPLEFT", 10, -8)
 	scroll:SetPoint("BOTTOMRIGHT", -10, 6)
@@ -48,11 +49,11 @@ function PUI.Build(p, fs, panel)
 		self:SetVerticalScroll(math.max(0, math.min(self:GetVerticalScrollRange(), self:GetVerticalScroll() - delta * 30)))
 	end)
 	local child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(876, 10)
+	child:SetSize(704, 10)
 	scroll:SetScrollChild(child)
 	p.crafts = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	p.crafts:SetPoint("TOPLEFT")
-	p.crafts:SetWidth(876)
+	p.crafts:SetWidth(704)
 	p.crafts:SetJustifyH("LEFT")
 	p.crafts:SetSpacing(3)
 	-- the crafting windows
@@ -60,11 +61,11 @@ function PUI.Build(p, fs, panel)
 	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
 		{ "Paths", function() CH.PathsUI.Toggle() end, "Plan knowledge points for what you want to sell" },
 		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
-		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Analytics" },
+		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Performance" },
 		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
 		local w = b[1]:len() * 7 + 24
 		local btn = T.Button(p, b[1], w, 20)
-		btn:SetPoint("TOPLEFT", x, -518)
+		btn:SetPoint("TOPLEFT", x, -494)
 		btn:SetScript("OnClick", b[2])
 		btn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { b[3] } }) end)
 		btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -78,7 +79,7 @@ function PUI.Refresh()
 	local T, Pl = CH.Theme, CH.Planner
 	pcall(Pl.RecordKP)
 	local tasks = Pl.Store().tasks
-	for t = 1, TASKS do p.taskHeads[t]:SetText(tasks[t] and tasks[t]:sub(1, 8) or "") end
+	for t = 1, TASKS do p.taskHeads[t]:SetText(tasks[t] and tasks[t]:sub(1, 6) or "") end
 	local rows = Pl.Knowledge()
 	for i, r in ipairs(p.rows) do
 		local d = rows[i]
@@ -105,3 +106,7 @@ function PUI.Refresh()
 	p.crafts:GetParent():SetHeight(p.crafts:GetStringHeight() + 10)
 	return rows
 end
+
+-- Research, Professions: this page, beside the nav
+CH.LedgerUI.Register("research", { professions = { label = "Knowledge", page = "plan", noTime = true, cols = {} } },
+	{ "professions" }, "Professions")

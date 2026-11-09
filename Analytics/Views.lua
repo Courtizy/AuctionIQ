@@ -279,13 +279,41 @@ local function craftingRows(ctx)
 end
 
 -- Scenarios ----------------------------------------------------------------------------------
-AV.SCENARIO = { reagents = 0.10, price = 0.10 }
+AV.SCENARIO = { reagents = 0.10, price = 0.10 } -- the defaults; yours are saved in CH.db.scenario
+AV.STEPS = { 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50 }
+
+--- The scenario you set: { reagents = 0.15, price = 0.10 }.
+function AV.Scenario()
+	local s = CH.db and CH.db.scenario
+	return { reagents = s and s.reagents or AV.SCENARIO.reagents, price = s and s.price or AV.SCENARIO.price }
+end
+
+--- Set how far reagents rise and selling prices fall (fractions, 0 to 1). nil keeps one.
+function AV.SetScenario(r, p)
+	local cur = AV.Scenario()
+	r = math.max(0, math.min(1, r or cur.reagents))
+	p = math.max(0, math.min(1, p or cur.price))
+	CH.db.scenario = { reagents = r, price = p }
+	return CH.db.scenario
+end
+
+-- the next step up (dir 1) or down (dir -1) from x
+local function step(x, dir)
+	local S = AV.STEPS
+	if dir > 0 then
+		for _, v in ipairs(S) do if v > x + 1e-9 then return v end end
+		return S[#S]
+	end
+	for i = #S, 1, -1 do if S[i] < x - 1e-9 then return S[i] end end
+	return S[1]
+end
 
 --- What price changes would do to each craft in your saved scans: profit a craft now, with reagents
 --- up, with the selling price down, both, and the reagent rise that would wipe the profit out.
 --- Estimated from the scan: value a craft = profit + reagent cost.
 function AV.Scenarios(ctx, r, p)
-	r, p = r or AV.SCENARIO.reagents, p or AV.SCENARIO.price
+	local sc = AV.Scenario()
+	r, p = r or sc.reagents, p or sc.price
 	local out = {}
 	for key, c in pairs(CH.db.characters or {}) do
 		for _, prof in pairs(c.professions or {}) do
@@ -314,8 +342,9 @@ local function scenarioRows(ctx)
 			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.breakEven, x.both } })
 	end
 	if not out[1] then return out, T.Color("muted", "Scan a profession first: scenarios use your saved scans' profitable crafts.") end
+	local sc = AV.Scenario()
 	return out, string.format("Reagents +%d%%, selling price -%d%%. %d of %d crafts lose money if both happen.",
-		AV.SCENARIO.reagents * 100, AV.SCENARIO.price * 100, fragile, #out)
+		math.floor(sc.reagents * 100 + 0.5), math.floor(sc.price * 100 + 0.5), fragile, #out)
 		.. T.Color("muted", "  Break-even: how far reagents can rise before the craft stops paying. Estimated from your scans.")
 end
 
@@ -334,5 +363,21 @@ AV.VIEWS = {
 		{ "", 652, 72 } } },
 }
 
+-- Scenarios' two settings, as buttons over the table; the column headings follow them
+local function pctOf(x) return math.floor(x * 100 + 0.5) end
+local function label(kind)
+	local sc = AV.Scenario()
+	local cols = AV.VIEWS.scenarios.cols
+	cols[4][1] = string.format("Reagents +%d%%", pctOf(sc.reagents))
+	cols[5][1] = string.format("Price -%d%%", pctOf(sc.price))
+	return kind == "reagents" and string.format("Reagents +%d%%", pctOf(sc.reagents)) or string.format("Price -%d%%", pctOf(sc.price))
+end
+AV.VIEWS.scenarios.controls = {
+	{ label = function() return label("reagents") end, tip = "How far reagent prices rise in this scenario.",
+		click = function(dir) AV.SetScenario(step(AV.Scenario().reagents, dir), nil) end },
+	{ label = function() return label("price") end, tip = "How far your selling prices fall in this scenario.",
+		click = function(dir) AV.SetScenario(nil, step(AV.Scenario().price, dir)) end },
+}
+
 -- Gold per hour and Craft results register their own definitions; this sets the order.
-LUI.Register("analytics", AV.VIEWS, { "performance", "drivers", "perf", "capital", "crafting", "scenarios", "time", "results" })
+LUI.Register("research", AV.VIEWS, { "performance", "drivers", "perf", "capital", "crafting", "scenarios", "time", "results" }, "Performance")

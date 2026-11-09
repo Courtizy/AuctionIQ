@@ -120,4 +120,4 @@ MUI.VIEWS = {
 		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
 }
 
-LUI.Register("markets", MUI.VIEWS, { "compare", "market", "rivals", "when" })
+LUI.Register("research", MUI.VIEWS, { "compare", "market", "rivals", "when" }, "Markets")
