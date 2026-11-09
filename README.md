@@ -19,24 +19,24 @@ makes you a better goblin.
 
 ---
 
-One window, four tabs. Type `/aiq` or click the minimap button to open it.
+## Features
 
-## <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> Dashboard
+- **One window, four tabs**: everything a gold-maker needs, from the first scan to the final tally
+- **Know what's worth crafting**: every recipe ranked by profit, Concentration included
+- **Never overpay for reagents**: the advisor finds the cheapest mix for every quality
+- **Work orders worth taking**: commission, rewards and knowledge points at a glance
+- **A plan for every knowledge point**, drawn right on your profession trees
+- **One queue for your whole warband**: craft, buy, post and mail, one click at a time
+- **Prices you can trust**: your own AH scans checked against TSM and Oribos Exchange
+- **Books that balance**: real profit by item, with 7, 30 and 90 day reports
+- ...and more!
 
-Your gold, your stock and a short list of what to do next.
-
-## <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> Research
-
-What's worth doing: prices compared across sources, the most profitable crafts, a crafting advisor
-that picks the cheapest reagents, and knowledge point plans for your professions.
-
-## <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> Operations
-
-Getting it done: your craft queue and shopping list, what to post, and what to mail to which character.
-
-## <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> Accounting
-
-What actually happened: sales, purchases, profit by item, and a 7, 30 and 90 day report.
+| | |
+|---|---|
+| <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What needs you right now |
+| <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> **Research** | What's worth doing |
+| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | Getting it done |
+| <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What actually happened |
 
 ## Required AddOns
 
