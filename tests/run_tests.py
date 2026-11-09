@@ -1096,7 +1096,7 @@ def audit(where):
 for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios"]:
     run(f"Clearinghouse.UI.Page('ledger', '{v}')")
     audit("view " + v)
 run("Clearinghouse.UI.Page('today')")
@@ -1244,6 +1244,34 @@ vl = [plain(l[0+1]) for l in L.eval("Clearinghouse.Prices.ValueLines(100)").valu
 check("values: short codes in the tooltip", vl[0] == "Values" and any(x.startswith("  MV") for x in vl) and any(x.startswith("  RZ  Realized, 2 sold, last 1d ago") for x in vl))
 check("values: each code has its full meaning for the hover", all(L.eval(f"Clearinghouse.GLOSSARY.{c} ~= nil") for c in ["MV", "RV", "EV", "RZ"]))
 run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales2; Clearinghouse.Ledger.ClearStats()""")
+
+# Analytics views: performance, drivers, capital, crafting efficiency, scenarios
+run("""STUB.oldSales3 = TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"]
+local t = time()
+TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = "itemString,stackSize,quantity,price,otherPlayer,player,time,source\\n"
+  .. "i:100,1,4,20000,Bob,Courtizy," .. (t - 2 * 86400) .. ",Auction\\n"
+  .. "i:100,1,2,10000,Bob,Courtizy," .. (t - 10 * 86400) .. ",Auction"
+Clearinghouse.Ledger.ClearStats()
+Clearinghouse.db.characters['Alt-Realm'] = { name = 'Alt', professions = { [99] = { name = 'Test Alchemy', scan = { rows = {
+  { recipeID = 10, name = 'Test Flask', item = 100, made = 1, profit = 1000, cost = 5000,
+    accounts = { cost = 5000, reagents = { { itemID = 201, n = 2, cost = 5000 } } } } } } } },
+  log = { [10] = { name = 'Test Flask', crafts = 2, items = 2, mcProcs = 0, extraItems = 0, resProcs = 0, saved = 0, ingProcs = 0,
+    concSpent = 100, concRefund = 0, concGold = 5000, value = 20000, cost = 10000, expected = 9000, expMc = 0, expRes = 0, expIng = 0, concCrafts = 1 } } }""")
+ctx = "{ now = time(), since = time() - 7 * 86400, opts = {}, keepName = function() return true end }"
+perf = L.eval(f"(function() local l, t, p = Clearinghouse.AnalyticsViews.Performance({ctx}) return {{ t = t, p = p }} end)()")
+check("analytics performance: this week's crafted profit against the week before", perf.p != 0 and perf.t != perf.p)
+drv = [x for x in L.eval(f"Clearinghouse.AnalyticsViews.Drivers({ctx})").values() if x.id == 100][0]
+check("analytics drivers: price, volume and cost effects add up to the change", abs(drv.price + drv.volume + drv.cost - drv.change) < 1 and drv.driver in ("price", "volume"))
+cr = [x for x in L.eval(f"Clearinghouse.AnalyticsViews.Crafting({ctx})").values() if x.char == "Alt"][0]
+check("analytics crafting: gold per Concentration point from the Concentration crafts", cr.perPoint == 50 and cr.each == 5000)
+sc = [x for x in L.eval(f"Clearinghouse.AnalyticsViews.Scenarios({ctx})").values() if x.name == "Test Flask" and x.char == "Alt"][0]
+check("analytics scenarios: reagents +10% and price -10% from the scan", abs(sc.reagentsUp - 500) < 1e-6 and abs(sc.priceDown - 400) < 1e-6 and abs(sc.both + 100) < 1e-6 and abs(sc.breakEven - 0.2) < 1e-9)
+run("Clearinghouse.UI.Page('analytics', 'performance')")
+check("analytics: Performance view opens", LUI.View() == "performance" and LUI.Section() == "analytics")
+nav = [n[1] for n in L.eval("Clearinghouse.LedgerUI.SECTIONS.analytics").values()]
+check("analytics nav: performance first, craft results last, no stock targets", nav[0] == "performance" and nav[-1] == "results" and "par" not in nav and "perf" in nav)
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales3; Clearinghouse.Ledger.ClearStats()
+Clearinghouse.db.characters['Alt-Realm'] = nil""")
 
 # Second and third review fixes -------------------------------------------------------------------
 # the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13

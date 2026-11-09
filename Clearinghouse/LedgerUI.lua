@@ -59,10 +59,11 @@ local SECTIONS = {
 		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
 	markets = {}, -- Markets/MarketsUI.lua fills this in with LUI.Register
 	-- Analytics explains performance; inventory decisions (stock targets, dead stock) are in Trading
-	analytics = { { "perf" }, { "time" } },
+	analytics = {}, -- Analytics/Views.lua fills this in, in order
+
 }
 local section = "ledger"
-local lastView = { ledger = "inventory", markets = "compare", analytics = "perf" }
+local lastView = { ledger = "inventory", markets = "compare", analytics = "performance" }
 LUI.SECTIONS = SECTIONS
 LUI.VIEWS = VIEWS
 

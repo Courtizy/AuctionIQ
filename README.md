@@ -71,8 +71,8 @@ so. After that, delete the Clearinghouse folder.
 | **Today** | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
 | **Markets** | Compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. |
 | **Crafting** | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and Scan, Paths, Queue and the advisor. |
-| **Trading** | What to do at the auction house and mailbox before you get there: what each character holds that's ready to post (under each group's cap, held back when the AH is under your min) and what to mail to which character. Groups, operations and routes are set in Settings. |
-| **Analytics** | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour, and craft results (what your crafts really gave against what was expected). |
+| **Trading** | What to buy, hold, post or move: Ready to post (with EV and RZ beside the price), stock targets (a week of demand at a 90% service level, both settable), dead stock, and what to mail to which character, including reagents for crafts queued elsewhere. Groups, operations and routes are set in Settings. |
+| **Analytics** | What is working, why, and what should change: Performance (profit by line and character against the period before), Profit drivers (price, volume or cost), Forecast accuracy, Capital efficiency (gold tied up against what it earns), Crafting efficiency (gold per Concentration point and crafting hour, procs against expected), Scenarios (reagents up, prices down, break-even), Gold per hour and Craft results. |
 | **Clearinghouse** | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 
 Open it with `/aiq`, the minimap button or the addon compartment. The crafting tools (Advisor, Scan,
@@ -256,7 +256,7 @@ One folder per component, each with its own `comp:` label on GitHub:
 | `Today/` | The opening page: what to do next |
 | `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
 | `Trading/` | Groups and operations, posting and cancelling, mail |
-| `Analytics/` | Stock targets; forecast vs actual lands here |
+| `Analytics/` | Stock targets, forecast matching and the Analytics views |
 | `Clearinghouse/` | The ledger tab and reports |
 | `Markets/` | The Markets tab: compare prices, market prices, competition, when it sells |
 

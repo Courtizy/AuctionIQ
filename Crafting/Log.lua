@@ -105,6 +105,10 @@ function Lg.Result(data)
 	if data.hasIngenuityProc then e.ingProcs = e.ingProcs + 1 end
 	if (data.concentrationSpent or 0) > 0 then e.concCrafts = e.concCrafts + 1 end
 	e.concSpent = e.concSpent + (data.concentrationSpent or 0)
+	-- what the Concentration crafts alone made (output at market + saved - reagents), for gold per point
+	if (data.concentrationSpent or 0) > 0 then
+		e.concGold = (e.concGold or 0) + (unit and unit * CH.AH_CUT * qty or 0) + saved - (pending and pending.cost or 0)
+	end
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
 	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
 	if CH.Forecast and data.itemID and not (pending and pending.order) then
@@ -164,7 +168,8 @@ function Lg.AllRows()
 					actual = e.value + e.saved - e.cost, expected = e.expected,
 					mcRate = e.mcProcs / e.crafts, expMcRate = e.expMc / e.crafts, resRate = e.resProcs / e.crafts,
 					expResRate = e.expRes / e.crafts, ingRate = e.concCrafts > 0 and e.ingProcs / e.concCrafts or nil,
-					expIngRate = e.concCrafts > 0 and e.expIng / e.concCrafts or nil })
+					expIngRate = e.concCrafts > 0 and e.expIng / e.concCrafts or nil,
+					concSpent = e.concSpent, concActual = e.concGold })
 			end
 		end
 	end
@@ -198,9 +203,10 @@ local function resultRows(ctx)
 		.. T.Color("muted", "  Rates are what you got / what was expected. /aiq results clear empties this character's log.")
 end
 
+-- (Analytics/Views.lua puts it in the Analytics nav, in order)
 CH.LedgerUI.Register("analytics", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
 	cols = { { "Recipe", 0, 190 }, { "Character", 194, 90 }, { "Crafts", 288, 50 }, { "Multicraft", 342, 76 }, { "Resourceful", 422, 80 },
-		{ "Ingenuity", 506, 70 }, { "At market", 580, 72 }, { "Expected", 656, 68 } } } }, { "results" })
+		{ "Ingenuity", 506, 70 }, { "At market", 580, 72 }, { "Expected", 656, 68 } } } }, {})
 
 --- Craft results now live in Analytics.
 function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("analytics", "results") end end
