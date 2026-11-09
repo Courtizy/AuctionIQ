@@ -332,6 +332,15 @@ check("order: qualities under the minimum are marked", orows[0].short == True an
 rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
 check("recraft: profit is the better item less the one you have", rc.best.quality == 2 and rc.best.profit == 2850000 - 2120000 - 950000)
 
+# The cheapest-reagent frontier is worked out once per recipe and price set, then reused
+run("STUB.fm = AuctionIQ.Advisor.Measure(10, { professionID = 2906 }) or AuctionIQ.Advisor.Analyze(10).model")
+f1 = L.eval("(function() local m = STUB.fm; m.frontierCache = nil; local a = AuctionIQ.Advisor.Cheapest(m, 0); local c1 = m.frontierCache; local b = AuctionIQ.Advisor.Cheapest(m, 20); return { same = m.frontierCache == c1, n = #a } end)()")
+check("optimizer: the frontier is reused between calls at different skill", f1.same and f1.n > 0)
+f2 = L.eval("""(function() local m = STUB.fm; local c1 = m.frontierCache; local id = m.qual[1].items[1]
+  local old = STUB.prices['i:' .. id]; STUB.prices['i:' .. id] = { mat = 1 }; AuctionIQ.Prices.ClearCache()
+  AuctionIQ.Advisor.Cheapest(m, 0); local changed = m.frontierCache ~= c1
+  STUB.prices['i:' .. id] = old; AuctionIQ.Prices.ClearCache(); return changed end)()""")
+check("optimizer: a reagent price change rebuilds the frontier", f2)
 # Recipe scan
 run('AuctionIQ.ScanUI.Toggle(); for i = 1, 20 do STUB.RunTimers() end')
 sr = CH.Scan.Results(2906)
