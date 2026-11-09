@@ -7,3 +7,4 @@ ignore:
   - .github
   - Media/Icon.svg
   - Media/Logo-512.png
+  - Media/readme

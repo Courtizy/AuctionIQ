@@ -21,7 +21,7 @@ makes you a better goblin.
 
 One window, four tabs. Open it with `/aiq`, the minimap button or the addon compartment.
 
-## Dashboard
+## <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> Dashboard
 
 What needs attention now.
 
@@ -31,7 +31,7 @@ What needs attention now.
 - A ranked **Do next** list: full Concentration, ready cooldowns, post-now windows, mail, restock,
   items below their stock target and reposts. Click a card to go where the work is.
 
-## Research
+## <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> Research
 
 What to do, and why. Three sub-tabs across the top.
 
@@ -68,7 +68,7 @@ What to do, and why. Three sub-tabs across the top.
 - Scenarios: reagents up, prices down and break-even, both settable (`/aiq scenario 10 10`).
 - Gold per hour and craft results (what each character's crafts really gave against the advisor).
 
-## Operations
+## <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> Operations
 
 The work planned or underway. Three sub-tabs across the top.
 
@@ -92,7 +92,7 @@ The work planned or underway. Three sub-tabs across the top.
   mailbox, Send mails each crafter only what they're short.
 - **Groups and rules**: which items AuctionIQ posts, buys or mails, and how.
 
-## Accounting
+## <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> Accounting
 
 The books, in plum and parchment. It reads TradeSkillMaster's accounting and never writes to it.
 
@@ -178,7 +178,7 @@ One folder per tab, plus Core and Data underneath them:
 | `Operations/` | The Operations tab: work queue and shopping, crafting orders, cooldowns, groups and operations, posting and cancelling, mail, stock targets |
 | `Accounting/` | The Accounting tab (the ledger) and reports |
 
-Media/ holds the icon, logo and tab art; tests/ and tools/ are for development and aren't packaged.
+Media/ holds the icon, logo and tab art (Media/readme has PNG copies of the tab symbols for this page); tests/ and tools/ are for development and aren't packaged.
 
 ## Tests
 
