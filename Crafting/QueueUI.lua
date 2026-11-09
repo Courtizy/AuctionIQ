@@ -130,7 +130,7 @@ local function build()
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		return b
 	end
-	local orders = fillButton("Orders", fill, "Queue the crafting orders worth doing: those whose commission and rewards cover the reagents, or that reward knowledge or Acuity. Open the Crafting Orders tab first so the game lists them. Each order's button goes Claim, Craft, Deliver.", function()
+	local orders = fillButton("Orders", fill, "Queue the crafting orders worth doing: those whose commission and rewards cover the reagents, or that reward knowledge or Acuity. Open the Crafting Orders tab first so the game lists them. Each order's button goes Claim, Craft, Turn in; Next step in the Scan tab's Work orders does them in order.", function()
 		local n, profit = CH.Queue.FillOrders()
 		CH.Print(n > 0 and string.format("queued %d orders, about %s profit.", n, CH.FormatMoney(profit))
 			or "no orders worth doing. Open the Crafting Orders tab so the game lists them.")
@@ -151,7 +151,7 @@ local function build()
 		r.hit = itemHover(panel, 12, ry, 250)
 		r.who = CH.Window.OneLine(text(panel, 266, ry, 90))
 		r.profit = CH.Window.OneLine(text(panel, 360, ry, 86, "RIGHT"))
-		r.craft = T.Button(panel, "Deliver", 58, 16)
+		r.craft = T.Button(panel, "Turn in", 58, 16)
 		r.craft:SetPoint("TOPLEFT", 454, ry + 2)
 		r.minus = T.Button(panel, "-", 18, 16)
 		r.minus:SetPoint("TOPLEFT", 516, ry + 2)
@@ -228,7 +228,7 @@ function QUI.Refresh()
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
 				GameTooltip:AddLine(not can and ("Craft " .. why)
 					or step == "Claim" and ("Claim " .. (e.customer or "the") .. "'s order")
-					or step == "Deliver" and "Deliver the order"
+					or step == "Turn in" and "Turn in the order"
 					or ("Craft " .. e.qty .. " with the queued reagents" .. (e.concentration and " and Concentration" or "")), 1, 1, 1)
 				GameTooltip:Show()
 			end)
@@ -275,6 +275,6 @@ end
 
 function QUI.IsShown() return panel ~= nil and panel:IsShown() end
 
-CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end end
+CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end; if CH.ScanUI and CH.ScanUI.UpdateNext then CH.ScanUI.UpdateNext() end end
 CH.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
 CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then CH.Window.Arrange(); QUI.Refresh() end end)
