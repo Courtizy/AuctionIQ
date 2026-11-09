@@ -148,15 +148,29 @@ if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
 end
 CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
 
--- Results window -----------------------------------------------------------------------------
+-- Results, in Analytics -----------------------------------------------------------------------
+-- What each character's crafts really gave against what the advisor expected, one row per character
+-- and recipe. Profit here is the crafts' output valued at market now, not what it sold for.
 local LUI = {}
 CH.LogUI = LUI
-local frame, rows
-local N, W = 14, 680
-local offset = 0
-local scrollBar
-local COLS = { { "Recipe", 12, 200 }, { "Crafts", 214, 50 }, { "Multicraft", 266, 86 }, { "Resourceful", 354, 90 },
-	{ "Ingenuity", 446, 80 }, { "Market vs expected", 528, 140 } }
+
+--- Rows for every character: { char, recipeID, name, crafts, actual, expected, rates... }.
+function Lg.AllRows()
+	local out = {}
+	for key, c in pairs(CH.db.characters or {}) do
+		for id, e in pairs(c.log or {}) do
+			if (e.crafts or 0) > 0 then
+				table.insert(out, { char = c.name or key, recipeID = id, name = e.name, crafts = e.crafts,
+					actual = e.value + e.saved - e.cost, expected = e.expected,
+					mcRate = e.mcProcs / e.crafts, expMcRate = e.expMc / e.crafts, resRate = e.resProcs / e.crafts,
+					expResRate = e.expRes / e.crafts, ingRate = e.concCrafts > 0 and e.ingProcs / e.concCrafts or nil,
+					expIngRate = e.concCrafts > 0 and e.expIng / e.concCrafts or nil })
+			end
+		end
+	end
+	table.sort(out, function(a, b) return a.crafts > b.crafts end)
+	return out
+end
 
 local function pct(a, b)
 	if not a then return CH.Theme.Color("muted", "-") end
@@ -165,53 +179,32 @@ local function pct(a, b)
 	return s
 end
 
-function LUI.Refresh()
-	if not frame or not frame:IsShown() then return {} end
-	local T = CH.Theme
-	local data = Lg.Rows()
-	frame.note:SetText(#data == 0 and T.Color("muted", "Nothing logged yet. Every craft on this character is recorded here.")
-		or T.Color("muted", "Proc rates are what you got / what the advisor expected."))
-	local out = {}
-	offset = math.max(0, math.min(offset, #data - N))
-	if scrollBar then scrollBar:Set(offset, N, #data) end
-	for i, r in ipairs(rows) do
-		local d = data[i + offset]
-		if d then
-			r.cells[1]:SetText(d.name or "?")
-			r.cells[2]:SetText(d.crafts)
-			r.cells[3]:SetText(pct(d.mcRate, d.expMcRate))
-			r.cells[4]:SetText(pct(d.resRate, d.expResRate))
-			r.cells[5]:SetText(pct(d.ingRate, d.expIngRate))
-			r.cells[6]:SetText(T.Color(d.actual >= d.expected and "ok" or "bad", CH.FormatMoney(d.actual)) .. T.Color("muted", " / " .. CH.FormatMoney(d.expected)))
-			table.insert(out, string.format("%s crafts=%d actual=%d expected=%d", d.name or "?", d.crafts, math.floor(d.actual), math.floor(d.expected)))
-		else
-			for _, c in ipairs(r.cells) do c:SetText("") end
+local function resultRows(ctx)
+	local T, out = CH.Theme, {}
+	local crafts, actual, expected = 0, 0, 0
+	for _, d in ipairs(Lg.AllRows()) do
+		if ctx.keepName(d.name) then
+			crafts, actual, expected = crafts + d.crafts, actual + d.actual, expected + d.expected
+			table.insert(out, { cells = { d.name or "?", d.char, d.crafts, pct(d.mcRate, d.expMcRate), pct(d.resRate, d.expResRate),
+				pct(d.ingRate, d.expIngRate), T.Color(d.actual >= d.expected and "ok" or "bad", CH.FormatMoney(d.actual)),
+				T.Color("muted", CH.FormatMoney(d.expected)) },
+				sort = { d.name or "", d.char, d.crafts, d.mcRate or 0, d.resRate or 0, d.ingRate or 0, d.actual, d.expected } })
 		end
 	end
-	return out
-end
-
-function LUI.Toggle()
-	if not frame then
-		frame = CH.Window.New("ClearinghouseResults", "Craft results", W, 84 + N * 18)
-		local clear = CH.Theme.Button(frame.bar, "Clear", 50, 18)
-		clear:SetPoint("RIGHT", -26, 0)
-		clear:SetScript("OnClick", function() Lg.Clear() end)
-		frame.note = CH.Window.Text(frame, 12, -34, W - 24)
-		rows = CH.Window.Table(frame, COLS, N, -54, 18, nil, nil, W)
-		scrollBar = CH.Window.ScrollBar(frame, W - 8, -70, N * 18)
-		CH.Window.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #Lg.Rows() end, LUI.Refresh, scrollBar)
-		CH.Theme.Fonts(frame)
-		CH.Window.Attach("results", frame)
+	if not out[1] then
+		return out, T.Color("muted", "Nothing logged yet. Every craft is recorded here, on each character.")
 	end
-	if frame:IsShown() then frame:Hide() else LUI.Open() end
+	return out, string.format("%d crafts: %s at market against %s expected.", crafts, CH.FormatMoney(actual), CH.FormatMoney(expected))
+		.. T.Color("muted", "  Rates are what you got / what was expected. /aiq results clear empties this character's log.")
 end
 
---- The Results tab.
-function LUI.Open()
-	if not frame then return LUI.Toggle() end
-	frame:Show()
-	LUI.Refresh()
-end
+CH.LedgerUI.Register("analytics", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
+	cols = { { "Recipe", 0, 190 }, { "Character", 194, 90 }, { "Crafts", 288, 50 }, { "Multicraft", 342, 76 }, { "Resourceful", 422, 80 },
+		{ "Ingenuity", 506, 70 }, { "At market", 580, 72 }, { "Expected", 656, 68 } } } }, { "results" })
 
-Lg.Changed = function() LUI.Refresh() end
+--- Craft results now live in Analytics.
+function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("analytics", "results") end end
+LUI.Toggle = LUI.Open
+function LUI.Refresh() end
+
+Lg.Changed = function() if CH.UI and CH.UI.IsShown and CH.UI.IsShown() then CH.UI.Refresh() end end

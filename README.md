@@ -70,13 +70,13 @@ so. After that, delete the Clearinghouse folder.
 |-----|-----------------|
 | **Today** | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
 | **Markets** | Compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. |
-| **Crafting** | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and Scan, Paths, Queue, Results and the advisor. |
+| **Crafting** | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and Scan, Paths, Queue and the advisor. |
 | **Trading** | What to do at the auction house and mailbox before you get there: what each character holds that's ready to post (under each group's cap, held back when the AH is under your min) and what to mail to which character. Groups, operations and routes are set in Settings. |
-| **Analytics** | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour. |
+| **Analytics** | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour, and craft results (what your crafts really gave against what was expected). |
 | **Clearinghouse** | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 
 Open it with `/aiq`, the minimap button or the addon compartment. The crafting tools (Advisor, Scan,
-Paths, Queue, Results) dock to the right of the profession window. Drag them off to float them, and
+Paths, Queue) dock to the right of the profession window. Drag them off to float them, and
 Dock on the tab row puts them back. Only one shows at a time, and the queue can pop out to stay
 under them while you work.
 
@@ -154,13 +154,22 @@ listed cost, not 200 times the cheapest one. It uses your AH search from the las
 the last AH scan saved for that item, else `chmat`. Hover a cost to see how far above the cheapest
 listing it is.
 
+At the auction house, **Shop queue** in the Auctioning panel searches each reagent the queue still
+needs and skips any more than 25% over its usual price. **Buy** gets the AH's quote, **Confirm** buys
+it, and the row is done once the AH says the purchase went through.
+
+Crafts queued on another character get their reagents by mail: at the mailbox, Send mails each
+crafter only what they're short (their queued crafts' needs less what they and the Warband bank
+hold), splitting a stack when they need part of it. Trading, To mail lists the same.
+
 </details>
 
 <details>
 <summary><b>Craft results and cooldowns</b></summary>
 
-`/aiq results` shows what your crafts really gave (Multicraft, Resourcefulness, Ingenuity) against
-what the advisor expected. Cooldowns across the warband are in the report.
+`/aiq results` opens Craft results in Analytics: what each character's crafts really gave
+(Multicraft, Resourcefulness, Ingenuity, output at market) against what the advisor expected.
+`/aiq results clear` empties this character's log. Cooldowns across the warband are in the report.
 
 </details>
 

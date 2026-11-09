@@ -396,7 +396,7 @@ check("results log: craft, Multicraft proc and saved reagents counted",
 run('Clearinghouse.ScanUI.Open()')
 check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")
 labels = list(CH.Window.Arrange().values())
-check("tabs: the row lists every window", labels == ["Advisor", "Scan", "Paths", "Queue", "Results"])
+check("tabs: the row lists every window (Results moved to Analytics)", labels == ["Advisor", "Scan", "Paths", "Queue"])
 run('Clearinghouse.AdvisorUI.Show(10)')
 check("tabs: a recipe click updates the advisor without leaving Scan", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
 run('Clearinghouse.AdvisorUI.Open()')
@@ -1093,7 +1093,7 @@ def audit(where):
 for tab in ["today", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"Clearinghouse.UI.Page('{tab}')")
     audit(tab)
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail"]:
     run(f"Clearinghouse.UI.Page('ledger', '{v}')")
     audit("view " + v)
 run("Clearinghouse.UI.Page('today')")
@@ -1192,6 +1192,44 @@ check("mail: sending, not sent, until the game says so", L.eval("Clearinghouse.M
 run("STUB.Fire('MAIL_SEND_SUCCESS')")
 check("mail: sent once the game confirms it", L.eval("Clearinghouse.MailUI.sending") is None and "Sent 1 to Luxaren" in plain(L.eval("Clearinghouse.MailUI.Build().status:GetText()")))
 run("Clearinghouse.Mail.NextTo = STUB.oldNextTo; Clearinghouse.Mail.SendNext = STUB.oldSendNext; Clearinghouse.Mail.Outbox = STUB.oldOutbox")
+
+# Mail: reagents a queued crafter on another character is short of, only as many as they need
+run("""Clearinghouse.Queue.Clear()
+table.insert(Clearinghouse.db.queue, { char = 'Alt-Emerald Dream', charName = 'Alt', recipeID = 10, qty = 3, shop = { { itemID = 991, n = 4 } }, reagents = {} })
+table.insert(Clearinghouse.db.queue, { char = 'Far-Other Realm', charName = 'Far', recipeID = 10, qty = 3, shop = { { itemID = 991, n = 4 } }, reagents = {} })
+STUB.oldInv = Clearinghouse.Ledger.Inventory; STUB.oldAvail = Clearinghouse.Ledger.Available
+Clearinghouse.Ledger.Available = function() return true end
+Clearinghouse.Ledger.Inventory = function(_, name)
+  if name == 'Alt' then return { { id = 991, bags = 2, bank = 0, mail = 0, warband = 0 } } end
+  if name == nil then return { { id = 991, bags = 0, bank = 0, mail = 0, warband = 3 } } end
+  return {}
+end""")
+need = L.eval("Clearinghouse.Mail.ReagentNeeds()")
+check("mail: a queued crafter is short what their crafts need less what they and the Warband bank hold",
+      need["Alt"] is not None and need["Alt"][991] == 7 and need["Far"] is None)
+run("""STUB.oldCC = C_Container
+C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
+  GetContainerItemInfo = function(bag, slot) return { itemID = 991, stackCount = 20 } end,
+  PickupContainerItem = function() STUB.mailPick = true end,
+  SplitContainerItem = function(bag, slot, n) STUB.mailSplit = n end }
+STUB.oldSend = SendMail; SendMail = function(to) STUB.mailTo = to end
+STUB.oldCSMIB = ClickSendMailItemButton; ClickSendMailItemButton = function() end""")
+box = L.eval("Clearinghouse.Mail.Outbox()")
+check("mail: the outbox sends a crafter only the reagents they're short", box["Alt"][1].send == 7 and box["Alt"][1].reagent)
+run("Clearinghouse.Mail.SendNext()")
+check("mail: a part stack is split off, not the whole stack sent", L.eval("STUB.mailSplit") == 7 and L.eval("STUB.mailTo") == "Alt")
+run("""C_Container = STUB.oldCC; SendMail = STUB.oldSend; ClickSendMailItemButton = STUB.oldCSMIB
+Clearinghouse.Ledger.Inventory = STUB.oldInv; Clearinghouse.Ledger.Available = STUB.oldAvail; Clearinghouse.Queue.Clear()""")
+
+# Craft results live in Analytics, for every character
+run("""Clearinghouse.db.characters['Alt-Realm'] = { name = 'Alt', professions = {}, log = { [10] = { name = 'Test Flask', crafts = 4, items = 4,
+  mcProcs = 1, extraItems = 1, resProcs = 0, saved = 0, ingProcs = 0, concSpent = 0, concRefund = 0, value = 50000, cost = 20000,
+  expected = 25000, expMc = 0.8, expRes = 0.4, expIng = 0, concCrafts = 0 } } }""")
+res = [r for r in L.eval("Clearinghouse.Log.AllRows()").values() if r.char == "Alt"]
+check("results: every character's crafts are listed", len(res) == 1 and res[0].crafts == 4 and res[0].actual == 30000)
+run("Clearinghouse.LogUI.Open()")
+check("results: /aiq results opens the Analytics view", L.eval("Clearinghouse.LedgerUI.View()") == "results")
+run("Clearinghouse.db.characters['Alt-Realm'] = nil; Clearinghouse.UI.Page('today')")
 
 # Second and third review fixes -------------------------------------------------------------------
 # the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13

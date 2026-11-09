@@ -174,8 +174,10 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		local goal = msg:match("^plan%s+(.+)") or msg:match("^path%s+(.+)")
 		if not CH.PathsUI.IsShown() then CH.PathsUI.Toggle() end
 		if goal then CH.PathsUI.Run(goal) end
+	elseif msg == "results clear" then
+		CH.Log.Clear(); CH.Print("this character's craft results log is empty again.")
 	elseif msg == "results" or msg == "log" then
-		CH.LogUI.Toggle()
+		CH.LogUI.Open()
 	elseif msg:match("^cap") then
 		local n = tonumber(msg:match("(%d+)"))
 		if n then CH.db.settings.scan.dailyCap = n end
