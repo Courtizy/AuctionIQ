@@ -824,6 +824,13 @@ check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled"
 run("C_CraftingOrders.GetClaimedOrder = nil")
 run("STUB.claimed = nil; Clearinghouse.ScanUI.Open(); Clearinghouse.ScanUI.SetMode('orders'); Clearinghouse.ScanUI.Next()")
 check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
+run("""STUB.viewed = nil; ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
+ProfessionsFrame.craftingOrdersTabID = 3; ProfessionsFrame.tab = 1
+ProfessionsFrame.GetTab = function(self) return self.tab end; ProfessionsFrame.SetTab = function(self, t) self.tab = t end
+ProfessionsFrame.OrdersPage = ProfessionsFrame.OrdersPage or {}
+ProfessionsFrame.OrdersPage.ViewOrder = function(_, o) STUB.viewed = o.orderID end
+Clearinghouse.Orders.Open({ orderID = 77 }, 10)""")
+check("clicking an order opens it on the Crafting Orders tab", L.eval("STUB.viewed") == 77 and L.eval("ProfessionsFrame.tab") == 3)
 run("Clearinghouse.ScanUI.SetMode('recipes'); Clearinghouse.Queue.Clear()")
 # Orders tab: every listed order with what it pays and whether it gives a knowledge point
 run("""STUB.items = STUB.items or {}

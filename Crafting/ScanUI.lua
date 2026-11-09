@@ -78,6 +78,7 @@ local function click(i)
 	if not r then return end
 	if mode ~= "recipes" then
 		if IsShiftKeyDown and IsShiftKeyDown() then queueRow(r)
+		elseif mode == "orders" then CH.Orders.Open(r.order, r.recipeID)
 		elseif C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(r.recipeID) end
 		return
 	end
@@ -315,6 +316,13 @@ function SUI.Next()
 		if CH.Queue.Count() == before then return end
 	end
 	local step, e = CH.Queue.DoNext()
+	if step == "Claim" then
+		-- show the claimed order, as the game does when you claim it yourself
+		local co = C_CraftingOrders
+		for _, o in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
+			if o.orderID == e.orderID then CH.Orders.Open(o); break end
+		end
+	end
 	if step then
 		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
 	elseif e then
