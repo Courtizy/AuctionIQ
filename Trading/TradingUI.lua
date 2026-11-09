@@ -229,6 +229,6 @@ TUI.MOVING = {
 }
 
 -- Operations: produce, then hold or post (stock targets and dead stock are inventory decisions), then move
-LUI.Register("operations", TUI.PRODUCTION, { "queue", "shopping" }, "Production")
+LUI.Register("operations", TUI.PRODUCTION, { "queue", "shopping" }, "Work queue")
 LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead" }, "Inventory")
-LUI.Register("operations", TUI.MOVING, { "mail", "rules" }, "Moving")
+LUI.Register("operations", TUI.MOVING, { "mail", "rules" }, "Rules & routes")

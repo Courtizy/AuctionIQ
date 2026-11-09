@@ -526,7 +526,7 @@ local function buildBriefing(p)
 end
 
 -- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
--- Operations: the work planned or underway (Production, Inventory, Moving). Clearinghouse: what
+-- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Clearinghouse: what
 -- happened. The AH, profession and mailbox windows carry out what Operations plans.
 local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Clearinghouse" } }
 -- which page frame each tab shows; Research, Operations and the Clearinghouse share the table page

@@ -51,8 +51,8 @@ local VIEWS = {
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
--- Research (Markets, Professions, Performance: what to do and why) and Operations (Production,
--- Inventory, Moving: the work planned or underway). The other two fill theirs in with LUI.Register.
+-- Research (Markets, Professions, Performance: what to do and why) and Operations (Work queue,
+-- Inventory, Rules & routes: the work planned or underway). The other two fill theirs in with LUI.Register.
 local SECTIONS = {
 	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },

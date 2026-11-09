@@ -816,7 +816,7 @@ check("markets opens Research on compare prices", LUI.Section() == "research" an
 check("tabs: Dashboard, Research, Operations, Clearinghouse", [t[2] for t in L.eval("Clearinghouse.UI.TABS").values()] == ["Dashboard", "Research", "Operations", "Clearinghouse"])
 check("research sub-tabs: Markets, Professions, Performance", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Markets", "Professions", "Performance"])
 run("Clearinghouse.UI.Page('operations')")
-check("operations sub-tabs: Production, Inventory, Moving", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Production", "Inventory", "Moving"])
+check("operations sub-tabs: Work queue, Inventory, Rules & routes", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Work queue", "Inventory", "Rules & routes"])
 navshown = [b.label for b in L.eval("Clearinghouse.UI.Pages().ledger.nav").values() if b.shown]
 check("the nav lists only the open sub-tab's views", LUI.Group() is not None and len(navshown) >= 1 and len(navshown) <= 3)
 run("Clearinghouse.UI.Page('ledger')")
