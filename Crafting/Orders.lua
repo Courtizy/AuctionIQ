@@ -82,6 +82,115 @@ function O.Open(order, recipeID)
 	return false
 end
 
+-- Fetching the orders -------------------------------------------------------------------------
+-- The game only keeps the list it last showed (GetCrafterOrders), so asking it once gets whatever
+-- the Crafting Orders tab happened to show. Instead ask for each kind of order in turn (patron,
+-- personal, public, guild), waiting for the game to allow the next request and retrying when it
+-- says slow down, and keep every order seen. Order IDs are compared as text: they can be large
+-- numbers that don't compare equal once copied.
+
+--- Whether two order IDs are the same order.
+function O.Same(a, b) return a ~= nil and b ~= nil and tostring(a) == tostring(b) end
+
+O.cache = {}      -- [id as text] = order, from the last fetch
+O.fetching = false
+local canRequest = true
+CH.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
+
+local function remember(orders)
+	for _, o in ipairs(orders or {}) do if o.orderID then O.cache[tostring(o.orderID)] = o end end
+end
+
+--- Every order known: the last fetch, what the game lists now, and your claimed order.
+function O.All()
+	local co = C_CraftingOrders
+	if co and co.GetCrafterOrders then remember(co.GetCrafterOrders()) end
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed then remember({ claimed }) end
+	local out = {}
+	for _, o in pairs(O.cache) do table.insert(out, o) end
+	table.sort(out, function(a, b) return tostring(a.orderID) < tostring(b.orderID) end)
+	return out
+end
+
+--- The live order for an ID (claimed, else listed), or nil.
+function O.Live(id)
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed and O.Same(claimed.orderID, id) then return claimed end
+	O.All()
+	return O.cache[tostring(id)]
+end
+
+local function profession()
+	local info = C_TradeSkillUI and C_TradeSkillUI.GetChildProfessionInfo and C_TradeSkillUI.GetChildProfessionInfo()
+	return info and info.profession
+end
+
+local function request(orderType, prof, done, tries)
+	local co = C_CraftingOrders
+	local waited = 0
+	local function send()
+		if not canRequest and waited < 8 then
+			waited = waited + 0.25
+			return C_Timer.After(0.25, send)
+		end
+		canRequest = false
+		local E = Enum and Enum.CraftingOrderResult or {}
+		local cb = function(result)
+			if result == nil or result == (E.Ok or 0) then
+				remember(co.GetCrafterOrders and co.GetCrafterOrders())
+				return done(true)
+			end
+			if (result == E.ThrottleViolation or result == E.Timeout) and (tries or 0) < 3 then
+				return C_Timer.After(1, function() request(orderType, prof, done, (tries or 0) + 1) end)
+			end
+			done(false)
+		end
+		local S = Enum and Enum.CraftingOrderSortType or {}
+		local ok = pcall(co.RequestCrafterOrders, {
+			orderType = orderType, searchFavorites = false, initialNonPublicSearch = false,
+			primarySort = { sortType = S.ItemName or 0, reversed = false },
+			secondarySort = { sortType = S.MaxTip or 0, reversed = false },
+			forCrafter = true, offset = 0, profession = prof,
+			callback = C_FunctionContainers and C_FunctionContainers.CreateCallback and C_FunctionContainers.CreateCallback(cb) or cb,
+		})
+		if not ok then done(false) end
+	end
+	send()
+end
+
+--- Ask the game for every kind of order for the open profession, one after another; onDone(n, why)
+--- once they're in. The list keeps what earlier fetches found until a fetch replaces it.
+function O.Fetch(onDone)
+	local co = C_CraftingOrders
+	local prof = profession()
+	if not (co and co.RequestCrafterOrders and prof) then
+		if onDone then onDone(#O.All(), "open the profession window first") end
+		return false
+	end
+	if O.fetching then return false end
+	O.fetching = true
+	local T = Enum and Enum.CraftingOrderType or {}
+	local types = { T.Npc or 3, T.Personal or 2, T.Public or 0, T.Guild or 1 }
+	local fresh, got, i = {}, false, 0
+	local old = O.cache
+	O.cache = fresh
+	local function step()
+		i = i + 1
+		if not types[i] then
+			O.fetching = false
+			if not got then O.cache = old end -- nothing came back: keep what we had
+			local n = #O.All()
+			if onDone then onDone(n, not got and "the game didn't answer; open the Crafting Orders tab and try again" or nil) end
+			return
+		end
+		request(types[i], prof, function(ok) got = got or ok; step() end)
+	end
+	step()
+	return true
+end
+
 -- Order and first-craft lists (the Orders tab) ------------------------------------------------
 
 local knowledge = {}
@@ -126,11 +235,27 @@ end
 function O.List()
 	local co = C_CraftingOrders
 	local out = {}
-	for _, order in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
+	local current = CH.Scan and CH.Scan.CurrentLine and CH.Scan.CurrentLine()
+	local ui = C_TradeSkillUI
+	local child = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	local cid = child and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(child.professionID)
+	local cinfo = cid and cid ~= 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(cid)
+	local concNow = cinfo and cinfo.quantity
+	for _, order in ipairs(O.All()) do
+		local line, expansion
+		if CH.Scan and CH.Scan.Expansion then line, expansion = CH.Scan.Expansion(order.spellID) end
 		local ok, result = pcall(O.Analyze, order)
 		result = ok and result or nil
 		local r = result and (result.best or result.bestConc)
 		local rewards, value, kp = O.Rewards(order)
+		-- whether your bags, banks and warband bank hold the reagents (and Concentration) for one craft
+		local have, missing
+		if r then
+			local n, lines = CH.Advisor.MaxCraftable(result, r, concNow)
+			have = n >= 1
+			missing = {}
+			for _, l in ipairs(lines) do if l.have < l.need then table.insert(missing, l) end end
+		end
 		local info = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		table.insert(out, { order = order, orderID = order.orderID, recipeID = order.spellID, item = order.itemID,
 			name = (info and info.name) or (order.itemID and C_Item.GetItemNameByID and C_Item.GetItemNameByID(order.itemID)) or "?",
@@ -138,14 +263,43 @@ function O.List()
 			minQuality = order.minQuality, commission = (order.tipAmount or 0) - (order.consortiumCut or 0),
 			rewards = rewards, rewardValue = value, kp = kp, row = r, result = result, ok = r ~= nil,
 			tiers = result and result.model and result.model.maxQ,
-			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration })
+			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
+			line = line, expansion = expansion, current = not line or not current or line == current,
+			have = have, missing = missing })
 	end
 	table.sort(out, function(a, b)
 		if a.ok ~= b.ok then return a.ok end
+		if (a.have or false) ~= (b.have or false) then return a.have or false end
 		if a.kp ~= b.kp then return a.kp end
 		return (a.profit or -math.huge) > (b.profit or -math.huge)
 	end)
 	return out
+end
+
+--- Print, for each listed order, what the advisor makes of it: the rank it needs, the ranks it
+--- found with and without Concentration, and any error. For working out "can't reach".
+function O.Debug()
+	local orders = O.All()
+	CH.Print(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
+	for _, order in ipairs(orders) do
+		local ok, result = pcall(O.Analyze, order)
+		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
+		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
+		if not ok then
+			CH.Print(head .. " error " .. tostring(result))
+		elseif not result then
+			CH.Print(head .. " no result")
+		else
+			local m = result.model or {}
+			local parts = {}
+			for _, r in ipairs(result.rows or {}) do
+				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
+					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
+			end
+			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
+				#(result.rows or {}), table.concat(parts, "; ")))
+		end
+	end
 end
 
 --- Learned recipes of the open profession that still give their first-craft knowledge point, at

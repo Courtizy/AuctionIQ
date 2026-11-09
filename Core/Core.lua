@@ -164,6 +164,8 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		CH.db.settings.minimap.hide = not CH.db.settings.minimap.hide
 		CH.UpdateMinimapButton()
 		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
+	elseif msg == "orders" then
+		CH.Orders.Debug()
 	elseif msg == "queue" then
 		CH.QueueUI.Toggle()
 	elseif msg == "scan" then

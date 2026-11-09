@@ -101,12 +101,23 @@ function SUI.OrderLines(d)
 	local lines = { { T.Color("accent", d.name or "?") .. kpTag(d.kp or not d.orderID) } }
 	if d.orderID then
 		table.insert(lines, { d.kind .. " order", d.from })
+		if d.expansion then table.insert(lines, { "Expansion", d.expansion .. (d.current and "" or T.Color("muted", "  (older)")) }) end
 		if d.minQuality then table.insert(lines, { "Asks for at least", CH.Window.QualityIcon(d.minQuality, 14, d.tiers) }) end
 		table.insert(lines, { "Commission, after the consortium's cut", M(d.commission) })
 		for _, rw in ipairs(d.rewards) do
 			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
 			table.insert(lines, { "  " .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
 				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+		end
+		if d.ok and d.have then
+			table.insert(lines, { "Reagents", T.Color("ok", "you have them all") })
+		elseif d.ok then
+			table.insert(lines, { T.Color("bad", "Missing reagents") })
+			for _, l in ipairs(d.missing or {}) do
+				table.insert(lines, { "  " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or ""),
+					string.format("have %d, need %d", l.have, l.need) })
+			end
+			if not (d.missing and d.missing[1]) then table.insert(lines, { "  Concentration", T.Color("bad", "not enough right now") }) end
 		end
 		if d.ok then
 			table.insert(lines, { "Your reagents", M(d.cost or 0) })
@@ -177,13 +188,27 @@ local function hover(owner, i)
 	CH.Window.Tooltip(owner, lines)
 end
 
+local fetchNote -- why the last order fetch came back empty, if it did
+--- Ask the game for every patron, personal, public and guild order, then redraw.
+function SUI.FetchOrders()
+	fetchNote = nil
+	local started = CH.Orders.Fetch(function(_, why)
+		fetchNote = why
+		if mode == "orders" then SUI.Refresh() end
+	end)
+	if mode == "orders" then SUI.Refresh() end
+	return started
+end
 local function setMode(m)
 	mode = (mode == m and m ~= "recipes") and "recipes" or m -- a lit list button toggles back to Recipes
 	offset = 0
+	if mode == "orders" then SUI.FetchOrders() end
 	SUI.Refresh()
 end
-SUI.SetMode = function(m) mode = m; offset = 0; return SUI.Refresh() end
+SUI.SetMode = function(m) mode = m; offset = 0; if m == "orders" then SUI.FetchOrders() end return SUI.Refresh() end
 function SUI.Mode() return mode end
+--- Show or hide older-expansion recipes and orders.
+function SUI.ToggleOlder() showOlder = not showOlder; offset = 0; return SUI.Refresh() end
 
 --- Sort by a column (as a header click does): a new column sorts it biggest first, the same one flips.
 function SUI.SortBy(key)
@@ -208,10 +233,8 @@ local function build()
 	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)
 	SUI.ordersButton = barButton("Work orders", 90, function() setMode("orders") end)
 	barButton("Scan", 50, function() SUI.Start() end)
-	local olderX = x
-	SUI.olderButton = barButton("Older: shown", 100, function() showOlder = not showOlder; offset = 0; SUI.Refresh() end)
+	SUI.olderButton = barButton("Older: shown", 100, function() SUI.ToggleOlder() end)
 	-- Work orders: one button that walks the orders: claim, craft, turn in, next order
-	x = olderX
 	SUI.nextButton = barButton("Claim next", 100, function() SUI.Next() end)
 	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
 	SUI.nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -260,7 +283,10 @@ local function showTable()
 			hb.text:SetText(not on and "" or sorted and T.Color("accent", hb.label .. (SORT[m].asc and " ^" or " v")) or hb.label)
 		end
 	end
-	if SUI.olderButton then SUI.olderButton:SetShown(mode == "recipes") end
+	if SUI.olderButton then
+		SUI.olderButton:SetShown(mode == "recipes" or mode == "orders")
+		SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
+	end
 	if SUI.allButton then SUI.allButton:SetShown(mode ~= "recipes") end
 	if SUI.nextButton then SUI.nextButton:SetShown(mode == "orders"); SUI.UpdateNext() end
 	for m, b in pairs({ orders = SUI.ordersButton, first = SUI.firstButton }) do
@@ -273,11 +299,11 @@ end
 function SUI.QueueAll()
 	local n = 0
 	for _, d in ipairs(data) do
-		if mode == "first" or (mode == "orders" and d.ok and ((d.profit or 0) >= 0 or d.kp)) then
+		if mode == "first" or (mode == "orders" and d.ok and d.have and ((d.profit or 0) >= 0 or d.kp)) then
 			if queueRow(d) then n = n + 1 end
 		end
 	end
-	if n == 0 then CH.Print(mode == "first" and "no first crafts to queue" or "no work orders pay or give knowledge") end
+	if n == 0 then CH.Print(mode == "first" and "no first crafts to queue" or "no work orders pay or give knowledge with reagents you have") end
 	return n
 end
 
@@ -313,15 +339,19 @@ function SUI.Next()
 	if not nextOrder() then
 		local before = CH.Queue.Count()
 		SUI.QueueAll()
-		if CH.Queue.Count() == before then return end
+		if CH.Queue.Count() == before then
+			CH.Print("no work order to start: none pays or gives knowledge at a rank you can reach. Type /aiq orders to see why for each.")
+			return
+		end
 	end
 	local step, e = CH.Queue.DoNext()
 	if step == "Claim" then
 		-- show the claimed order, as the game does when you claim it yourself
-		local co = C_CraftingOrders
-		for _, o in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
-			if o.orderID == e.orderID then CH.Orders.Open(o); break end
-		end
+		local o = CH.Orders.Live(e.orderID)
+		if o then CH.Orders.Open(o) end
+	elseif step == "Turn in" and C_Timer then
+		-- the list changes once the game takes it: fetch again for the next order
+		C_Timer.After(1, SUI.FetchOrders)
 	end
 	if step then
 		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
@@ -335,7 +365,17 @@ end
 local function refreshLists()
 	local T = CH.Theme
 	local rows = showTable()
-	data = sortRows(mode == "orders" and CH.Orders.List() or CH.Orders.FirstCrafts(), SORT[mode].key, SORT[mode].asc)
+	local list, older = mode == "orders" and CH.Orders.List() or CH.Orders.FirstCrafts(), 0
+	if mode == "orders" then
+		-- orders from older expansions show a tag, and "Older: hidden" leaves them out
+		local keep = {}
+		for _, d in ipairs(list) do
+			if not d.current then older = older + 1 end
+			if d.current or showOlder then table.insert(keep, d) end
+		end
+		list = keep
+	end
+	data = sortRows(list, SORT[mode].key, SORT[mode].asc)
 	offset = math.max(0, math.min(offset, #data - N))
 	if mode == "orders" then
 		local pays, kp = 0, 0
@@ -343,8 +383,12 @@ local function refreshLists()
 			if d.ok and (d.profit or 0) >= 0 then pays = pays + 1 end
 			if d.kp then kp = kp + 1 end
 		end
-		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp))
-			or T.Color("muted", "No work orders listed. Search Patron and Personal on the Crafting Orders tab, then come back."))
+		local fetching = CH.Orders.fetching and T.Color("accent", "  Fetching orders from the game...") or ""
+		local olderNote = older > 0 and T.Color("muted", showOlder and string.format("   %d from older expansions", older)
+			or string.format("   %d older-expansion orders hidden", older)) or ""
+		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp)) .. olderNote .. fetching
+			or fetching ~= "" and fetching
+			or T.Color("muted", "No work orders found" .. (fetchNote and ": " .. fetchNote or " for this profession right now") .. ". Click Work orders twice to fetch again."))
 	else
 		local cost = 0
 		for _, d in ipairs(data) do if d.net and d.net < 0 then cost = cost - d.net end end
@@ -356,12 +400,13 @@ local function refreshLists()
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
 		if d and mode == "orders" then
-			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?")
+			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
 			r.cells[2]:SetText(d.from)
 			r.cells[3]:SetText(money(d.commission))
 			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
-			r.cells[5]:SetText(d.ok and CH.FormatMoney(d.cost or 0) or T.Color("muted", "-"))
+			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or d.have and T.Color("ok", "have")
+				or T.Color("bad", "buy " .. CH.FormatMoney(d.cost or 0)))
 			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", "can't reach"))
 			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))

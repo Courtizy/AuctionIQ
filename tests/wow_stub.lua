@@ -187,7 +187,7 @@ C_TradeSkillUI = {
 	end,
 	-- Skill 100 plus 5 per top-quality unit in slot 1 and 2 per unit in slot 2; quality 2 from 130.
 	-- Concentration always lands on quality 2 and costs 20 + 2 per missing skill point.
-	CraftRecipe = function(id, n, reagents, _, _, conc) STUB.crafted = { id = id, n = n, reagents = reagents, conc = conc } end,
+	CraftRecipe = function(id, n, reagents, _, order, conc) STUB.crafted = { id = id, n = n, reagents = reagents, conc = conc, order = order } end,
 	-- Test Potion (11): skill 100 + 10 per top-quality unit, +10 with finishing reagent 221; quality 2
 	-- from 130. 20% Multicraft (+15% with finishing reagent 222), 20% Resourcefulness, 30% Ingenuity.
 	GetCraftingOperationInfo = function(recipeID, infos, _, concentrate)
