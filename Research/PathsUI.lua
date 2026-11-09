@@ -7,11 +7,57 @@ local PUI = {}
 CH.PathsUI = PUI
 local frame, input, out, pointsText, goalButtons, tabButtons, view, treeNote
 local W = 724
-local TREE_W, TREE_H = 724, 270 -- the whole tree across the page; the plan explained below it
-local TABS_Y, TREE_Y = -98, -122
+local TREE_W, TREE_H = 724, 250 -- the whole tree across the page; the plan explained below it
+local ASK_Y, INPUT_Y, GOALS_Y, POINTS_Y, TABS_Y, TREE_Y = -30, -48, -74, -100, -124, -148
 local extra = 0
 local lastPlan
 local selectedTab
+local chosenProf, profButtons
+
+-- Each profession's Midnight skill line (the one with a specialization tree), by its base skill line
+local MIDNIGHT = { [171] = 2906, [164] = 2907, [333] = 2909, [202] = 2910, [773] = 2913, [755] = 2914, [165] = 2915, [197] = 2918 }
+PUI.MIDNIGHT = MIDNIGHT
+
+--- This character's crafting professions that have trees: { { id, name } }, read from the game
+--- (no profession window needed), else from what AuctionIQ saw when a profession was last open.
+function PUI.Professions()
+	local out, seen = {}, {}
+	local function add(id, name)
+		if id and not seen[id] and CH.Spec.Data(id) then seen[id] = true; table.insert(out, { id = id, name = name or ("Profession " .. id) }) end
+	end
+	if GetProfessions and GetProfessionInfo then
+		local a, b = GetProfessions()
+		for _, ix in ipairs({ a or false, b or false }) do
+			if ix then
+				local name, _, _, _, _, _, line = GetProfessionInfo(ix)
+				add(MIDNIGHT[line], name)
+			end
+		end
+	end
+	for id, p in pairs(CH.Me().professions or {}) do add(id, p.parent or p.name) end
+	return out
+end
+
+--- The profession the page shows: the open profession window's, else the one picked, else the first.
+function PUI.Prof()
+	local open = CH.OpenProfessionID()
+	if open and CH.Spec.Data(open) then return open end
+	local list = PUI.Professions()
+	for _, p in ipairs(list) do if p.id == chosenProf then return chosenProf end end
+	return list[1] and list[1].id or open
+end
+
+--- Pick which profession's tree to show.
+function PUI.Choose(id)
+	chosenProf = id
+	if lastPlan and lastPlan.prof ~= id then lastPlan = nil end
+	selectedTab = nil
+	extra = 0
+	PUI.Refresh()
+end
+
+-- true when planning can run: the page's profession is the one open in the profession window
+local function canPlan() return CH.OpenProfessionID() ~= nil and CH.OpenProfessionID() == PUI.Prof() end
 
 local function render(lines)
 	out:SetText(table.concat(lines or {}, "\n"))
@@ -19,7 +65,7 @@ local function render(lines)
 end
 
 local function updatePoints()
-	local prof = CH.OpenProfessionID()
+	local prof = PUI.Prof()
 	local tree = prof and CH.Spec.Tree(prof)
 	local unspent = tree and tree.unspent or 0
 	pointsText:SetText(string.format("Plan %d points  %s", unspent + extra,
@@ -34,7 +80,7 @@ end
 function PUI.DrawTree()
 	if not frame then return {} end
 	local T = CH.Theme
-	local prof = CH.OpenProfessionID() or (lastPlan and lastPlan.prof)
+	local prof = PUI.Prof() or (lastPlan and lastPlan.prof)
 	local tree = prof and CH.Spec.Tree(prof)
 	local plan = CH.Paths.Current(prof)
 	local marks = CH.Paths.Marks(plan)
@@ -43,7 +89,13 @@ function PUI.DrawTree()
 	local valid = false
 	for _, t in ipairs(tabs) do if t.id == selectedTab then valid = true end end
 	if not valid then
-		selectedTab = tabs[1] and tabs[1].id
+		-- no plan: the tab where you've spent the most points
+		local most = -1
+		for _, t in ipairs(tabs) do
+			local spent = 0
+			for _, id in ipairs(t.nodes) do spent = spent + math.max(0, (tree.layout[id] and tree.layout[id].rank) or 0) end
+			if spent > most then most, selectedTab = spent, t.id end
+		end
 		local first = plan and plan.steps[1] and tree.layout[plan.steps[1].node]
 		if first then selectedTab = first.tab end
 	end
@@ -80,6 +132,12 @@ end
 function PUI.Run(goal, recipes)
 	if not PUI.IsShown() then PUI.Open() end
 	goal = goal or (input and input:GetText()) or ""
+	if not canPlan() then
+		local name = "the profession"
+		for _, p in ipairs(PUI.Professions()) do if p.id == PUI.Prof() then name = p.name end end
+		render({ CH.Theme.Color("muted", "Open " .. name .. " to plan for it: a plan needs its recipes. The tree above shows where your points are now.") })
+		return
+	end
 	render({ CH.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
 	local plan, why = CH.Paths.Plan({ goal = goal, recipes = recipes, label = recipes and goal or nil, points = extra, onDone = function(p)
 		lastPlan = p
@@ -97,7 +155,7 @@ end
 
 --- Set the points to what finishing the path for these recipes takes (less what's unspent).
 function PUI.DefaultPoints(recipes)
-	local prof = CH.OpenProfessionID()
+	local prof = canPlan() and PUI.Prof()
 	local tree = prof and CH.Spec.Tree(prof)
 	if not tree then return extra end
 	if not recipes then recipes = CH.Paths.Match(input and input:GetText() or "") end
@@ -118,35 +176,43 @@ end
 function PUI.Build(p)
 	local T, Wd = CH.Theme, CH.Window
 	frame = p
-	local ask = Wd.Text(frame, 0, -4, W, "LEFT", "GameFontNormal")
+	-- your professions, to pick whose tree to show
+	profButtons = {}
+	for i = 1, 3 do
+		local b = T.Button(frame, "", 100, 20)
+		b:SetPoint("TOPLEFT", (i - 1) * 104, 0)
+		b:Hide()
+		profButtons[i] = b
+	end
+	local ask = Wd.Text(frame, 0, ASK_Y, W, "LEFT", "GameFontNormal")
 	ask:SetText("What do you want to sell?" .. T.Color("muted", "  a knowledge point plan for the open profession"))
 	input = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
 	input:SetSize(420, 20)
-	input:SetPoint("TOPLEFT", 6, -24)
+	input:SetPoint("TOPLEFT", 6, INPUT_Y)
 	input:SetAutoFocus(false)
-	input:SetText("potions")
+	input:SetText("")
 	input:SetScript("OnEnterPressed", function(self) self:ClearFocus(); PUI.DefaultPoints(); PUI.Run() end)
 	local go = T.Button(frame, "Plan", 70, 20)
-	go:SetPoint("TOPLEFT", 434, -24)
+	go:SetPoint("TOPLEFT", 434, INPUT_Y)
 	go:SetScript("OnClick", function() PUI.DefaultPoints(); PUI.Run() end)
 
 	goalButtons = {}
 	for i = 1, 7 do
 		local b = T.Button(frame, "", 100, 18)
-		b:SetPoint("TOPLEFT", (i - 1) * 104, -50)
+		b:SetPoint("TOPLEFT", (i - 1) * 104, GOALS_Y)
 		b:Hide()
 		goalButtons[i] = b
 	end
 
-	pointsText = Wd.Text(frame, 0, -78, 300)
+	pointsText = Wd.Text(frame, 0, POINTS_Y - 4, 300)
 	local minus = T.Button(frame, "-5", 30, 18)
-	minus:SetPoint("TOPLEFT", 308, -74)
+	minus:SetPoint("TOPLEFT", 308, POINTS_Y)
 	minus:SetScript("OnClick", function() extra = math.max(0, extra - 5); updatePoints() end)
 	local plus = T.Button(frame, "+5", 30, 18)
-	plus:SetPoint("TOPLEFT", 342, -74)
+	plus:SetPoint("TOPLEFT", 342, POINTS_Y)
 	plus:SetScript("OnClick", function() extra = extra + 5; updatePoints() end)
 	PUI.simButton = T.Button(frame, "Simulate", 90, 18)
-	PUI.simButton:SetPoint("TOPRIGHT", -66, -74)
+	PUI.simButton:SetPoint("TOPRIGHT", -66, POINTS_Y)
 	PUI.simButton:SetEnabled(false)
 	PUI.simButton:SetScript("OnClick", function()
 		if lastPlan and lastPlan.ranks then CH.AdvisorUI.SetPlan(lastPlan) end
@@ -156,9 +222,9 @@ function PUI.Build(p)
 	end)
 	PUI.simButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	local clear = T.Button(frame, "Clear", 60, 18)
-	clear:SetPoint("TOPRIGHT", 0, -74)
+	clear:SetPoint("TOPRIGHT", 0, POINTS_Y)
 	clear:SetScript("OnClick", function()
-		CH.Paths.ClearCurrent(lastPlan and lastPlan.prof or CH.OpenProfessionID())
+		CH.Paths.ClearCurrent(lastPlan and lastPlan.prof or PUI.Prof())
 		lastPlan = nil
 		PUI.simButton:SetEnabled(false)
 		render({ CH.Theme.Color("muted", "Plan cleared.") })
@@ -208,7 +274,7 @@ local function groupMenu(owner, g)
 end
 
 local function fillGoals()
-	local groups = CH.OpenProfessionID() and CH.Paths.GoalGroups() or {}
+	local groups = canPlan() and CH.Paths.GoalGroups() or {}
 	PUI.groups = groups
 	local gx = 0
 	for i, b in ipairs(goalButtons) do
@@ -218,7 +284,7 @@ local function fillGoals()
 			local gfs = b.text or (b.GetFontString and b:GetFontString())
 			b:SetWidth(math.max(80, math.ceil((gfs and gfs.GetStringWidth and gfs:GetStringWidth() or 90) + 20)))
 			b:ClearAllPoints()
-			b:SetPoint("TOPLEFT", frame, "TOPLEFT", gx, -84)
+			b:SetPoint("TOPLEFT", frame, "TOPLEFT", gx, GOALS_Y)
 			gx = gx + b:GetWidth() + 4
 			if gx > W + 4 then b:Hide() end -- no room left on the line
 			b:SetScript("OnClick", function(self) groupMenu(self, g) end)
@@ -236,6 +302,29 @@ local function fillGoals()
 end
 
 --- Open Research, Professions, Paths in the main window; again closes the window.
+local function fillProfessions()
+	local T = CH.Theme
+	local list, current = PUI.Professions(), PUI.Prof()
+	local x = 0
+	for i, b in ipairs(profButtons) do
+		local p = list[i]
+		if p then
+			setLabel(b, p.name)
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			local c = p.id == current and T.accent or T.fg
+			if f and f.SetTextColor then f:SetTextColor(c[1], c[2], c[3]) end
+			b:SetWidth(math.max(90, math.ceil((f and f.GetStringWidth and f:GetStringWidth() or 80) + 20)))
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, 0)
+			x = x + b:GetWidth() + 4
+			b:SetScript("OnClick", function() PUI.Choose(p.id) end)
+			b:Show()
+		else
+			b:Hide()
+		end
+	end
+end
+
 function PUI.Toggle()
 	if PUI.IsShown() then CH.UI.Toggle() else PUI.Open() end
 end
@@ -247,14 +336,20 @@ function PUI.Open() CH.UI.Page("research", "paths") end
 function PUI.Refresh()
 	if not frame then return {} end
 	fillGoals()
-	if CH.OpenProfessionID() and not lastPlan then PUI.DefaultPoints() else updatePoints() end
-	if not CH.OpenProfessionID() then
-		render({ CH.Theme.Color("muted", "Open the profession you want a plan for (any of the eight crafting professions), then type a goal like \"potions\", \"gems\" or \"disenchanting\".") })
+	fillProfessions()
+	updatePoints()
+	if not PUI.Prof() then
+		render({ CH.Theme.Color("muted", "No crafting profession with a specialization tree on this character.") })
+	elseif not canPlan() then
+		if not lastPlan then render({ CH.Theme.Color("muted", "The tree shows where your knowledge points are now. To plan where the next ones go, open this profession and pick what you want to sell.") }) end
 	elseif not lastPlan then
 		render({ CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Points start at what finishing that path takes; change them with -5 and +5.") })
 	end
 	return PUI.DrawTree()
 end
+
+--- What the page says under the tree, for tests.
+function PUI.Text() return out and out:GetText() or "" end
 
 function PUI.IsShown() return frame ~= nil and frame:IsShown() and CH.UI.IsShown() end
 

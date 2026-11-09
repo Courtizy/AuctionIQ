@@ -255,6 +255,16 @@ check("paths: Professions lists Knowledge, Paths, Plan payoff",
       [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Knowledge", "Paths", "Plan payoff"])
 check("paths tab draws the tree with the plan on it",
       len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
+# Paths with the profession window closed: your professions from the game, the tree as you've spent it
+run("""STUB.oldOpen = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return nil end
+function GetProfessions() return 1, 2 end
+function GetProfessionInfo(i) if i == 1 then return "Alchemy", 0, 1, 1, 0, 0, 171 end return "Herbalism", 0, 1, 1, 0, 0, 182 end""")
+profs = [(p.id, p.name) for p in CH.PathsUI.Professions().values()]
+check("paths: reads your professions from the game, only ones with trees", profs == [(2906, "Alchemy")])
+check("paths: shows a profession without its window open", CH.PathsUI.Prof() == 2906 and len(list(CH.PathsUI.Refresh().values())) == 2)
+run('AuctionIQ.PathsUI.Run("potions")')
+check("paths: planning asks for the profession window", "Open Alchemy" in plain(CH.PathsUI.Text()))
+run("AuctionIQ.OpenProfessionID = STUB.oldOpen; GetProfessions = nil; GetProfessionInfo = nil")
 groups = list(CH.Paths.GoalGroups(2906).values())
 check("paths picker: recipes in main groups", [g.name for g in groups] == ["Potions", "Flasks & Phials", "Oils", "Other"])
 check("paths picker: each profession has its own groups", L.eval('AuctionIQ.Paths.MainGroup("Weapon Enchants", 2909)') == "Enchants"

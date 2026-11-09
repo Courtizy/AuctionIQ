@@ -66,6 +66,7 @@ function CH.RecordProfession()
 	local p = me.professions[info.professionID] or {}
 	me.professions[info.professionID] = p
 	p.name = info.professionName or info.parentProfessionName
+	p.parent = info.parentProfessionName
 	p.skill, p.maxSkill = info.skillLevel, info.maxSkillLevel
 	p.conc, p.concMax = concentration(info.professionID)
 	p.concAt = time()
