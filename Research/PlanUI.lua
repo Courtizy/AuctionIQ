@@ -1,6 +1,6 @@
 -- Research, Professions: the weekly knowledge checklist for every character and profession,
--- what's coming up, best crafts and Concentration, and buttons for the crafting windows (Paths
--- plans knowledge trees; the advisor stays docked to the profession window). It sits right of
+-- what's coming up, best crafts and Concentration, and buttons for the crafting windows (the
+-- advisor stays docked to the profession window). Paths, beside it, plans the knowledge trees. It sits right of
 -- Research's nav, 724 wide.
 local _, CH = ...
 
@@ -59,7 +59,7 @@ function PUI.Build(p, fs, panel)
 	-- the crafting windows
 	local x = 0
 	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
-		{ "Paths", function() CH.PathsUI.Toggle() end, "Plan knowledge points for what you want to sell" },
+		{ "Paths", function() CH.UI.Go("research", "paths") end, "Plan knowledge points for what you want to sell" },
 		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
 		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Performance" },
 		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
@@ -107,7 +107,7 @@ function PUI.Refresh()
 	return rows
 end
 
--- Plan comparison: each saved knowledge plan (made in Paths), recipe by recipe, now against planned
+-- Plan payoff: each saved knowledge plan (made in Paths), recipe by recipe, now against planned
 local function q(x, share)
 	if share then return string.format("%d%%", math.floor(share * 100 + 0.5)) end
 	return x and ("Q" .. x) or "-"
@@ -139,10 +139,11 @@ local function planRows(ctx)
 	return out, table.concat(notes, "   ") .. T.Color("muted", "   Estimated from your scans. Spend points in the game's Specializations panel.")
 end
 
--- Research, Professions: this page beside the nav, and the plan comparison
+-- Research, Professions: Knowledge and Paths beside the nav, and each plan's payoff
 CH.LedgerUI.Register("research", {
 	professions = { label = "Knowledge", page = "plan", noTime = true, cols = {} },
-	plans = { label = "Plan comparison", sort = 8, noTime = true, rows = planRows, cols = { { "Recipe", 0, 196 }, { "Profession", 200, 84 },
+	paths = { label = "Paths", page = "paths", noTime = true, cols = {} },
+	plans = { label = "Plan payoff", sort = 8, noTime = true, rows = planRows, cols = { { "Recipe", 0, 196 }, { "Profession", 200, 84 },
 		{ "Quality", 288, 64 }, { "Profit now", 356, 80 }, { "Planned", 440, 80 }, { "A day now", 524, 64 }, { "Planned", 592, 64 },
 		{ "Change", 660, 64 } } },
-}, { "professions", "plans" }, "Professions")
+}, { "professions", "paths", "plans" }, "Professions")

@@ -1,4 +1,4 @@
--- Shared window parts for the scan, paths and results windows: a themed, draggable panel with a
+-- Shared window parts for the scan, queue and results windows: a themed, draggable panel with a
 -- title bar, and a table of rows with hover and click.
 local _, CH = ...
 
@@ -180,7 +180,7 @@ function W.QualityIcon(q, size, tiers)
 end
 
 -- Tabs ----------------------------------------------------------------------------------------
--- The advisor, scan, paths, queue and results windows share one spot: beside the profession window
+-- The advisor, scan, queue and results windows share one spot: beside the profession window
 -- (docked), or wherever you last dragged one of them. A row of tabs sits under the one showing, and
 -- opening one hides the others, so they never pile up. The queue can be popped out of the tabs to sit
 -- under them, so the plan and the shopping list show together.
@@ -379,5 +379,4 @@ end
 
 W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
 W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
-W.AddTab("paths", "Paths", function() CH.PathsUI.Open() end, "Where to spend knowledge points for what you want to sell.")
 W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
