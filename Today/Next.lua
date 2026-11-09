@@ -102,13 +102,13 @@ function Next.List(now)
 			end
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
-					go = { "analytics", "dead" } })
+					go = { "trading", "dead" } })
 			end
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
-					gold = e.value, tier = 2, go = { "analytics", "par" }, act = makeAct(e.id, e.short) })
+					gold = e.value, tier = 2, go = { "trading", "par" }, act = makeAct(e.id, e.short) })
 			end
 		end
 	end

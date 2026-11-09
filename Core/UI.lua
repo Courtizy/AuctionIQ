@@ -827,10 +827,13 @@ function UI.Refresh()
 	else return refreshLedger() end
 end
 
---- Open a tab, and optionally one of its views: UI.Go("analytics", "par").
+--- Open a tab, and optionally one of its views: UI.Go("trading", "par").
 local function choose(tab, view)
 	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return false end
+	-- a view that moved tabs (stock targets and dead stock to Trading, say) opens where it lives now
+	local home = view and FRAME[tab] == "ledger" and CH.LedgerUI.SectionOf and CH.LedgerUI.SectionOf(view)
+	if home and home ~= tab and FRAME[home] then tab = home end
 	page = tab
 	if tab == "settings" then settingsView = view == "groups" and "groups" or "main" end
 	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view }) end
