@@ -14,7 +14,7 @@ local function have(id)
 end
 
 local function keyOf(e)
-	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "", e.orderID or "" }, ":")
+	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "", e.orderID and tostring(e.orderID) or "" }, ":")
 end
 
 --- Turn an advisor row into a queue entry for this character.
@@ -48,6 +48,8 @@ end
 function Q.Add(result, r, qty, extra)
 	local e = Q.FromRow(result, r)
 	for k, v in pairs(extra or {}) do e[k] = v end
+	-- order IDs are kept as text: they can be numbers too big to save and compare reliably
+	if e.orderID then e.orderID = tostring(e.orderID) end
 	local k = keyOf(e)
 	for _, x in ipairs(list()) do
 		if keyOf(x) == k then
@@ -147,7 +149,7 @@ end
 local function openOrders()
 	local co = C_CraftingOrders
 	if not co or not co.GetCrafterOrders then return {} end
-	return co.GetCrafterOrders() or {}
+	return CH.Orders and CH.Orders.All and CH.Orders.All() or co.GetCrafterOrders() or {}
 end
 
 --- Queue the crafting orders worth doing: each order's best craft that meets its minimum quality,
@@ -187,7 +189,7 @@ function Q.OrderStep(e)
 	if not e.orderID then return "Craft" end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	if claimed and claimed.orderID == e.orderID then
+	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
 		if claimed.isFulfillable then e.stage = "crafted" elseif e.stage ~= "crafted" then e.stage = "claimed" end
 	end
 	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
@@ -340,31 +342,30 @@ end
 local crafting -- the entry being crafted, to count finished crafts off it
 local delivering = {} -- orders turned in, until the game says it took them
 
--- The game's order page when it is showing this order, else nil.
-local function orderView(orderID)
-	local page = ProfessionsFrame and ProfessionsFrame.OrdersPage
-	local view = page and page.OrderView
-	local o = view and view.order
-	if o and o.orderID == orderID and (not view.IsShown or view:IsShown()) then return view end
-end
-
 local function okResult(result)
 	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
 	return result == nil or result == ok
+end
+
+local function claimedOrder(id)
+	local co = C_CraftingOrders
+	local c = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if c and CH.Orders.Same(c.orderID, id) then return c end
 end
 
 -- The game answers a claim or a turn-in later: undo what we assumed if it said no.
 CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 	if okResult(result) then return end
 	for _, e in ipairs(list()) do
-		if e.orderID == orderID and e.stage == "claimed" then e.stage = nil end
+		if CH.Orders.Same(e.orderID, orderID) and e.stage == "claimed" then e.stage = nil end
 	end
 	CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
 	Q.Changed()
 end)
 CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
-	local e = delivering[orderID]
-	delivering[orderID] = nil
+	local key = tostring(orderID)
+	local e = delivering[key]
+	delivering[key] = nil
 	if not e or okResult(result) then return end
 	e.stage, e.qty = "crafted", 1
 	table.insert(list(), 1, e)
@@ -373,6 +374,7 @@ CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
 end)
 
 --- Craft an entry with its queued reagents and Concentration. Must be called from a click.
+--- An order goes claim, craft, turn in, each with the game's live order (as CraftSim does it).
 function Q.Craft(e, amount)
 	local ok, why = Q.CanCraftHere(e)
 	if not ok then return false, why end
@@ -383,41 +385,44 @@ function Q.Craft(e, amount)
 	if e.orderID then
 		local step = Q.OrderStep(e)
 		if step == "Claim" then
-			C_CraftingOrders.ClaimOrder(e.orderID, profession())
+			local o = CH.Orders.Live(e.orderID)
+			if not o then return false, "that order isn't listed any more: fetch the work orders again" end
+			C_CraftingOrders.ClaimOrder(o.orderID, profession())
 			e.stage = "claimed"
 			Q.Changed()
 			return true
-		elseif step == "Turn in" then
-			local view = orderView(e.orderID)
-			local done = view and view.CompleteOrderButton
-			if done and done.IsShown and done:IsShown() and (not done.IsEnabled or done:IsEnabled()) then
-				done:Click()
-			else
-				C_CraftingOrders.FulfillOrder(e.orderID, "", profession())
-			end
-			delivering[e.orderID] = e
+		end
+		local claimed = claimedOrder(e.orderID)
+		if not claimed then
+			e.stage = nil
+			Q.Changed()
+			return false, "that order isn't claimed any more: claim it again"
+		end
+		if step == "Turn in" then
+			C_CraftingOrders.FulfillOrder(claimed.orderID, "", profession())
+			delivering[tostring(e.orderID)] = e
 			Q.Remove(e)
 			return true
 		end
-		-- Craft an order through the game's own order page, the way its Craft button does, so the
-		-- item goes into the order: open the order there first if it isn't showing.
-		local view = orderView(e.orderID)
-		if not view then
-			local co = C_CraftingOrders
-			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-			if claimed and claimed.orderID == e.orderID and CH.Orders and CH.Orders.Open then CH.Orders.Open(claimed) end
-			view = orderView(e.orderID)
+		-- craft into the order: the customer's reagents are theirs, leave them out of ours
+		local supplied = {}
+		for _, r in ipairs(claimed.reagents or {}) do
+			local info = r.reagentInfo or r
+			local id = info.reagent and info.reagent.itemID or info.itemID
+			if id then supplied[id] = true end
 		end
+		local mine = {}
+		for _, r in ipairs(reagents) do if not supplied[r.itemID] then table.insert(mine, r) end end
 		crafting = e
-		local create = view and view.CreateButton
-		if create and create.Click and (not create.IsEnabled or create:IsEnabled()) then
-			create:Click()
-			return true
+		if (claimed.isRecraft or claimed.outputItemGUID) and C_TradeSkillUI.RecraftRecipeForOrder and claimed.outputItemGUID then
+			C_TradeSkillUI.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, e.concentration ~= nil)
+		else
+			C_TradeSkillUI.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, e.concentration ~= nil)
 		end
-		amount = 1
+		return true
 	end
 	crafting = e
-	C_TradeSkillUI.CraftRecipe(e.recipeID, amount or 1, reagents, nil, e.orderID, e.concentration ~= nil)
+	C_TradeSkillUI.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
 end
 
@@ -430,7 +435,7 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 		crafting = nil
 		local function settle()
 			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-			if not claimed or claimed.orderID ~= e.orderID or claimed.isFulfillable then
+			if not claimed or not CH.Orders.Same(claimed.orderID, e.orderID) or claimed.isFulfillable then
 				e.stage = "crafted"
 			else
 				CH.Print("that craft didn't go into the order. Press Craft on the order's page (Crafting Orders tab), then Turn in next.")

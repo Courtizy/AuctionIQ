@@ -801,22 +801,23 @@ frows = list(CH.ScanUI.Refresh().values())
 check("scan tab: First crafts lists the recipe", CH.ScanUI.IsShown() and CH.ScanUI.Mode() == "first" and len(frows) == 1 and "net=" in frows[0])
 check("scan tab: Queue all queues every first craft", CH.ScanUI.QueueAll() == 1 and list(CH.db.queue.values())[0].firstCraft)
 run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; STUB.recipeIDs = nil; Clearinghouse.Queue.Clear()")
-run("C_CraftingOrders = { GetCrafterOrders = function() return { { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Patron', reagents = {} } } end, ClaimOrder = function(id) STUB.claimed = id end, FulfillOrder = function(id) STUB.fulfilled = id end }")
+run("""C_CraftingOrders = { GetCrafterOrders = function() return { { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Patron', reagents = {} } } end, ClaimOrder = function(id) STUB.claimed = id; STUB.claimedOrder = { orderID = id, isFulfillable = false, reagents = {} } end, FulfillOrder = function(id) STUB.fulfilled = id end,
+  GetClaimedOrder = function() return STUB.claimedOrder end }""")
 n2 = L.eval("(Clearinghouse.Queue.FillOrders())")
 oq = list(CH.db.queue.values())
-check("orders: a paying order is queued with its order ID", n2 == 1 and oq[0].orderID == 77)
+check("orders: a paying order is queued with its order ID", n2 == 1 and oq[0].orderID == "77")
 check("orders: the button goes Claim first", CH.Queue.OrderStep(oq[0]) == "Claim")
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
 check("orders: Claim claims it, then Craft", L.eval("STUB.claimed") == 77 and CH.Queue.OrderStep(oq[0]) == "Craft")
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
-check("orders: crafting passes the order ID", L.eval("STUB.crafted.id") == 10)
-run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
+check("orders: crafting passes the claimed order's ID", L.eval("STUB.crafted.id") == 10 and L.eval("STUB.crafted.order") == 77)
+run('STUB.claimedOrder.isFulfillable = true; STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("orders: after the craft it's Turn in", CH.Queue.OrderStep(oq[0]) == "Turn in")
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
 check("orders: Turn in fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
 check("orders: a turn-in the game refuses comes back to the top", CH.Queue.Count() == 1 and CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
-run("Clearinghouse.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil")
+run("Clearinghouse.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.claimedOrder = nil; C_CraftingOrders.GetClaimedOrder = nil")
 # One button: Next step walks claim, craft, turn in
 run("Clearinghouse.Queue.FillOrders()")
 st = L.eval("(Clearinghouse.Queue.DoNext())")
@@ -832,10 +833,10 @@ check("next step: the game saying it's done means Turn in", CH.Queue.OrderStep(C
 st = L.eval("(Clearinghouse.Queue.DoNext())")
 check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil")
-# Crafting an order goes through the game's order page, and only counts once the game says it's done
+# Crafting an order crafts into the live claimed order, leaves out the customer's reagents, and only counts once the game says it's done
 run("""Clearinghouse.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.crafted = nil; STUB.created = nil; STUB.completed = nil
 Clearinghouse.Queue.FillOrders(); Clearinghouse.Queue.DoNext()
-STUB.claimedOrder = { orderID = 77, isFulfillable = false }
+STUB.claimedOrder = { orderID = 77, isFulfillable = false, reagents = { { reagentInfo = { reagent = { itemID = 201 } } } } }
 C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
 ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
 ProfessionsFrame.OrdersPage = ProfessionsFrame.OrdersPage or {}
@@ -843,12 +844,13 @@ ProfessionsFrame.OrdersPage.OrderView = { order = { orderID = 77 }, IsShown = fu
   CreateButton = { Click = function() STUB.created = true end, IsEnabled = function() return true end },
   CompleteOrderButton = { Click = function() STUB.completed = true end, IsShown = function() return true end, IsEnabled = function() return true end } }""")
 st = L.eval("(Clearinghouse.Queue.DoNext())")
-check("order craft: presses the order page's own Craft", st == "Craft" and L.eval("STUB.created") is True and L.eval("STUB.crafted") is None)
+check("order craft: crafts into the claimed order", st == "Craft" and L.eval("STUB.crafted.order") == 77)
+check("order craft: the customer's reagents aren't sent as ours", L.eval("(function() for _, r in ipairs(STUB.crafted.reagents) do if r.itemID == 201 then return false end end return true end)()"))
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("order craft: a craft that didn't go into the order stays Craft", CH.Queue.OrderStep(CH.db.queue[1]) == "Craft")
 run('STUB.claimedOrder.isFulfillable = true')
 st = L.eval("(Clearinghouse.Queue.DoNext())")
-check("order craft: Turn in presses the page's Complete button", st == "Turn in" and L.eval("STUB.completed") is True and CH.Queue.Count() == 0)
+check("order craft: Turn in fulfils the claimed order", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil; ProfessionsFrame.OrdersPage.OrderView = nil")
 run("STUB.claimed = nil; Clearinghouse.ScanUI.Open(); Clearinghouse.ScanUI.SetMode('orders'); Clearinghouse.ScanUI.Next()")
 check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
@@ -891,6 +893,27 @@ run("Clearinghouse.ScanUI.SortBy('from')")
 check("scan tab: clicking the same header flips it", "from=Patron" in list(CH.ScanUI.Refresh().values())[0])
 run("Clearinghouse.ScanUI.SetMode('recipes')")
 check("scan tab: back to recipes", CH.ScanUI.Mode() == "recipes" and len(list(CH.ScanUI.Refresh().values())) > 0)
+# Fetching: every kind of order is asked for in turn and kept, like CraftSim, even when the game lists only the last one
+run("""STUB.requests = {}; Enum.CraftingOrderResult = { Ok = 0, ThrottleViolation = 3, Timeout = 4 }
+C_TradeSkillUI.GetChildProfessionInfo = function() return { profession = 3 } end
+C_CraftingOrders.RequestCrafterOrders = function(req)
+  table.insert(STUB.requests, req.orderType)
+  STUB.lastList = { { orderID = 500 + req.orderType, spellID = 10, minQuality = 1, tipAmount = 100, consortiumCut = 0, orderType = req.orderType, reagents = {} } }
+  local throttle = req.orderType == 0 and not STUB.throttled
+  if throttle then STUB.throttled = true end
+  C_Timer.After(0, function() req.callback(throttle and 3 or 0) end)
+end
+STUB.oldList = C_CraftingOrders.GetCrafterOrders
+C_CraftingOrders.GetCrafterOrders = function() return STUB.lastList or {} end
+Clearinghouse.Orders.cache = {}
+STUB.fetched = nil
+Clearinghouse.Orders.Fetch(function(n) STUB.fetched = n end)
+for i = 1, 40 do STUB.Fire("CRAFTINGORDERS_CAN_REQUEST"); STUB.RunTimers() end""")
+check("orders fetch: asks for patron, personal, public and guild, retrying a throttle", L.eval("STUB.fetched") == 4
+      and len(list(L.eval("STUB.requests").values())) == 5)
+check("orders fetch: the list holds every kind, not just the last one shown", len(list(CH.Orders.List().values())) == 4)
+check("orders fetch: order IDs compare as text", L.eval("Clearinghouse.Orders.Same(77, '77')") and not L.eval("Clearinghouse.Orders.Same(77, nil)"))
+run("C_CraftingOrders.GetCrafterOrders = STUB.oldList; C_CraftingOrders.RequestCrafterOrders = nil; Clearinghouse.Orders.cache = {}")
 run("Clearinghouse.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = nil")
 
 # warbound and soulbound items can't go on the AH: no value, and the tooltip says so

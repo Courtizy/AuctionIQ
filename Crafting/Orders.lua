@@ -82,6 +82,115 @@ function O.Open(order, recipeID)
 	return false
 end
 
+-- Fetching the orders -------------------------------------------------------------------------
+-- The game only keeps the list it last showed (GetCrafterOrders), so asking it once gets whatever
+-- the Crafting Orders tab happened to show. Instead ask for each kind of order in turn (patron,
+-- personal, public, guild), waiting for the game to allow the next request and retrying when it
+-- says slow down, and keep every order seen. Order IDs are compared as text: they can be large
+-- numbers that don't compare equal once copied.
+
+--- Whether two order IDs are the same order.
+function O.Same(a, b) return a ~= nil and b ~= nil and tostring(a) == tostring(b) end
+
+O.cache = {}      -- [id as text] = order, from the last fetch
+O.fetching = false
+local canRequest = true
+CH.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
+
+local function remember(orders)
+	for _, o in ipairs(orders or {}) do if o.orderID then O.cache[tostring(o.orderID)] = o end end
+end
+
+--- Every order known: the last fetch, what the game lists now, and your claimed order.
+function O.All()
+	local co = C_CraftingOrders
+	if co and co.GetCrafterOrders then remember(co.GetCrafterOrders()) end
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed then remember({ claimed }) end
+	local out = {}
+	for _, o in pairs(O.cache) do table.insert(out, o) end
+	table.sort(out, function(a, b) return tostring(a.orderID) < tostring(b.orderID) end)
+	return out
+end
+
+--- The live order for an ID (claimed, else listed), or nil.
+function O.Live(id)
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed and O.Same(claimed.orderID, id) then return claimed end
+	O.All()
+	return O.cache[tostring(id)]
+end
+
+local function profession()
+	local info = C_TradeSkillUI and C_TradeSkillUI.GetChildProfessionInfo and C_TradeSkillUI.GetChildProfessionInfo()
+	return info and info.profession
+end
+
+local function request(orderType, prof, done, tries)
+	local co = C_CraftingOrders
+	local waited = 0
+	local function send()
+		if not canRequest and waited < 8 then
+			waited = waited + 0.25
+			return C_Timer.After(0.25, send)
+		end
+		canRequest = false
+		local E = Enum and Enum.CraftingOrderResult or {}
+		local cb = function(result)
+			if result == nil or result == (E.Ok or 0) then
+				remember(co.GetCrafterOrders and co.GetCrafterOrders())
+				return done(true)
+			end
+			if (result == E.ThrottleViolation or result == E.Timeout) and (tries or 0) < 3 then
+				return C_Timer.After(1, function() request(orderType, prof, done, (tries or 0) + 1) end)
+			end
+			done(false)
+		end
+		local S = Enum and Enum.CraftingOrderSortType or {}
+		local ok = pcall(co.RequestCrafterOrders, {
+			orderType = orderType, searchFavorites = false, initialNonPublicSearch = false,
+			primarySort = { sortType = S.ItemName or 0, reversed = false },
+			secondarySort = { sortType = S.MaxTip or 0, reversed = false },
+			forCrafter = true, offset = 0, profession = prof,
+			callback = C_FunctionContainers and C_FunctionContainers.CreateCallback and C_FunctionContainers.CreateCallback(cb) or cb,
+		})
+		if not ok then done(false) end
+	end
+	send()
+end
+
+--- Ask the game for every kind of order for the open profession, one after another; onDone(n, why)
+--- once they're in. The list keeps what earlier fetches found until a fetch replaces it.
+function O.Fetch(onDone)
+	local co = C_CraftingOrders
+	local prof = profession()
+	if not (co and co.RequestCrafterOrders and prof) then
+		if onDone then onDone(#O.All(), "open the profession window first") end
+		return false
+	end
+	if O.fetching then return false end
+	O.fetching = true
+	local T = Enum and Enum.CraftingOrderType or {}
+	local types = { T.Npc or 3, T.Personal or 2, T.Public or 0, T.Guild or 1 }
+	local fresh, got, i = {}, false, 0
+	local old = O.cache
+	O.cache = fresh
+	local function step()
+		i = i + 1
+		if not types[i] then
+			O.fetching = false
+			if not got then O.cache = old end -- nothing came back: keep what we had
+			local n = #O.All()
+			if onDone then onDone(n, not got and "the game didn't answer; open the Crafting Orders tab and try again" or nil) end
+			return
+		end
+		request(types[i], prof, function(ok) got = got or ok; step() end)
+	end
+	step()
+	return true
+end
+
 -- Order and first-craft lists (the Orders tab) ------------------------------------------------
 
 local knowledge = {}
@@ -126,7 +235,7 @@ end
 function O.List()
 	local co = C_CraftingOrders
 	local out = {}
-	for _, order in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
+	for _, order in ipairs(O.All()) do
 		local ok, result = pcall(O.Analyze, order)
 		result = ok and result or nil
 		local r = result and (result.best or result.bestConc)

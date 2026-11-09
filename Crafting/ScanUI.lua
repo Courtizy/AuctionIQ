@@ -177,12 +177,24 @@ local function hover(owner, i)
 	CH.Window.Tooltip(owner, lines)
 end
 
+local fetchNote -- why the last order fetch came back empty, if it did
+--- Ask the game for every patron, personal, public and guild order, then redraw.
+function SUI.FetchOrders()
+	fetchNote = nil
+	local started = CH.Orders.Fetch(function(_, why)
+		fetchNote = why
+		if mode == "orders" then SUI.Refresh() end
+	end)
+	if mode == "orders" then SUI.Refresh() end
+	return started
+end
 local function setMode(m)
 	mode = (mode == m and m ~= "recipes") and "recipes" or m -- a lit list button toggles back to Recipes
 	offset = 0
+	if mode == "orders" then SUI.FetchOrders() end
 	SUI.Refresh()
 end
-SUI.SetMode = function(m) mode = m; offset = 0; return SUI.Refresh() end
+SUI.SetMode = function(m) mode = m; offset = 0; if m == "orders" then SUI.FetchOrders() end return SUI.Refresh() end
 function SUI.Mode() return mode end
 
 --- Sort by a column (as a header click does): a new column sorts it biggest first, the same one flips.
@@ -318,10 +330,11 @@ function SUI.Next()
 	local step, e = CH.Queue.DoNext()
 	if step == "Claim" then
 		-- show the claimed order, as the game does when you claim it yourself
-		local co = C_CraftingOrders
-		for _, o in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
-			if o.orderID == e.orderID then CH.Orders.Open(o); break end
-		end
+		local o = CH.Orders.Live(e.orderID)
+		if o then CH.Orders.Open(o) end
+	elseif step == "Turn in" and C_Timer then
+		-- the list changes once the game takes it: fetch again for the next order
+		C_Timer.After(1, SUI.FetchOrders)
 	end
 	if step then
 		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
@@ -343,8 +356,10 @@ local function refreshLists()
 			if d.ok and (d.profit or 0) >= 0 then pays = pays + 1 end
 			if d.kp then kp = kp + 1 end
 		end
-		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp))
-			or T.Color("muted", "No work orders listed. Search Patron and Personal on the Crafting Orders tab, then come back."))
+		local fetching = CH.Orders.fetching and T.Color("accent", "  Fetching orders from the game...") or ""
+		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp)) .. fetching
+			or fetching ~= "" and fetching
+			or T.Color("muted", "No work orders found" .. (fetchNote and ": " .. fetchNote or " for this profession right now") .. ". Click Work orders twice to fetch again."))
 	else
 		local cost = 0
 		for _, d in ipairs(data) do if d.net and d.net < 0 then cost = cost - d.net end end
