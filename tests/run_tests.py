@@ -1192,11 +1192,21 @@ run("AuctionIQ.UI.Page('ledger', 'sales')")
 check("resize: taller shows more table rows, the footer stays inside the page",
       CH.UI.SetHeight(900) == 900 and CH.LedgerUI.SetRows(None) > 30 and CH.UI.Pages().ledger.h == 900 - 54
       and CH.UI.SetHeight(100) == 600 and CH.LedgerUI.SetRows(None) == 25)
-run("AuctionIQ.UI.SetHeight(900)")
-for tab in ["research", "operations", "ledger"]:
+w2, h2 = CH.UI.SetSize(1400, 900)
+check("resize: wider and taller, every page laid out again for the size",
+      (w2, h2) == (1400, 900) and CH.UI.Pages().ledger.w == 1376 and CH.UI.Pages().paths.w == 1376 - 172
+      and CH.UI.Pages().dashboard.w == 1376 and CH.UI.IsShown())
+run("AuctionIQ.UI.Page('ledger', 'sales')")
+heads = [h for h in CH.UI.Pages().ledger.heads.values() if h.shown]
+check("resize: table columns spread across a wider window", len(heads) > 2 and max(h.point[2] for h in heads) > 172 + 800)
+for tab in ["today", "research", "operations", "ledger", "report", "settings"]:
     run(f"AuctionIQ.UI.Page('{tab}')")
-    audit("tall " + tab)
-run("AuctionIQ.UI.SetHeight(600)")
+    audit("large " + tab)
+for v in ["professions", "paths", "plans", "sales", "queue"]:
+    run(f"AuctionIQ.UI.Page('ledger', '{v}')")
+    audit("large view " + v)
+check("resize: never smaller than the normal size", CH.UI.SetSize(100, 100) == (920, 600) or tuple(CH.UI.SetSize(100, 100)) == (920, 600))
+run("AuctionIQ.UI.Page('today')")
 navs = list(CH.UI.Pages().ledger.nav.values())
 long = [plain(b.text.t) for b in navs if b.text and not b.fits]
 check("nav: every label fits its button on one line", len(navs) > 20 and long == [] and all(b.text.wrap is False for b in navs if b.text))

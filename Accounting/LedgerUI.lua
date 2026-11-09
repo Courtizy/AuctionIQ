@@ -7,9 +7,11 @@ local _, CH = ...
 local LUI = {}
 CH.LedgerUI = LUI
 
-local X0, TW = 172, 724 -- table left edge and width inside the page
+local X0, TW = 172, 724 -- table left edge and width inside the page (TW follows the window)
+local BASE_TW = 724 -- the width the columns are laid out for; a wider table spreads them
 -- a column's width, kept clear of the scroll bar down the table's right edge
-local function cellWidth(c) return math.min(c[3], TW - 10 - c[2]) end
+local function colX(c) return math.floor(c[2] * TW / BASE_TW) end
+local function cellWidth(c) return math.min(math.floor(c[3] * TW / BASE_TW), TW - 10 - colX(c)) end
 local ROWS, RH = 23, 18 -- rows shown: as many as the window height has room for (LUI.SetRows)
 local MAX_ROWS = 60
 
@@ -401,6 +403,7 @@ end
 function LUI.Build(p, fs, panel)
 	local T = CH.Theme
 	page = p
+	TW = math.max(BASE_TW, math.floor((p:GetWidth() or (X0 + BASE_TW)) - X0))
 	sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc
 	local nav = panel(p, 0, 0, 160, p:GetHeight() or 552)
 	p.navPanel = nav
@@ -607,7 +610,7 @@ function LUI.Refresh()
 		local c = v.cols[j]
 		if c then
 			h:ClearAllPoints()
-			h:SetPoint("TOPLEFT", X0 + c[2], -32)
+			h:SetPoint("TOPLEFT", X0 + colX(c), -32)
 			h:SetWidth(cellWidth(c))
 			h.text:SetWidth(cellWidth(c))
 			h.text:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
@@ -635,7 +638,7 @@ function LUI.Refresh()
 			local c = v.cols[j]
 			if c and d then
 				cell:ClearAllPoints()
-				cell:SetPoint("TOPLEFT", X0 + c[2], -52 - (i - 1) * RH)
+				cell:SetPoint("TOPLEFT", X0 + colX(c), -52 - (i - 1) * RH)
 				cell:SetWidth(cellWidth(c))
 				cell:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 				cell:SetText(tostring(d.cells[j] or ""))

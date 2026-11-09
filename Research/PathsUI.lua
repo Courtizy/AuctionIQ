@@ -6,7 +6,7 @@ local _, CH = ...
 local PUI = {}
 CH.PathsUI = PUI
 local frame, input, out, pointsText, goalButtons, tabButtons, view, treeNote
-local W = 724
+local W = 724 -- the page's width, and the tree's: both follow the window (set in Build)
 local TREE_W, TREE_H = 724, 250 -- the whole tree across the page; the plan explained below it
 local ASK_Y, INPUT_Y, GOALS_Y, POINTS_Y, TABS_Y, TREE_Y = -30, -48, -74, -100, -124, -148
 local extra = 0
@@ -183,6 +183,10 @@ end
 function PUI.Build(p)
 	local T, Wd = CH.Theme, CH.Window
 	frame = p
+	W = math.max(724, math.floor(p:GetWidth() or 724))
+	TREE_W = W
+	TREE_H = 250 + math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600) -- a taller window, a taller tree
+	selectedTab = nil
 	-- your professions, to pick whose tree to show
 	profButtons = {}
 	for i = 1, 3 do
@@ -220,7 +224,7 @@ function PUI.Build(p)
 	plus:SetScript("OnClick", function() extra = extra + 5; updatePoints() end)
 	PUI.simButton = T.Button(frame, "Simulate", 90, 18)
 	PUI.simButton:SetPoint("TOPRIGHT", -66, POINTS_Y)
-	PUI.simButton:SetEnabled(false)
+	PUI.simButton:SetEnabled(lastPlan ~= nil and lastPlan.ranks ~= nil) -- kept when the window is resized
 	PUI.simButton:SetScript("OnClick", function()
 		if lastPlan and lastPlan.ranks then CH.AdvisorUI.SetPlan(lastPlan) end
 	end)

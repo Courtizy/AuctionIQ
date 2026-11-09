@@ -113,8 +113,9 @@ function RUI.Build(p, fs, panel)
 	p.note = fs(box, 10, -134, 424, "LEFT", "GameFontDisableSmall")
 	p.note:SetText("Cash profit counts reagents as spent; net worth counts stock held.")
 	if p.note.SetMaxLines then p.note:SetMaxLines(2) end
-	local side = panel(p, 452, 0, 272, 166)
-	p.side = fs(side, 10, -8, 252, "LEFT")
+	local sw = math.max(272, math.floor((p:GetWidth() or 724) - 452)) -- the side box takes the extra width
+	local side = panel(p, 452, 0, sw, 166)
+	p.side = fs(side, 10, -8, sw - 20, "LEFT")
 	p.side:SetJustifyV("TOP")
 	if p.side.SetMaxLines then p.side:SetMaxLines(10) end
 end
