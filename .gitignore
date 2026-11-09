@@ -3,3 +3,5 @@ __pycache__/
 .release/
 __pycache__/
 .pytest_cache/
+tools/db2/
+__pycache__/

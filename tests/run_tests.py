@@ -238,6 +238,34 @@ check("paths tab draws the tree with the plan on it",
       len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
 groups = list(CH.Paths.GoalGroups(2906).values())
 check("paths picker: recipes in main groups", [g.name for g in groups] == ["Potions", "Flasks & Phials", "Oils", "Other"])
+check("paths picker: each profession has its own groups", L.eval('Clearinghouse.Paths.MainGroup("Weapon Enchants", 2909)') == "Enchants"
+      and L.eval('Clearinghouse.Paths.MainGroup("Armor Kits", 2915)') == "Armor Kits" and L.eval('Clearinghouse.Paths.MainGroup("Leather Armor", 2915)') == "Armor"
+      and L.eval('Clearinghouse.Paths.MainGroup("Appendix II - Stats", 2913)') is None and L.eval('Clearinghouse.Paths.MainGroup("Powerful Peridots", 2914)') == "Gems")
+# Disenchanting: a gathering path, valued by the share of rank 2 materials
+run("""STUB.oldTree = Clearinghouse.Spec.Tree
+Clearinghouse.SpecData[2909] = { name = "Enchanting", recipes = {}, nodes = {
+  [107649] = { nodeID = 107649, maxRank = 10, base = true, stats = { gatherskill = 1 } },
+  [107648] = { nodeID = 107648, maxRank = 10, base = true, stats = { gatherskill = 1 } },
+  [107647] = { nodeID = 107647, maxRank = 10, base = true, stats = { gatherskill = 1 } },
+  [107646] = { nodeID = 107646, maxRank = 10, base = true, stats = { gatherskill = 1 } },
+  [107634] = { nodeID = 107648, maxRank = 1, unlock = 5, stats = {}, text = "You have a chance to create more Eversinging Dust." } } }
+Clearinghouse.Spec.Tree = function(prof) if prof ~= 2909 then return STUB.oldTree(prof) end
+  return { unspent = 10, nodes = { [107649] = { name = "Disenchanting Delegate", rank = 0, max = 10, perks = {}, available = true },
+    [107648] = { name = "Dust Deliverer", rank = 0, max = 10, perks = { [107634] = 5 }, parent = 107649 },
+    [107647] = { name = "Shard Supplier", rank = -1, max = 10, perks = {}, parent = 107649 },
+    [107646] = { name = "Crystal Collector", rank = -1, max = 10, perks = {}, parent = 107649 } } } end
+STUB.prices['i:243599'] = { formula_value = 10000 }; STUB.prices['i:243600'] = { formula_value = 30000 }
+Clearinghouse.Prices.ClearCache()""")
+check("disenchanting: a goal for Enchanting", L.eval('(Clearinghouse.Paths.Yield(2909, "disenchanting"))') is not None
+      and L.eval('(Clearinghouse.Paths.Yield(2906, "disenchanting"))') is None and L.eval('(Clearinghouse.Paths.Yield(2909, "potions"))') is None)
+check("disenchanting: in the Enchanting picker", any(g.name == "Disenchanting" and g["yield"] for g in CH.Paths.GoalGroups(2909).values()))
+dp = CH.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
+check("disenchanting: plan puts points into dust when only dust sells", dp.steps[1].name in ("Disenchanting Delegate", "Dust Deliverer")
+      and dp.final > dp.start and all(s.name not in ("Shard Supplier", "Crystal Collector") for s in dp.steps.values()))
+check("disenchanting: describes the rank 2 share and the perk", any("rank 2 share" in plain(l) for l in dp.text.values())
+      and any("more Eversinging Dust" in plain(l) for l in dp.text.values()))
+check("disenchanting: default points finish its paths", CH.Paths.PathCost(2909, L.eval("{}"), "disenchanting") == 42)
+run("Clearinghouse.Spec.Tree = STUB.oldTree")
 cost = CH.Paths.PathCost(2906, L.eval("{ 10 }"))
 check("paths: default points finish the path for the goal", cost > 0 and CH.Paths.PathCost(2906, L.eval("{ }")) == 0)
 run('Clearinghouse.PathsUI.Pick("Flasks & Phials", { 10 })')

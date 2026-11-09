@@ -178,6 +178,12 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		local n = tonumber(msg:match("(%d+)"))
 		if n then CH.db.settings.scan.dailyCap = n end
 		CH.Print("gold a day counts up to " .. CH.db.settings.scan.dailyCap .. " sold a day per item. /aiq cap 20 to change.")
+	elseif msg == "de" or msg:match("^de ") or msg:match("^disenchant") then
+		local a, b, c = msg:match("(%d+)%s+(%d+)%s+(%d+)")
+		local d = CH.Paths.DailyYield(2909)
+		if a then d.dust, d.shard, d.crystal = tonumber(a), tonumber(b), tonumber(c) end
+		CH.Print(string.format("disenchanting plans count %d Eversinging Dust, %d Radiant Shards and %d Dawn Crystals a day. /aiq de 40 8 2 to change.",
+			d.dust, d.shard, d.crystal))
 	elseif msg == "today" or msg == "dashboard" then CH.UI.Page("today")
 	elseif msg == "markets" or msg == "market" then CH.UI.Page("markets")
 	elseif msg == "crafting" then CH.UI.Page("crafting")
@@ -189,7 +195,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. /aiq alerts turns alerts on or off. /aiq today, markets, crafting, trading, analytics or ledger opens that tab; /aiq report opens the Report in the Clearinghouse. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. /aiq de 40 8 2 sets the dust, shards and crystals you disenchant a day, for Disenchanting plans. /aiq alerts turns alerts on or off. /aiq today, markets, crafting, trading, analytics or ledger opens that tab; /aiq report opens the Report in the Clearinghouse. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
 	else
 		CH.UI.Toggle()
 	end
