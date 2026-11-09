@@ -1,8 +1,6 @@
 <p align="center">
-  <img src="Media/Logo-512.png" width="160" alt="AuctionIQ logo">
+  <img src="Media/Logo-Branded.png" width="320" alt="AuctionIQ">
 </p>
-
-<h1 align="center">AuctionIQ</h1>
 
 <p align="center"><b>Economic intelligence for the Auction House.</b><br>
 AuctionIQ helps you decide what to do. Clearinghouse, its ledger, tells you what actually happened.</p>
