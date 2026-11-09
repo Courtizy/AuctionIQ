@@ -1061,6 +1061,15 @@ CH.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the re
 tipm = [plain(l[1]) for l in CH.ScanUI.OrderLines(nohave[0]).values()]
 check("orders hover: lists the missing reagents", "Missing reagents" in tipm)
 run("C_Item.GetItemCount = STUB.oldCount; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
+# a recipe this character hasn't learned: never "can make", never queued
+run("""STUB.oldInfo = C_TradeSkillUI.GetRecipeInfo
+C_TradeSkillUI.GetRecipeInfo = function(id) local i = STUB.oldInfo(id); if id == 10 and i then i.learned = false end; return i end""")
+nl = list(CH.Orders.List().values())
+check("orders: an unlearned recipe isn't craftable", all(not o.ok and o.learned is False for o in nl))
+nlrows = list(CH.ScanUI.Refresh().values())
+check("orders: an unlearned recipe says so and Queue all skips it", CH.ScanUI.QueueAll() == 0
+      and "You haven't learned this recipe." in [plain(l[1]) for l in CH.ScanUI.OrderLines(nl[0]).values()])
+run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
 # orders from an older expansion are tagged, and Older: hidden leaves them out
 run("""STUB.oldLine = C_TradeSkillUI.GetTradeSkillLineForRecipe
 C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) if id == 10 then return 2871, 'Khaz Algar Alchemy' end return 2906, 'Midnight Alchemy' end

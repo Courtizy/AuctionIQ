@@ -124,6 +124,8 @@ function SUI.OrderLines(d)
 			table.insert(lines, { "Your reagents", M(d.cost or 0) })
 			table.insert(lines, { "Profit", money(d.profit) })
 			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
+		elseif d.learned == false then
+			table.insert(lines, { T.Color("bad", "You haven't learned this recipe.") })
 		else
 			table.insert(lines, { T.Color("bad", "No craft reaches the quality this order asks for.") })
 		end
@@ -411,7 +413,7 @@ local function refreshLists()
 			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
 			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or d.have and T.Color("ok", "have")
 				or T.Color("bad", "buy " .. CH.FormatMoney(d.cost or 0)))
-			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", "can't reach"))
+			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or "can't reach"))
 			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
