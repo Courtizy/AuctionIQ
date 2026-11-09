@@ -550,6 +550,22 @@ p302 = CH.Groups.Prices(302)
 check("prices: min is the cost to make after the cut", p302.min and p302.why == "cost to make" and p302.normal == 3000000 and p302.max == 9000000)
 check("warband listed: TSM's counts per character", CH.Auction.Listed(302) == 0)
 run("Clearinghouse.Groups.Store().ops.Crafted.cap = 5")
+# Post scan: gear splits by item level (five rank 4 rods and ten rank 3 rods are two posts)
+run("""STUB.oldC, STUB.oldII = C_Container, C_Item.GetItemInfoInstant
+local bags = { [0] = {} }
+for i = 1, 5 do bags[0][i] = { itemID = 302, stackCount = 1, hyperlink = "item:302:645" } end
+for i = 6, 15 do bags[0][i] = { itemID = 302, stackCount = 1, hyperlink = "item:302:642" } end
+bags[0][16] = { itemID = 201, stackCount = 20, hyperlink = "item:201" }
+C_Container = { GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end, GetContainerItemInfo = function(b, s) return bags[b] and bags[b][s] end }
+C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 302 and 2 or 7 end
+C_Item.GetDetailedItemLevelInfo = function(link) return tonumber(link:match("item:%d+:(%d+)")) end
+STUB.prices['i:302::i645'] = { formula_value = 4000000 }""")
+_, pl = L.eval("Clearinghouse.Auction.Postable()"), L.eval("select(2, Clearinghouse.Auction.Postable())")
+pl = list(pl.values())
+check("post scan: gear split by item level, others not", [(e.id, e.level, e.count) for e in pl] == [(201, None, 20), (302, 645, 5), (302, 642, 10)])
+check("post scan: bag counts per item level", L.eval("Clearinghouse.Auction.InBags(302, 642)") == 10 and L.eval("Clearinghouse.Auction.InBags(302)") == 15)
+check("post scan: each item level priced on its own", CH.Groups.Prices(302, None, 645).normal == 4000000 and CH.Groups.Prices(302).normal != 4000000)
+run("C_Container, C_Item.GetItemInfoInstant, C_Item.GetDetailedItemLevelInfo = STUB.oldC, STUB.oldII, nil")
 d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
 check("auction: undercut the cheapest seller outside the account", d.action == "post" and d.price == 2899900 and d.qty == 5)
 d = CH.Auction.Decide(302, L.eval("{ { price = 2800000, qty = 1, mine = true }, { price = 2900000, qty = 3, mine = false } }"), 10)
