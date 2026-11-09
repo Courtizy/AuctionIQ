@@ -79,6 +79,7 @@ function S.Record(id, results, commodity)
 	end
 	e.at, e.min, e.market, e.qty, e.full = now, all[1][1], math.floor(spent / got + 0.5), total, true
 	e.ladder = commodity and others[1] and ladder(others) or nil
+	e.ladderAt = e.ladder and now or nil
 	addDay(e, now)
 	store()[id] = e
 end
@@ -91,6 +92,12 @@ function S.RecordBrowse(id, minPrice, qty)
 	local e = store()[id] or {}
 	if e.full and e.at and now - e.at < 3600 then return end
 	e.at, e.min, e.market, e.qty, e.full = now, minPrice, minPrice, qty, false
+	-- The buying ladder keeps its own time (a browse doesn't refresh it), and a browse whose
+	-- cheapest price no longer matches the ladder's first step means the ladder is out of date.
+	if e.ladder and e.ladder[1] then
+		local first = e.ladder[1][2]
+		if not e.ladderAt or math.abs(minPrice - first) > 0.1 * math.max(minPrice, first) then e.ladder, e.ladderAt = nil, nil end
+	end
 	addDay(e, now)
 	store()[id] = e
 end
@@ -114,7 +121,7 @@ end
 function S.Depth(id)
 	local e = id and CH.db and store()[id]
 	if not e or not e.ladder or not e.ladder[1] then return nil end
-	return e.ladder, e.at
+	return e.ladder, e.ladderAt or e.at
 end
 
 --- "just now", "12 min", "3 hr", "2 days": how old a scan is.

@@ -11,7 +11,10 @@ CH.Auction = A
 
 local DAY = 86400
 
-local function me() return (UnitName and UnitName("player") or "?") end
+-- Records are keyed by name and realm: two characters with the same name on different realms
+-- are different sellers, and only this realm's auction house counts toward a cap here.
+local function realm() return GetRealmName and GetRealmName() or "?" end
+local function me() return (UnitName and UnitName("player") or "?") .. "-" .. realm() end
 
 local function store()
 	CH.db.auctions = CH.db.auctions or {}
@@ -23,16 +26,17 @@ end
 function A.Listed(id)
 	local n, counted = 0, {}
 	local now = time()
-	for name, rec in pairs(store()) do
-		if rec.at and now - rec.at < 2 * DAY then
-			counted[name] = true
+	local here = realm()
+	for key, rec in pairs(store()) do
+		if rec.at and now - rec.at < 2 * DAY and rec.realm == here then
+			counted[key] = true
 			n = n + (rec.items[id] or 0)
 		end
 	end
 	local db = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB
 	if db and CH.Ledger then
 		for _, c in ipairs(CH.Ledger.Characters()) do
-			if not counted[c.name] then
+			if not counted[c.name .. "-" .. here] then
 				local t = db["s@" .. c.key .. "@internalData@auctionQuantity"]
 				if type(t) == "table" then
 					for s, q in pairs(t) do
@@ -49,7 +53,7 @@ end
 function A.RecordOwned(list)
 	local items = {}
 	for _, a in ipairs(list) do items[a.id] = (items[a.id] or 0) + (a.qty or 1) end
-	store()[me()] = { at = time(), items = items }
+	store()[me()] = { at = time(), items = items, realm = realm() }
 end
 
 -- Results: { { price (each), qty, mine } }, mine = yours or any character on your account.

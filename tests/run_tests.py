@@ -933,6 +933,54 @@ run("Clearinghouse.UI.Page('today')")
 for w in ["ScanUI", "PathsUI", "QueueUI", "LogUI"]:
     run(f"if Clearinghouse.{w} and Clearinghouse.{w}.Toggle then pcall(Clearinghouse.{w}.Toggle) end")
     audit(w)
+# Review fixes ---------------------------------------------------------------------------------
+# 1. a browse doesn't make an old buying ladder look fresh, and a browse at a different price drops it
+run("""Clearinghouse.db.scans = Clearinghouse.db.scans or {}
+Clearinghouse.Scans.Record(950, { { price = 10000, qty = 100 }, { price = 20000, qty = 100 } }, true)""")
+lad, at = L.eval("Clearinghouse.Scans.Depth(950)")
+run("Clearinghouse.db.scans[950].ladderAt = Clearinghouse.db.scans[950].ladderAt - 7200; Clearinghouse.db.scans[950].at = Clearinghouse.db.scans[950].at - 7200")
+run("Clearinghouse.Scans.RecordBrowse(950, 10000, 200)")
+lad2, at2 = L.eval("Clearinghouse.Scans.Depth(950)")
+check("scans: a browse at the same price keeps the ladder with its own, older time", lad2 is not None and L.eval("time()") - at2 >= 7200)
+run("Clearinghouse.Scans.RecordBrowse(950, 90000, 50)")
+check("scans: a browse at a different cheapest price drops the stale ladder", L.eval("Clearinghouse.Scans.Depth(950)") is None)
+# 2. Open all stops when the inbox stops changing (bags full) instead of looping, and says why
+run("""STUB.loots = 0; STUB.openDone = nil
+function GetInboxNumItems() return 1 end
+function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', 0, 0, 1, 1 end
+function AutoLootMailItem() STUB.loots = STUB.loots + 1 end
+Clearinghouse.Mail.OpenAll(function(n, gold, why) STUB.openDone = { n = n, why = why } end)
+for i = 1, 20 do STUB.RunTimers() end""")
+check("mail: Open all gives up on a mail it can't take, and says why", L.eval("STUB.openDone") is not None and L.eval("STUB.loots") <= 4
+      and "bags" in str(L.eval("STUB.openDone.why")) and L.eval("STUB.openDone.n") == 0)
+run("""STUB.loots = 0; STUB.openDone = nil; STUB.mails = 2
+function GetInboxNumItems() return STUB.mails end
+function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', 100, 0, 1, nil end
+function AutoLootMailItem() STUB.loots = STUB.loots + 1; STUB.mails = STUB.mails - 1 end
+Clearinghouse.Mail.OpenAll(function(n, gold, why) STUB.openDone = { n = n, why = why } end)
+for i = 1, 20 do STUB.RunTimers() end""")
+check("mail: Open all counts the mails it really took", L.eval("STUB.openDone.n") == 2 and L.eval("STUB.openDone.why") is None)
+run("GetInboxNumItems = nil; GetInboxHeaderInfo = nil; AutoLootMailItem = nil")
+# 3. the same name on two realms: separate sellers, and only this realm counts
+run("""Clearinghouse.db.auctions = {}
+Clearinghouse.Auction.RecordOwned({ { id = 951, qty = 3 } })
+STUB.oldRealm = GetRealmName; GetRealmName = function() return 'Other Realm' end
+Clearinghouse.Auction.RecordOwned({ { id = 951, qty = 7 } })""")
+check("auctions: the same name on another realm doesn't overwrite this realm's record", L.eval("Clearinghouse.Auction.Listed(951)") == 7)
+run("GetRealmName = STUB.oldRealm")
+check("auctions: each realm counts its own listings", L.eval("Clearinghouse.Auction.Listed(951)") == 3)
+run("Clearinghouse.db.auctions = {}")
+# 5. the ledger sees a record that changed without changing length
+run("""STUB.oldSales = TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"]
+TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = [[itemString,stackSize,quantity,price,otherPlayer,player,time,source\ni:952,1,1,10000,Bob,Courtizy,100,Auction]]
+""")
+p1 = L.eval("(function() for _, r in ipairs(Clearinghouse.Ledger.Records('Sales')) do if r.id == 952 then return r.price end end end)()")
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = [[itemString,stackSize,quantity,price,otherPlayer,player,time,source\ni:952,1,1,90000,Bob,Courtizy,100,Auction]]
+""")
+p2 = L.eval("(function() for _, r in ipairs(Clearinghouse.Ledger.Records('Sales')) do if r.id == 952 then return r.price end end end)()")
+check("ledger: an edited record of the same length is read again", p1 == 10000 and p2 == 90000)
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales; Clearinghouse.Ledger.ClearStats()""")
+
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob
 check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1e-9 and abs(P.BetaCDF(0.3, 1, 1) - 0.3) < 1e-9

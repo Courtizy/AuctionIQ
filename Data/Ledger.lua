@@ -69,14 +69,14 @@ function Lg.Holders()
 end
 
 -- CSV parsing ---------------------------------------------------------------------------------
-local parsed = {} -- [key] = { len, rows }
+local parsed = {} -- [key] = { text, rows }: the text itself, so an edit of the same length is seen
 
 local function csv(key)
 	local db = tsm()
 	local text = db and db[key]
 	if type(text) ~= "string" then return {} end
 	local c = parsed[key]
-	if c and c.len == #text then return c.rows end
+	if c and c.text == text then return c.rows end
 	local rows, header = {}, nil
 	for line in string.gmatch(text, "[^\n]+") do
 		local f = {}
@@ -89,7 +89,7 @@ local function csv(key)
 			table.insert(rows, r)
 		end
 	end
-	parsed[key] = { len = #text, rows = rows }
+	parsed[key] = { text = text, rows = rows }
 	return rows
 end
 
@@ -442,7 +442,7 @@ local function itemStats()
 	end
 	return stats
 end
-function Lg.ClearStats() stats = nil end
+function Lg.ClearStats() stats = nil; parsed = {} end
 
 --- How many times an item expired since it last sold (TSM's numexpires).
 function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
