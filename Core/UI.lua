@@ -5,6 +5,7 @@ local UI = {}
 CH.UI = UI
 local frame, text
 local W, H = 920, 600
+local MIN_H, MAX_H = 600, 1200 -- the window can be dragged taller, for more rows
 local pages, pageButtons = {}, {}
 local page = "today"
 local range = "1M"
@@ -592,25 +593,52 @@ local function layoutTabs()
 	end
 end
 
---- A grip in the window's bottom-right corner: drag it to make the whole window bigger or smaller
---- (it scales, so every page keeps its layout). The size is saved. Double-click puts it back.
+--- A grip in the window's bottom-right corner. Drag it down or up to make the window taller or
+--- shorter: tables and lists show more rows. Shift-drag scales the whole window instead. Both are
+--- saved; double-click puts them back.
 local MIN_SCALE, MAX_SCALE = 0.6, 1.6
+local function settings()
+	CH.db.settings.window = CH.db.settings.window or {}
+	return CH.db.settings.window
+end
+
+-- keep the top-left corner where it is while the window changes
+local function pin(old, new)
+	local left, top = frame:GetLeft(), frame:GetTop()
+	if left and top then
+		frame:ClearAllPoints()
+		frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * old / new, top * old / new)
+	end
+end
+
 function UI.SetScale(scale)
 	scale = math.max(MIN_SCALE, math.min(MAX_SCALE, scale or 1))
-	CH.db.settings.window = CH.db.settings.window or {}
-	CH.db.settings.window.scale = scale
+	settings().scale = scale
 	if frame then
-		-- keep the top-left corner where it is while the size changes
-		local left, top = frame:GetLeft(), frame:GetTop()
 		local old = frame:GetScale() or 1
+		pin(old, scale)
 		frame:SetScale(scale)
-		if left and top then
-			frame:ClearAllPoints()
-			frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * old / scale, top * old / scale)
-		end
 	end
 	return scale
 end
+
+--- Make the window h tall (600 to 1200, and no taller than the screen). Returns the height.
+function UI.SetHeight(h)
+	local screen = UIParent.GetHeight and UIParent:GetHeight()
+	local max = MAX_H
+	if type(screen) == "number" and screen > 0 and frame then max = math.min(MAX_H, math.floor(screen / (frame:GetScale() or 1)) - 20) end
+	H = math.floor(math.max(MIN_H, math.min(max, h or MIN_H)))
+	settings().height = H
+	if frame then
+		pin(1, 1)
+		frame:SetHeight(H)
+		UI.LayoutSubTabs()
+		if frame:IsShown() then UI.Refresh() end
+	end
+	return H
+end
+
+function UI.Height() return H end
 
 function UI.AddSizer(f)
 	local grip = CreateFrame("Button", nil, f)
@@ -623,22 +651,27 @@ function UI.AddSizer(f)
 		grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
 	end
 	grip:SetScript("OnMouseDown", function(self)
-		local x = GetCursorPosition()
-		self.fromX, self.fromScale = x, f:GetScale() or 1
+		local x, y = GetCursorPosition()
+		self.fromX, self.fromY, self.fromScale, self.fromH = x, y, f:GetScale() or 1, H
+		self.scaling = IsShiftKeyDown and IsShiftKeyDown()
 		self:SetScript("OnUpdate", function(g)
-			local cx = GetCursorPosition()
-			local ui = UIParent:GetEffectiveScale() or 1
-			-- the window's width follows the cursor
-			UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / ui / (W * g.fromScale)))
+			local cx, cy = GetCursorPosition()
+			local px = (UIParent:GetEffectiveScale() or 1) * g.fromScale -- screen pixels per window unit
+			if g.scaling then
+				UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / px / W))
+			elseif math.floor(g.fromH + (g.fromY - cy) / px) ~= H then
+				UI.SetHeight(g.fromH + (g.fromY - cy) / px)
+			end
 		end)
 	end)
 	grip:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
-	grip:SetScript("OnDoubleClick", function() UI.SetScale(1) end)
-	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to resize the window. Double-click for the normal size." } }) end)
+	grip:SetScript("OnDoubleClick", function() UI.SetScale(1); UI.SetHeight(MIN_H) end)
+	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to make the window taller or shorter. Shift-drag to make everything bigger or smaller. Double-click for the normal size." } }) end)
 	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.sizer = grip
-	local saved = CH.db and CH.db.settings.window and CH.db.settings.window.scale
-	if saved and saved ~= 1 then f:SetScale(saved) end
+	local saved = CH.db and CH.db.settings.window
+	if saved and saved.scale and saved.scale ~= 1 then f:SetScale(saved.scale) end
+	if saved and saved.height then H = math.max(MIN_H, math.min(MAX_H, saved.height)); f:SetHeight(H) end
 	return grip
 end
 
@@ -690,6 +723,8 @@ local function build()
 		b(p)
 	end
 	frame.foot = fs(frame, 12, -H + 16, W - 40, "LEFT", "GameFontDisableSmall")
+	frame.foot:ClearAllPoints()
+	frame.foot:SetPoint("BOTTOMLEFT", 12, 8) -- stays at the bottom when the window is resized
 	frame:SetScript("OnShow", function()
 		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
@@ -1011,6 +1046,8 @@ function UI.LayoutSubTabs()
 	end
 	-- the nav stops above the footer line
 	if pages.ledger and pages.ledger.navPanel then pages.ledger.navPanel:SetHeight(H - 54 - shift) end
+	-- as many table rows as the page has room for, above the table's footer line
+	if CH.LedgerUI.SetRows then CH.LedgerUI.SetRows(math.floor((H - 54 - shift - 52 - 34) / 18)) end
 	return shown
 end
 
