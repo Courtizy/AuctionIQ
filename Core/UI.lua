@@ -562,9 +562,9 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 UI.TABS, UI.OLD = TABS, OLD
 
---- The window title: AuctionIQ and its gavel, on every tab (Accounting keeps its plum colours).
+--- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
 local function titleText()
-	return "|TInterface\\AddOns\\AuctionIQ\\Media\\Icon:16:16:0:0|t " .. CH.Theme.Color("accent", "AuctionIQ")
+	return CH.Theme.Color("accent", "AuctionIQ") -- the icon is the title bar's badge, beside it
 end
 UI.TitleText = titleText
 

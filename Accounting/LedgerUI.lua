@@ -8,7 +8,9 @@ local LUI = {}
 CH.LedgerUI = LUI
 
 local X0, TW = 172, 724 -- table left edge and width inside the page
-local ROWS, RH = 25, 18
+-- a column's width, kept clear of the scroll bar down the table's right edge
+local function cellWidth(c) return math.min(c[3], TW - 10 - c[2]) end
+local ROWS, RH = 23, 18 -- 23 rows leave room for the footer under the sub-tab row
 
 local view = "inventory"
 local filter, char, days = "", nil, 30
@@ -598,8 +600,8 @@ function LUI.Refresh()
 		if c then
 			h:ClearAllPoints()
 			h:SetPoint("TOPLEFT", X0 + c[2], -32)
-			h:SetWidth(c[3])
-			h.text:SetWidth(c[3])
+			h:SetWidth(cellWidth(c))
+			h.text:SetWidth(cellWidth(c))
 			h.text:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 			local arrow = sortCol == j and (sortDesc and " v" or " ^") or ""
 			h.text:SetText((sortCol == j and T.Color("accent", c[1] .. arrow)) or c[1])
@@ -625,7 +627,7 @@ function LUI.Refresh()
 			if c and d then
 				cell:ClearAllPoints()
 				cell:SetPoint("TOPLEFT", X0 + c[2], -52 - (i - 1) * RH)
-				cell:SetWidth(c[3])
+				cell:SetWidth(cellWidth(c))
 				cell:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 				cell:SetText(tostring(d.cells[j] or ""))
 			else
