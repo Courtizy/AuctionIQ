@@ -1177,6 +1177,8 @@ for tab in ["today", "research", "operations", "markets", "crafting", "trading",
 for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
+check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
+      CH.UI.Pages().ledger.parent.sizer is not None and CH.UI.SetScale(3) == 1.6 and CH.db.settings.window.scale == 1.6 and CH.UI.SetScale(1) == 1)
 navs = list(CH.UI.Pages().ledger.nav.values())
 long = [plain(b.text.t) for b in navs if b.text and not b.fits]
 check("nav: every label fits its button on one line", len(navs) > 20 and long == [] and all(b.text.wrap is False for b in navs if b.text))

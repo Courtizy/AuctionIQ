@@ -592,6 +592,56 @@ local function layoutTabs()
 	end
 end
 
+--- A grip in the window's bottom-right corner: drag it to make the whole window bigger or smaller
+--- (it scales, so every page keeps its layout). The size is saved. Double-click puts it back.
+local MIN_SCALE, MAX_SCALE = 0.6, 1.6
+function UI.SetScale(scale)
+	scale = math.max(MIN_SCALE, math.min(MAX_SCALE, scale or 1))
+	CH.db.settings.window = CH.db.settings.window or {}
+	CH.db.settings.window.scale = scale
+	if frame then
+		-- keep the top-left corner where it is while the size changes
+		local left, top = frame:GetLeft(), frame:GetTop()
+		local old = frame:GetScale() or 1
+		frame:SetScale(scale)
+		if left and top then
+			frame:ClearAllPoints()
+			frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left * old / scale, top * old / scale)
+		end
+	end
+	return scale
+end
+
+function UI.AddSizer(f)
+	local grip = CreateFrame("Button", nil, f)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -2, 2)
+	grip:SetFrameLevel((f:GetFrameLevel() or 1) + 10)
+	if grip.SetNormalTexture then
+		grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+		grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+		grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	end
+	grip:SetScript("OnMouseDown", function(self)
+		local x = GetCursorPosition()
+		self.fromX, self.fromScale = x, f:GetScale() or 1
+		self:SetScript("OnUpdate", function(g)
+			local cx = GetCursorPosition()
+			local ui = UIParent:GetEffectiveScale() or 1
+			-- the window's width follows the cursor
+			UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / ui / (W * g.fromScale)))
+		end)
+	end)
+	grip:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+	grip:SetScript("OnDoubleClick", function() UI.SetScale(1) end)
+	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to resize the window. Double-click for the normal size." } }) end)
+	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.sizer = grip
+	local saved = CH.db and CH.db.settings.window and CH.db.settings.window.scale
+	if saved and saved ~= 1 then f:SetScale(saved) end
+	return grip
+end
+
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("AuctionIQFrame", "", W, H)
@@ -599,6 +649,7 @@ local function build()
 	-- brought to the front when clicked
 	frame:SetFrameStrata("DIALOG")
 	if frame.SetToplevel then frame:SetToplevel(true) end
+	UI.AddSizer(frame)
 	frame.title:SetText(titleText())
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Accounting ledger last
@@ -638,7 +689,7 @@ local function build()
 		end
 		b(p)
 	end
-	frame.foot = fs(frame, 12, -H + 18, W - 24, "LEFT", "GameFontDisableSmall")
+	frame.foot = fs(frame, 12, -H + 16, W - 40, "LEFT", "GameFontDisableSmall")
 	frame:SetScript("OnShow", function()
 		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
@@ -955,10 +1006,11 @@ function UI.LayoutSubTabs()
 		if p then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", frame, "TOPLEFT", left, -36 - shift)
-			p:SetHeight(H - 48 - shift)
+			p:SetHeight(H - 54 - shift)
 		end
 	end
-	if pages.ledger and pages.ledger.navPanel then pages.ledger.navPanel:SetHeight(H - 48 - shift) end
+	-- the nav stops above the footer line
+	if pages.ledger and pages.ledger.navPanel then pages.ledger.navPanel:SetHeight(H - 54 - shift) end
 	return shown
 end
 

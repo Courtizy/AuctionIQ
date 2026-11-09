@@ -99,27 +99,34 @@ function PUI.DrawTree()
 		local first = plan and plan.steps[1] and tree.layout[plan.steps[1].node]
 		if first then selectedTab = first.tab end
 	end
-	local tx = 12
-	for i, b in ipairs(tabButtons) do
-		local t = tabs[i]
-		if t then
-			b:ClearAllPoints()
-			b:SetPoint("TOPLEFT", frame, "TOPLEFT", tx, TABS_Y)
-			local n = 0
-			for _, id in ipairs(t.nodes) do if marks[id] then n = n + 1 end end
-			setLabel(b, t.name .. (n > 0 and (" (" .. n .. ")") or ""))
-			local fs = b.text or (b.GetFontString and b:GetFontString())
-			local c = t.id == selectedTab and T.accent or T.fg
-			if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
-			b:SetScript("OnClick", function() selectedTab = t.id; PUI.DrawTree() end)
-			local w = math.max(80, math.ceil((fs and fs.GetStringWidth and fs:GetStringWidth() or 90) + 20))
-			b:SetWidth(w)
-			tx = tx + w + 4
-			b:Show()
-		else
-			b:Hide()
+	-- the tabs across the page: their names at full size when they fit, else the small font
+	local function lay(font, pad)
+		local tx = 0
+		for i, b in ipairs(tabButtons) do
+			local t = tabs[i]
+			if t then
+				local n = 0
+				for _, id in ipairs(t.nodes) do if marks[id] then n = n + 1 end end
+				setLabel(b, t.name .. (n > 0 and (" (" .. n .. ")") or ""))
+				local fs = b.text or (b.GetFontString and b:GetFontString())
+				if fs and fs.SetFontObject then fs:SetFontObject(font) end
+				CH.Window.OneLine(fs or {})
+				local c = t.id == selectedTab and T.accent or T.fg
+				if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
+				b:SetScript("OnClick", function() selectedTab = t.id; PUI.DrawTree() end)
+				local w = math.max(60, math.ceil((fs and fs.GetStringWidth and fs:GetStringWidth() or 90) + pad))
+				b:SetWidth(w)
+				b:ClearAllPoints()
+				b:SetPoint("TOPLEFT", frame, "TOPLEFT", tx, TABS_Y)
+				tx = tx + w + 4
+				b:Show()
+			else
+				b:Hide()
+			end
 		end
+		return tx - 4
 	end
+	if lay("GameFontHighlight", 20) > W then lay("GameFontHighlightSmall", 12) end
 	if #tabs == 0 then
 		treeNote:SetText(T.Color("muted", "Open the profession to see its specialization trees here."))
 	else
