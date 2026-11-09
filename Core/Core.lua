@@ -1,7 +1,6 @@
--- AuctionIQ: core, saved data and slash commands. Clearinghouse is its ledger (the books).
+-- AuctionIQ: core, saved data and slash commands. Accounting is its ledger (the books).
 local addonName, CH = ...
 _G.AuctionIQ = CH
-_G.Clearinghouse = CH -- the old name, for macros and the tests
 CH.ICON = "Interface\\AddOns\\" .. addonName .. "\\Media\\Icon"
 
 CH.version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
@@ -115,29 +114,21 @@ end)
 
 CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
-	-- First login after the rename: take over the data the addon kept as Clearinghouse. The old
-	-- folder is left as a stub that only loads ClearinghouseDB; it isn't changed, so it stays a backup.
-	if AuctionIQDB == nil and type(ClearinghouseDB) == "table" then
-		AuctionIQDB = CopyTable and CopyTable(ClearinghouseDB) or ClearinghouseDB
-		CH.migrated = true
-	end
 	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
 	CH.db = AuctionIQDB
 end)
 
 CH.On("PLAYER_LOGIN", function()
 	updateGold()
-	if CH.migrated then CH.Print("moved your Clearinghouse data over. Once it all looks right, you can delete the Clearinghouse folder in AddOns.") end
 	if not CH.Prices.Available() then
 		CH.Print("TradeSkillMaster isn't loaded, so prices are off. Install TSM to see values and profits.")
 	end
 end)
 CH.On("PLAYER_MONEY", updateGold)
 
-SLASH_CLEARINGHOUSE1 = "/aiq"
-SLASH_CLEARINGHOUSE2 = "/auctioniq"
-SLASH_CLEARINGHOUSE3 = "/ch"
-SlashCmdList.CLEARINGHOUSE = function(msg)
+SLASH_AUCTIONIQ1 = "/aiq"
+SLASH_AUCTIONIQ2 = "/auctioniq"
+SlashCmdList.AUCTIONIQ = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
 	if msg == "tooltip" then
 		CH.db.settings.tooltip = not CH.db.settings.tooltip
@@ -205,7 +196,7 @@ SlashCmdList.CLEARINGHOUSE = function(msg)
 		if r and CH.AnalyticsViews then CH.AnalyticsViews.SetScenario(tonumber(r) / 100, tonumber(p) / 100) end
 		CH.UI.Page("research", "scenarios")
 	elseif msg == "report" or msg == "brief" or msg == "briefing" then CH.UI.Page("report")
-	elseif msg == "accounting" or msg == "ledger" or msg == "clearinghouse" or msg == "books" then CH.UI.Page("ledger")
+	elseif msg == "accounting" or msg == "ledger" or msg == "books" then CH.UI.Page("ledger")
 	elseif msg == "settings" or msg == "options" or msg == "config" then CH.UI.Page("settings")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()

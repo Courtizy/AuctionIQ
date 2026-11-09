@@ -1,4 +1,4 @@
--- Clearinghouse: learns each character's professions, Concentration and best crafts
+-- Professions: learns each character's professions, Concentration and best crafts
 -- whenever a profession window is open.
 local _, CH = ...
 

@@ -1,9 +1,9 @@
--- Groups and operations: which items Clearinghouse posts, buys or mails, and how. Built for you from
+-- Groups and operations: which items AuctionIQ posts, buys or mails, and how. Built for you from
 -- what you craft, use and resell (re-run any time), falling back to your TSM groups (read only).
 -- Move an item yourself and that sticks. Each group's operation sets the posting prices:
 --   min    never post below it: crafted goods at what they cost to make after the cut, resale at
 --          what you paid after the cut, anything else at 80% of its buy price
---   normal post here when nobody is cheaper: Clearinghouse value
+--   normal post here when nobody is cheaper: AuctionIQ value
 --   max    never post above it: 3x normal
 -- and how many to keep up across the whole Warband (stock target, else a cap).
 local _, CH = ...

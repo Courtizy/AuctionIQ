@@ -2,9 +2,9 @@
 --
 -- History comes from TSM's own saved data (TradeSkillMasterDB), read only: its gold log per
 -- character, its accounting (sales, buys, income, expenses, expired and cancelled auctions) and its
--- inventory counts (bags, bank, mail, auctions, warband bank). Clearinghouse also keeps its own copy:
+-- inventory counts (bags, bank, mail, auctions, warband bank). AuctionIQ also keeps its own copy:
 --   * a daily summary of the accounting, so history survives TSM trimming old records
---   * a daily net worth snapshot (gold + what your inventory is worth at Clearinghouse value), which
+--   * a daily net worth snapshot (gold + what your inventory is worth at AuctionIQ value), which
 --     TSM doesn't keep, so profit can be shown as the change in net worth
 -- Nothing is ever written to TSM's data.
 local _, CH = ...
@@ -182,7 +182,7 @@ local store = store0
 
 local function dayOf(t) return math.floor(t / DAY) end
 
---- Summarise TSM's accounting by day into Clearinghouse's own archive (days TSM still has are
+--- Summarise TSM's accounting by day into AuctionIQ's own archive (days TSM still has are
 --- rebuilt, older days are kept). Transfers between your own characters aren't income or expense.
 function Lg.Archive()
 	local mine = own()
@@ -260,7 +260,7 @@ end
 
 -- Inventory -----------------------------------------------------------------------------------
 --- Every item you hold on this realm, from TSM's counts: { item, id, bags, bank, mail, ah, warband,
---- total, value } sorted by value (Clearinghouse value x total). filter is a name keyword.
+--- total, value } sorted by value (AuctionIQ value x total). filter is a name keyword.
 function Lg.Inventory(filter, char)
 	local db = tsm()
 	local items = {}
@@ -301,7 +301,7 @@ function Lg.Inventory(filter, char)
 	return out
 end
 
---- What your inventory is worth now at Clearinghouse value.
+--- What your inventory is worth now at AuctionIQ value.
 function Lg.InventoryValue()
 	local v = 0
 	for _, e in ipairs(Lg.Inventory()) do v = v + e.value end

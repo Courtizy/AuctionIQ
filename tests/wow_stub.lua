@@ -1,4 +1,4 @@
--- Minimal stand-ins for the WoW API, enough to load Clearinghouse and drive its events.
+-- Minimal stand-ins for the WoW API, enough to load AuctionIQ and drive its events.
 local events, timers = {}, {}
 STUB = { now = 1000000, gametime = 0, money = 1234567, tooltips = {} }
 
@@ -96,7 +96,7 @@ function STUB.Fire(event, ...)
 end
 
 -- TSM: prices keyed by item string; "crafting" costs separately. chvalue is not a custom source here,
--- so Clearinghouse must fall back to passing the formula itself.
+-- so AuctionIQ must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
 for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1, [211] = 2, [212] = 6, [221] = 3, [222] = 8 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
 STUB.prices["i:301"] = { formula_value = 100 * 10000 }

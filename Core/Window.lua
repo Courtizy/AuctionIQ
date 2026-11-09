@@ -5,7 +5,7 @@ local _, CH = ...
 local W = {}
 CH.Window = W
 
---- A movable panel with the Clearinghouse title bar. Returns the frame; frame.bar holds buttons,
+--- A movable panel with the AuctionIQ title bar. Returns the frame; frame.bar holds buttons,
 --- frame.title the title text, frame.close the close button.
 function W.New(name, title, width, height)
 	local T = CH.Theme
@@ -244,7 +244,7 @@ end
 
 local function buildStrip()
 	local T = CH.Theme
-	strip = CreateFrame("Frame", "ClearinghouseTabs", UIParent)
+	strip = CreateFrame("Frame", "AuctionIQTabs", UIParent)
 	strip:SetFrameStrata("HIGH")
 	strip:SetSize(10, 22)
 	strip:Hide()

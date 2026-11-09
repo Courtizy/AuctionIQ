@@ -1,12 +1,12 @@
 ## Interface: 120105
 ## Title: AuctionIQ
-## Notes: Economic intelligence for the Auction House: what to craft, buy, post and cancel, with the Clearinghouse ledger behind it. Uses TradeSkillMaster prices.
+## Notes: Economic intelligence for the Auction House: what to craft, buy, post and cancel, with its own Accounting ledger behind it. Uses TradeSkillMaster prices.
 ## Author: Courtizy
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\AuctionIQ\Media\Icon
 ## Category-enUS: Auctions
 ## SavedVariables: AuctionIQDB
-## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI, Clearinghouse
+## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI
 ## AddonCompartmentFunc: AuctionIQ_OnAddonCompartmentClick
 ## X-License: MIT
 
@@ -21,51 +21,51 @@ Data\Depth.lua
 Data\Compare.lua
 Data\Formula.lua
 Data\Stats.lua
-Crafting\Specs\ConcentrationCurves.lua
-Crafting\Specs\SpecAlchemy.lua
-Crafting\Specs\SpecBlacksmithing.lua
-Crafting\Specs\SpecEnchanting.lua
-Crafting\Specs\SpecEngineering.lua
-Crafting\Specs\SpecInscription.lua
-Crafting\Specs\SpecJewelcrafting.lua
-Crafting\Specs\SpecLeatherworking.lua
-Crafting\Specs\SpecTailoring.lua
-Crafting\Spec.lua
+Research\Specs\ConcentrationCurves.lua
+Research\Specs\SpecAlchemy.lua
+Research\Specs\SpecBlacksmithing.lua
+Research\Specs\SpecEnchanting.lua
+Research\Specs\SpecEngineering.lua
+Research\Specs\SpecInscription.lua
+Research\Specs\SpecJewelcrafting.lua
+Research\Specs\SpecLeatherworking.lua
+Research\Specs\SpecTailoring.lua
+Research\Spec.lua
 Core\Tooltip.lua
-Crafting\Professions.lua
-Crafting\Cooldowns.lua
+Research\Professions.lua
+Operations\Cooldowns.lua
 Data\Ledger.lua
-Clearinghouse\LedgerUI.lua
-Markets\MarketsUI.lua
-Analytics\Par.lua
-Analytics\Forecast.lua
-Trading\Groups.lua
-Trading\Auction.lua
-Trading\AuctionUI.lua
-Trading\GroupsUI.lua
-Trading\TradingUI.lua
-Trading\Mail.lua
-Trading\MailUI.lua
+Accounting\LedgerUI.lua
+Research\MarketsUI.lua
+Operations\Par.lua
+Research\Forecast.lua
+Operations\Groups.lua
+Operations\Auction.lua
+Operations\AuctionUI.lua
+Operations\GroupsUI.lua
+Operations\TradingUI.lua
+Operations\Mail.lua
+Operations\MailUI.lua
 Core\Settings.lua
 Core\SettingsUI.lua
 Core\Alerts.lua
-Crafting\Planner.lua
-Crafting\PlanUI.lua
-Clearinghouse\ReportUI.lua
-Today\Next.lua
+Research\Planner.lua
+Research\PlanUI.lua
+Accounting\ReportUI.lua
+Dashboard\Next.lua
 Core\UI.lua
 Core\Minimap.lua
-Crafting\Advisor.lua
-Crafting\Gear.lua
-Crafting\Orders.lua
-Crafting\Scan.lua
-Crafting\AdvisorUI.lua
-Crafting\Queue.lua
-Crafting\QueueUI.lua
-Crafting\ScanUI.lua
-Crafting\Log.lua
-Analytics\Views.lua
-Crafting\Paths.lua
-Crafting\TreeView.lua
-Crafting\PathsUI.lua
-Crafting\SpecOverlay.lua
+Research\Advisor.lua
+Research\Gear.lua
+Operations\Orders.lua
+Research\Scan.lua
+Research\AdvisorUI.lua
+Operations\Queue.lua
+Operations\QueueUI.lua
+Research\ScanUI.lua
+Research\Log.lua
+Research\Views.lua
+Research\Paths.lua
+Research\TreeView.lua
+Research\PathsUI.lua
+Research\SpecOverlay.lua

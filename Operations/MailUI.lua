@@ -43,7 +43,7 @@ end
 
 local function build()
 	local T, Wd = CH.Theme, CH.Window
-	frame = Wd.New("ClearinghouseMail", "Mail", 360, 320)
+	frame = Wd.New("AuctionIQMail", "Mail", 360, 320)
 	local open = T.Button(frame, "Open all", 90, 22)
 	open:SetPoint("TOPLEFT", 12, -36)
 	open:SetScript("OnClick", function()

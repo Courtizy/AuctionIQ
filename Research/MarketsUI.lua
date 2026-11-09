@@ -1,5 +1,5 @@
--- Markets tab: Compare prices, Market prices, Competition and When it sells. The views draw in the Clearinghouse's
--- table page (Clearinghouse/LedgerUI.lua), which this file registers them with; the rows come from
+-- Markets tab: Compare prices, Market prices, Competition and When it sells. The views draw in the Accounting tab's
+-- table page (Accounting/LedgerUI.lua), which this file registers them with; the rows come from
 -- CH.Prices and CH.Ledger, which only read TSM's data.
 local _, CH = ...
 

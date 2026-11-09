@@ -1,4 +1,4 @@
--- Clearinghouse prices. One adapter so other price addons can plug in later; version 1 reads TSM.
+-- AuctionIQ prices. One adapter so other price addons can plug in later; version 1 reads TSM.
 --
 -- chmat   what a reagent costs to buy today: the cheapest listing, floored at 80% of market
 -- chvalue what a crafted item sells for: the lower of that and the price TSM would post it at

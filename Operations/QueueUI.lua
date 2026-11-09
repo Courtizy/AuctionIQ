@@ -67,7 +67,7 @@ end
 local function build()
 	local T = CH.Theme
 	T.Sync()
-	panel = CreateFrame("Frame", "ClearinghouseQueue", UIParent, "BackdropTemplate")
+	panel = CreateFrame("Frame", "AuctionIQQueue", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
 	panel:SetSize(W, 74 + (QROWS + SROWS) * 18 + 40)
 	panel:SetFrameStrata("HIGH")
@@ -76,7 +76,7 @@ local function build()
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
-	table.insert(UISpecialFrames, "ClearinghouseQueue")
+	table.insert(UISpecialFrames, "AuctionIQQueue")
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)

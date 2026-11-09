@@ -1,4 +1,0 @@
-## Interface: 120105
-## Title: Clearinghouse (old data for AuctionIQ)
-## Notes: Only loads the old Clearinghouse saved data so AuctionIQ can copy it over. Delete this folder after your first login with AuctionIQ.
-## SavedVariables: ClearinghouseDB

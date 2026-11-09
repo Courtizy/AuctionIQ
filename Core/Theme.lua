@@ -1,5 +1,5 @@
 -- AuctionIQ look: flat dark panels with a 1px border (ElvUI style). Two palettes: AuctionIQ is navy,
--- gold and emerald; its Clearinghouse ledger is plum, parchment and gold. With ElvUI (and ToxiUI on
+-- gold and emerald; its Accounting tab is plum, parchment and gold. With ElvUI (and ToxiUI on
 -- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
 -- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
 local _, CH = ...
@@ -10,7 +10,7 @@ end
 
 local PALETTES = {
 	auctioniq = { bg = "0e1729", panel = "15213b", line = "263a63", fg = "e6e8ee", muted = "9aa6bd", accent = "e0a83a", iq = "34c77b", ok = "6cc58f", bad = "ef7d72" },
-	clearinghouse = { bg = "1c1222", panel = "281a30", line = "45304f", fg = "efe4c8", muted = "b8a69a", accent = "e0a83a", iq = "d8c39a", ok = "6cc58f", bad = "ef7d72" },
+	accounting = { bg = "1c1222", panel = "281a30", line = "45304f", fg = "efe4c8", muted = "b8a69a", accent = "e0a83a", iq = "d8c39a", ok = "6cc58f", bad = "ef7d72" },
 }
 local T = { hex = {}, PALETTES = PALETTES }
 CH.Theme = T
@@ -19,7 +19,7 @@ local function elvColours()
 	return CH.db and CH.db.settings and CH.db.settings.theme == "elvui"
 end
 
---- Switch palette: "auctioniq" (default) or "clearinghouse". ElvUI's colours win when /aiq theme says so.
+--- Switch palette: "auctioniq" (default) or "accounting" (the Accounting tab). ElvUI's colours win when /aiq theme says so.
 function T.Use(name)
 	T.palette = PALETTES[name] and name or "auctioniq"
 	for k, h in pairs(PALETTES[T.palette]) do T.hex[k] = h; T[k] = hex(h) end
@@ -34,7 +34,7 @@ end
 local FLAT = "Interface\\Buttons\\WHITE8X8"
 local BACKDROP = { bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 }
 
--- ElvUI, when it's loaded: its own templates, fonts and value colour, so Clearinghouse looks like
+-- ElvUI, when it's loaded: its own templates, fonts and value colour, so AuctionIQ looks like
 -- the rest of the UI. ToxiUI hooks ElvUI's SetTemplate, so its shadows and noise come along too.
 function T.Elv()
 	if T.noElv then return nil end

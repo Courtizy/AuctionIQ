@@ -51,14 +51,6 @@ takes over the jobs that today need both TSM and CraftSim.
 4. Log in and open each profession window once, so AuctionIQ learns your recipes.
 5. Type `/aiq` to open the window.
 
-<details>
-<summary><b>Moving from Clearinghouse</b> (the addon's old name)</summary>
-
-Install the AuctionIQ folder and keep the old Clearinghouse folder for one login with only the stub
-`migration/Clearinghouse.toc` in it. AuctionIQ copies the old saved data over on first login and says
-so. After that, delete the Clearinghouse folder.
-
-</details>
 
 ---
 
@@ -206,8 +198,8 @@ cost is TSM's own `crafting` price.
 
 ## Chat Commands
 
-`/aiq` (or `/ch`) - open or close the main window<br>
-`/aiq today`, `markets`, `crafting`, `trading`, `analytics`, `ledger` - open a tab<br>
+`/aiq` - open or close the main window<br>
+`/aiq dashboard`, `research`, `operations`, `accounting` - open a tab<br>
 `/aiq report` - open the Report<br>
 `/aiq advisor` - crafting advisor on or off<br>
 `/aiq queue` - craft queue and shopping list<br>
@@ -249,12 +241,12 @@ One folder per component, each with its own `comp:` label on GitHub:
 | --- | --- |
 | `Core/` | Start-up, settings, theme, window, tab bar, minimap button, tooltips, alerts |
 | `Data/` | Price sources, AH scans, order book, TSM-syntax formulas, the sales ledger, item stats |
-| `Today/` | The opening page: what to do next |
-| `Crafting/` | Scan, advisor, paths, specs (`Crafting/Specs/`), queue, planner, professions, gear, cooldowns, orders, craft log |
-| `Trading/` | Groups and operations, posting and cancelling, mail |
-| `Analytics/` | Stock targets, forecast matching and the Analytics views |
-| `Clearinghouse/` | The Accounting tab (the ledger) and reports |
-| `Markets/` | The Markets tab: compare prices, market prices, competition, when it sells |
+| `Dashboard/` | The opening page: what to do next |
+| `Research/` | The Research tab and the crafting brain behind it: markets, scan, advisor, specs (`Research/Specs/`), knowledge planner, profession paths, professions, gear, forecasts, the Performance views, craft log |
+| `Operations/` | The Operations tab: work queue and shopping, crafting orders, cooldowns, groups and operations, posting and cancelling, mail, stock targets |
+| `Accounting/` | The Accounting tab (the ledger) and reports |
+
+Media/ holds the icon, logo and tab art; tests/ and tools/ are for development and aren't packaged.
 
 `AuctionIQ.toc` sets the load order: Core and Data first, then the components that use them. The
 look is described in [THEME.md](THEME.md).

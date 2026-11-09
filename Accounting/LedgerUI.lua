@@ -50,7 +50,7 @@ local VIEWS = {
 	report = { label = "Report", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
--- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
+-- Three tabs share this table page, each with its own left nav: Accounting (the books),
 -- Research (Markets, Professions, Performance: what to do and why) and Operations (Work queue,
 -- Inventory, Rules & routes: the work planned or underway). The other two fill theirs in with LUI.Register.
 local SECTIONS = {
@@ -99,7 +99,7 @@ function LUI.Register(sec, views, nav, group)
 end
 
 --- A tab's sub-tabs: { { label, view } } with the view each one opens (the last one open in it),
---- or nil for a tab without them (the Clearinghouse).
+--- or nil for a tab without them (Accounting).
 local lastIn = {}
 function LUI.Groups(sec)
 	local list = SECTIONS[sec]
@@ -651,7 +651,7 @@ function LUI.ParClick(id, mod)
 	return CH.Par.Target(id)
 end
 
---- Which tab's views the page shows: "ledger" (the Clearinghouse), "research" or "operations".
+--- Which tab's views the page shows: "ledger" (Accounting), "research" or "operations".
 function LUI.SetSection(sec)
 	if not SECTIONS[sec] then return end
 	if section ~= sec then
