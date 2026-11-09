@@ -1,19 +1,25 @@
 -- Auctioning panel beside the Auction House: Post scan, then Post one click at a time; Cancel scan,
--- then Cancel one click at a time. The Warband counts as one seller (see Auction.lua).
+-- then Cancel one click at a time; Shop queue, then Buy the crafting queue's reagents one click at a
+-- time (each buy is quoted first and needs a second click to confirm). The Warband counts as one seller (see Auction.lua).
 local _, CH = ...
 
 local AUI = {}
 CH.AuctionUI = AUI
-local frame, rows, status, postButton, skipButton, cancelButton
-local W, H, N = 460, 470, 18
+local frame, rows, status, postButton, skipButton, cancelButton, buyButton
+local W, H, N = 460, 470, 17
 local plan, mode, confirmNext = {}, nil, false
 local offset = 0
 local pending -- the post sent and not yet answered: { e, n, before, token }
+local buying  -- the buy asked for: { e, quoted = { unit, total } once the AH quotes it, confirmed }
 local WAIT = 4
 
 local function money(c) return c and CH.FormatMoney(c) or "-" end
 
 function AUI.Plan() return plan, mode end
+
+-- What the next click does in each mode.
+local KIND = { post = "post", cancel = "cancel", shop = "buy" }
+local function kindOf(m) return KIND[m] or "post" end
 
 local function nextEntry(kind)
 	for _, e in ipairs(plan) do if e.d.action == kind and not e.done then return e end end
@@ -23,9 +29,9 @@ function AUI.Refresh()
 	if not frame then return end
 	local T = CH.Theme
 	local todo = 0
-	for _, e in ipairs(plan) do if (e.d.action == "post" or e.d.action == "cancel") and not e.done then todo = todo + 1 end end
+	for _, e in ipairs(plan) do if (e.d.action == "post" or e.d.action == "cancel" or e.d.action == "buy") and not e.done then todo = todo + 1 end end
 	-- keep the entry the next click acts on in view
-	local nextE = (pending and pending.e) or (mode and nextEntry(mode == "cancel" and "cancel" or "post"))
+	local nextE = (pending and pending.e) or (mode and nextEntry(kindOf(mode)))
 	-- (only when it moves on, so scrolling by hand still works)
 	if nextE ~= AUI.lastNext then
 		AUI.lastNext = nextE
@@ -44,11 +50,13 @@ function AUI.Refresh()
 				r.cells[2]:SetText(e.d.qty .. " x " .. money(e.d.price))
 			elseif e.d.action == "cancel" then
 				r.cells[2]:SetText(money(e.price))
+			elseif e.d.action == "buy" or (mode == "shop" and e.d.qty) then
+				r.cells[2]:SetText(e.d.qty .. " x " .. money(e.d.unit))
 			else
 				r.cells[2]:SetText("")
 			end
 			local c = e.failed and "bad" or e.done and "muted" or (e.d.action == "skip" or e.d.action == "keep") and "muted" or "ok"
-			local label = e.failed and "failed: " or e.done and "done: " or ((pending and pending.e == e) or cancelling == e) and "sending: " or (e.d.action .. ": ")
+			local label = e.failed and "failed: " or e.done and "done: " or ((pending and pending.e == e) or cancelling == e or (buying and buying.e == e)) and (buying and buying.quoted and "confirm: " or "sending: ") or (e.d.action .. ": ")
 			r.cells[3]:SetText(T.Color(c, label .. (e.d.why or "")))
 		else
 			for _, c in ipairs(r.cells) do c:SetText("") end
@@ -56,7 +64,9 @@ function AUI.Refresh()
 	end
 	postButton:SetEnabled(mode == "post" and (confirmNext or (not pending and nextEntry("post") ~= nil)))
 	cancelButton:SetEnabled(mode == "cancel" and nextEntry("cancel") ~= nil)
-	if mode and todo == 0 and not AUI.busy then status:SetText(T.Color("muted", "Nothing left to " .. mode .. ".")) end
+	buyButton:SetEnabled(mode == "shop" and ((buying and buying.quoted) or (not buying and nextEntry("buy") ~= nil)))
+	buyButton:SetText(buying and buying.quoted and "Confirm" or "Buy")
+	if mode and todo == 0 and not AUI.busy then status:SetText(T.Color("muted", "Nothing left to " .. (mode == "shop" and "buy" or mode) .. ".")) end
 end
 
 -- Search each item in turn (gear once per item level: { id, level }), then decide.
@@ -213,10 +223,109 @@ CH.On("AUCTION_HOUSE_CLOSED", function() cancelSettled(false, "the AH closed bef
 
 function AUI.SkipNext()
 	if pending and confirmNext then settle(false, "skipped at the price warning"); return end
-	local e = nextEntry(mode == "cancel" and "cancel" or "post")
+	if buying then local b = buying; buying = nil; b.e.done, b.e.d.why = true, "skipped"
+		if C_AuctionHouse.CancelCommoditiesPurchase then pcall(C_AuctionHouse.CancelCommoditiesPurchase) end
+		AUI.Refresh(); return end
+	local e = nextEntry(kindOf(mode))
 	if e then e.done = true; e.d.why = "skipped" end
 	AUI.Refresh()
 end
+
+-- Shopping: the crafting queue's reagents ---------------------------------------------------
+AUI.SHOP_OVER = 1.25 -- skip a buy whose live price is this much over the usual (chmat) price
+
+--- Decide one shopping row from the AH's listings: buy (with the live average unit price for the
+--- quantity) or skip, and why.
+function AUI.DecideBuy(s, results)
+	if results then CH.Depth.Remember(s.itemID, results) end
+	local d = CH.Depth.Cost(s.itemID, s.buy)
+	local usual = CH.Prices.Get("chmat", "i:" .. s.itemID)
+	local why = string.format("need %d, have %d", s.need, s.have)
+	if not d or d.source ~= "ah" then return { action = "skip", qty = s.buy, why = "no listings on the AH" } end
+	if d.short > 0 then why = why .. string.format(", only %d listed", s.buy - d.short) end
+	if usual and d.unit > usual * AUI.SHOP_OVER then
+		return { action = "skip", qty = s.buy, unit = d.unit, why = string.format("%d%% over the usual %s", math.floor((d.unit / usual - 1) * 100 + 0.5), money(usual)) }
+	end
+	return { action = "buy", qty = s.buy - d.short, unit = d.unit, cost = d.cost, why = why }
+end
+
+function AUI.ShopScan()
+	plan, mode, offset, buying = {}, "shop", 0, nil
+	local need = {}
+	for _, s in ipairs(CH.Queue.ShoppingList()) do if s.buy > 0 then table.insert(need, s) end end
+	if #need == 0 then
+		status:SetText(CH.Theme.Color("muted", "Nothing to buy: the crafting queue's reagents are all in your bags, bank or Warband bank."))
+		AUI.Refresh()
+		return
+	end
+	local byID, ids = {}, {}
+	for _, s in ipairs(need) do byID[s.itemID] = s; table.insert(ids, s.itemID) end
+	searchAll(ids, function(id, results)
+		table.insert(plan, { id = id, d = AUI.DecideBuy(byID[id], results) })
+	end, function()
+		table.sort(plan, function(a, b) return (a.d.action == "buy" and 0 or 1) < (b.d.action == "buy" and 0 or 1) end)
+		local n, total = 0, 0
+		for _, e in ipairs(plan) do if e.d.action == "buy" then n, total = n + 1, total + (e.d.cost or 0) end end
+		status:SetText(string.format("%d to buy for about %s. Press Buy for a quote, then Confirm.", n, money(total)))
+	end)
+end
+
+local function buySettled(ok, why)
+	local b = buying
+	if not b then return end
+	buying = nil
+	local e = b.e
+	e.done = true
+	if ok then
+		e.d.why = "bought for " .. money(b.quoted and b.quoted.total)
+		status:SetText(CH.Theme.Color("ok", string.format("Bought %d x %s.", e.d.qty, itemName(e.id))))
+	else
+		e.failed, e.d.why = true, why
+		status:SetText(CH.Theme.Color("bad", itemName(e.id) .. " was not bought: " .. why))
+	end
+	AUI.Refresh()
+end
+AUI.BuySettled = buySettled
+
+--- First click: ask the AH for a quote. Second click: confirm it (a purchase needs your click).
+function AUI.BuyNext()
+	local AH = C_AuctionHouse
+	if buying then
+		if not buying.quoted or buying.confirmed then return end
+		buying.confirmed = true
+		AH.ConfirmCommoditiesPurchase(buying.e.id, buying.e.d.qty)
+		status:SetText(CH.Theme.Color("accent", "Buying " .. itemName(buying.e.id) .. ", waiting for the AH ..."))
+		local b = buying
+		C_Timer.After(WAIT * 2, function() if buying == b then buySettled(false, "the AH didn't answer, check your bags") end end)
+		AUI.Refresh()
+		return
+	end
+	local e = nextEntry("buy")
+	if not e then return end
+	buying = { e = e }
+	AH.StartCommoditiesPurchase(e.id, e.d.qty)
+	status:SetText(CH.Theme.Color("accent", "Asking the AH for a price on " .. e.d.qty .. " x " .. itemName(e.id) .. " ..."))
+	local b = buying
+	C_Timer.After(WAIT, function() if buying == b and not b.quoted then buySettled(false, "no price from the AH") end end)
+	AUI.Refresh()
+end
+
+CH.On("COMMODITY_PRICE_UPDATED", function(_, unit, total)
+	if not buying or buying.quoted then return end
+	buying.quoted = { unit = unit, total = total }
+	local e = buying.e
+	local moved = e.d.unit and unit and unit > e.d.unit * 1.05
+	local T = CH.Theme
+	status:SetText(T.Color(moved and "bad" or "accent", string.format("%d x %s for %s (%s each)%s. Press Confirm to buy, Skip to drop it.",
+		e.d.qty, itemName(e.id), money(total), money(unit),
+		moved and string.format(", %d%% over the scan", math.floor((unit / e.d.unit - 1) * 100 + 0.5)) or "")))
+	AUI.Refresh()
+end)
+CH.On("COMMODITY_PRICE_UNAVAILABLE", function() buySettled(false, "the AH has no price for it now") end)
+CH.On("COMMODITY_PURCHASE_SUCCEEDED", function() if buying and buying.confirmed then buySettled(true) end end)
+CH.On("COMMODITY_PURCHASE_FAILED", function() buySettled(false, (buying and buying.err) or "the AH refused the purchase") end)
+CH.On("UI_ERROR_MESSAGE", function(_, _, msg) if buying and type(msg) == "string" then buying.err = msg end end)
+CH.On("AUCTION_HOUSE_CLOSED", function() buySettled(false, "the AH closed before it answered") end)
 
 --- The whole story behind one row: what it will do and why, and the operation's prices.
 function AUI.HoverLines(i)
@@ -230,6 +339,13 @@ function AUI.HoverLines(i)
 		if d.duration then table.insert(lines, { "Duration", ({ "12 hours", "24 hours", "48 hours" })[d.duration] or tostring(d.duration) }) end
 	elseif d.action == "cancel" then
 		table.insert(lines, { "Your listing", m(e.price) })
+	end
+	if mode == "shop" then
+		table.insert(lines, { (e.failed and "Failed: " or e.done and "Done: " or (d.action:gsub("^%l", string.upper) .. ": ")) .. (d.why or "") })
+		if d.qty then table.insert(lines, { "Buys", string.format("%d x %s", d.qty, m(d.unit)) }) end
+		if d.cost then table.insert(lines, { "Total, walking the listings", m(d.cost) }) end
+		table.insert(lines, { "Usual price (chmat)", m(CH.Prices.Get("chmat", "i:" .. e.id)) })
+		return lines
 	end
 	table.insert(lines, { (e.failed and "Failed: " or e.done and "Done: " or (d.action:gsub("^%l", string.upper) .. ": ")) .. (d.why or "") })
 	if e.other then table.insert(lines, { "Cheapest outside your account", m(e.other) }) end
@@ -259,9 +375,11 @@ local function build()
 	local b3 = T.Button(frame, "Cancel scan", 100, 22); b3:SetPoint("TOPLEFT", 216, -36); b3:SetScript("OnClick", AUI.CancelScan)
 	cancelButton = T.Button(frame, "Cancel", 70, 22); cancelButton:SetPoint("TOPLEFT", 322, -36); cancelButton:SetScript("OnClick", AUI.CancelNext)
 	skipButton = T.Button(frame, "Skip", 50, 22); skipButton:SetPoint("TOPLEFT", 398, -36); skipButton:SetScript("OnClick", AUI.SkipNext)
-	status = Wd.Text(frame, 12, -64, W - 24)
+	local b4 = T.Button(frame, "Shop queue", 100, 22); b4:SetPoint("TOPLEFT", 12, -62); b4:SetScript("OnClick", AUI.ShopScan)
+	buyButton = T.Button(frame, "Buy", 80, 22); buyButton:SetPoint("TOPLEFT", 118, -62); buyButton:SetScript("OnClick", AUI.BuyNext)
+	status = Wd.Text(frame, 12, -90, W - 24)
 	status:SetText(CH.Theme.Color("muted", "Your whole Warband counts as one seller: your own listings are never undercut."))
-	rows = Wd.Table(frame, { { "Item", 12, 190 }, { "Post / price", 206, 100 }, { "Why", 310, 140, "LEFT" } }, N, -84, 20, nil, hover, W)
+	rows = Wd.Table(frame, { { "Item", 12, 190 }, { "Post / price", 206, 100 }, { "Why", 310, 140, "LEFT" } }, N, -110, 20, nil, hover, W)
 	Wd.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #plan end, AUI.Refresh)
 	T.Fonts(frame)
 	frame:Hide()
