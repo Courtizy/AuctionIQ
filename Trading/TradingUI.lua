@@ -53,13 +53,30 @@ end
 function TUI.MailPlan()
 	local out = {}
 	if not (CH.Ledger and CH.Ledger.Available() and CH.Mail) then return out end
+	local held = {} -- [name] = { [id] = bags + bank }
 	for _, c in ipairs(CH.Ledger.Characters()) do
+		held[c.name] = {}
 		for _, e in ipairs(CH.Ledger.Inventory(nil, c.name)) do
 			local n = e.bags + e.bank
+			if e.id then held[c.name][e.id] = n end
 			local to = n > 0 and e.id and not e.bound and CH.Mail.Destination(e.id)
 			if to and to ~= c.name then
 				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
 				table.insert(out, { id = e.id, from = c.name, to = to, n = n, bags = e.bags, value = unit and unit * n or 0 })
+			end
+		end
+	end
+	-- reagents a queued crafter is short of, from whoever holds them
+	for to, items in pairs(CH.Mail.ReagentNeeds and CH.Mail.ReagentNeeds() or {}) do
+		for id, short in pairs(items) do
+			for from, h in pairs(held) do
+				if short <= 0 then break end
+				local n = from ~= to and math.min(h[id] or 0, short) or 0
+				if n > 0 then
+					short = short - n
+					local unit = CH.Prices.Get("chmat", "i:" .. id)
+					table.insert(out, { id = id, from = from, to = to, n = n, value = unit and unit * n or 0, reagent = true })
+				end
 			end
 		end
 	end
@@ -106,12 +123,12 @@ local function mailRows(ctx)
 			worth = worth + r.value
 			sends[r.from .. ">" .. r.to] = true
 			table.insert(out, { id = r.id, cells = { text, r.from, r.to, r.n, money(r.value),
-				r.bags < r.n and T.Color("muted", "some in the bank") or "" },
-				sort = { name, r.from, r.to, r.n, r.value, r.bags } })
+				r.reagent and T.Color("accent", "reagents to craft") or r.bags < r.n and T.Color("muted", "some in the bank") or "" },
+				sort = { name, r.from, r.to, r.n, r.value, r.bags or 0 } })
 		end
 	end
 	if not out[1] then
-		return out, T.Color("muted", "Nothing to mail. Routes send a group to one character: set them in Settings, Edit groups (right-click a group), or with Routes at the mailbox.")
+		return out, T.Color("muted", "Nothing to mail. Queued crafts on another character get their reagents here, and routes send a group to one character: set them in Settings, Edit groups (right-click a group), or with Routes at the mailbox.")
 	end
 	local k = 0
 	for _ in pairs(sends) do k = k + 1 end

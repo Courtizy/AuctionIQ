@@ -25,18 +25,64 @@ function M.Destination(id)
 	end
 end
 
---- What to send from here: { [char] = { { id, bag, slot, count } } }, never to yourself.
+--- Reagents the crafting queue's other crafters are short, on this realm: { [name] = { [itemID] = n } }.
+--- Short is what their queued crafts need less what they hold (bags, bank, mail on its way) and the
+--- Warband bank, which they can take from themselves.
+function M.ReagentNeeds()
+	local out = {}
+	local here = CH.CharacterKey and CH.CharacterKey()
+	local realm = GetRealmName and GetRealmName()
+	local need = {}
+	for _, e in ipairs(CH.db and CH.db.queue or {}) do
+		local name, r = tostring(e.char or ""):match("^(.-)%-(.+)$")
+		if e.char ~= here and name and r == realm and (e.qty or 0) > 0 and e.stage ~= "crafted" then
+			need[name] = need[name] or {}
+			for _, x in ipairs(e.shop or {}) do need[name][x.itemID] = (need[name][x.itemID] or 0) + (x.n or 0) * e.qty end
+		end
+	end
+	if not next(need) then return out end
+	local warband = {}
+	for _, it in ipairs(CH.Ledger and CH.Ledger.Available() and CH.Ledger.Inventory() or {}) do if it.id then warband[it.id] = it.warband end end
+	for name, items in pairs(need) do
+		local held = {}
+		for _, it in ipairs(CH.Ledger and CH.Ledger.Available() and CH.Ledger.Inventory(nil, name) or {}) do
+			if it.id then held[it.id] = it.bags + it.bank + it.mail end
+		end
+		for id, n in pairs(items) do
+			local short = n - (held[id] or 0) - (warband[id] or 0)
+			if short > 0 then out[name] = out[name] or {}; out[name][id] = short end
+		end
+	end
+	return out
+end
+
+--- What to send from here: { [char] = { { id, bag, slot, count, send, reagent } } }, never to
+--- yourself: items whose group routes to someone else, and reagents a queued crafter is short (only
+--- as many as they need: send < count splits the stack).
 function M.Outbox()
 	local out, me = {}, UnitName and UnitName("player")
 	if not C_Container then return out end
+	local short = M.ReagentNeeds()
 	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local info = C_Container.GetContainerItemInfo(bag, slot)
 			if info and info.itemID and not info.isBound then
-				local to = M.Destination(info.itemID)
-				if to and to ~= me then
+				local id, count = info.itemID, info.stackCount or 1
+				local to = M.Destination(id)
+				local sent
+				-- a queued crafter short of this reagent gets it first, only as many as they need
+				for name, items in pairs(short) do
+					if not sent and name ~= me and (items[id] or 0) > 0 then
+						local n = math.min(count, items[id])
+						items[id] = items[id] - n
+						out[name] = out[name] or {}
+						table.insert(out[name], { id = id, bag = bag, slot = slot, count = count, send = n, reagent = true })
+						sent = n == count
+					end
+				end
+				if not sent and to and to ~= me then
 					out[to] = out[to] or {}
-					table.insert(out[to], { id = info.itemID, bag = bag, slot = slot, count = info.stackCount or 1 })
+					table.insert(out[to], { id = id, bag = bag, slot = slot, count = count, send = count })
 				end
 			end
 		end
@@ -60,10 +106,16 @@ function M.SendNext()
 		if SendMailFrame and not SendMailFrame:IsShown() and MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, nil, 2) end
 		if ClearSendMail then ClearSendMail() end
 		for i = 1, math.min(#list, ATTACHMENTS_MAX_SEND or 12) do
-			C_Container.PickupContainerItem(list[i].bag, list[i].slot)
+			local it = list[i]
+			if it.send and it.send < it.count and C_Container.SplitContainerItem then
+				C_Container.SplitContainerItem(it.bag, it.slot, it.send) -- just the part they need, on the cursor
+			else
+				C_Container.PickupContainerItem(it.bag, it.slot)
+			end
 			ClickSendMailItemButton(i)
 		end
 		SendMail(to, "AuctionIQ", "")
+		if ClearCursor then ClearCursor() end
 		return to, math.min(#list, 12)
 	end
 end

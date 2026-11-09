@@ -381,4 +381,3 @@ W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result
 W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
 W.AddTab("paths", "Paths", function() CH.PathsUI.Open() end, "Where to spend knowledge points for what you want to sell.")
 W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
-W.AddTab("results", "Results", function() CH.LogUI.Open() end, "What your crafts really gave against what was expected.")

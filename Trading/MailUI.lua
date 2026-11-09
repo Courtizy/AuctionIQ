@@ -1,4 +1,5 @@
--- Mail panel beside the mailbox: Open all, then Send (one click per mail) by your group routes.
+-- Mail panel beside the mailbox: Open all, then Send (one click per mail) by your group routes, and
+-- the reagents each queued crafter is short of.
 local _, CH = ...
 
 local MUI = {}
@@ -17,10 +18,15 @@ function MUI.Refresh()
 	for to, items in pairs(box) do
 		n = n + 1
 		local counts = {}
-		for _, it in ipairs(items) do counts[it.id] = (counts[it.id] or 0) + it.count end
+		local reagents = false
+		for _, it in ipairs(items) do
+			counts[it.id] = (counts[it.id] or 0) + (it.send or it.count)
+			reagents = reagents or it.reagent
+		end
 		local parts = {}
 		for id, c in pairs(counts) do table.insert(parts, CH.Window.ItemIcon(id, 12) .. c) end
-		table.insert(lines, CH.Theme.Color("accent", to) .. "  " .. table.concat(parts, "  "))
+		table.insert(lines, CH.Theme.Color("accent", to) .. "  " .. table.concat(parts, "  ")
+			.. (reagents and CH.Theme.Color("muted", "  (reagents for their queued crafts)") or ""))
 	end
 	local routes = {}
 	for path, to in pairs(CH.Mail.Store().routes) do table.insert(routes, path .. " → " .. to) end

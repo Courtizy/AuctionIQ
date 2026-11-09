@@ -60,7 +60,7 @@ function PUI.Build(p, fs, panel)
 	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
 		{ "Paths", function() CH.PathsUI.Toggle() end, "Plan knowledge points for what you want to sell" },
 		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
-		{ "Results", function() CH.LogUI.Toggle() end, "What your crafts really gave" },
+		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Analytics" },
 		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
 		local w = b[1]:len() * 7 + 24
 		local btn = T.Button(p, b[1], w, 20)
