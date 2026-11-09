@@ -147,13 +147,26 @@ function A.Measure(recipeID, opts)
 	local order = opts.order
 	local qual, fixed, finishing = A.Slots(schematic, order and order.providedSlots)
 	local outputs = info.qualityItemIDs or {}
+	-- Gear (rods, tools, armour) keeps one item ID for every quality: the quality is its item level,
+	-- so each quality is priced by the item at that level (TSM's "i:ID::iLEVEL").
+	local keys, maxQ = {}, math.max(1, #outputs)
+	local bonuses = info.qualityIlvlBonuses
+	if #outputs <= 1 and type(bonuses) == "table" and #bonuses > 1 and schematic.outputItemID then
+		maxQ = #bonuses
+		local get = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+		local baseLevel = get and select(4, get(schematic.outputItemID))
+		if baseLevel and baseLevel > 0 then
+			for q, b in ipairs(bonuses) do keys[q] = "i:" .. schematic.outputItemID .. "::i" .. (baseLevel + b) end
+		end
+	end
+	if info.maxQuality and info.maxQuality > maxQ and #outputs <= 1 then maxQ = info.maxQuality end
 	local model = {
 		recipeID = recipeID, name = info.name, info = info, qual = qual, fixed = fixed, finishingSlots = finishing,
-		outputs = outputs, output = schematic.outputItemID, maxQ = math.max(1, #outputs),
+		outputs = outputs, outputKeys = keys, output = schematic.outputItemID, maxQ = maxQ,
 		made = ((schematic.quantityMin or 1) + (schematic.quantityMax or schematic.quantityMin or 1)) / 2,
 		allocationGUID = opts.allocationGUID, order = order, orderID = order and order.orderID,
 		provided = order and order.provided, professionID = opts.professionID, thresholds = {},
-		supportsQualities = info.supportsQualities ~= false and #outputs > 1,
+		supportsQualities = info.supportsQualities ~= false and maxQ > 1,
 	}
 	if opts.allocationGUID then
 		model.made = 1
@@ -264,7 +277,8 @@ end
 
 -- A row's value: item price after cut (or the order's commission) and the average profit.
 local function valueRow(model, row, stats, item, costR, fin)
-	local unit = price("chvalue", item)
+	local key = model.outputKeys and model.outputKeys[row.quality]
+	local unit = key and CH.Prices.Get("chvalue", key) or price("chvalue", item)
 	local total = costR + finCost(fin)
 	row.cost, row.required, row.item, row.finishing, row.stats = total, costR, item, fin, stats
 	local order = model.order
@@ -288,7 +302,8 @@ local function valueRow(model, row, stats, item, costR, fin)
 	local avg, parts = St().Average(unit, model.made, total, costR, stats)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
 	if model.recraftFrom then
-		local old = price("chvalue", model.outputs[model.recraftFrom])
+		local okey = model.outputKeys and model.outputKeys[model.recraftFrom]
+		local old = okey and CH.Prices.Get("chvalue", okey) or price("chvalue", model.outputs[model.recraftFrom] or model.output)
 		row.oldValue = old and old * CH.AH_CUT
 		row.profit = row.oldValue and (row.profit - row.oldValue) or nil
 	end
