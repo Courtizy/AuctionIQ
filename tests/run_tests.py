@@ -199,6 +199,16 @@ o221 = [o for opts in pr2.model.finishing.values() for o in opts.values() if o.i
 check("finishing: one you own costs what you'd sell it for", o221.cost == 9500 and o221.buy == 30000)
 run("STUB.prices['i:221'].formula_value = nil; Clearinghouse.Prices.ClearCache()")
 
+# Gear with five qualities on one item ID (a rod): each quality priced at its item level
+run("STUB.oldGII = C_Item.GetItemInfo; C_Item.GetItemInfo = function(id) if id == 320 then return 'Test Rod', nil, 3, 200 end return STUB.oldGII and STUB.oldGII(id) end")
+rod = CH.Advisor.Analyze(12, L.eval('{ professionID = 2906 }'))
+qs = sorted(set(r.quality for r in rod.rows.values() if not r.concentration))
+check("gear: five qualities read from item level bonuses", rod.model.maxQ == 5 and rod.model.supportsQualities)
+check("gear: better reagents reach a higher quality", qs[0] == 3 and qs[-1] == 5)
+check("gear: each quality priced at its item level", rod.best.quality == 5 and rod.best.price == 160 * 10000)
+check("gear: Concentration lifts one quality", any(r.concentration and r.quality == 4 and r['from'] == 3 for r in rod.rows.values()))
+run("C_Item.GetItemInfo = STUB.oldGII")
+
 # Simulation: more skill
 m10 = CH.Advisor.Measure(10)
 sim = CH.Advisor.Evaluate(m10, L.eval('{ sim = { skill = 30 } }'))

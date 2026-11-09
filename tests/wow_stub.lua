@@ -104,8 +104,13 @@ STUB.prices["i:302"] = { formula_value = 300 * 10000, sold = 5 }
 STUB.prices["i:301"].sold = 5
 STUB.prices["i:311"] = { formula_value = 20 * 10000, sold = 40 }
 STUB.prices["i:312"] = { formula_value = 50 * 10000, sold = 40 }
+-- Test Rod (12): gear, one item ID for all five qualities, priced by item level (base 200, +0..+12)
+for q, g in ipairs({ 10, 20, 40, 80, 160 }) do STUB.prices["i:320::i" .. (197 + 3 * q)] = { formula_value = g * 10000, sold = 5 } end
 TSM_API = {
-	ToItemString = function(item) local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id) end,
+	ToItemString = function(item)
+		if tostring(item):match("^i:%d+::i%d+$") then return item end
+		local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id)
+	end,
 	IsCustomPriceValid = function(s) return s ~= "chvalue" and s ~= "chmat" end,
 	GetCustomPriceValue = function(s, item)
 		local p = STUB.prices[item]; if not p then return nil, "no data" end
@@ -152,6 +157,8 @@ C_TradeSkillUI = {
 	GetRecipeInfo = function(id)
 		if id == 10 then return { learned = true, name = "Test Flask", supportsQualities = true, qualityItemIDs = { 301, 302 }, categoryID = 60 } end
 		if id == 11 then return { learned = true, name = "Test Potion", supportsQualities = true, qualityItemIDs = { 311, 312 }, categoryID = 50 } end
+		if id == 12 then return { learned = true, name = "Test Rod", supportsQualities = true, qualityItemIDs = {}, maxQuality = 5,
+			qualityIlvlBonuses = { 0, 3, 6, 9, 12 } } end
 		if id == 1 then return { learned = true, name = "Phoenix Oil", qualityItemIDs = { 99, 100 } } end
 		if id == 2 then return { learned = false, name = "Unlearned", qualityItemIDs = { 100 } } end
 		return { learned = true, name = "No price", qualityItemIDs = { 555 } }
@@ -169,6 +176,11 @@ C_TradeSkillUI = {
 			return { outputItemID = 311, quantityMin = 2, quantityMax = 2, reagentSlotSchematics = {
 				{ reagentType = 1, required = true, dataSlotIndex = 1, quantityRequired = 3, reagents = { { itemID = 211 }, { itemID = 212 } } },
 				{ reagentType = 2, required = false, dataSlotIndex = 5, quantityRequired = 1, reagents = { { itemID = 221 }, { itemID = 222 } } },
+			} }
+		end
+		if id == 12 then
+			return { outputItemID = 320, quantityMin = 1, quantityMax = 1, reagentSlotSchematics = {
+				{ reagentType = 1, required = true, dataSlotIndex = 1, quantityRequired = 3, reagents = { { itemID = 211 }, { itemID = 212 } } },
 			} }
 		end
 		return { outputItemID = 555 }
