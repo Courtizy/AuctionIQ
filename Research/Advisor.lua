@@ -502,15 +502,20 @@ function A.Cheapest(model, base)
 end
 
 local function pickBest(rows)
-	local best, bestConc
+	local best, bestConc, anyConc
 	for _, r in ipairs(rows) do
 		if r.profit and not r.short then
 			if not r.concentration and (not best or r.profit > best.profit) then best = r end
 			if r.concentration and r.perPoint and r.perPoint > 0 and (not bestConc or r.perPoint > bestConc.perPoint) then bestConc = r end
+			if r.concentration and (not anyConc or r.profit > anyConc.profit) then anyConc = r end
 		end
 	end
+	-- only Concentration reaches the quality asked (an order), and it loses gold: still reachable,
+	-- shown at its loss rather than as "can't reach"
+	if not best and not bestConc then bestConc = anyConc end
 	return best, bestConc
 end
+A.PickBest = pickBest
 
 --- Rows for every reachable quality with and without Concentration. opts.sim is a stat change
 --- (skill, ratings, perk extras) to simulate; without it the game is asked for quality and costs.
