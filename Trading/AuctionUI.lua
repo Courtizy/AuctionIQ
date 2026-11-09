@@ -48,7 +48,7 @@ function AUI.Refresh()
 				r.cells[2]:SetText("")
 			end
 			local c = e.failed and "bad" or e.done and "muted" or (e.d.action == "skip" or e.d.action == "keep") and "muted" or "ok"
-			local label = e.failed and "failed: " or e.done and "done: " or (pending and pending.e == e) and "sending: " or (e.d.action .. ": ")
+			local label = e.failed and "failed: " or e.done and "done: " or ((pending and pending.e == e) or cancelling == e) and "sending: " or (e.d.action .. ": ")
 			r.cells[3]:SetText(T.Color(c, label .. (e.d.why or "")))
 		else
 			for _, c in ipairs(r.cells) do c:SetText("") end
@@ -176,11 +176,40 @@ function AUI.PostNext()
 	AUI.Refresh()
 end
 
-function AUI.CancelNext()
-	local e = nextEntry("cancel")
-	if e then C_AuctionHouse.CancelAuction(e.auctionID); e.done = true end
+-- A cancel waits for the AH to say it's gone (AUCTION_CANCELED) before the row counts as done.
+local cancelling
+local function cancelSettled(ok, why)
+	local e = cancelling
+	if not e then return end
+	cancelling = nil
+	e.done = true
+	if ok then
+		status:SetText(CH.Theme.Color("ok", "Cancelled " .. itemName(e.id, e.level) .. "."))
+	else
+		e.failed, e.d.why = true, why
+		status:SetText(CH.Theme.Color("bad", itemName(e.id, e.level) .. " was not cancelled: " .. why))
+	end
 	AUI.Refresh()
 end
+AUI.CancelSettled = cancelSettled
+
+function AUI.CancelNext()
+	if cancelling then return end
+	local e = nextEntry("cancel")
+	if not e then return end
+	cancelling, e.err = e, nil
+	C_AuctionHouse.CancelAuction(e.auctionID)
+	status:SetText(CH.Theme.Color("accent", "Cancelling " .. itemName(e.id, e.level) .. ", waiting for the AH ..."))
+	C_Timer.After(WAIT, function()
+		if cancelling == e then cancelSettled(false, e.err or "the AH didn't answer, Cancel scan to check") end
+	end)
+	AUI.Refresh()
+end
+CH.On("AUCTION_CANCELED", function(_, auctionID)
+	if cancelling and (auctionID == nil or auctionID == cancelling.auctionID) then cancelSettled(true) end
+end)
+CH.On("UI_ERROR_MESSAGE", function(_, _, msg) if cancelling and type(msg) == "string" then cancelling.err = msg end end)
+CH.On("AUCTION_HOUSE_CLOSED", function() cancelSettled(false, "the AH closed before it answered") end)
 
 function AUI.SkipNext()
 	if pending and confirmNext then settle(false, "skipped at the price warning"); return end

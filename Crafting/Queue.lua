@@ -411,6 +411,7 @@ CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
 	local key = tostring(orderID)
 	local e = delivering[key]
 	delivering[key] = nil
+	if okResult(result) then CH.Orders.Forget(orderID) end
 	if not e or okResult(result) then return end
 	e.stage, e.qty = "crafted", 1
 	table.insert(list(), 1, e)

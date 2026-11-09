@@ -16,18 +16,66 @@ end
 
 local function price(kind, id) return id and CH.Prices.Get(kind, "i:" .. id) end
 
---- Called when a craft starts (any craft, ours or the game's Craft button).
-function Lg.Started(recipeID, count, concentrate)
-	local r = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
-	local row
-	if r and r.recipeID == recipeID then
-		row = concentrate and r.bestConc or r.best
+-- The reagents a craft really used ({ itemID, quantity } infos from CraftRecipe), priced at chmat,
+-- plus the fixed reagents the advisor knows about. nil when a reagent has no price.
+local function usedCost(r, reagents)
+	if type(reagents) ~= "table" or not r then return nil end
+	local total = 0
+	for _, x in ipairs(reagents) do
+		local id = x.itemID or (x.reagent and x.reagent.itemID)
+		local p = price("chmat", id)
+		if id and not p then return nil end
+		total = total + (p or 0) * (x.quantity or 0)
 	end
-	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
-		expected = row and row.profit, cost = row and row.cost, mc = row and row.parts and row.parts.mc,
-		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
-		order = r and r.order ~= nil and r.recipeID == recipeID or nil }
+	for _, slot in ipairs(r.fixed or {}) do
+		local p = price("chmat", slot.items and slot.items[1])
+		if not p then return nil end
+		total = total + p * (slot.qty or 0)
+	end
+	return total
 end
+
+-- The advisor row these reagents match (same units of each quality in each slot), if any.
+local function matchRow(r, reagents, concentrate)
+	if type(reagents) ~= "table" then return nil end
+	local used = {}
+	for _, x in ipairs(reagents) do
+		local id = x.itemID or (x.reagent and x.reagent.itemID)
+		if id then used[id] = (used[id] or 0) + (x.quantity or 0) end
+	end
+	for _, row in ipairs(r.rows or {}) do
+		if (row.concentration ~= nil) == (concentrate and true or false) and row.picks then
+			local same = true
+			for i, slot in ipairs(r.qual or {}) do
+				for q, id in ipairs(slot.items) do
+					if ((row.picks[i] or {})[q] or 0) ~= (used[id] or 0) then same = false end
+				end
+			end
+			if same then return row end
+		end
+	end
+end
+
+--- Called when a craft starts (any craft, ours or the game's Craft button), with the reagents and
+--- order the game was given. The expected figures come from the advisor row with those exact
+--- reagents; when none matches, the cost is worked out from the reagents and nothing is expected.
+function Lg.Started(recipeID, count, concentrate, reagents, orderID)
+	local r = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
+	if r and r.recipeID ~= recipeID then r = nil end
+	local row
+	if r then
+		if type(reagents) == "table" and #reagents > 0 then row = matchRow(r, reagents, concentrate)
+		else row = concentrate and r.bestConc or r.best end
+	end
+	local cost = row and row.cost or usedCost(r, reagents)
+	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
+		expected = row and row.profit, cost = cost, mc = row and row.parts and row.parts.mc,
+		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
+		order = (orderID ~= nil) or (r and r.order ~= nil) or nil }
+end
+
+--- The craft just started, as logged (for tests and the results window).
+function Lg.Pending() return pending end
 
 --- One crafting result from the game (TRADE_SKILL_ITEM_CRAFTED_RESULT).
 function Lg.Result(data)
@@ -76,7 +124,8 @@ function Lg.Result(data)
 	if Lg.Changed then Lg.Changed() end
 end
 
---- Rows for the results window: per recipe, actual against expected.
+--- Rows for the results window: per recipe, what the crafts made valued at market now (not what
+--- they sold for) against what the advisor expected.
 function Lg.Rows()
 	local out = {}
 	for id, e in pairs(log()) do
@@ -93,8 +142,8 @@ end
 function Lg.Clear() wipe(log()); if Lg.Changed then Lg.Changed() end end
 
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
-	hooksecurefunc(C_TradeSkillUI, "CraftRecipe", function(recipeID, count, _, _, _, concentrate)
-		Lg.Started(recipeID, count, concentrate)
+	hooksecurefunc(C_TradeSkillUI, "CraftRecipe", function(recipeID, count, reagents, _, orderID, concentrate)
+		Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	end)
 end
 CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
@@ -106,7 +155,7 @@ local frame, rows
 local N, W = 14, 680
 local offset = 0
 local COLS = { { "Recipe", 12, 200 }, { "Crafts", 214, 50 }, { "Multicraft", 266, 86 }, { "Resourceful", 354, 90 },
-	{ "Ingenuity", 446, 80 }, { "Profit vs expected", 528, 140 } }
+	{ "Ingenuity", 446, 80 }, { "Market vs expected", 528, 140 } }
 
 local function pct(a, b)
 	if not a then return CH.Theme.Color("muted", "-") end

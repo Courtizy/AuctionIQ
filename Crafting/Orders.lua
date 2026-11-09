@@ -97,8 +97,20 @@ O.fetching = false
 local canRequest = true
 CH.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
 
+O.seen = {}       -- [id as text] = when the game last listed it
+O.STALE = 10 * 60 -- an order not seen in the game's list for this long isn't treated as available
+
 local function remember(orders)
-	for _, o in ipairs(orders or {}) do if o.orderID then O.cache[tostring(o.orderID)] = o end end
+	local now = time()
+	for _, o in ipairs(orders or {}) do
+		if o.orderID then O.cache[tostring(o.orderID)] = o; O.seen[tostring(o.orderID)] = now end
+	end
+end
+
+--- Drop an order from the list (it was fulfilled, or the game says it's gone).
+function O.Forget(id)
+	if id == nil then return end
+	O.cache[tostring(id)], O.seen[tostring(id)] = nil, nil
 end
 
 --- Every order known: the last fetch, what the game lists now, and your claimed order.
@@ -113,13 +125,16 @@ function O.All()
 	return out
 end
 
---- The live order for an ID (claimed, else listed), or nil.
+--- The live order for an ID (claimed, else listed by the game recently), or nil. A remembered
+--- order the game hasn't listed for a while is only an old sighting, so it isn't returned.
 function O.Live(id)
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	if claimed and O.Same(claimed.orderID, id) then return claimed end
 	O.All()
-	return O.cache[tostring(id)]
+	local k = tostring(id)
+	if O.seen[k] and time() - O.seen[k] <= O.STALE then return O.cache[k] end
+	return nil
 end
 
 local function profession()

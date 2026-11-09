@@ -1,7 +1,8 @@
 -- Crafting advisor: for one recipe, the cheapest reagents that reach each result quality, what each
 -- craft earns on average, and what Concentration earns per point. Same method as CraftSim:
 --   * skill per reagent: ask the game (GetCraftingOperationInfo) with one slot raised to each quality
---   * cheapest mix per quality: raise reagent units cheapest-gold-per-skill first
+--   * cheapest mix per quality: the exact cheapest mix that clears each quality's skill threshold
+--     (checked against the game when it's open), plus CraftSim's cheapest-gold-per-skill walk
 --   * average profit counts Multicraft's extra items and Resourcefulness's saved reagents (Stats.lua)
 --   * Concentration value = average profit when concentrating / average Concentration cost after
 --     Ingenuity refunds, with spec perks that raise the refund
@@ -325,8 +326,16 @@ local function build(model, delta, fin, live)
 	local base0 = model.skill0 + (delta and delta.skill or 0)
 	for _, f in ipairs(fin) do base0 = base0 + f.delta.skill end
 
-	local found, order = {}, {}
+	local found, order, tried = {}, {}, {}
 	local function record(picks)
+		local key = {}
+		for i = 1, #model.qual do
+			local row = picks[i] or {}
+			for q = 1, #model.qual[i].items do key[#key + 1] = row[q] or 0 end
+		end
+		key = table.concat(key, ",")
+		if tried[key] then return end -- the same mix twice: don't ask the game again
+		tried[key] = true
 		local q, op
 		if live then
 			-- Quality from skill against difficulty, as CraftSim does: Midnight's craftingQuality isn't 1, 2.
@@ -335,11 +344,11 @@ local function build(model, delta, fin, live)
 		else
 			q = A.QualityAt(model, skillAt(model, picks, base0))
 		end
-		if not q or found[q] then return end
+		if not q then return end
 		local c = cost(model, picks)
-		if not c then return end
+		if not c or (found[q] and found[q].cost <= c) then return end
+		if not found[q] then table.insert(order, q) end
 		found[q] = { quality = q, picks = copyPicks(picks), cost = c, op = op, skill = op and skillOf(op) or skillAt(model, picks, base0) }
-		table.insert(order, q)
 	end
 	local picks = lowest(model.qual)
 	record(picks)
@@ -354,6 +363,9 @@ local function build(model, delta, fin, live)
 			record(picks)
 		end
 	end
+	-- The greedy walk can miss a cheaper mix that clears a quality's threshold; check the exact
+	-- cheapest mix for each quality too (the cheaper of the two is kept).
+	for _, p in ipairs(A.Cheapest(model, base0)) do record(p) end
 	table.sort(order)
 
 	local rows = {}
@@ -394,6 +406,72 @@ local function build(model, delta, fin, live)
 	return rows
 end
 
+-- Every way to fill one slot's units across its qualities: { skill, cost, row }.
+local function slotMixes(model, i)
+	local slot, out = model.qual[i], {}
+	local prices = {}
+	for q, id in ipairs(slot.items) do prices[q] = price("chmat", id) end
+	local nq = #slot.items
+	local function walk(q, left, row, sk, c)
+		if q == nq then
+			if left > 0 and not prices[q] then return end
+			local r = {}
+			for k, v in pairs(row) do r[k] = v end
+			if left > 0 then r[q] = left end
+			out[#out + 1] = { sk + left * (model.perUnit[i][q] or 0), c + left * (prices[q] or 0), r }
+			return
+		end
+		for n = 0, left do
+			if n > 0 and not prices[q] then break end
+			row[q] = n > 0 and n or nil
+			walk(q + 1, left - n, row, sk + n * (model.perUnit[i][q] or 0), c + n * (prices[q] or 0))
+		end
+		row[q] = nil
+	end
+	walk(1, slot.qty, {}, 0, 0)
+	return out
+end
+
+--- The exact cheapest reagent mix for each quality the model can reach, from skill (picks[i][q]).
+--- A knapsack over slots: best[s] = cheapest cost reaching s skill points (rounded down, so a mix is
+--- never thought to reach more than it does), with a back-pointer per slot to rebuild the mix.
+function A.Cheapest(model, base)
+	if not model.perUnit or #model.qual == 0 then return {} end
+	local best, back = { [0] = 0 }, {}
+	for i = 1, #model.qual do
+		local mixes = slotMixes(model, i)
+		if #mixes == 0 then return {} end
+		local nxt, bk = {}, {}
+		for s0, c0 in pairs(best) do
+			for j, m in ipairs(mixes) do
+				local s1 = s0 + math.floor(m[1] + 1e-6)
+				local c1 = c0 + m[2]
+				if not nxt[s1] or c1 < nxt[s1] then nxt[s1] = c1; bk[s1] = { s0, j, m[3] } end
+			end
+		end
+		best, back[i] = nxt, bk
+	end
+	local out = {}
+	for k = 1, model.maxQ do
+		local need = k == 1 and -math.huge or (model.thresholds[k] or math.huge) - 1e-6
+		local pick, pc
+		for sk, c in pairs(best) do
+			if (base or 0) + sk >= need and (not pc or c < pc) then pick, pc = sk, c end
+		end
+		if pick then
+			local picks, sk = {}, pick
+			for i = #model.qual, 1, -1 do
+				local b = back[i][sk]
+				local row = {}
+				for q, n in pairs(b[3]) do row[q] = n end
+				picks[i], sk = row, b[1]
+			end
+			out[#out + 1] = picks
+		end
+	end
+	return out
+end
+
 local function pickBest(rows)
 	local best, bestConc
 	for _, r in ipairs(rows) do
@@ -412,7 +490,8 @@ function A.Evaluate(model, opts)
 	local delta = opts.sim
 	local live = not delta and not opts.modelOnly
 	-- Choose finishing reagents on the model (cheap), then build the real rows with the winners.
-	local finPlain, finConc = {}, {}
+	local none = {}
+	local finPlain, finConc = none, none -- one table, so no finishing choice builds once
 	local all = combos(model)
 	if #all > 1 then
 		local bp, bc

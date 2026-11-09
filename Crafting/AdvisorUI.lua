@@ -412,7 +412,7 @@ function AUI.Show(recipeID, force)
 		if panel then panel:Hide() end
 		return
 	end
-	if recipeID and recipeID ~= current then order = nil end
+	if recipeID and recipeID ~= current and not (order and order.spellID == recipeID) then order = nil end
 	current = recipeID or current
 	if not panel then build() end
 	AUI.Place()
