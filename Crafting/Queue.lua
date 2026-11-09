@@ -160,7 +160,7 @@ function Q.FillOrders(opts)
 	local n, profit = 0, 0
 	for _, order in ipairs(openOrders()) do
 		local ok, result = pcall(CH.Orders.Analyze, order)
-		local r = ok and result and result.best
+		local r = ok and result and (result.best or result.bestConc) -- Concentration when only it reaches the rank
 		if r then
 			local special = false
 			for _, rw in ipairs(order.npcOrderRewards or {}) do
@@ -413,11 +413,41 @@ function Q.Craft(e, amount)
 		end
 		local mine = {}
 		for _, r in ipairs(reagents) do if not supplied[r.itemID] then table.insert(mine, r) end end
+		-- The game silently refuses a craft below the order's rank, so ask it first what these
+		-- reagents make for this order, and turn Concentration on when that's what reaches it.
+		local conc = e.concentration ~= nil
+		local need = claimed.minQuality or 0
+		local ui = C_TradeSkillUI
+		if need > 1 and ui.GetCraftingOperationInfoForOrder then
+			local all = {}
+			for _, r in ipairs(mine) do table.insert(all, r) end
+			for _, r in ipairs(claimed.reagents or {}) do
+				local info = r.reagentInfo or r
+				if info.reagent then table.insert(all, info) end
+			end
+			local function rank(c)
+				local ok, op = pcall(ui.GetCraftingOperationInfoForOrder, e.recipeID, all, claimed.orderID, c)
+				return ok and op and op.craftingQuality
+			end
+			local q = rank(conc)
+			if q and q < need and not conc then
+				local qc = rank(true)
+				if qc and qc >= need then
+					conc = true
+					e.concentration = e.concentration or true
+					CH.Print(string.format("the order needs rank %d and these reagents make rank %d, so this craft uses Concentration.", need, q))
+				else
+					return false, string.format("the order needs rank %d but your reagents only reach rank %d, even with Concentration", need, qc or q)
+				end
+			elseif q and q < need then
+				return false, string.format("the order needs rank %d but your reagents only reach rank %d with Concentration", need, q)
+			end
+		end
 		crafting = e
-		if (claimed.isRecraft or claimed.outputItemGUID) and C_TradeSkillUI.RecraftRecipeForOrder and claimed.outputItemGUID then
-			C_TradeSkillUI.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, e.concentration ~= nil)
+		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
+			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, conc)
 		else
-			C_TradeSkillUI.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, e.concentration ~= nil)
+			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
 		end
 		return true
 	end

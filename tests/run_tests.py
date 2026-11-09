@@ -846,6 +846,13 @@ ProfessionsFrame.OrdersPage.OrderView = { order = { orderID = 77 }, IsShown = fu
 st = L.eval("(Clearinghouse.Queue.DoNext())")
 check("order craft: crafts into the claimed order", st == "Craft" and L.eval("STUB.crafted.order") == 77)
 check("order craft: the customer's reagents aren't sent as ours", L.eval("(function() for _, r in ipairs(STUB.crafted.reagents) do if r.itemID == 201 then return false end end return true end)()"))
+# an order needing rank 2 that these reagents only reach with Concentration: craft with it on
+run("""STUB.crafted = nil; STUB.claimedOrder.minQuality = 2; STUB.extraSkill = -1000; Clearinghouse.Queue.DoNext(); STUB.extraSkill = nil""")
+check("order craft: turns Concentration on when the order's rank needs it", L.eval("STUB.crafted.conc") is True and L.eval("STUB.crafted.order") == 77)
+run("STUB.claimedOrder.minQuality = 9; STUB.crafted = nil")
+st = L.eval("{ Clearinghouse.Queue.DoNext() }")
+check("order craft: refuses, and says why, when even Concentration can't reach the rank", L.eval("STUB.crafted") is None and "needs rank 9" in str(st[2]))
+run("STUB.claimedOrder.minQuality = nil")
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("order craft: a craft that didn't go into the order stays Craft", CH.Queue.OrderStep(CH.db.queue[1]) == "Craft")
 run('STUB.claimedOrder.isFulfillable = true')
