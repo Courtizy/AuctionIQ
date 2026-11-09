@@ -427,6 +427,12 @@ function LUI.Build(p, fs, panel)
 				f:SetPoint("RIGHT", -4, 0)
 				f:SetJustifyH("LEFT")
 				if sub and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
+				-- one line always: a label too long for the button gets the smaller font, never a
+				-- second line running into the next button
+				CH.Window.OneLine(f)
+				local room = (sub and 120 or 144) - 12
+				if f.GetStringWidth and f:GetStringWidth() > room and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
+				b.fits = not (f.GetStringWidth and f:GetStringWidth() > room)
 			end
 			if sub then
 				local c = T.line

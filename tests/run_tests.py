@@ -250,6 +250,9 @@ prow = list(prow.values())
 check("plan comparison: each recipe now against planned, and the plan's gold a day", len(prow) >= 1 and ">" in plain(prow[0].cells[3]) and "a day" in plain(pfoot))
 run('AuctionIQ.PathsUI.Open()')
 drawn = list(CH.PathsUI.DrawTree().values())
+check("paths: opens in the main window, Research > Professions > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths")
+check("paths: Professions lists Knowledge, Paths, Plan payoff",
+      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Knowledge", "Paths", "Plan payoff"])
 check("paths tab draws the tree with the plan on it",
       len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
 groups = list(CH.Paths.GoalGroups(2906).values())
@@ -422,7 +425,7 @@ check("results log: craft, Multicraft proc and saved reagents counted",
 run('AuctionIQ.ScanUI.Open()')
 check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")
 labels = list(CH.Window.Arrange().values())
-check("tabs: the row lists every window (Results moved to Analytics)", labels == ["Advisor", "Scan", "Paths", "Queue"])
+check("tabs: the row lists every window (Results moved to Analytics)", labels == ["Advisor", "Scan", "Queue"])
 run('AuctionIQ.AdvisorUI.Show(10)')
 check("tabs: a recipe click updates the advisor without leaving Scan", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
 run('AuctionIQ.AdvisorUI.Open()')
@@ -431,10 +434,10 @@ run('AuctionIQ.QueueUI.Show(); AuctionIQ.Window.ToggleQueuePop()')
 labels = list(CH.Window.Arrange().values())
 check("pop-out: the queue leaves the tabs and shows beside the advisor",
       CH.QueueUI.IsShown() and CH.AdvisorUI.IsShown() and "Queue" not in labels)
-run('AuctionIQ.PathsUI.Open()')
-check("pop-out: switching tabs leaves the queue open", CH.PathsUI.IsShown() and CH.QueueUI.IsShown() and not CH.AdvisorUI.IsShown())
+run('AuctionIQ.ScanUI.Open()')
+check("pop-out: switching tabs leaves the queue open", CH.ScanUI.IsShown() and CH.QueueUI.IsShown() and not CH.AdvisorUI.IsShown())
 run('AuctionIQ.Window.ToggleQueuePop()')
-check("back in the tabs: the queue takes the spot", CH.QueueUI.IsShown() and not CH.PathsUI.IsShown() and CH.Window.Active() == "queue")
+check("back in the tabs: the queue takes the spot", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown() and CH.Window.Active() == "queue")
 run('AuctionIQ.Window.CloseTabs()')
 check("closing the profession closes the tabs", not CH.QueueUI.IsShown() and CH.Window.Active() is None)
 
@@ -1067,6 +1070,15 @@ CH.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the re
 tipm = [plain(l[1]) for l in CH.ScanUI.OrderLines(nohave[0]).values()]
 check("orders hover: lists the missing reagents", "Missing reagents" in tipm)
 run("C_Item.GetItemCount = STUB.oldCount; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
+# a recipe this character hasn't learned: never "can make", never queued
+run("""STUB.oldInfo = C_TradeSkillUI.GetRecipeInfo
+C_TradeSkillUI.GetRecipeInfo = function(id) local i = STUB.oldInfo(id); if id == 10 and i then i.learned = false end; return i end""")
+nl = list(CH.Orders.List().values())
+check("orders: an unlearned recipe isn't craftable", all(not o.ok and o.learned is False for o in nl))
+nlrows = list(CH.ScanUI.Refresh().values())
+check("orders: an unlearned recipe says so and Queue all skips it", CH.ScanUI.QueueAll() == 0
+      and "You haven't learned this recipe." in [plain(l[1]) for l in CH.ScanUI.OrderLines(nl[0]).values()])
+run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
 # orders from an older expansion are tagged, and Older: hidden leaves them out
 run("""STUB.oldLine = C_TradeSkillUI.GetTradeSkillLineForRecipe
 C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) if id == 10 then return 2871, 'Khaz Algar Alchemy' end return 2906, 'Midnight Alchemy' end
@@ -1161,11 +1173,14 @@ def audit(where):
 for tab in ["today", "research", "operations", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"AuctionIQ.UI.Page('{tab}')")
     audit(tab)
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "work", "plans"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
+navs = list(CH.UI.Pages().ledger.nav.values())
+long = [plain(b.text.t) for b in navs if b.text and not b.fits]
+check("nav: every label fits its button on one line", len(navs) > 20 and long == [] and all(b.text.wrap is False for b in navs if b.text))
 run("AuctionIQ.UI.Page('today')")
-for w in ["ScanUI", "PathsUI", "QueueUI", "LogUI"]:
+for w in ["ScanUI", "QueueUI", "LogUI"]:
     run(f"if AuctionIQ.{w} and AuctionIQ.{w}.Toggle then pcall(AuctionIQ.{w}.Toggle) end")
     audit(w)
 # Review fixes ---------------------------------------------------------------------------------

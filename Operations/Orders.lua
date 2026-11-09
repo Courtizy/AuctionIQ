@@ -272,11 +272,14 @@ function O.List()
 			for _, l in ipairs(lines) do if l.have < l.need then table.insert(missing, l) end end
 		end
 		local info = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
+		-- a recipe this character hasn't learned can't be crafted, whatever the numbers say
+		local learned = not (info and info.learned == false)
+		if not learned then r = nil end
 		table.insert(out, { order = order, orderID = order.orderID, recipeID = order.spellID, item = order.itemID,
 			name = (info and info.name) or (order.itemID and C_Item.GetItemNameByID and C_Item.GetItemNameByID(order.itemID)) or "?",
 			from = order.customerName or TYPES[order.orderType] or "?", kind = TYPES[order.orderType] or "?",
 			minQuality = order.minQuality, commission = (order.tipAmount or 0) - (order.consortiumCut or 0),
-			rewards = rewards, rewardValue = value, kp = kp, row = r, result = result, ok = r ~= nil,
+			rewards = rewards, rewardValue = value, kp = kp, row = r, result = result, ok = r ~= nil, learned = learned,
 			tiers = result and result.model and result.model.maxQ,
 			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
 			line = line, expansion = expansion, current = not line or not current or line == current,
