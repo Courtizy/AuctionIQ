@@ -198,6 +198,62 @@ local function queueRows(ctx)
 		.. T.Color("muted", "   Craft them at the profession window: Queue and shopping.")
 end
 
+--- Every task waiting, in one list: crafts from the queue, posts from Ready to post, and mail trips
+--- from To mail. { kind = "craft"|"post"|"mail", task, char, qty, worth, status, where, tone }.
+function TUI.WorkPlan()
+	local out = {}
+	for _, x in ipairs(TUI.QueuePlan()) do
+		local e = x.e
+		local status = x.status
+		if e.char ~= (CH.CharacterKey and CH.CharacterKey()) and status ~= "buy reagents" then status = "switch character" end
+		table.insert(out, { kind = "craft", task = "Craft " .. (e.name or "?") .. (e.quality and (" Q" .. e.quality) or ""), id = e.item,
+			char = e.charName or "?", qty = e.qty, worth = (e.profit or 0) * e.qty, status = status, where = "Profession window",
+			tone = STATUS[status] or "fg" })
+	end
+	for _, r in ipairs(TUI.PostPlan()) do
+		if r.verdict == "post" and r.post > 0 then
+			local _, name = LUI.ItemText(r.id)
+			table.insert(out, { kind = "post", task = "Post " .. name, id = r.id, char = "any", qty = r.post, worth = r.value,
+				status = "ready to post", where = "Auction House", tone = "ok" })
+		end
+	end
+	local trips = {}
+	for _, r in ipairs(TUI.MailPlan()) do
+		local k = r.from .. ">" .. r.to
+		local t = trips[k]
+		if not t then
+			t = { kind = "mail", task = "Mail to " .. r.to, char = r.from, qty = 0, worth = 0, status = "mailbox needed",
+				where = "Mailbox", tone = "fg" }
+			trips[k] = t
+			table.insert(out, t)
+		end
+		t.qty = t.qty + r.n
+		t.worth = t.worth + (r.value or 0)
+		if r.reagent then t.status, t.tone = "reagents to craft", "accent" end
+	end
+	return out
+end
+
+local KIND = { craft = 1, post = 2, mail = 3 }
+
+local function workRows(ctx)
+	local T = CH.Theme
+	local out, n = {}, { craft = 0, post = 0, mail = 0 }
+	for _, w in ipairs(TUI.WorkPlan()) do
+		if ctx.keepName(w.task) then
+			n[w.kind] = n[w.kind] + 1
+			table.insert(out, { id = w.id, cells = { (w.id and CH.Window.ItemIcon(w.id, 14) or "") .. w.task, w.char, w.qty,
+				w.worth ~= 0 and money(w.worth) or T.Color("muted", "-"), T.Color(w.tone, w.status), T.Color("muted", w.where) },
+				sort = { w.task, w.char, w.qty, w.worth, w.status, KIND[w.kind] * 1e15 - w.worth } })
+		end
+	end
+	if not out[1] then
+		return out, T.Color("muted", "Nothing to do: no crafts queued, nothing ready to post, nothing to mail.")
+	end
+	return out, string.format("%d crafts, %d posts, %d mail trips.", n.craft, n.post, n.mail)
+		.. T.Color("muted", "   Worth: craft profit and post value are estimates. Do each at the window named.")
+end
+
 local function shoppingRows(ctx)
 	local T = CH.Theme
 	local out = {}
@@ -219,6 +275,8 @@ local function shoppingRows(ctx)
 end
 
 TUI.PRODUCTION = {
+	work = { label = "Execution plan", sort = 6, asc = true, noTime = true, rows = workRows, cols = { { "Task", 0, 250 }, { "Character", 254, 96 },
+		{ "Qty", 354, 40 }, { "Worth", 398, 96 }, { "Status", 498, 120 }, { "Where", 622, 102 } } },
 	queue = { label = "Production queue", sort = 5, noTime = true, rows = queueRows, cols = { { "Craft", 0, 190 }, { "Character", 194, 90 },
 		{ "Qty", 288, 36 }, { "Profit/craft", 328, 82 }, { "Profit", 414, 86 }, { "Conc.", 504, 44 }, { "To buy", 552, 50 }, { "Status", 606, 118 } } },
 	shopping = { label = "Shopping list", sort = 6, noTime = true, rows = shoppingRows, cols = { { "Reagent", 0, 200 }, { "Need", 204, 54 },
@@ -229,6 +287,6 @@ TUI.MOVING = {
 }
 
 -- Operations: produce, then hold or post (stock targets and dead stock are inventory decisions), then move
-LUI.Register("operations", TUI.PRODUCTION, { "queue", "shopping" }, "Work queue")
+LUI.Register("operations", TUI.PRODUCTION, { "work", "queue", "shopping" }, "Work queue")
 LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead" }, "Inventory")
 LUI.Register("operations", TUI.MOVING, { "mail", "rules" }, "Rules & routes")
