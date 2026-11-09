@@ -1,5 +1,5 @@
 -- Specialization trees: reads the ranks you have, works out what each node gives a recipe (from the
--- node data in Crafting/Specs/Spec*.lua, taken from CraftSim), and the stats a different set of ranks would give.
+-- node data in Crafting/Specs/Spec*.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
 local _, CH = ...
 
 local S = {}
@@ -47,7 +47,7 @@ function S.Read(professionID)
 	for perkID, n in pairs(data.nodes) do
 		if not n.base and tree.nodes[n.nodeID] then
 			local ok, threshold = pcall(C_ProfSpecs.GetUnlockRankForPerk, perkID)
-			tree.nodes[n.nodeID].perks[perkID] = ok and threshold or 0
+			tree.nodes[n.nodeID].perks[perkID] = ok and threshold or n.unlock or 0
 		end
 	end
 	-- parents, so a plan unlocks a node only after the one above it; and the trees' layout as the game
@@ -159,7 +159,29 @@ function S.PerkText(professionID, perkID)
 		end
 	end
 	table.sort(parts)
+	if #parts == 0 and n and n.text then return n.text end
 	return table.concat(parts, ", ")
+end
+
+--- A gathering stat (Disenchanting skill) at these ranks, from the nodes under the given paths:
+--- a path counts its stat per point, a perk once it's unlocked.
+function S.GatherStat(professionID, tree, ranks, paths, stat)
+	local data = S.Data(professionID)
+	local total = 0
+	if not data or not tree then return 0 end
+	for perkID, n in pairs(data.nodes) do
+		local amount = n.stats and n.stats[stat]
+		local node = tree.nodes[n.nodeID]
+		if amount and paths[n.nodeID] and node then
+			local rank = ranks[n.nodeID] or node.rank or -1
+			if n.base then
+				total = total + amount * math.max(0, rank)
+			elseif rank >= 0 and rank >= (node.perks[perkID] or n.unlock or 0) then
+				total = total + amount
+			end
+		end
+	end
+	return total
 end
 
 --- Saves the tree with the character's profession, so plans work later and for alts.

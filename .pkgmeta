@@ -2,6 +2,7 @@ package-as: AuctionIQ
 
 ignore:
   - tests
+  - tools
   - README.md
   - .github
   - migration

@@ -68,25 +68,197 @@ function P.Goals()
 	return out
 end
 
--- Main groups for the picker, matched against a recipe's categories, then its name.
+-- Main groups for the picker, per profession, from the game's own Midnight recipe categories
+-- (checked against Blizzard's TradeSkillCategory table). Matched against a recipe's categories,
+-- then its name; the first match wins, so "Armor Kits" comes before "Armor".
 local MAIN = {
-	{ "Potions", { "potion", "tonic", "draught", "serum", "tincture" } },
-	{ "Flasks & Phials", { "flask", "phial" } },
-	{ "Elixirs", { "elixir" } },
-	{ "Transmutations", { "transmut" } },
-	{ "Oils", { "oil" } },
-	{ "House Decor", { "decor", "house", "furnish", "housing" } },
+	[2906] = { -- Alchemy
+		{ "Potions", { "potion", "tonic", "draught", "serum", "tincture" } },
+		{ "Flasks & Phials", { "flask", "phial" } },
+		{ "Elixirs", { "elixir" } },
+		{ "Transmutations", { "transmut" } },
+		{ "Oils", { "oil" } },
+		{ "House Decor", { "decor", "house", "furnish", "housing" } },
+	},
+	[2907] = { -- Blacksmithing
+		{ "Weapons", { "weapon" } },
+		{ "Armor", { "armor", "plate" } },
+		{ "Profession Gear", { "profession" } },
+		{ "Smelting & Stone", { "smelt", "stonework" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2909] = { -- Enchanting
+		{ "Enchants", { "enchant" } },
+		{ "Illusions", { "glamour", "illusion" } },
+		{ "Rods & Wands", { "rod", "wand" } },
+		{ "Shattering", { "shatter" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2910] = { -- Engineering
+		{ "Equipment", { "equipment" } },
+		{ "Tools & Accessories", { "tools and", "accessor" } },
+		{ "Bits & Parts", { "bits", "parts", "cogwheel" } },
+		{ "Bots", { "bots" } },
+		{ "Guns", { "gun" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2913] = { -- Inscription
+		{ "Treatises", { "treatise" } },
+		{ "Profession Gear", { "profession equipment" } },
+		{ "Weapons & Trinkets", { "weapon", "trinket" } },
+		{ "Contracts & Missives", { "contract", "stats", "rune" } },
+		{ "Mysteries", { "myster" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2914] = { -- Jewelcrafting
+		{ "Gems", { "peridot", "lapis", "amethyst", "garnet", "diamond" } },
+		{ "Jewelry", { "ring", "locket" } },
+		{ "Profession Gear", { "couture" } },
+		{ "Prospecting & Crushing", { "prospect", "crush" } },
+		{ "Reagents", { "reagent" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2915] = { -- Leatherworking
+		{ "Armor Kits", { "armor kit" } },
+		{ "Armor", { "armor" } },
+		{ "Profession Gear", { "profession" } },
+		{ "Reagents", { "reagent" } },
+		{ "House Decor", { "decor", "house" } },
+	},
+	[2918] = { -- Tailoring
+		{ "Garments", { "garment" } },
+		{ "Profession Gear", { "profession" } },
+		{ "Bags", { "bag" } },
+		{ "Cloth & Spellthread", { "woven", "spellthread" } },
+		{ "Wardrobe", { "wardrobe" } },
+		{ "House Decor", { "decor", "house" } },
+	},
 }
-
-local function mainGroup(text)
-	return P.MainGroup(text)
-end
+P.MAIN = MAIN
 
 --- The picker's main group for a category or recipe name ("Potions", "Flasks & Phials"...), or nil.
-function P.MainGroup(text)
+--- The finishing-reagent appendices ("Appendix I - Terms") are left to Other.
+function P.MainGroup(text, prof)
 	text = string.lower(text or "")
-	for _, g in ipairs(MAIN) do
+	if text:find("appendix", 1, true) then return nil end
+	for _, g in ipairs(MAIN[prof or CH.OpenProfessionID() or 2906] or MAIN[2906]) do
 		for _, k in ipairs(g[2]) do if text:find(k, 1, true) then return g[1] end end
+	end
+end
+
+-- Gathering paths: trees that raise what you get from something other than a recipe. Enchanting's
+-- Disenchanting tree raises your skill when disenchanting Midnight gear, which lifts the share of
+-- rank 2 materials. Each line is a kind of gear, the path for it and what it breaks into.
+local YIELD = {
+	[2909] = { name = "Disenchanting", stat = "gatherskill", all = 107649,
+		words = { "disenchant", "disenchanting", "de", "dust", "shard", "crystal" },
+		lines = {
+			{ key = "dust", path = 107648, items = { 243599, 243600 }, label = "Eversinging Dust", from = "uncommon gear", daily = 40 },
+			{ key = "shard", path = 107647, items = { 243602, 243603 }, label = "Radiant Shard", from = "rare gear", daily = 8 },
+			{ key = "crystal", path = 107646, items = { 243605, 243606 }, label = "Dawn Crystal", from = "epic gear", daily = 2 },
+		} },
+}
+for _, y in pairs(YIELD) do
+	y.paths = { [y.all] = true }
+	for _, l in ipairs(y.lines) do y.paths[l.path] = true end
+end
+P.YIELD = YIELD
+
+-- What your disenchanting really gives, recorded as you loot it: CH.db.yieldLog[prof][day] =
+-- { [itemID] = n }. Loot counts when it comes out of an item (a disenchant), not off a mob.
+local DAY, WINDOW = 86400, 14
+local lineOf = {}
+for prof, y in pairs(YIELD) do
+	for _, l in ipairs(y.lines) do
+		for q, id in ipairs(l.items) do lineOf[id] = { prof = prof, line = l, q = q } end
+	end
+end
+
+local function yieldLog(prof)
+	CH.db.yieldLog = CH.db.yieldLog or {}
+	CH.db.yieldLog[prof] = CH.db.yieldLog[prof] or {}
+	return CH.db.yieldLog[prof]
+end
+
+--- Record one loot window's gathering materials (called on LOOT_OPENED).
+function P.RecordLoot(now)
+	if not (GetNumLootItems and GetLootSlotLink) then return end
+	now = now or time()
+	local day = math.floor(now / DAY)
+	for slot = 1, GetNumLootItems() or 0 do
+		local link = GetLootSlotLink(slot)
+		local id = link and tonumber(link:match("item:(%d+)"))
+		local hit = id and lineOf[id]
+		local fromItem = false
+		if hit and GetLootSourceInfo then
+			local guid = GetLootSourceInfo(slot)
+			fromItem = type(guid) == "string" and guid:find("^Item%-") ~= nil
+		end
+		if hit and fromItem then
+			local qty = select(3, GetLootSlotInfo(slot)) or 1
+			local log = yieldLog(hit.prof)
+			log[day] = log[day] or {}
+			log[day][id] = (log[day][id] or 0) + qty
+		end
+	end
+	-- keep a month
+	for prof in pairs(YIELD) do
+		local log = yieldLog(prof)
+		for d in pairs(log) do if d < day - 30 then log[d] = nil end end
+	end
+end
+CH.On("LOOT_OPENED", function() P.RecordLoot() end)
+
+--- What you really gathered over the last two weeks: { [key] = { n = per day, share = rank 2 share } },
+--- the days it covers, or nil when nothing is recorded.
+function P.Observed(prof, now)
+	local y = YIELD[prof]
+	if not y then return nil end
+	local today = math.floor((now or time()) / DAY)
+	local first, totals = nil, {}
+	for d, items in pairs(yieldLog(prof)) do
+		if d > today - WINDOW then
+			first = math.min(first or d, d)
+			for id, n in pairs(items) do totals[id] = (totals[id] or 0) + n end
+		end
+	end
+	if not first then return nil end
+	local days = today - first + 1
+	local out = {}
+	for _, l in ipairs(y.lines) do
+		local n1, n2 = totals[l.items[1]] or 0, totals[l.items[2]] or 0
+		out[l.key] = { n = (n1 + n2) / days, share = (n1 + n2) > 0 and n2 / (n1 + n2) or nil }
+	end
+	return out, days
+end
+
+--- How much of each gathering line you get a day: what /aiq de set, else what you've really
+--- disenchanted over the last two weeks, else a starting guess. { [key] = n }, and where it came from.
+function P.DailyYield(prof)
+	local y = YIELD[prof]
+	if not y then return {} end
+	CH.db.settings.paths = CH.db.settings.paths or {}
+	local set = CH.db.settings.paths[prof]
+	if set and set.manual then return set, "set" end
+	local seen, days = P.Observed(prof)
+	local d = {}
+	for _, l in ipairs(y.lines) do d[l.key] = seen and seen[l.key].n or l.daily end
+	return d, seen and "seen" or "guess", days
+end
+
+--- Set what you disenchant a day by hand, or clear it (nil) to go back to what's recorded.
+function P.SetDailyYield(prof, d)
+	CH.db.settings.paths = CH.db.settings.paths or {}
+	if d then d.manual = true end
+	CH.db.settings.paths[prof] = d
+end
+
+--- The gathering path a goal means for this profession ("disenchanting", "dust"), or nil.
+function P.Yield(prof, goal)
+	local y = prof and YIELD[prof]
+	if not y then return nil end
+	for _, w in ipairs(words(goal)) do
+		for _, k in ipairs(y.words) do if w == k or w:find("^disenchant") then return y end end
 	end
 end
 
@@ -98,13 +270,19 @@ function P.GoalGroups(prof)
 	for _, id in ipairs(CH.Scan.Recipes()) do
 		local info = C_TradeSkillUI.GetRecipeInfo(id)
 		local cats = table.concat(categoryNames(info and info.categoryID), " ")
-		local name = mainGroup(cats) or mainGroup(info and info.name) or "Other"
+		local name = P.MainGroup(cats, prof) or P.MainGroup(info and info.name, prof) or "Other"
 		if not byName[name] then byName[name] = { name = name, recipes = {}, subs = {} }; table.insert(out, byName[name]) end
 		table.insert(byName[name].recipes, id)
 	end
+	local main = MAIN[prof or 2906] or MAIN[2906]
 	local order = {}
-	for i, g in ipairs(MAIN) do order[g[1]] = i end
-	order.Other = #MAIN + 1
+	for i, g in ipairs(main) do order[g[1]] = i end
+	order.Other = #main + 2
+	local y = prof and YIELD[prof]
+	if y then
+		order[y.name] = #main + 1
+		table.insert(out, { name = y.name, recipes = {}, subs = {}, yield = true })
+	end
 	table.sort(out, function(a, b) return order[a.name] < order[b.name] end)
 	local tree = prof and CH.Spec.Tree(prof)
 	if tree then
@@ -129,10 +307,15 @@ function P.GoalGroups(prof)
 end
 
 --- Points to finish every node that helps these recipes, including locked nodes on the way.
-function P.PathCost(prof, recipes)
+function P.PathCost(prof, recipes, goal)
 	local tree = prof and CH.Spec.Tree(prof)
 	if not tree then return 0 end
 	local want = {}
+	local y = goal and P.Yield(prof, goal)
+	if y then
+		for nodeID in pairs(tree.nodes) do if y.paths and y.paths[nodeID] then want[nodeID] = true end end
+		recipes = {}
+	end
 	local set = {}
 	for _, id in ipairs(recipes or {}) do set[id] = true end
 	for nodeID in pairs(tree.nodes) do
@@ -176,8 +359,59 @@ function P.Match(text)
 	return ids, label, keys
 end
 
+local function sellValue(id)
+	local p = id and CH.Prices.Get("chvalue", "i:" .. id)
+	return p and p * CH.AH_CUT
+end
+
+--- A gathering line's skill at these ranks, and the most the tree can give it.
+local function lineSkill(ctx, ranks, line)
+	local paths = { [ctx.yield.all] = true, [line.path] = true }
+	local skill = CH.Spec.GatherStat(ctx.prof, ctx.tree, ranks, paths, ctx.yield.stat)
+	if not line.cap then
+		local full = {}
+		for id, n in pairs(ctx.tree.nodes) do full[id] = n.max end
+		line.cap = CH.Spec.GatherStat(ctx.prof, ctx.tree, full, paths, ctx.yield.stat)
+	end
+	return skill, line.cap
+end
+
+-- The share of rank 2 materials at a skill. The game doesn't publish the curve, so it rises evenly
+-- to all with the path full: from what you really got at your skill now when that's recorded,
+-- else from none at no skill.
+local function shareAt(ctx, line, skill, cap)
+	if cap <= 0 then return 0 end
+	local seen = ctx.seen and ctx.seen[line.key]
+	if seen and seen.share then
+		local now = lineSkill(ctx, ctx.ranks0, line)
+		if skill <= now or now >= cap then return seen.share end
+		return math.min(1, seen.share + (1 - seen.share) * (skill - now) / (cap - now))
+	end
+	return math.min(1, skill / cap)
+end
+
+-- Gold a day from a gathering path at these ranks: what you gather a day, at the share of rank 2
+-- materials the path's skill gives, valued at what each rank sells for after the cut.
+local function yieldValue(ctx, ranks)
+	local total, per = 0, {}
+	local daily = P.DailyYield(ctx.prof)
+	if ctx.seen == nil then ctx.seen = P.Observed(ctx.prof) or false; ctx.ranks0 = CH.Spec.Ranks(ctx.tree) end
+	for _, line in ipairs(ctx.yield.lines) do
+		local skill, cap = lineSkill(ctx, ranks, line)
+		local share = shareAt(ctx, line, skill, cap)
+		local p1, p2 = sellValue(line.items[1]), sellValue(line.items[2])
+		local n = daily[line.key] or 0
+		local g = 0
+		if p1 or p2 then g = n * ((1 - share) * (p1 or p2) + share * (p2 or p1)) end
+		total = total + g
+		per[line.key] = { name = line.label, share = share, skill = skill, perDay = g, profit = g, n = n, priced = (p1 and p2) and true or false }
+	end
+	return total, per, 0, total
+end
+
 -- Gold a day for a set of recipes at these ranks.
 local function value(ctx, ranks)
+	if ctx.yield then return yieldValue(ctx, ranks) end
 	local total, concBest, per = 0, 0, {}
 	for _, id in ipairs(ctx.recipes) do
 		local m = ctx.models[id]
@@ -199,6 +433,11 @@ end
 
 local function relevantNodes(ctx)
 	local out = {}
+	if ctx.yield then
+		for nodeID in pairs(ctx.tree.nodes) do if ctx.yield.paths[nodeID] then table.insert(out, nodeID) end end
+		table.sort(out)
+		return out
+	end
 	local set = {}
 	for _, id in ipairs(ctx.recipes) do set[id] = true end
 	for nodeID in pairs(ctx.tree.nodes) do
@@ -254,14 +493,16 @@ function P.Plan(opts)
 	local tree = CH.Spec.Tree(prof)
 	if not tree then return nil, "Couldn't read your specialization tree. Open the profession window." end
 	local ids, label = opts.recipes, opts.label
+	local y = not ids and P.Yield(prof, opts.goal)
+	if y then ids, label = {}, y.name end
 	if not ids then ids, label = P.Match(opts.goal) end
 	-- the goal's recipes we can value, best first if there are many
-	local ctx = { prof = prof, tree = tree, models = {}, recipes = {} }
+	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil }
 	for _, id in ipairs(ids) do
 		local m = CH.Scan.Model(prof, id)
 		if m then ctx.models[id] = m; table.insert(ctx.recipes, id) end
 	end
-	if #ctx.recipes == 0 then return nil, "None of your recipes match \"" .. (opts.goal or "") .. "\", or none have prices." end
+	if #ctx.recipes == 0 and not ctx.yield then return nil, "None of your recipes match \"" .. (opts.goal or "") .. "\", or none have prices." end
 	if #ctx.recipes > MAX_RECIPES then
 		local scan = CH.Scan.Results(prof)
 		local rank = {}
@@ -272,7 +513,7 @@ function P.Plan(opts)
 
 	local budget = (tree.unspent or 0) + (opts.points or 0)
 	local ranks = CH.Spec.Ranks(tree)
-	local plan = { prof = prof, goal = opts.goal, label = label, recipes = ctx.recipes, budget = budget,
+	local plan = { prof = prof, goal = opts.goal, label = label, recipes = ctx.recipes, budget = budget, yield = ctx.yield,
 		unspent = tree.unspent or 0, steps = {}, ranks = nil }
 
 	local work = coroutine.create(function()
@@ -303,9 +544,10 @@ function P.Plan(opts)
 			local changes = {}
 			for id, p in pairs(best.per) do
 				local o = nowPer[id]
-				if o and ((p.quality or 0) ~= (o.quality or 0) or math.abs((p.profit or 0) - (o.profit or 0)) >= 1) then
+				if o and ((p.quality or 0) ~= (o.quality or 0) or math.abs((p.profit or 0) - (o.profit or 0)) >= 1
+					or (p.share and math.abs(p.share - (o.share or 0)) > 1e-6)) then
 					table.insert(changes, { name = p.name, fromQ = o.quality, toQ = p.quality, dProfit = (p.profit or 0) - (o.profit or 0),
-						dDay = (p.perDay or 0) - (o.perDay or 0) })
+						dDay = (p.perDay or 0) - (o.perDay or 0), fromShare = o.share, toShare = p.share })
 				end
 			end
 			table.sort(changes, function(a, b) return math.abs(a.dDay) > math.abs(b.dDay) end)
@@ -345,10 +587,20 @@ function P.Describe(plan)
 	local T = CH.Theme
 	local L = {}
 	local prof = CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or "this profession"
-	table.insert(L, T.Color("accent", "Goal: ") .. "sell " .. plan.label .. T.Color("muted", string.format("  (%d recipes in %s)", #plan.recipes, prof)))
+	local y = plan.yield
+	if y then
+		local parts = {}
+		local daily, from, days = P.DailyYield(plan.prof)
+		for _, l in ipairs(y.lines) do table.insert(parts, string.format("%.0f %s", daily[l.key] or 0, l.label)) end
+		local src = from == "seen" and string.format("what you disenchanted over the last %d day%s", days, days == 1 and "" or "s")
+			or from == "set" and "as you set it with /aiq de" or "a starting guess until you disenchant something"
+		table.insert(L, T.Color("accent", "Goal: ") .. y.name .. T.Color("muted", "  (" .. table.concat(parts, ", ") .. " a day, " .. src .. ")"))
+	else
+		table.insert(L, T.Color("accent", "Goal: ") .. "sell " .. plan.label .. T.Color("muted", string.format("  (%d recipes in %s)", #plan.recipes, prof)))
+	end
 	table.insert(L, string.format("Points to spend: %d%s.", plan.budget,
 		plan.budget > plan.unspent and string.format(" (%d unspent now, %d still to earn)", plan.unspent, plan.budget - plan.unspent) or " unspent"))
-	table.insert(L, "Today these recipes make about " .. m(plan.start) .. " a day on your market.")
+	table.insert(L, (y and "Today what you disenchant sells for about " or "Today these recipes make about ") .. m(plan.start) .. " a day on your market.")
 	table.insert(L, "")
 	if #plan.steps == 0 then
 		table.insert(L, T.Color("muted", "No node would add gold for this goal. Either it's already maxed, or the gains come from other recipes."))
@@ -360,8 +612,13 @@ function P.Describe(plan)
 		for _, p in ipairs(s.perks) do table.insert(L, "    " .. T.Color("muted", "Perk: ") .. p) end
 		for j, c in ipairs(s.changes) do
 			if j > 3 then break end
-			local q = (c.toQ and c.fromQ and c.toQ ~= c.fromQ) and string.format(" reaches Q%d without Concentration,", c.toQ) or ""
-			table.insert(L, string.format("    %s%s %s%s a craft", c.name or "?", q, c.dProfit >= 0 and "+" or "", m(c.dProfit)))
+			if c.toShare then
+				table.insert(L, string.format("    %s: rank 2 share %d%% to %d%%, %s%s a day", c.name or "?", math.floor((c.fromShare or 0) * 100 + 0.5),
+					math.floor(c.toShare * 100 + 0.5), c.dDay >= 0 and "+" or "", m(c.dDay)))
+			else
+				local q = (c.toQ and c.fromQ and c.toQ ~= c.fromQ) and string.format(" reaches Q%d without Concentration,", c.toQ) or ""
+				table.insert(L, string.format("    %s%s %s%s a craft", c.name or "?", q, c.dProfit >= 0 and "+" or "", m(c.dProfit)))
+			end
 		end
 	end
 	table.insert(L, "")
@@ -369,6 +626,18 @@ function P.Describe(plan)
 	table.insert(L, T.Color("accent", "After the plan: ") .. m(plan.final) .. " a day" .. T.Color(gain >= 0 and "ok" or "bad", string.format("  (%s%s)", gain >= 0 and "+" or "", m(gain))))
 	if (plan.finalConc or 0) > 0 then
 		table.insert(L, string.format("Concentration earns %s a point at best (now %s).", m(plan.finalConc), m(plan.startConc)))
+	end
+	if y then
+		local seen = P.Observed(plan.prof)
+		local got = {}
+		for _, l in ipairs(y.lines) do
+			local s = seen and seen[l.key]
+			if s and s.share then table.insert(got, string.format("%s %d%%", l.label, math.floor(s.share * 100 + 0.5))) end
+		end
+		table.insert(L, T.Color("muted", "Disenchanting skill lifts the share of rank 2 materials. The game doesn't publish the curve, so the plan has it rise evenly to all with the path full, "
+			.. (#got > 0 and ("starting from the rank 2 share you really got (" .. table.concat(got, ", ") .. ").") or "from none at no points until AuctionIQ has seen you disenchant.")
+			.. " Perks that give extra materials are listed but not counted in the gold."))
+		return L
 	end
 	table.insert(L, T.Color("muted", string.format("Gold a day counts up to %d sold a day per item (/aiq cap to change) and a day's Concentration on the best recipe.",
 		CH.db.settings.scan.dailyCap or 10)))

@@ -133,7 +133,11 @@ the game refuses a claim or a turn-in, the order goes back to that step.
 `/aiq plan potions`, or the Paths tab. Type what you want to sell and get a plan for the open
 profession, node by node, with the gold a day each step adds and which recipes it improves. The plan
 is drawn on the profession's own trees in the Paths tab, and marked with step badges on the game's
-Specializations tab. Alchemy, Enchanting, Jewelcrafting and Inscription for now.
+Specializations tab. All eight crafting professions, from Blizzard's own game data. Each profession
+has its own goal groups (Enchants, Gems, Garments, Weapons...), and Enchanting has a
+**Disenchanting** goal: it plans the Disenchanting tree for a bigger share of rank 2 dust, shards and
+crystals. AuctionIQ records what your disenchants really give, so the plan uses your own amounts
+and rank 2 share from the last two weeks (`/aiq de 40 8 2` sets them by hand, `/aiq de auto` goes back).
 
 </details>
 
@@ -206,6 +210,7 @@ cost is TSM's own `crafting` price.
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
 `/aiq results` - what your crafts really gave<br>
 `/aiq cap <n>` - most of one item you'd sell a day, for gold a day _(default 10)_<br>
+`/aiq de` - what Disenchanting plans count a day; `/aiq de 40 8 2` sets it by hand, `/aiq de auto` uses what you really disenchant _(the default)_<br>
 `/aiq tooltip` - tooltip lines on or off<br>
 `/aiq coins` - coin icons or g/s/c text<br>
 `/aiq minimap` - hide or show the minimap button

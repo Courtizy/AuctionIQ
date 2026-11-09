@@ -23,9 +23,13 @@ Data\Formula.lua
 Data\Stats.lua
 Crafting\Specs\ConcentrationCurves.lua
 Crafting\Specs\SpecAlchemy.lua
+Crafting\Specs\SpecBlacksmithing.lua
 Crafting\Specs\SpecEnchanting.lua
-Crafting\Specs\SpecJewelcrafting.lua
+Crafting\Specs\SpecEngineering.lua
 Crafting\Specs\SpecInscription.lua
+Crafting\Specs\SpecJewelcrafting.lua
+Crafting\Specs\SpecLeatherworking.lua
+Crafting\Specs\SpecTailoring.lua
 Crafting\Spec.lua
 Core\Tooltip.lua
 Crafting\Professions.lua

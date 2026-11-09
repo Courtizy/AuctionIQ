@@ -100,7 +100,8 @@ function PUI.DefaultPoints(recipes)
 	local tree = prof and CH.Spec.Tree(prof)
 	if not tree then return extra end
 	if not recipes then recipes = CH.Paths.Match(input and input:GetText() or "") end
-	extra = math.max(0, CH.Paths.PathCost(prof, recipes) - (tree.unspent or 0))
+	local goal = input and input:GetText() or ""
+	extra = math.max(0, CH.Paths.PathCost(prof, recipes, (not recipes or #recipes == 0) and goal or nil) - (tree.unspent or 0))
 	updatePoints()
 	return extra
 end
@@ -193,6 +194,7 @@ end
 
 -- A group button: the whole group, or a menu of its splits (Light or Void potions) when it has any.
 local function groupMenu(owner, g)
+	if g.yield then return PUI.Pick(g.name) end
 	if not (MenuUtil and MenuUtil.CreateContextMenu) or #g.subs == 0 then return PUI.Pick(g.name, g.recipes) end
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle(g.name)
@@ -219,7 +221,7 @@ local function fillGoals()
 			gx = gx + b:GetWidth() + 4
 			b:SetScript("OnClick", function(self) groupMenu(self, g) end)
 			b:SetScript("OnEnter", function(self)
-				local lines = { { g.name }, { #g.recipes .. " recipes", "" } }
+				local lines = { { g.name }, g.yield and { "Plans the Disenchanting tree for more rank 2 materials", "" } or { #g.recipes .. " recipes", "" } }
 				if #g.subs > 0 then table.insert(lines, { CH.Theme.Color("muted", "Click to pick all of them or one branch.") }) end
 				CH.Window.Tooltip(self, lines)
 			end)
@@ -242,7 +244,7 @@ function PUI.Open()
 	fillGoals()
 	if CH.OpenProfessionID() and not lastPlan then PUI.DefaultPoints() else updatePoints() end
 	if not CH.OpenProfessionID() then
-		render({ CH.Theme.Color("muted", "Open the profession you want a plan for (Alchemy, Enchanting, Jewelcrafting or Inscription), then type a goal like \"potions\" or \"gems\".") })
+		render({ CH.Theme.Color("muted", "Open the profession you want a plan for (any of the eight crafting professions), then type a goal like \"potions\", \"gems\" or \"disenchanting\".") })
 	elseif not lastPlan then
 		render({ CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Points start at what finishing that path takes; change them with -5 and +5.") })
 	end
