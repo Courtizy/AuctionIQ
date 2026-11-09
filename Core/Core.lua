@@ -163,7 +163,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		CH.ScanUI.Toggle()
 	elseif msg == "paths" or msg:match("^plan") or msg:match("^path ") then
 		local goal = msg:match("^plan%s+(.+)") or msg:match("^path%s+(.+)")
-		if not CH.PathsUI.IsShown() then CH.PathsUI.Toggle() end
+		if not CH.PathsUI.IsShown() then CH.PathsUI.Open() end
 		if goal then CH.PathsUI.Run(goal) end
 	elseif msg == "results clear" then
 		CH.Log.Clear(); CH.Print("this character's craft results log is empty again.")
