@@ -63,6 +63,51 @@ function Q.Add(result, r, qty, extra)
 	return e
 end
 
+--- Add a ready-made entry (from Q.FromScan), stacking with the same recipe, quality and Concentration.
+function Q.AddEntry(e, qty)
+	local k = keyOf(e)
+	for _, x in ipairs(list()) do
+		if keyOf(x) == k then
+			x.qty = x.qty + (qty or 1)
+			x.reagents, x.shop, x.profit, x.cost = e.reagents, e.shop, e.profit, e.cost
+			Q.Changed()
+			return x
+		end
+	end
+	e.qty = qty or 1
+	table.insert(list(), e)
+	Q.Changed()
+	return e
+end
+
+--- A queue entry from a saved scan row, for any character, without the profession window open.
+--- conc picks the Concentration craft. nil when the scan predates saving reagent slots.
+function Q.FromScan(charKey, char, row, conc)
+	local acc = conc and row.concAccounts or row.accounts
+	if not acc or not acc.queue then return nil end
+	local shop = {}
+	for _, s in ipairs(acc.reagents or {}) do table.insert(shop, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers }) end
+	return { char = charKey, charName = char.name, class = char.class, recipeID = row.recipeID, name = row.name,
+		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = conc and row.concentration or nil,
+		profit = conc and row.concProfit or row.profit, cost = acc.cost, item = conc and (row.concItem or row.item) or row.item,
+		reagents = acc.queue, shop = shop, qty = 0 }
+end
+
+--- The best saved scan row, on any character, that makes an item: charKey, char, row, or nil.
+function Q.ScanRowFor(itemID)
+	local bk, bc, br
+	for k, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				if r.item == itemID and r.accounts and r.accounts.queue and (not br or (r.profit or 0) > (br.profit or 0)) then
+					bk, bc, br = k, c, r
+				end
+			end
+		end
+	end
+	return bk, bc, br
+end
+
 function Q.Remove(e, qty)
 	for i, x in ipairs(list()) do
 		if x == e then

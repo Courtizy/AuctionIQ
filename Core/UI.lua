@@ -328,76 +328,87 @@ function UI.LedgerRows(view, filter)
 end
 
 -- Building ------------------------------------------------------------------------------------
+local CARDS = 6 -- Do next cards: two columns of three
+
 local function buildDashboard(p)
 	local T = CH.Theme
 	local d = {}
 	pages.dashboard = p
 	p.d = d
-	-- activity log
-	local log = panel(p, 0, 0, 250, H - 70)
+	local PW = W - 24
+	-- Do next, the page's main block: what to do now, each card with a button that does it
+	local top = panel(p, 0, 0, PW, 200)
+	d.top = top
+	d.heading = fs(top, 10, -8, 400, "LEFT", "GameFontNormal")
 	d.mode = "next"
 	d.modeButtons = {}
 	for i, m in ipairs({ { "next", "Do next" }, { "activity", "Activity" } }) do
-		local b = T.Button(log, m[2], 112, 20)
-		b:SetPoint("TOPLEFT", 8 + (i - 1) * 118, -6)
+		local b = T.Button(top, m[2], 80, 18)
+		b:SetPoint("TOPRIGHT", -8 - (2 - i) * 84, -6)
 		b:SetScript("OnClick", function() d.mode, d.logOffset = m[1], 0; UI.Refresh() end)
 		d.modeButtons[m[1]] = b
 	end
 	d.cards = {}
-	for i = 1, 7 do
+	local CW = math.floor((PW - 24) / 2)
+	for i = 1, CARDS do
 		local c = {}
-		local y = -36 - (i - 1) * 70
-		c.who = fs(log, 10, y, 140)
-		c.time = fs(log, 150, y, 90, "RIGHT")
-		c.l1 = fs(log, 20, y - 16, 220)
+		local x = 8 + ((i - 1) % 2) * (CW + 8)
+		local y = -32 - math.floor((i - 1) / 2) * 56
+		c.bg = panel(top, x, y, CW, 52)
+		c.who = fs(top, x + 8, y - 6, CW - 200)
+		c.time = fs(top, x + CW - 196, y - 6, 100, "RIGHT")
+		c.l1 = fs(top, x + 8, y - 22, CW - 104)
 		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
-		c.l2 = fs(log, 20, y - 30, 220)
-		c.l3 = fs(log, 20, y - 44, 220, "RIGHT")
-		-- a Do next card opens where the work is
-		c.hit = CreateFrame("Button", nil, log)
-		c.hit:SetPoint("TOPLEFT", 4, y + 4)
-		c.hit:SetSize(242, 64)
+		c.l2 = fs(top, x + 8, y - 36, CW - 104)
+		c.l3 = fs(top, x + CW - 92, y - 22, 84, "RIGHT")
+		-- the card opens where the work is; its button does the work
+		c.hit = CreateFrame("Button", nil, top)
+		c.hit:SetPoint("TOPLEFT", x, y)
+		c.hit:SetSize(CW - 96, 52)
 		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
-		-- the card's text in full: long lines are cut to fit the card
 		c.hit:SetScript("OnEnter", function(self)
 			local lines = {}
-			for _, f in ipairs({ c.who, c.l1, c.l2, c.l3 }) do
+			for _, f in ipairs({ c.who, c.l1, c.l2 }) do
 				local s = f:GetText()
 				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
 			end
-			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to go there.") }) end
+			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to see the details.") }) end
 			if #lines > 0 then CH.Window.Tooltip(self, lines) end
 		end)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		c.act = T.Button(top, "", 84, 22)
+		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 15)
+		c.act:SetScript("OnClick", function(self) if self.run then self.run(); UI.Refresh() end end)
+		c.act:Hide()
 		d.cards[i] = c
 	end
 	d.logOffset = 0
-	log:EnableMouseWheel(true)
-	log:SetScript("OnMouseWheel", function(_, delta) d.logOffset = math.max(0, d.logOffset - delta); UI.Refresh() end)
+	top:EnableMouseWheel(true)
+	top:SetScript("OnMouseWheel", function(_, delta) d.logOffset = math.max(0, d.logOffset - delta * 2); UI.Refresh() end)
 
-	-- chart
-	local x0 = 262
-	local cw = W - 24 - x0
-	d.title = fs(p, x0, -4, 300, "LEFT", "GameFontNormalLarge")
-	d.sub = fs(p, x0, -26, cw, "LEFT")
+	-- gold: the chart and its stats on the left, sales and expenses on the right
+	local y0 = -210
+	local cw = 560
+	d.title = fs(p, 0, y0 - 2, 200, "LEFT", "GameFontNormalLarge")
+	d.sub = fs(p, 0, y0 - 24, cw, "LEFT")
 	d.rangeButtons = {}
-	local bx = W - 24
+	local bx = cw
 	for i = #RANGES, 1, -1 do
 		local r = RANGES[i]
 		local b = T.Button(p, r[1], 36, 18)
-		b:SetPoint("TOPRIGHT", p, "TOPLEFT", bx, -4)
+		b:SetPoint("TOPRIGHT", p, "TOPLEFT", bx, y0 - 2)
 		b:SetScript("OnClick", function() range = r[1]; UI.Refresh() end)
 		d.rangeButtons[r[1]] = b
 		bx = bx - 40
 	end
 	-- who counts: each character and the warband bank can be switched off
 	local who = T.Button(p, "Characters", 84, 18)
-	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, -4)
+	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, y0 - 2)
 	who:SetScript("OnClick", function(self) UI.CharacterMenu(self) end)
 	who:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
 	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.who = who
-	local chart = panel(p, x0, -48, cw, 210)
+	local chart = panel(p, 0, y0 - 44, cw, 190)
 	d.chart = chart
 	-- hover: a marker on the nearest point and a tooltip with who held what
 	local mark = chart:CreateTexture(nil, "OVERLAY")
@@ -433,21 +444,22 @@ local function buildDashboard(p)
 		d.grid[i] = g
 		d.gridLabels[i] = fs(chart, 4, 0, 56, "RIGHT", "GameFontDisableSmall")
 	end
-	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -194, 80, "CENTER", "GameFontDisableSmall") end
+	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -174, 80, "CENTER", "GameFontDisableSmall") end
 
-	-- stat row
+	-- stat row under the chart
 	d.stats = {}
 	local labels = { { "52W HIGH", "high" }, { "AVG DAILY SALES", "avgSold" }, { "TOP SALE", "topSale" },
 		{ "52W LOW", "low" }, { "DAILY CHANGE", "dailyChange" }, { "TOP PURCHASE", "topBuy" } }
 	for i, l in ipairs(labels) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-		local lab = fs(p, x0 + col * 210, -268 - row * 20, 120, "LEFT", "GameFontNormalSmall")
+		local lab = fs(p, col * 188, y0 - 242 - row * 18, 104, "LEFT", "GameFontNormalSmall")
 		lab:SetText(l[1])
-		d.stats[l[2]] = fs(p, x0 + col * 210 + 112, -268 - row * 20, 92, "RIGHT")
+		d.stats[l[2]] = fs(p, col * 188 + 104, y0 - 242 - row * 18, 80, "RIGHT")
 	end
 
 	-- sales / expenses / profit
-	local box = panel(p, x0, -312, cw, H - 70 - 312)
+	local bw = PW - cw - 12
+	local box = panel(p, cw + 12, y0, bw, H - 70 + y0)
 	d.box = {}
 	local y = -10
 	local function section(title)
@@ -456,25 +468,25 @@ local function buildDashboard(p)
 		y = y - 18
 	end
 	local function line(key, label)
-		local a = fs(box, 10, y, 300)
+		local a = fs(box, 10, y, 150)
 		a:SetText(label)
-		d.box[key] = fs(box, cw - 330, y, 320, "RIGHT")
+		d.box[key] = fs(box, bw - 170, y, 160, "RIGHT")
 		y = y - 15
 	end
 	section("SALES")
-	line("earned", "Total gold earned")
-	line("avgEarned", "Average earned per day")
+	line("earned", "Total earned")
+	line("avgEarned", "Average a day")
 	line("topItem", "Top item")
 	y = y - 4
 	section("EXPENSES")
-	line("spent", "Total gold spent")
-	line("avgSpent", "Average spent per day")
+	line("spent", "Total spent")
+	line("avgSpent", "Average a day")
 	line("topSpent", "Top item")
 	y = y - 4
 	section("PROFIT")
-	line("cash", "Cash profit (earned less spent)")
-	line("worth", "Net worth change (gold + inventory)")
-	d.note = fs(box, 10, y - 2, cw - 20, "LEFT", "GameFontDisableSmall")
+	line("cash", "Cash profit")
+	line("worth", "Net worth change")
+	d.note = fs(box, 10, y - 4, bw - 20, "LEFT", "GameFontDisableSmall")
 end
 
 local function buildLedger(p)
@@ -582,7 +594,7 @@ end
 -- Drawing -------------------------------------------------------------------------------------
 local function drawChart(d, data)
 	local chart = d.chart
-	local cw, ch = chart:GetWidth() or (W - 286), 170
+	local cw, ch = chart:GetWidth() or 560, (chart:GetHeight() or 210) - 40
 	local left, top = 64, -12
 	local series = data.series
 	local lo, hi
@@ -717,29 +729,38 @@ local function refreshDashboard()
 	d.box.cash:SetText(T.Color(s.cash >= 0 and "ok" or "bad", money(s.cash, true)))
 	local wc = data.worthChange
 	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
-	d.note:SetText("Cash profit counts reagents as spent, like TSM. Net worth change counts stock you still hold.")
+	d.note:SetText("Cash profit counts reagents as spent, like TSM.\nNet worth change counts stock you still hold.")
 	-- left column: Do next, or the activity log
 	for k, b in pairs(d.modeButtons) do colorButton(b, k == d.mode) end
 	if d.mode == "next" then
 		local list = CH.Next.List()
 		d.logOffset = math.max(0, math.min(d.logOffset, #list - #d.cards))
+		local urgent = 0
+		for _, e in ipairs(list) do if e.tier == 1 then urgent = urgent + 1 end end
+		d.heading:SetText("Do next" .. T.Color("muted", #list == 0 and "  nothing waiting"
+			or string.format("  %d things, %d urgent%s", #list, urgent, #list > #d.cards and ", scroll for more" or "")))
 		for i, c in ipairs(d.cards) do
 			local e = list[i + d.logOffset]
 			c.hit.go = e and e.go
+			c.act.run = e and e.act and e.act.run
+			if e and e.act then setLabel(c.act, e.act.label); c.act:Show() else c.act:Hide() end
 			if e then
 				c.who:SetText(T.Color(e.tier == 1 and "accent" or "fg", e.title))
 				c.time:SetText(e.gold and e.gold > 0 and money(e.gold) or "")
 				c.l1:SetText(e.detail)
 				c.l2:SetText("")
-				c.l3:SetText(e.go and T.Color("muted", "open") or "")
+				c.l3:SetText((not e.act and e.go) and T.Color("muted", "click to open") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")
 				c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
 			end
 		end
 	else
+	d.heading:SetText("Activity" .. T.Color("muted", "  what sold, bought and expired, newest first"))
 	for i, c in ipairs(d.cards) do
 		c.hit.go = nil
+		c.act.run = nil
+		c.act:Hide()
 		local a = data.activity[i + d.logOffset]
 		if a then
 			c.who:SetText(a.player or "?")

@@ -293,7 +293,8 @@ local function valueRow(model, row, stats, item, costR, fin)
 	end
 	if not unit then row.value, row.profit = nil, nil; return row end
 	-- your record: an item that keeps selling under forecast is valued at what it really fetches
-	local shade, why = CH.Forecast and CH.Forecast.Shade(item)
+	local shade, why
+	if CH.Forecast then shade, why = CH.Forecast.Shade(item) end
 	if shade then unit = unit * shade; row.shade, row.shadeWhy = shade, why end
 	-- expected gold: after the cut, less deposits lost to expiries and gold tied up until it sells
 	row.price = unit

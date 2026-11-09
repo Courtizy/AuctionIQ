@@ -107,7 +107,8 @@ local function build()
 	fill:SetPoint("RIGHT", pop, "LEFT", -4, 0)
 	fill:SetScript("OnClick", function()
 		local prof = CH.OpenProfessionID()
-		local plan, why = prof and CH.Queue.FillPlan(prof)
+		local plan, why
+		if prof then plan, why = CH.Queue.FillPlan(prof) end
 		if plan then
 			CH.Print(string.format("queued %d Concentration crafts (%d of %d points) and %d without, about %s profit.",
 				plan.conc, math.floor(plan.points + 0.5), plan.budget, plan.plain, CH.FormatMoney(plan.profit)))

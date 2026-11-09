@@ -771,6 +771,25 @@ run("Clearinghouse.UI.Page('groups')"); run("Clearinghouse.UI.Page('plan')"); ru
 check("old page names open the new tabs", CH.UI.IsShown())
 nxt = list(CH.Next.List().values())
 check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier <= nxt[i + 1].tier for i in range(len(nxt) - 1)))
+# Do next cards carry a button that does the job: queue the Concentration craft or the restock
+run("""STUB.oldConcNow = Clearinghouse.ConcentrationNow
+Clearinghouse.ConcentrationNow = function(p) if p.name == 'Test Alchemy' then return 1000, 1000 end return STUB.oldConcNow(p) end
+Clearinghouse.db.characters['Alt-Realm'] = { name = 'Alt', class = 'MAGE', professions = { [99] = { name = 'Test Alchemy', scan = { rows = {
+  { recipeID = 10, name = 'Test Flask', item = 100, made = 1, profit = 1000, perPoint = 50, concProfit = 15000, concentration = 300, concQuality = 2,
+    accounts = { cost = 500, reagents = { { itemID = 201, n = 2 } }, queue = { { itemID = 201, slot = 1, n = 2 } } },
+    concAccounts = { cost = 500, reagents = { { itemID = 201, n = 2 } }, queue = { { itemID = 201, slot = 1, n = 2 } } } } } } } } }
+Clearinghouse.Queue.Clear()""")
+spend = [e for e in CH.Next.List().values() if e.title == "Spend Concentration" and "Alt" in e.detail]
+check("do next: full Concentration names the best craft per point and how many", len(spend) == 1 and "x3" in spend[0].detail and spend[0].act is not None)
+run("(function() for _, e in ipairs(Clearinghouse.Next.List()) do if e.title == 'Spend Concentration' and e.act and e.detail:find('Alt') then e.act.run() return end end end)()")
+qe = list(CH.db.queue.values())
+check("do next: its button queues that craft with Concentration for that character", len(qe) == 1 and qe[0].char == "Alt-Realm" and qe[0].qty == 3
+      and qe[0].concentration == 300 and qe[0].reagents[1].slot == 1)
+k = L.eval("{ Clearinghouse.Queue.ScanRowFor(100) }")
+check("do next: a restock finds the saved scan that makes the item", k[1] == "Alt-Realm" and k[3].recipeID == 10)
+run("Clearinghouse.UI.Page('today')")
+d = L.eval("Clearinghouse.UI and nil")
+run("Clearinghouse.Queue.Clear(); Clearinghouse.db.characters['Alt-Realm'] = nil; Clearinghouse.ConcentrationNow = STUB.oldConcNow")
 check("crafting tab text has Concentration and best crafts", "Concentration" in plain(CH.UI.CraftingText()) and "Best crafts" in plain(CH.UI.CraftingText()))
 check("the report still has everything", "Best crafts" in plain(CH.UI.BriefingText()) and "Gold" in plain(CH.UI.BriefingText()))
 
