@@ -543,11 +543,9 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 UI.TABS, UI.OLD = TABS, OLD
 
---- The window title: the icon and name of AuctionIQ, or of Accounting (the books) on its tab.
-local function titleText(which)
-	local ch = which == "clearinghouse"
-	local icon = "|TInterface\\AddOns\\AuctionIQ\\Media\\" .. (ch and "Accounting" or "Icon") .. ":16:16:0:0|t "
-	return icon .. CH.Theme.Color("accent", ch and "Accounting" or "AuctionIQ")
+--- The window title: AuctionIQ and its gavel, on every tab (Accounting keeps its plum colours).
+local function titleText()
+	return "|TInterface\\AddOns\\AuctionIQ\\Media\\Icon:16:16:0:0|t " .. CH.Theme.Color("accent", "AuctionIQ")
 end
 UI.TitleText = titleText
 
@@ -557,7 +555,7 @@ local function layoutTabs()
 	local title = frame.title
 	local keep = title:GetText()
 	local widest = 0
-	for _, t in ipairs({ titleText("auctioniq"), titleText("clearinghouse") }) do
+	for _, t in ipairs({ titleText() }) do
 		title:SetText(t)
 		widest = math.max(widest, title:GetStringWidth() or 0)
 	end
@@ -578,7 +576,7 @@ end
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
-	frame.title:SetText(titleText("auctioniq"))
+	frame.title:SetText(titleText())
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Clearinghouse ledger last
 	for _, pg in ipairs(TABS) do
@@ -827,7 +825,7 @@ function UI.Refresh()
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
 		frame.palette = want
-		frame.title:SetText(titleText(want))
+		frame.title:SetText(titleText())
 	end
 	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
 	-- a view that is a page of its own (the Report, Professions) shows beside the nav
