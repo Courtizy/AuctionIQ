@@ -440,12 +440,24 @@ end
 --- Slot by slot, it keeps every (skill, cost) state that some cheaper state doesn't beat on skill:
 --- skill is kept exact (fractions too, since the game adds every slot's share before rounding the
 --- total), and a state is dropped only when another reaches at least as much skill for no more gold.
-function A.Cheapest(model, base)
-	if not model.perUnit or #model.qual == 0 then return {} end
+-- The frontier doesn't depend on skill, only on the reagents' prices, so it's worked out once per
+-- recipe model and price set and reused by every finishing combination, simulation and rescan.
+local function priceKey(model)
+	local parts = {}
+	for _, slot in ipairs(model.qual) do
+		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(price("chmat", id) or "-") end
+	end
+	return table.concat(parts, ",")
+end
+
+local function frontier(model)
+	local key = priceKey(model)
+	local c = model.frontierCache
+	if c and c.key == key and c.perUnit == model.perUnit then return c.states end
 	local states = { { s = 0, c = 0 } }
 	for i = 1, #model.qual do
 		local mixes = slotMixes(model, i)
-		if #mixes == 0 then return {} end
+		if #mixes == 0 then states = nil; break end
 		local nxt = {}
 		for _, st in ipairs(states) do
 			for _, m in ipairs(mixes) do
@@ -460,6 +472,15 @@ function A.Cheapest(model, base)
 			if st.c < cheapest - 1e-9 then states[#states + 1] = st; cheapest = st.c end
 		end
 	end
+	model.frontierCache = { key = key, perUnit = model.perUnit, states = states }
+	return states
+end
+A.Frontier = frontier
+
+function A.Cheapest(model, base)
+	if not model.perUnit or #model.qual == 0 then return {} end
+	local states = frontier(model)
+	if not states then return {} end
 	local out = {}
 	for k = 1, model.maxQ do
 		local need = k == 1 and -math.huge or (model.thresholds[k] or math.huge)
