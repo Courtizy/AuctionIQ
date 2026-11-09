@@ -28,7 +28,7 @@ function MUI.Refresh()
 	local why = #routes == 0 and "Nothing to send yet: press Routes to pick which character gets each group."
 		or "Nothing in your bags belongs to a routed group."
 	list:SetText((#lines > 0 and table.concat(lines, "\n") or CH.Theme.Color("muted", why))
-		.. "\n\n" .. CH.Theme.Color("muted", "Routes (Routes button, or right-click a group on the Trading tab):\n" .. (#routes > 0 and table.concat(routes, "\n") or "none yet")))
+		.. "\n\n" .. CH.Theme.Color("muted", "Routes (Routes button, or right-click a group in Settings, Edit groups):\n" .. (#routes > 0 and table.concat(routes, "\n") or "none yet")))
 	sendButton:SetEnabled(n > 0)
 	MUI.sendCount = n
 end
@@ -81,7 +81,7 @@ function MUI.RouteMenu(owner)
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Send each group to")
 		local tree = CH.Groups.Tree()
-		if not tree[1] then root:CreateTitle("No groups yet: press Rebuild on the Trading tab.") end
+		if not tree[1] then root:CreateTitle("No groups yet: press Rebuild in Settings, Edit groups.") end
 		for _, g in ipairs(tree) do
 			if g.depth <= 2 then
 				local sub = root:CreateButton(string.rep("  ", g.depth) .. g.name .. (routes[g.path] and ("  > " .. routes[g.path]) or ""))

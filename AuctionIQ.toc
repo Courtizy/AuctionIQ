@@ -39,6 +39,7 @@ Trading\Groups.lua
 Trading\Auction.lua
 Trading\AuctionUI.lua
 Trading\GroupsUI.lua
+Trading\TradingUI.lua
 Trading\Mail.lua
 Trading\MailUI.lua
 Core\Settings.lua

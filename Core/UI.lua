@@ -521,10 +521,16 @@ end
 local TABS = { { "today", "Today" }, { "markets", "Markets" }, { "crafting", "Crafting" }, { "trading", "Trading" },
 	{ "analytics", "Analytics" }, { "ledger", "Clearinghouse" } }
 -- which page frame each tab shows; Markets, Analytics and the Clearinghouse share the table page
-local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "groups", analytics = "ledger", ledger = "ledger",
+local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "ledger", analytics = "ledger", ledger = "ledger",
 	settings = "settings" }
 -- old page names (commands, other modules) and where they live now
-local OLD = { dashboard = { "today" }, groups = { "trading" }, plan = { "crafting" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
+-- Settings has a second view, Groups and items (the group tree, items and routes)
+local settingsView = "main"
+local function frameOf(pg)
+	if pg == "settings" and settingsView == "groups" then return "groups" end
+	return FRAME[pg]
+end
+local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "crafting" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 
 --- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
 --- after the widest title so a title change never pushes into them.
@@ -793,16 +799,15 @@ function UI.Refresh()
 	end
 	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
 	local report = page == "ledger" and CH.LedgerUI.View() == "report"
-	for k, p in pairs(pages) do p:SetShown(k == FRAME[page] or (report and k == "briefing")) end
+	for k, p in pairs(pages) do p:SetShown(k == frameOf(page) or (report and k == "briefing")) end
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
 	frame.foot:SetText(CH.Theme.Color("muted", "/aiq today, markets, crafting, trading, analytics, report.  /aiq help for more.")
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
 	if page == "today" then return refreshDashboard()
-	elseif page == "trading" then return CH.GroupsUI.Refresh()
 	elseif page == "crafting" then return CH.PlanUI.Refresh()
-	elseif page == "settings" then return CH.SettingsUI.Refresh()
+	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
 	elseif report then
 		refreshLedger()
 		CH.ReportUI.Refresh()
@@ -816,6 +821,7 @@ function UI.Go(tab, view)
 	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return end
 	page = tab
+	if tab == "settings" then settingsView = view == "groups" and "groups" or "main" end
 	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view }) end
 	if frame then UI.Refresh() end
 end

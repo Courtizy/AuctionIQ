@@ -571,6 +571,23 @@ run("Clearinghouse.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband
 run("Clearinghouse.GroupsUI.Select('Crafted'); Clearinghouse.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
 check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())
+check("groups now live in Settings: the old name opens them there", L.eval("Clearinghouse.UI.IsShown()"))
+# Trading tab: what to post and mail, before you get to the AH
+pp = {r.id: r for r in CH.TradingUI.PostPlan().values()}
+check("trading: ready to post counts what every character holds in a posting group", 302 in pp and pp[302].held >= 3 and pp[302].verdict in ("post", "hold", "full"))
+r302 = pp[302]
+check("trading: posts no more than the group's cap less what's up", r302.post <= max(0, (r302.cap or 0) - r302.up))
+run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
+mp = list(CH.TradingUI.MailPlan().values())
+check("trading: to mail lists items on a character other than their route", any(r.id == 302 and r["from"] == "Courtizy" and r.to == "Luxaren" for r in mp))
+run("Clearinghouse.Mail.Route('Crafted', nil)")
+run("Clearinghouse.UI.Page('trading', 'post')")
+check("trading tab opens on Ready to post", CH.LedgerUI.View() == "post")
+run("Clearinghouse.Mail.Route('Crafted', 'Luxaren')")
+pr, pf = L.eval("Clearinghouse.LedgerUI.Rows('post', {})")
+mr, mf = L.eval("Clearinghouse.LedgerUI.Rows('mail', {})")
+check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf) and len(list(mr.values())) > 0 and "to send" in plain(mf))
+run("Clearinghouse.Mail.Route('Crafted', nil)")
 check("auction panel builds", CH.AuctionUI.Build() is not None)
 # Posting waits for the AH's answer
 run("""
