@@ -170,7 +170,7 @@ function Prices.RecentSales(now)
 		if s.id and s.quantity > 0 and s.time >= from and s.time <= now then
 			local e = by[s.id]
 			if not e then e = { gold = 0, n = 0 }; by[s.id] = e end
-			e.gold, e.n = e.gold + s.amount * CH.AH_CUT, e.n + s.quantity
+			e.gold, e.n = e.gold + CH.Ledger.Net(s), e.n + s.quantity
 			if not e.last or s.time > e.last then e.last = s.time end
 		end
 	end

@@ -41,8 +41,11 @@ local function plBetween(from, to, char)
 		local later = b[id]
 		local sold = e.sold - (later and later.sold or 0)
 		if sold > 0 then
+			-- each sale was costed at its own time, so the period's cost is the difference too (not
+			-- the whole span's average cost times the period's units)
 			local revenue = e.revenue - (later and later.revenue or 0)
-			out[id] = { id = id, line = e.line, sold = sold, revenue = revenue, cost = e.each * sold, profit = revenue - e.each * sold, each = e.each }
+			local cost = e.cost - (later and later.cost or 0)
+			out[id] = { id = id, line = e.line, sold = sold, revenue = revenue, cost = cost, profit = revenue - cost, each = cost / sold }
 		end
 	end
 	return out

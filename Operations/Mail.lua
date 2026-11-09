@@ -47,7 +47,7 @@ function M.ReagentNeeds()
 			end
 		end
 	end
-	if not next(need) then return out end
+	if not next(need) then return out, mine end
 	local ok = CH.Ledger and CH.Ledger.Available()
 	local function holds(name)
 		local held = {}
@@ -60,9 +60,11 @@ function M.ReagentNeeds()
 	for _, it in ipairs(ok and CH.Ledger.Inventory() or {}) do if it.id then warband[it.id] = it.warband or 0 end end
 	-- this character's own crafts take from the Warband bank first
 	local myHeld = next(mine) and holds(me) or {}
+	local keep = {} -- what this character's crafts need from its own bags, after the Warband bank
 	for id, n in pairs(mine) do
 		local fromBank = math.min(warband[id] or 0, math.max(0, n - (myHeld[id] or 0)))
 		if warband[id] then warband[id] = warband[id] - fromBank end
+		keep[id] = math.max(0, n - fromBank)
 	end
 	local names = {}
 	for name in pairs(need) do table.insert(names, name) end
@@ -77,7 +79,7 @@ function M.ReagentNeeds()
 			if short > 0 then out[name] = out[name] or {}; out[name][id] = short end
 		end
 	end
-	return out
+	return out, keep
 end
 
 --- What to send from here: { [char] = { { id, bag, slot, count, send, reagent } } }, never to
@@ -87,7 +89,10 @@ end
 function M.Outbox()
 	local out, me = {}, UnitName and UnitName("player")
 	if not C_Container then return out end
-	local short = M.ReagentNeeds()
+	local short, own = M.ReagentNeeds()
+	-- reagents this character's own queued crafts use stay here
+	local keep = {}
+	for id, n in pairs(own or {}) do keep[id] = n end
 	local names = {}
 	for name in pairs(short) do if name ~= me then table.insert(names, name) end end
 	table.sort(names)
@@ -104,6 +109,8 @@ function M.Outbox()
 			if info and info.itemID and not info.isBound then
 				local id, count = info.itemID, info.stackCount or 1
 				local left = count
+				local k = math.min(left, keep[id] or 0)
+				if k > 0 then keep[id] = keep[id] - k; left = left - k end
 				-- a queued crafter short of this reagent gets it first, only as many as they need
 				for _, name in ipairs(names) do
 					local want = short[name][id] or 0

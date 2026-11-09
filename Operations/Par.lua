@@ -81,7 +81,7 @@ function Par.List(now)
 		local short = math.max(0, target - held)
 		local unit = CH.Prices.Get("chvalue", "i:" .. id)
 		table.insert(out, { id = id, weekly = Par.Weekly(now)[id] or 0, target = target, manual = manual, held = held, short = short,
-			value = unit and unit * short or 0 })
+			value = unit and unit * CH.AH_CUT * short or 0 })
 	end
 	for id in pairs(store().manual) do add(id) end
 	for id in pairs(Par.Weekly(now)) do add(id) end

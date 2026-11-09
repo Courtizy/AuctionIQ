@@ -144,13 +144,21 @@ Pl.StartSession, Pl.StopSession = start, stop
 --- Hours per activity since a time and gold per hour of goldmaking time: { kinds = { [kind] = hours },
 --- hours, profit (cash, from TSM), perHour }.
 function Pl.Time(since)
-	local kinds, total = {}, 0
+	local kinds, total, spans = {}, 0, {}
 	for _, x in ipairs(store().sessions) do
 		if x.stop >= since then
-			local h = (x.stop - math.max(x.start, since)) / 3600
-			kinds[x.kind] = (kinds[x.kind] or 0) + h
-			total = total + h
+			local a = math.max(x.start, since)
+			kinds[x.kind] = (kinds[x.kind] or 0) + (x.stop - a) / 3600
+			table.insert(spans, { a, x.stop })
 		end
+	end
+	-- the total counts time once when two windows were open together (the AH and a profession)
+	table.sort(spans, function(p, q) return p[1] < q[1] end)
+	local upTo
+	for _, sp in ipairs(spans) do
+		local a = upTo and math.max(sp[1], upTo) or sp[1]
+		if sp[2] > a then total = total + (sp[2] - a) / 3600 end
+		upTo = upTo and math.max(upTo, sp[2]) or sp[2]
 	end
 	local profit
 	if CH.Ledger and CH.Ledger.Available() then

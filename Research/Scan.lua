@@ -37,7 +37,7 @@ local function accounts(result, r)
 	end
 	local p = r.parts or {}
 	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
-		made = result.made, unit = r.unit, sales = r.value, cost = r.cost, extraItems = (p.mc or 0) * (p.extraItems or 0),
+		made = result.made, unit = r.unit, price = r.price, sales = r.value, cost = r.cost, extraItems = (p.mc or 0) * (p.extraItems or 0),
 		mcGold = p.mcGold, resGold = p.resGold, profit = r.profit, reagents = reagents,
 		deposit = r.ev and r.ev.deposits, -- deposits lost to expiries, per item sold: they don't move with the price
 		queue = ok and e and e.reagents or nil } -- the reagents by slot, to queue this craft without the profession open
