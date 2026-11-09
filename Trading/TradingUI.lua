@@ -95,10 +95,14 @@ local function postRows(ctx)
 			elseif r.verdict == "hold" then held = held + 1
 			else full = full + 1 end
 			local v = VERDICT[r.verdict]
-			table.insert(out, { id = r.id, cells = { text, T.Color("muted", r.path), r.held, string.format("%d / %d", r.up, r.cap or 0),
-				r.post > 0 and r.post or T.Color("muted", "0"), money(r.price), r.ah and money(r.ah) or T.Color("muted", "no scan"),
-				T.Color(v[1], v[2]) },
-				sort = { name, r.path, r.held, r.up, r.verdict == "post" and r.post or -1, r.price or 0, r.ah or 0,
+			-- EV: what one is worth to you at this price; RZ: what you've really sold it for
+			local vals = CH.Prices.Values(r.id)
+			local ev = r.price and CH.Expect and CH.Expect.Value(r.id, r.price)
+			table.insert(out, { id = r.id, cells = { text, r.held, string.format("%d / %d", r.up, r.cap or 0),
+				money(r.price), r.ah and money(r.ah) or T.Color("muted", "no scan"), ev and money(ev) or T.Color("muted", "-"),
+				vals.realized and money(vals.realized) or T.Color("muted", "none sold"),
+				T.Color(v[1], r.verdict == "post" and ("post " .. r.post) or v[2]) },
+				sort = { name, r.held, r.up, r.price or 0, r.ah or 0, ev or 0, vals.realized or 0,
 					(r.verdict == "post" and 0 or r.verdict == "hold" and 1 or 2) * 1e15 - r.value } })
 		end
 	end
@@ -137,10 +141,12 @@ local function mailRows(ctx)
 end
 
 TUI.VIEWS = {
-	post = { label = "Ready to post", sort = 8, asc = true, noTime = true, rows = postRows, cols = { { "Item", 0, 176 }, { "Group", 180, 96 },
-		{ "Held", 280, 44 }, { "Up / cap", 328, 60 }, { "Post", 392, 40 }, { "Price", 436, 84 }, { "AH now", 524, 84 }, { "Do", 612, 112 } } },
+	post = { label = "Ready to post", sort = 8, asc = true, noTime = true, rows = postRows, cols = { { "Item", 0, 170 },
+		{ "Held", 174, 40 }, { "Up / cap", 218, 56 }, { "Price", 278, 76 }, { "AH now", 358, 76 }, { "EV", 438, 76 }, { "RZ", 518, 76 },
+		{ "Do", 598, 126 } } },
 	mail = { label = "To mail", sort = 5, noTime = true, rows = mailRows, cols = { { "Item", 0, 200 }, { "From", 204, 100 }, { "To", 308, 100 },
 		{ "Qty", 412, 50 }, { "Worth", 466, 100 }, { "", 570, 154 } } },
 }
 
-LUI.Register("trading", TUI.VIEWS, { "post", "mail" })
+-- Trading is what to buy, hold, post or move: stock targets and dead stock are inventory decisions
+LUI.Register("trading", TUI.VIEWS, { "post", "par", "dead", "mail" })
