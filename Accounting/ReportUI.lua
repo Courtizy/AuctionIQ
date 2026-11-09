@@ -124,7 +124,7 @@ local popup
 function RUI.Export(view, opts)
 	local text, n = RUI.CSV(view, opts)
 	if not popup then
-		popup = CH.Window.New("ClearinghouseExport", "", 640, 400)
+		popup = CH.Window.New("AuctionIQExport", "", 640, 400)
 		popup.title:SetText(CH.Theme.Color("accent", "Export as CSV"))
 		popup.note = popup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		popup.note:SetPoint("TOPLEFT", 14, -34)

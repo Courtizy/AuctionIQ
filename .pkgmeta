@@ -5,6 +5,5 @@ ignore:
   - tools
   - README.md
   - .github
-  - migration
   - Media/Icon.svg
   - Media/Logo-512.png

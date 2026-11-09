@@ -7,7 +7,7 @@
 --   Crafting efficiency  gold per Concentration point and per crafting hour, procs against expected
 --   Scenarios            what reagent or selling price changes would do to each craft
 --   Gold per hour        LedgerUI's "time"
---   Craft results        Crafting/Log.lua
+--   Craft results        Research/Log.lua
 -- Profit here is realized: crafted items' sales after the cut, less reagents at what you paid
 -- (Ledger.ProductPL). Comparisons are against the period of the same length just before.
 local _, CH = ...
@@ -177,7 +177,7 @@ local function driverRows(ctx)
 end
 
 -- Capital efficiency ----------------------------------------------------------------------------
---- Per category: gold tied up in stock (at Clearinghouse value) against the profit it made in the
+--- Per category: gold tied up in stock (at AuctionIQ value) against the profit it made in the
 --- period, and how many days of sales the stock is.
 function AV.Capital(ctx)
 	local start, _, len = periods(ctx)

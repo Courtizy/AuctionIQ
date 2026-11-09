@@ -544,10 +544,10 @@ local function buildBriefing(p)
 end
 
 -- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
--- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Clearinghouse: what
+-- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Accounting: what
 -- happened. The AH, profession and mailbox windows carry out what Operations plans.
 local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
--- which page frame each tab shows; Research, Operations and the Clearinghouse share the table page
+-- which page frame each tab shows; Research, Operations and Accounting share the table page
 local FRAME = { today = "dashboard", research = "ledger", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
 local settingsView = "main"
@@ -593,10 +593,10 @@ end
 
 local function build()
 	local T = CH.Theme
-	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
+	frame = CH.Window.New("AuctionIQFrame", "", W, H)
 	frame.title:SetText(titleText())
 	frame.TitleText = frame.title
-	-- AuctionIQ's pages first, then its Clearinghouse ledger last
+	-- AuctionIQ's pages first, then its Accounting ledger last
 	for _, pg in ipairs(TABS) do
 		-- a small symbol before each name, the same size and style on every tab
 		local b = T.Button(frame.bar, "|TInterface\\AddOns\\AuctionIQ\\Media\\Tab-" .. pg[2] .. ":14:14:0:0|t " .. pg[2], 84, 20)
@@ -889,8 +889,8 @@ local function refreshLedger() return CH.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end
-	-- the Clearinghouse tab is the ledger: plum and parchment; every other page is AuctionIQ navy
-	local want = page == "ledger" and "clearinghouse" or "auctioniq"
+	-- the Accounting tab is the ledger: plum and parchment; every other page is AuctionIQ navy
+	local want = page == "ledger" and "accounting" or "auctioniq"
 	if CH.Theme.palette ~= want or frame.palette ~= want then
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
@@ -972,7 +972,7 @@ function UI.Go(tab, view)
 	if choose(tab, view) and frame then UI.Refresh() end
 end
 
---- Show a tab: "today" (the Dashboard), "research", "operations" or "ledger" (the Clearinghouse),
+--- Show a tab: "today" (the Dashboard), "research", "operations" or "ledger" (Accounting),
 --- and optionally a view. The old names (markets, crafting, trading, analytics, plan, report...) still work.
 function UI.Page(name, view)
 	if not frame then build() end

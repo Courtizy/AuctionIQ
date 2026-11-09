@@ -370,7 +370,7 @@ end
 
 local function build()
 	local T, Wd = CH.Theme, CH.Window
-	frame = Wd.New("ClearinghouseAuction", "Auctioning", W, H)
+	frame = Wd.New("AuctionIQAuction", "Auctioning", W, H)
 	local b1 = T.Button(frame, "Post scan", 100, 22); b1:SetPoint("TOPLEFT", 12, -36); b1:SetScript("OnClick", AUI.PostScan)
 	postButton = T.Button(frame, "Post", 80, 22); postButton:SetPoint("TOPLEFT", 118, -36); postButton:SetScript("OnClick", AUI.PostNext)
 	local b3 = T.Button(frame, "Cancel scan", 100, 22); b3:SetPoint("TOPLEFT", 216, -36); b3:SetScript("OnClick", AUI.CancelScan)

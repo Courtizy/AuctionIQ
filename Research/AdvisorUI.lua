@@ -35,7 +35,7 @@ end
 local function build()
 	local T = CH.Theme
 	T.Sync()
-	panel = CreateFrame("Frame", "ClearinghouseAdvisor", UIParent, "BackdropTemplate")
+	panel = CreateFrame("Frame", "AuctionIQAdvisor", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
 	panel:SetSize(WIDTH, HEIGHT)
 	panel:SetFrameStrata("HIGH")

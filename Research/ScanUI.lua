@@ -221,7 +221,7 @@ end
 
 local function build()
 	local Wd, T = CH.Window, CH.Theme
-	frame = Wd.New("ClearinghouseScan", "Recipe scan", W, 92 + N * H)
+	frame = Wd.New("AuctionIQScan", "Recipe scan", W, 92 + N * H)
 	local x = -26
 	local function barButton(label, width, fn)
 		local b = T.Button(frame.bar, label, width, 18)

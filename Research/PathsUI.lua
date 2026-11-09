@@ -115,7 +115,7 @@ end
 
 local function build()
 	local T, Wd = CH.Theme, CH.Window
-	frame = Wd.New("ClearinghousePaths", "Profession paths", W, H)
+	frame = Wd.New("AuctionIQPaths", "Profession paths", W, H)
 	local ask = Wd.Text(frame, 12, -36, W - 24, "LEFT", "GameFontNormal")
 	ask:SetText("What do you want to sell?")
 	input = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")

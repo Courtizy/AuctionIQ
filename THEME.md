@@ -12,8 +12,8 @@ Every page of the addon follows these rules. A colour changes in `Theme.lua`.
 ## Two palettes, one window
 
 AuctionIQ (every page but one) is navy, gold and emerald: analytical, decision-making. Its
-Clearinghouse ledger tab is plum, parchment and gold: the books. Switching to the Clearinghouse tab
-re-tints the window and its title reads "Clearinghouse". The Clearinghouse tab sits last, after AuctionIQ's own pages.
+Accounting tab is plum, parchment and gold: the books. Switching to Accounting re-tints the window;
+the title still reads AuctionIQ. Accounting sits last, after the other tabs.
 
 ## With ElvUI and ToxiUI
 
@@ -30,7 +30,7 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
 
 ## Colours (dark)
 
-| Token  | AuctionIQ | Clearinghouse | Used for |
+| Token  | AuctionIQ | Accounting | Used for |
 |--------|-----------|---------------|----------|
 | bg     | `#0e1729` navy | `#1c1222` plum | window background |
 | panel  | `#15213b` | `#281a30` | title bar, buttons |

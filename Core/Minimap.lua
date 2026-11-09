@@ -22,7 +22,7 @@ end
 
 function CH.CreateMinimapButton()
 	if button or not Minimap then return button end
-	button = CreateFrame("Button", "ClearinghouseMinimapButton", Minimap)
+	button = CreateFrame("Button", "AuctionIQMinimapButton", Minimap)
 	button:SetSize(31, 31)
 	button:SetFrameStrata("MEDIUM")
 	button:SetFrameLevel(8)

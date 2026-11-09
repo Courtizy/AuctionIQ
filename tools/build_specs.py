@@ -1,4 +1,4 @@
-"""Builds Crafting/Specs/Spec<Profession>.lua from Blizzard's own game tables (DB2), as wago.tools
+"""Builds Research/Specs/Spec<Profession>.lua from Blizzard's own game tables (DB2), as wago.tools
 publishes them as CSV. Re-run after a patch:
 
     python3 tools/build_specs.py            # downloads the tables it needs into tools/db2/
@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DB2 = Path(__file__).resolve().parent / "db2"
-OUT = ROOT / "Crafting" / "Specs"
+OUT = ROOT / "Research" / "Specs"
 TABLES = ["SkillLine", "SkillLineXTraitTree", "SkillLineAbility", "TraitNode", "TraitNodeXTraitNodeEntry", "TraitNodeEntry",
           "TraitDefinition", "TraitCond", "TraitNodeXTraitCond", "ProfessionTrait", "ProfessionTraitXEffect", "ProfessionEffect",
           "ProfessionEffectType", "ProfessionTraitXLabel", "SpellLabel"]
