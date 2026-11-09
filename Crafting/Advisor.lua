@@ -607,8 +607,8 @@ end
 -- TSM's own sources behind chvalue, labelled by where they come from.
 A.SOURCES = {
 	{ "dbminbuyout", "Lowest listing, realm" },
-	{ "dbmarket", "Market value, realm" },
-	{ "dbregionmarketavg", "Market value, region" },
+	{ "dbmarket", "MV  Market Value, realm" },
+	{ "dbregionmarketavg", "RV  Region Value" },
 	{ "dbregionsaleavg", "Sale price, region" },
 	{ "dbregionsalerate", "Sale rate, region", "rate" },
 	{ "dbregionsoldperday", "Sold per day, region", "count" },

@@ -128,3 +128,53 @@ end
 function Prices.ClearCache()
 	cache, cacheTime, customOK = {}, {}, {}
 end
+
+--- Short codes used as column headings and labels, and what each means (shown on hover).
+CH.GLOSSARY = {
+	MV = "Market Value: TSM's market value on your realm, from AH scans.",
+	RV = "Region Value: TSM's average market value across the whole region.",
+	EV = "Estimated Value: what one is worth to you if you list it, after the AH cut, deposits lost to expiries and gold tied up while it waits.",
+	RZ = "Realized Value: what you really sold it for, on average after the cut, over your last 30 days of sales.",
+}
+
+--- The four values that explain an item's price, each with where it comes from:
+---   mv        Market Value: TSM's market value on this realm (dbmarket). Observed, from AH scans.
+---   rv        Region Value: TSM's average market value across the region (dbregionmarketavg).
+---   ev        Estimated Value: what one is worth to you if you list it at chvalue, after the cut,
+---             deposits lost to expiries and gold tied up while it waits (Expect.lua). An estimate.
+---   realized  Realized Value: what you really sold it for, on average after the cut, over the last
+---             30 days of your sales (n of them, last at lastSale). nil when you haven't sold one.
+function Prices.Values(id, now)
+	if not id then return {} end
+	now = now or time()
+	local out = { mv = Prices.Raw("dbmarket", id), rv = Prices.Raw("dbregionmarketavg", id) }
+	local sale = Prices.Get("chvalue", "i:" .. id)
+	if sale and CH.Expect then out.ev = CH.Expect.Value(id, sale) end
+	if CH.Ledger and CH.Ledger.Available() then
+		local gold, n, last = 0, 0, nil
+		for _, s in ipairs(CH.Ledger.Records("Sales")) do
+			if s.id == id and s.quantity > 0 and s.time >= now - 30 * 86400 then
+				gold, n = gold + s.amount * CH.AH_CUT, n + s.quantity
+				if not last or s.time > last then last = s.time end
+			end
+		end
+		if n > 0 then out.realized, out.n, out.lastSale = gold / n, n, last end
+	end
+	return out
+end
+
+--- Tooltip lines for Prices.Values: { label, money, labelColor, valueColor }.
+function Prices.ValueLines(id, now)
+	local v, m, T = Prices.Values(id, now), CH.FormatMoney, CH.Theme
+	local lines = {}
+	if v.mv then table.insert(lines, { "  MV  Market Value", m(v.mv), "muted" }) end
+	if v.rv then table.insert(lines, { "  RV  Region Value", m(v.rv), "muted" }) end
+	if v.ev then table.insert(lines, { "  EV  Estimated Value", m(v.ev), "muted", "accent" }) end
+	if v.realized then
+		local ago = v.lastSale and math.floor(((now or time()) - v.lastSale) / 86400) or 0
+		table.insert(lines, { string.format("  RZ  Realized, %d sold, last %s", v.n, ago == 0 and "today" or (ago .. "d ago")), m(v.realized), "muted", "ok" })
+	end
+	if #lines > 0 then table.insert(lines, 1, { "Values", "" }) end
+	return lines
+end
+

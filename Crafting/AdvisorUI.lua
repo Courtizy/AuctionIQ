@@ -340,6 +340,8 @@ function AUI.BreakdownLines(result, r, col)
 				or CH.FormatMoney(v)
 			add("   " .. src.label, text)
 		end
+		local vals = CH.Prices.Values(r.item)
+		if vals.realized then add(string.format("   RZ  Realized, your %d sales", vals.n), CH.FormatMoney(vals.realized)) end
 		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.price and r.price / (r.shade or 1)))
 		if r.shade then
 			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")), CH.FormatMoney(r.price))

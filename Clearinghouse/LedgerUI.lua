@@ -458,6 +458,12 @@ function LUI.Build(p, fs, panel)
 			if sortCol == j then sortDesc = not sortDesc else sortCol, sortDesc = j, j ~= 1 end
 			CH.UI.Refresh()
 		end)
+		-- a short code heading (MV, RV, EV, RZ) explains itself on hover
+		h:SetScript("OnEnter", function(self)
+			local say = self.code and CH.GLOSSARY and CH.GLOSSARY[self.code]
+			if say then CH.Window.Tooltip(self, { { CH.Theme.Color("accent", self.code) }, { say } }) end
+		end)
+		h:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		p.heads[j] = h
 	end
 	-- rows, each with a hover area for the item's tooltip
@@ -529,6 +535,7 @@ function LUI.Refresh()
 			h.text:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
 			local arrow = sortCol == j and (sortDesc and " v" or " ^") or ""
 			h.text:SetText((sortCol == j and T.Color("accent", c[1] .. arrow)) or c[1])
+			h.code = c[1]
 			h:Show()
 		else
 			h:Hide()

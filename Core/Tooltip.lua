@@ -89,11 +89,10 @@ function CH.TooltipLines(link)
 		end
 		table.insert(lines, { "  " .. cutPct(), m(-(value - value * CH.AH_CUT)), "bad" })
 		table.insert(lines, { "  Value after cut", m(value * CH.AH_CUT), "ok", "accent" })
-		local sold = CH.Prices.Get("avgsell", link)
-		if sold then table.insert(lines, { "    Your average sale", m(sold), "muted", "muted" }) end
 	elseif now then
 		table.insert(lines, { "AuctionIQ buy price", m(now) })
 	end
+	for _, l in ipairs(CH.Prices.ValueLines(itemID(link))) do table.insert(lines, l) end
 	local mk = CH.Prices.Market(itemID(link))
 	if mk and mk.market then
 		table.insert(lines, { "Your AH scan", CH.Theme.Color("muted", CH.Scans.Age(mk.age) .. " old") })
