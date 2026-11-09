@@ -382,33 +382,111 @@ function Lg.CostAtPaid(acc, paid)
 	return cost * (1 - saved) / math.max(items, 0.01), total > 0 and known / total or 0
 end
 
---- Profit by crafted item over a period: sales after the cut less the cost of making them at what
---- you paid. { id, name, line, sold, revenue, cost, profit, margin, paidShare }.
+--- What you paid for each item around a time: { [itemID] = { times, n, gold } } built once from
+--- TSM's buys (sorted, with running totals), and PaidAt(index, id, t) = the average of that item's
+--- buys in the 30 days up to t, else the last buy before t, else nil. A later purchase never
+--- changes what an earlier sale cost.
+function Lg.PaidIndex()
+	local by = {}
+	for _, b in ipairs(Lg.Records("Buys")) do
+		if b.id and b.quantity > 0 then
+			local e = by[b.id] or {}
+			by[b.id] = e
+			e[#e + 1] = b
+		end
+	end
+	for id, list in pairs(by) do
+		table.sort(list, function(x, y) return x.time < y.time end)
+		local ix = { times = {}, n = { [0] = 0 }, gold = { [0] = 0 } }
+		for i, b in ipairs(list) do
+			ix.times[i] = b.time
+			ix.n[i] = ix.n[i - 1] + b.quantity
+			ix.gold[i] = ix.gold[i - 1] + b.amount
+		end
+		by[id] = ix
+	end
+	return by
+end
+
+-- the last index whose time is <= t (0 if none)
+local function upTo(times, t)
+	local lo, hi = 0, #times
+	while lo < hi do
+		local mid = math.floor((lo + hi + 1) / 2)
+		if times[mid] <= t then lo = mid else hi = mid - 1 end
+	end
+	return lo
+end
+
+function Lg.PaidAt(index, id, t)
+	local ix = index[id]
+	if not ix then return nil end
+	local j = upTo(ix.times, t)
+	if j == 0 then return nil end
+	local i = upTo(ix.times, t - 30 * DAY)
+	if j > i then return (ix.gold[j] - ix.gold[i]) / (ix.n[j] - ix.n[i]) end
+	return (ix.gold[j] - ix.gold[j - 1]) / (ix.n[j] - ix.n[j - 1])
+end
+
+--- Cost to make one item at the reagent prices you paid around time t (today's price for any you
+--- hadn't bought by then), after Resourcefulness, over what Multicraft makes. Also the paid share.
+function Lg.CostAt(acc, index, t)
+	local cost, known = 0, 0
+	for _, rg in ipairs(acc.reagents or {}) do
+		local p = Lg.PaidAt(index, rg.itemID, t)
+		local each = p or (rg.cost and rg.n > 0 and rg.cost / rg.n) or 0
+		cost = cost + each * rg.n
+		if p then known = known + each * rg.n end
+	end
+	local saved = (acc.cost and acc.cost > 0) and (acc.resGold or 0) / acc.cost or 0
+	local items = (acc.made or 1) + (acc.extraItems or 0)
+	return cost * (1 - saved) / math.max(items, 0.01), cost > 0 and known / cost or 0
+end
+
+--- Profit by crafted item over a period: sales after the cut less the cost of making them, each sale
+--- at the reagent prices you paid in the 30 days before it (so buying more later never rewrites an
+--- earlier period). Estimated: it uses the recipe's current reagent mix and procs from your scans.
+--- { id, name, line, sold, revenue, cost, each, profit, margin, paidShare }.
+local plCache = setmetatable({}, { __mode = "k" })
 function Lg.ProductPL(since, char)
-	local crafted, paid = Lg.Crafted(), Lg.Paid()
+	-- one build per set of records: Performance asks for several periods and characters in a row
+	local sales, buys = Lg.Records("Sales"), Lg.Records("Buys")
+	local c = plCache[sales]
+	local now = GetTime and GetTime() or 0
+	if not c or c.buys ~= buys or now - c.at > 60 then -- and at most a minute old, for new scans
+		c = { buys = buys, crafted = Lg.Crafted(), index = Lg.PaidIndex(), memo = {}, at = now }
+		plCache[sales] = c
+	end
+	local key = tostring(since) .. "|" .. tostring(char)
+	if c.memo[key] then return c.memo[key] end
+	local crafted, index = c.crafted, c.index
 	local rows = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		local c = s.id and crafted[s.id]
-		if c and s.time >= since and (not char or s.player == char) then
+	for _, s in ipairs(sales) do
+		local cr = s.id and crafted[s.id]
+		if cr and s.time >= since and (not char or s.player == char) then
 			local e = rows[s.id]
 			if not e then
-				local each, share = Lg.CostAtPaid(c.acc, paid)
-				e = { id = s.id, name = c.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(c.name) or "Other",
-					sold = 0, revenue = 0, each = each, paidShare = share }
+				e = { id = s.id, name = cr.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(cr.name) or "Other",
+					sold = 0, revenue = 0, cost = 0, known = 0 }
 				rows[s.id] = e
 			end
+			local each, share = Lg.CostAt(cr.acc, index, s.time)
 			e.sold = e.sold + s.quantity
 			e.revenue = e.revenue + s.amount * CH.AH_CUT
+			e.cost = e.cost + each * s.quantity
+			e.known = e.known + share * s.quantity
 		end
 	end
 	local out = {}
 	for _, e in pairs(rows) do
 		e.line = e.line or "Other"
-		e.cost = e.each * e.sold
+		e.each = e.sold > 0 and e.cost / e.sold or 0
+		e.paidShare = e.sold > 0 and e.known / e.sold or 0
 		e.profit = e.revenue - e.cost
 		e.margin = e.revenue > 0 and e.profit / e.revenue or 0
 		table.insert(out, e)
 	end
+	c.memo[key] = out
 	return out
 end
 

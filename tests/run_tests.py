@@ -338,6 +338,17 @@ sr = CH.Scan.Results(2906)
 names = [r.name for r in sr.rows.values()]
 check("scan: every learned recipe with a result, saved", "Test Flask" in names and "Test Potion" in names)
 pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
+# a scan that runs out of frame time pauses inside a recipe and finishes it next frame, same results
+before = sorted((r.name, r.profit) for r in sr.rows.values())
+run("""STUB.tick = 0; STUB.scanSteps = 0; debugprofilestop = function() STUB.tick = STUB.tick + 10; return STUB.tick end
+AuctionIQ.Scan.Run(function() STUB.scanSteps = STUB.scanSteps + 1 end)
+for i = 1, 400 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end
+debugprofilestop = nil""")
+after = sorted((r.name, r.profit) for r in CH.Scan.Results(2906).rows.values())
+check("scan: a slow frame pauses part-way through a recipe and the results come out the same",
+      not CH.Scan.IsRunning() and after == before and L.eval("STUB.scanSteps") > len(before))
+run("""AuctionIQ.Scan.Run(); AuctionIQ.Scan.Stop(); for i = 1, 20 do STUB.RunTimers() end""")
+check("scan: Stop ends a running scan", not CH.Scan.IsRunning())
 check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(pot.perDay - pot.profit * 10 / 2) < 1e-6)
 top = list(CH.Scan.Top(2906, 1).values())
 tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
@@ -484,6 +495,19 @@ pl = {e.id: e for e in LG.ProductPL(-1e12).values()}
 check("product P&L: crafted sales after cut less cost at what you paid", 302 in pl and pl[302].sold == 2
       and abs(pl[302].revenue - 6000000 * 0.95) < 1 and abs(pl[302].profit - (pl[302].revenue - pl[302].cost)) < 1
       and pl[302].line == "Flasks & Phials")
+# a purchase after the sale doesn't change what that sale cost (cost at the time, not today's pool);
+# one before it does
+k = "r@Emerald Dream@internalData@csvBuys"
+run(f"""STUB.oldBuys = TradeSkillMasterDB["{k}"]
+TradeSkillMasterDB["{k}"] = STUB.oldBuys .. "\\ni:202,1,10,9000000,Seller,Courtizy," .. STUB.now .. ",Auction"
+AuctionIQ.Ledger.ClearStats()""")
+pl2 = {e.id: e for e in LG.ProductPL(-1e12).values()}
+run(f"""TradeSkillMasterDB["{k}"] = STUB.oldBuys .. "\\ni:202,1,10,9000000,Seller,Courtizy," .. (STUB.now - 7000) .. ",Auction"
+AuctionIQ.Ledger.ClearStats()""")
+pl3 = {e.id: e for e in LG.ProductPL(-1e12).values()}
+check("product P&L: a later purchase leaves an earlier sale's cost alone", abs(pl2[302].cost - pl[302].cost) < 1)
+check("product P&L: a purchase before the sale sets its cost", pl3[302].cost > pl[302].cost + 1 and pl3[302].paidShare > 0)
+run(f"""TradeSkillMasterDB["{k}"] = STUB.oldBuys; AuctionIQ.Ledger.ClearStats()""")
 dead = list(LG.DeadStock(L.eval("STUB.now"), 1).values())
 check("dead stock: held, not sold in the window", [e.id for e in dead] == [301] and dead[0].advice.startswith("Slow"))
 o = LG.Overhead(-1e12)
@@ -1193,6 +1217,8 @@ d1 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 981, need = 5, have = 1, b
 d2 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 982, need = 5, have = 0, buy = 5 }, { { price = 20000, qty = 10 } })")
 check("shopping: buys at the live price, skips one far over the usual price", d1.action == "buy" and d1.qty == 4 and d1.unit == 10500
       and d2.action == "skip" and "100%" in d2.why)
+d3 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 981, need = 10, have = 0, buy = 10 }, { { price = 10500, qty = 4 } })")
+check("shopping: only the listed units are priced, the rest shown as short", d3.action == "buy" and d3.qty == 4 and d3.cost == 42000 and d3.short == 6)
 run("""STUB.oldSL = AuctionIQ.Queue.ShoppingList; STUB.oldSearch = AuctionIQ.Auction.Search
 AuctionIQ.Queue.ShoppingList = function() return { { itemID = 981, need = 5, have = 1, buy = 4 }, { itemID = 982, need = 5, have = 0, buy = 5 } } end
 AuctionIQ.Auction.Search = function(id, done) done(id == 981 and { { price = 10500, qty = 10 } } or { { price = 20000, qty = 10 } }) end
@@ -1253,6 +1279,24 @@ box = L.eval("AuctionIQ.Mail.Outbox()")
 check("mail: the outbox sends a crafter only the reagents they're short", box["Alt"][1].send == 7 and box["Alt"][1].reagent)
 run("AuctionIQ.Mail.SendNext()")
 check("mail: a part stack is split off, not the whole stack sent", L.eval("STUB.mailSplit") == 7 and L.eval("STUB.mailTo") == "Alt")
+# Mail: the Warband bank is one stock. Your own queued crafts take from it first, then each crafter
+# takes what's left, and one bag stack is never handed out twice.
+run("""AuctionIQ.Queue.Clear()
+table.insert(AuctionIQ.db.queue, { char = AuctionIQ.CharacterKey(), recipeID = 10, qty = 1, shop = { { itemID = 991, n = 1 } }, reagents = {} })
+table.insert(AuctionIQ.db.queue, { char = 'Alt-Emerald Dream', charName = 'Alt', recipeID = 10, qty = 1, shop = { { itemID = 991, n = 4 } }, reagents = {} })
+table.insert(AuctionIQ.db.queue, { char = 'Bee-Emerald Dream', charName = 'Bee', recipeID = 10, qty = 1, shop = { { itemID = 991, n = 4 } }, reagents = {} })
+AuctionIQ.Ledger.Inventory = function(_, name)
+  if name == nil then return { { id = 991, bags = 0, bank = 0, mail = 0, warband = 4 } } end
+  return {}
+end
+C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
+  GetContainerItemInfo = function(bag, slot) return { itemID = 991, stackCount = 6 } end }""")
+need = L.eval("AuctionIQ.Mail.ReagentNeeds()")
+check("mail: the Warband bank isn't counted for more than one crafter",
+      need["Alt"][991] == 1 and need["Bee"][991] == 4)
+box = L.eval("AuctionIQ.Mail.Outbox()")
+sends = [it.send for to in ("Alt", "Bee") if box[to] for it in box[to].values()]
+check("mail: one stack is shared out, never sent twice", sends == [1, 4] and sum(sends) <= 6)
 run("""C_Container = STUB.oldCC; SendMail = STUB.oldSend; ClickSendMailItemButton = STUB.oldCSMIB
 AuctionIQ.Ledger.Inventory = STUB.oldInv; AuctionIQ.Ledger.Available = STUB.oldAvail; AuctionIQ.Queue.Clear()""")
 
@@ -1294,6 +1338,11 @@ perf = L.eval(f"(function() local l, t, p = AuctionIQ.AnalyticsViews.Performance
 check("analytics performance: this week's crafted profit against the week before", perf.p != 0 and perf.t != perf.p)
 drv = [x for x in L.eval(f"AuctionIQ.AnalyticsViews.Drivers({ctx})").values() if x.id == 100][0]
 check("analytics drivers: price, volume and cost effects add up to the change", abs(drv.price + drv.volume + drv.cost - drv.change) < 1 and drv.driver in ("price", "volume"))
+run("""STUB.oldInvC = AuctionIQ.Ledger.Inventory
+AuctionIQ.Ledger.Inventory = function() return { { id = 100, total = 10, value = 999999 } } end""")
+capl = list(L.eval(f"AuctionIQ.AnalyticsViews.Capital({ctx})")[0].values())
+run("AuctionIQ.Ledger.Inventory = STUB.oldInvC")
+check("analytics capital: days of stock is units held over units sold a day", any(x.daysOfStock and abs(x.daysOfStock - 17.5) < 1e-6 for x in capl))
 cr = [x for x in L.eval(f"AuctionIQ.AnalyticsViews.Crafting({ctx})").values() if x.char == "Alt"][0]
 check("analytics crafting: gold per Concentration point from the Concentration crafts", cr.perPoint == 50 and cr.each == 5000)
 sc = [x for x in L.eval(f"AuctionIQ.AnalyticsViews.Scenarios({ctx})").values() if x.name == "Test Flask" and x.char == "Alt"][0]
@@ -1303,6 +1352,15 @@ check("analytics: Performance view opens", LUI.View() == "performance" and LUI.S
 nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("AuctionIQ.LedgerUI.SECTIONS.research").items() if isinstance(k, int))]
 perfnav = nav[nav.index("Performance") + 1:]
 check("performance nav: performance first, craft results last, no stock targets", perfnav[0] == "performance" and perfnav[-1] == "results" and "par" not in perfnav and "perf" in perfnav)
+# Scenarios reprice revenue, consumed reagents and what Resourcefulness gives back separately:
+# 130 revenue - 100 reagents + 20 back = 50; reagents +10% = 42, price -10% = 37, both = 29
+parts = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 0 }")
+rp = L.eval("AuctionIQ.AnalyticsViews.Reprice")
+check("scenarios: Resourcefulness's returns are repriced with the reagents",
+      abs(rp(parts, 0, 0) - 50) < 1e-9 and abs(rp(parts, 0.1, 0) - 42) < 1e-9 and abs(rp(parts, 0, 0.1) - 37) < 1e-9 and abs(rp(parts, 0.1, 0.1) - 29) < 1e-9)
+pa = L.eval("AuctionIQ.AnalyticsViews.Parts({ profit = 50, cost = 100, accounts = { sales = 120, mcGold = 10, cost = 100, resGold = 20, unit = 13, deposit = 1 } })")
+check("scenarios: a scan's accounts split into revenue, reagents, returns and deposits",
+      pa.revenue == 130 and pa.consumed == 100 and pa.returned == 20 and abs(pa.deposits - 10) < 1e-9 and abs(rp(pa, 0, 0.1) - 36) < 1e-9)
 # Scenarios: editable, saved, and the headings follow
 run("AuctionIQ.UI.Page('research', 'scenarios')")
 ctl = L.eval("AuctionIQ.UI.Pages().ledger.controls")
@@ -1330,6 +1388,14 @@ cheap = L.eval("AuctionIQ.Advisor.Cheapest(STUB.cm, 0)")
 q2 = cheap[2]
 cost2 = (q2[1][1] or 0) * 1 + (q2[1][2] or 0) * 10 + (q2[2][1] or 0) * 1 + (q2[2][2] or 0) * 3
 check("advisor: the exact cheapest mix for a quality, not the greedy one", cost2 == 13 and (q2[1][2] or 0) == 1)
+# fractional skill: 3.5 + 2.5 reaches 6, though each slot rounded down would only make 5
+run("""for id, p in pairs({ [971] = 1, [972] = 31, [973] = 1, [974] = 31, [975] = 1, [976] = 67 }) do STUB.prices['i:' .. id] = { mat = p } end
+AuctionIQ.Prices.ClearCache()
+STUB.cf = { qual = { { qty = 1, items = { 971, 972 } }, { qty = 1, items = { 973, 974 } }, { qty = 1, items = { 975, 976 } } }, fixed = {},
+  perUnit = { { [1] = 0, [2] = 3.5 }, { [1] = 0, [2] = 2.5 }, { [1] = 0, [2] = 6 } }, maxQ = 2, thresholds = { [2] = 6 } }""")
+cf = L.eval("AuctionIQ.Advisor.Cheapest(STUB.cf, 0)")[2]
+costf = sum(n * {1: {1: 1, 2: 31}, 2: {1: 1, 2: 31}, 3: {1: 1, 2: 67}}[i][q] for i in (1, 2, 3) for q, n in cf[i].items())
+check("advisor: fractional skill from two slots adds up to a threshold", costf == 63)
 
 # one evaluation with no finishing reagents asks the game once per mix, not twice
 run("STUB.m10 = AuctionIQ.Advisor.Measure(10)")
@@ -1368,6 +1434,23 @@ for i, slot in ipairs(AuctionIQ.AdvisorUI.Current().qual) do
 end
 AuctionIQ.Log.Started(10, 1, false, infos, nil)""")
     check("craft log: the row matching the craft's reagents is the one expected", L.eval("AuctionIQ.Log.Pending().cost") == other.cost)
+
+# craft log: an order's craft is worth its pay (commission after the cut + rewards), not the item at market,
+# and the reagents the customer provided cost you nothing
+run("""STUB.oldCO = C_CraftingOrders
+C_CraftingOrders = { GetClaimedOrder = function() return { orderID = 91, spellID = 10, tipAmount = 500000, consortiumCut = 50000, reagents = {} } end }
+AuctionIQ.Log.Clear(); AuctionIQ.AdvisorUI.Show(10)
+AuctionIQ.Log.Started(10, 1, false, { { itemID = 202, quantity = 1, dataSlotIndex = 1 } }, 91)""")
+po = L.eval("AuctionIQ.Log.Pending()")
+check("craft log: an order craft knows what the order pays", po.order and po.orderIncome == 450000)
+run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })')
+oe = list(CH.Log.Rows().values())[0].e
+check("craft log: the order's pay is counted once, not the item at market", oe.value == 450000 and oe.orderIncome == 450000 and oe.orderCrafts == 1)
+run("""C_CraftingOrders = { GetClaimedOrder = function() return { orderID = 89, spellID = 10, tipAmount = 0, reagents = {
+  { reagentInfo = { reagent = { itemID = 202 }, quantity = 1, dataSlotIndex = 1 } } } } end }
+AuctionIQ.Log.Started(10, 1, false, { { itemID = 202, quantity = 1, dataSlotIndex = 1 } }, 89)""")
+check("craft log: customer-provided reagents aren't your cost", L.eval("AuctionIQ.Log.Pending().cost") < L.eval("(function() local x = AuctionIQ.Prices.Get('chmat', 'i:202'); return x end)()") or L.eval("AuctionIQ.Log.Pending().cost") == 0)
+run("C_CraftingOrders = STUB.oldCO; AuctionIQ.Log.Clear()")
 
 # posting: a confirmed post counts toward the cap before the owned list comes back
 run("AuctionIQ.db.auctions = {}; AuctionIQ.Auction.Posted(971, 5)")

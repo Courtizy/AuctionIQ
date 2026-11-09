@@ -151,16 +151,31 @@ function Prices.Values(id, now)
 	local sale = Prices.Get("chvalue", "i:" .. id)
 	if sale and CH.Expect then out.ev = CH.Expect.Value(id, sale) end
 	if CH.Ledger and CH.Ledger.Available() then
-		local gold, n, last = 0, 0, nil
-		for _, s in ipairs(CH.Ledger.Records("Sales")) do
-			if s.id == id and s.quantity > 0 and s.time >= now - 30 * 86400 then
-				gold, n = gold + s.amount * CH.AH_CUT, n + s.quantity
-				if not last or s.time > last then last = s.time end
-			end
-		end
-		if n > 0 then out.realized, out.n, out.lastSale = gold / n, n, last end
+		local e = Prices.RecentSales(now)[id]
+		if e and e.n > 0 then out.realized, out.n, out.lastSale = e.gold / e.n, e.n, e.last end
 	end
 	return out
+end
+
+-- Every item's last 30 days of sales, added up in one pass over the ledger and kept until the
+-- ledger's records change or a minute passes, so a table of items doesn't walk the sales per row.
+local recent = { at = 0 }
+--- { [itemID] = { gold (after the cut), n (units), last (time) } } over the 30 days before now.
+function Prices.RecentSales(now)
+	now = now or time()
+	local records = CH.Ledger.Records("Sales")
+	if recent.records == records and math.abs(now - recent.at) < 60 then return recent.by end
+	local by, from = {}, now - 30 * 86400
+	for _, s in ipairs(records) do
+		if s.id and s.quantity > 0 and s.time >= from and s.time <= now then
+			local e = by[s.id]
+			if not e then e = { gold = 0, n = 0 }; by[s.id] = e end
+			e.gold, e.n = e.gold + s.amount * CH.AH_CUT, e.n + s.quantity
+			if not e.last or s.time > e.last then e.last = s.time end
+		end
+	end
+	recent.records, recent.at, recent.by = records, now, by
+	return by
 end
 
 --- Tooltip lines for Prices.Values: { label, money, labelColor, valueColor }.

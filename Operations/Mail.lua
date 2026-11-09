@@ -27,29 +27,53 @@ end
 
 --- Reagents the crafting queue's other crafters are short, on this realm: { [name] = { [itemID] = n } }.
 --- Short is what their queued crafts need less what they hold (bags, bank, mail on its way) and the
---- Warband bank, which they can take from themselves.
+--- Warband bank, which they can take from themselves. The Warband bank is one stock shared by
+--- everyone: what this character's own queued crafts will take from it comes off first, then each
+--- crafter in name order takes what's left, so no unit is counted twice.
 function M.ReagentNeeds()
 	local out = {}
 	local here = CH.CharacterKey and CH.CharacterKey()
+	local me = UnitName and UnitName("player")
 	local realm = GetRealmName and GetRealmName()
-	local need = {}
+	local need, mine = {}, {}
 	for _, e in ipairs(CH.db and CH.db.queue or {}) do
 		local name, r = tostring(e.char or ""):match("^(.-)%-(.+)$")
-		if e.char ~= here and name and r == realm and (e.qty or 0) > 0 and e.stage ~= "crafted" then
-			need[name] = need[name] or {}
-			for _, x in ipairs(e.shop or {}) do need[name][x.itemID] = (need[name][x.itemID] or 0) + (x.n or 0) * e.qty end
+		if (e.qty or 0) > 0 and e.stage ~= "crafted" then
+			local into
+			if e.char == here then into = mine
+			elseif name and r == realm then need[name] = need[name] or {}; into = need[name] end
+			if into then
+				for _, x in ipairs(e.shop or {}) do into[x.itemID] = (into[x.itemID] or 0) + (x.n or 0) * e.qty end
+			end
 		end
 	end
 	if not next(need) then return out end
-	local warband = {}
-	for _, it in ipairs(CH.Ledger and CH.Ledger.Available() and CH.Ledger.Inventory() or {}) do if it.id then warband[it.id] = it.warband end end
-	for name, items in pairs(need) do
+	local ok = CH.Ledger and CH.Ledger.Available()
+	local function holds(name)
 		local held = {}
-		for _, it in ipairs(CH.Ledger and CH.Ledger.Available() and CH.Ledger.Inventory(nil, name) or {}) do
-			if it.id then held[it.id] = it.bags + it.bank + it.mail end
+		for _, it in ipairs(ok and CH.Ledger.Inventory(nil, name) or {}) do
+			if it.id then held[it.id] = (it.bags or 0) + (it.bank or 0) + (it.mail or 0) end
 		end
-		for id, n in pairs(items) do
-			local short = n - (held[id] or 0) - (warband[id] or 0)
+		return held
+	end
+	local warband = {}
+	for _, it in ipairs(ok and CH.Ledger.Inventory() or {}) do if it.id then warband[it.id] = it.warband or 0 end end
+	-- this character's own crafts take from the Warband bank first
+	local myHeld = next(mine) and holds(me) or {}
+	for id, n in pairs(mine) do
+		local fromBank = math.min(warband[id] or 0, math.max(0, n - (myHeld[id] or 0)))
+		if warband[id] then warband[id] = warband[id] - fromBank end
+	end
+	local names = {}
+	for name in pairs(need) do table.insert(names, name) end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		local held = holds(name)
+		for id, n in pairs(need[name]) do
+			local short = n - (held[id] or 0)
+			local fromBank = math.min(warband[id] or 0, math.max(0, short))
+			if fromBank > 0 then warband[id] = warband[id] - fromBank end
+			short = short - fromBank
 			if short > 0 then out[name] = out[name] or {}; out[name][id] = short end
 		end
 	end
@@ -57,33 +81,41 @@ function M.ReagentNeeds()
 end
 
 --- What to send from here: { [char] = { { id, bag, slot, count, send, reagent } } }, never to
---- yourself: items whose group routes to someone else, and reagents a queued crafter is short (only
---- as many as they need: send < count splits the stack).
+--- yourself: reagents a queued crafter is short (only as many as they need: send < count splits the
+--- stack), then what's left of the stack to the character its group routes to. A bag slot is never
+--- given out twice, and one recipient gets one entry per slot.
 function M.Outbox()
 	local out, me = {}, UnitName and UnitName("player")
 	if not C_Container then return out end
 	local short = M.ReagentNeeds()
+	local names = {}
+	for name in pairs(short) do if name ~= me then table.insert(names, name) end end
+	table.sort(names)
+	local function give(to, id, bag, slot, count, n, reagent)
+		out[to] = out[to] or {}
+		for _, it in ipairs(out[to]) do
+			if it.bag == bag and it.slot == slot then it.send = it.send + n; return end
+		end
+		table.insert(out[to], { id = id, bag = bag, slot = slot, count = count, send = n, reagent = reagent })
+	end
 	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local info = C_Container.GetContainerItemInfo(bag, slot)
 			if info and info.itemID and not info.isBound then
 				local id, count = info.itemID, info.stackCount or 1
-				local to = M.Destination(id)
-				local sent
+				local left = count
 				-- a queued crafter short of this reagent gets it first, only as many as they need
-				for name, items in pairs(short) do
-					if not sent and name ~= me and (items[id] or 0) > 0 then
-						local n = math.min(count, items[id])
-						items[id] = items[id] - n
-						out[name] = out[name] or {}
-						table.insert(out[name], { id = id, bag = bag, slot = slot, count = count, send = n, reagent = true })
-						sent = n == count
+				for _, name in ipairs(names) do
+					local want = short[name][id] or 0
+					if left > 0 and want > 0 then
+						local n = math.min(left, want)
+						short[name][id] = want - n
+						left = left - n
+						give(name, id, bag, slot, count, n, true)
 					end
 				end
-				if not sent and to and to ~= me then
-					out[to] = out[to] or {}
-					table.insert(out[to], { id = id, bag = bag, slot = slot, count = count, send = count })
-				end
+				local to = M.Destination(id)
+				if left > 0 and to and to ~= me then give(to, id, bag, slot, count, left) end
 			end
 		end
 	end

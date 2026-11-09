@@ -8,8 +8,9 @@
 --   Scenarios            what reagent or selling price changes would do to each craft
 --   Gold per hour        LedgerUI's "time"
 --   Craft results        Research/Log.lua
--- Profit here is realized: crafted items' sales after the cut, less reagents at what you paid
--- (Ledger.ProductPL). Comparisons are against the period of the same length just before.
+-- Profit here is crafted items' real sales after the cut, less reagents at what you paid for them
+-- around the time of each sale (Ledger.ProductPL): an estimate of cost, since bought reagents
+-- aren't tracked batch by batch. Comparisons are against the period of the same length just before.
 local _, CH = ...
 
 local AV = {}
@@ -178,13 +179,14 @@ end
 
 -- Capital efficiency ----------------------------------------------------------------------------
 --- Per category: gold tied up in stock (at AuctionIQ value) against the profit it made in the
---- period, and how many days of sales the stock is.
+--- period, and how many days of sales the stock is (units held over units sold a day, so a price
+--- change between buying and selling doesn't skew it).
 function AV.Capital(ctx)
 	local start, _, len = periods(ctx)
 	local crafted = CH.Ledger.Crafted()
 	local by, held, earned = {}, 0, 0
 	local function cat(name)
-		local x = by[name] or { name = name, value = 0, profit = 0, revenue = 0 }
+		local x = by[name] or { name = name, value = 0, profit = 0, revenue = 0, units = 0, sold = 0 }
 		by[name] = x
 		return x
 	end
@@ -192,18 +194,20 @@ function AV.Capital(ctx)
 		if e.id and e.value > 0 then
 			local x = cat(category(e.id, crafted))
 			x.value, held = x.value + e.value, held + e.value
+			x.units = x.units + (e.total or 0)
 		end
 	end
 	for _, e in pairs(plSince(start, ctx.opts.char)) do
 		local x = cat(category(e.id, crafted))
 		x.profit, x.revenue, earned = x.profit + e.profit, x.revenue + e.revenue, earned + e.profit
+		x.sold = x.sold + (e.sold or 0)
 	end
 	local days = len / DAY
 	local out = {}
 	for _, x in pairs(by) do
 		x.valueShare = held > 0 and x.value / held or 0
 		x.profitShare = earned > 0 and math.max(0, x.profit) / earned or 0
-		x.daysOfStock = x.revenue > 0 and x.value / (x.revenue / days) or nil
+		x.daysOfStock = x.sold > 0 and x.units / (x.sold / days) or nil
 		x.turn = x.value > 0 and x.profit / x.value or nil -- profit per gold held, this period
 		if ctx.keepName(x.name) then table.insert(out, x) end
 	end
@@ -308,9 +312,29 @@ local function step(x, dir)
 	return S[1]
 end
 
+--- What a craft's money is made of, from its saved scan: revenue (items after the cut and the cost
+--- of gold tied up, Multicraft's extras included), reagents consumed, what Resourcefulness gives back,
+--- and the deposits lost to expiries (which don't move with the price). Older scans without the
+--- breakdown count everything as revenue less reagents.
+function AV.Parts(row)
+	local a = row.accounts
+	if a and a.sales and a.cost then
+		local revenue = a.sales + (a.mcGold or 0)
+		local units = (a.unit and a.unit > 0) and revenue / a.unit or 0
+		return { revenue = revenue, consumed = a.cost, returned = a.resGold or 0, deposits = (a.deposit or 0) * units }
+	end
+	return { revenue = row.profit + row.cost, consumed = row.cost, returned = 0, deposits = 0 }
+end
+
+--- A craft's profit with reagents up r and the selling price down p (fractions). Reagents that
+--- Resourcefulness gives back are worth more too; deposits stay what they are.
+function AV.Reprice(parts, r, p)
+	local revenue = parts.revenue - p * (parts.revenue + parts.deposits)
+	return revenue - parts.consumed * (1 + r) + parts.returned * (1 + r)
+end
+
 --- What price changes would do to each craft in your saved scans: profit a craft now, with reagents
 --- up, with the selling price down, both, and the reagent rise that would wipe the profit out.
---- Estimated from the scan: value a craft = profit + reagent cost.
 function AV.Scenarios(ctx, r, p)
 	local sc = AV.Scenario()
 	r, p = r or sc.reagents, p or sc.price
@@ -320,10 +344,12 @@ function AV.Scenarios(ctx, r, p)
 			for _, row in ipairs(prof.scan and prof.scan.rows or {}) do
 				-- each character's own scan: their stats make each craft's numbers
 				if row.profit and row.cost and row.cost > 0 and row.profit > 0 and ctx.keepName(row.name) then
-					local value = row.profit + row.cost
-					table.insert(out, { id = row.item, name = row.name, char = c.name or key, profit = row.profit,
-						reagentsUp = row.profit - r * row.cost, priceDown = row.profit - p * value,
-						both = row.profit - r * row.cost - p * value, breakEven = row.profit / row.cost })
+					local parts = AV.Parts(row)
+					local now = AV.Reprice(parts, 0, 0)
+					local net = parts.consumed - parts.returned
+					table.insert(out, { id = row.item, name = row.name, char = c.name or key, profit = now,
+						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
+						breakEven = net > 0 and now / net or math.huge })
 				end
 			end
 		end
@@ -337,7 +363,7 @@ local function scenarioRows(ctx)
 	for _, x in ipairs(AV.Scenarios(ctx)) do
 		if x.both < 0 then fragile = fragile + 1 end
 		table.insert(out, { id = x.id, cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both),
-			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", "+" .. pct(x.breakEven)),
+			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)),
 			x.both < 0 and T.Color("bad", "loses money") or T.Color("ok", "holds up") },
 			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.breakEven, x.both } })
 	end
