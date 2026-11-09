@@ -164,18 +164,93 @@ for _, y in pairs(YIELD) do
 end
 P.YIELD = YIELD
 
---- How much of each gathering line you get a day (settable, /aiq de): { [key] = n }.
+-- What your disenchanting really gives, recorded as you loot it: CH.db.yieldLog[prof][day] =
+-- { [itemID] = n }. Loot counts when it comes out of an item (a disenchant), not off a mob.
+local DAY, WINDOW = 86400, 14
+local lineOf = {}
+for prof, y in pairs(YIELD) do
+	for _, l in ipairs(y.lines) do
+		for q, id in ipairs(l.items) do lineOf[id] = { prof = prof, line = l, q = q } end
+	end
+end
+
+local function yieldLog(prof)
+	CH.db.yieldLog = CH.db.yieldLog or {}
+	CH.db.yieldLog[prof] = CH.db.yieldLog[prof] or {}
+	return CH.db.yieldLog[prof]
+end
+
+--- Record one loot window's gathering materials (called on LOOT_OPENED).
+function P.RecordLoot(now)
+	if not (GetNumLootItems and GetLootSlotLink) then return end
+	now = now or time()
+	local day = math.floor(now / DAY)
+	for slot = 1, GetNumLootItems() or 0 do
+		local link = GetLootSlotLink(slot)
+		local id = link and tonumber(link:match("item:(%d+)"))
+		local hit = id and lineOf[id]
+		local fromItem = false
+		if hit and GetLootSourceInfo then
+			local guid = GetLootSourceInfo(slot)
+			fromItem = type(guid) == "string" and guid:find("^Item%-") ~= nil
+		end
+		if hit and fromItem then
+			local qty = select(3, GetLootSlotInfo(slot)) or 1
+			local log = yieldLog(hit.prof)
+			log[day] = log[day] or {}
+			log[day][id] = (log[day][id] or 0) + qty
+		end
+	end
+	-- keep a month
+	for prof in pairs(YIELD) do
+		local log = yieldLog(prof)
+		for d in pairs(log) do if d < day - 30 then log[d] = nil end end
+	end
+end
+CH.On("LOOT_OPENED", function() P.RecordLoot() end)
+
+--- What you really gathered over the last two weeks: { [key] = { n = per day, share = rank 2 share } },
+--- the days it covers, or nil when nothing is recorded.
+function P.Observed(prof, now)
+	local y = YIELD[prof]
+	if not y then return nil end
+	local today = math.floor((now or time()) / DAY)
+	local first, totals = nil, {}
+	for d, items in pairs(yieldLog(prof)) do
+		if d > today - WINDOW then
+			first = math.min(first or d, d)
+			for id, n in pairs(items) do totals[id] = (totals[id] or 0) + n end
+		end
+	end
+	if not first then return nil end
+	local days = today - first + 1
+	local out = {}
+	for _, l in ipairs(y.lines) do
+		local n1, n2 = totals[l.items[1]] or 0, totals[l.items[2]] or 0
+		out[l.key] = { n = (n1 + n2) / days, share = (n1 + n2) > 0 and n2 / (n1 + n2) or nil }
+	end
+	return out, days
+end
+
+--- How much of each gathering line you get a day: what /aiq de set, else what you've really
+--- disenchanted over the last two weeks, else a starting guess. { [key] = n }, and where it came from.
 function P.DailyYield(prof)
 	local y = YIELD[prof]
 	if not y then return {} end
 	CH.db.settings.paths = CH.db.settings.paths or {}
-	local d = CH.db.settings.paths[prof]
-	if not d then
-		d = {}
-		for _, l in ipairs(y.lines) do d[l.key] = l.daily end
-		CH.db.settings.paths[prof] = d
-	end
-	return d
+	local set = CH.db.settings.paths[prof]
+	if set and set.manual then return set, "set" end
+	local seen, days = P.Observed(prof)
+	local d = {}
+	for _, l in ipairs(y.lines) do d[l.key] = seen and seen[l.key].n or l.daily end
+	return d, seen and "seen" or "guess", days
+end
+
+--- Set what you disenchant a day by hand, or clear it (nil) to go back to what's recorded.
+function P.SetDailyYield(prof, d)
+	CH.db.settings.paths = CH.db.settings.paths or {}
+	if d then d.manual = true end
+	CH.db.settings.paths[prof] = d
 end
 
 --- The gathering path a goal means for this profession ("disenchanting", "dust"), or nil.
@@ -301,15 +376,29 @@ local function lineSkill(ctx, ranks, line)
 	return skill, line.cap
 end
 
--- Gold a day from a gathering path at these ranks: what you gather a day, with the share of rank 2
--- materials rising evenly with the path's skill (none at no points, all with the tree full; the game
--- doesn't publish the curve), valued at what each rank sells for after the cut.
+-- The share of rank 2 materials at a skill. The game doesn't publish the curve, so it rises evenly
+-- to all with the path full: from what you really got at your skill now when that's recorded,
+-- else from none at no skill.
+local function shareAt(ctx, line, skill, cap)
+	if cap <= 0 then return 0 end
+	local seen = ctx.seen and ctx.seen[line.key]
+	if seen and seen.share then
+		local now = lineSkill(ctx, ctx.ranks0, line)
+		if skill <= now or now >= cap then return seen.share end
+		return math.min(1, seen.share + (1 - seen.share) * (skill - now) / (cap - now))
+	end
+	return math.min(1, skill / cap)
+end
+
+-- Gold a day from a gathering path at these ranks: what you gather a day, at the share of rank 2
+-- materials the path's skill gives, valued at what each rank sells for after the cut.
 local function yieldValue(ctx, ranks)
 	local total, per = 0, {}
 	local daily = P.DailyYield(ctx.prof)
+	if ctx.seen == nil then ctx.seen = P.Observed(ctx.prof) or false; ctx.ranks0 = CH.Spec.Ranks(ctx.tree) end
 	for _, line in ipairs(ctx.yield.lines) do
 		local skill, cap = lineSkill(ctx, ranks, line)
-		local share = cap > 0 and math.min(1, skill / cap) or 0
+		local share = shareAt(ctx, line, skill, cap)
 		local p1, p2 = sellValue(line.items[1]), sellValue(line.items[2])
 		local n = daily[line.key] or 0
 		local g = 0
@@ -500,9 +589,12 @@ function P.Describe(plan)
 	local prof = CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or "this profession"
 	local y = plan.yield
 	if y then
-		local parts, daily = {}, P.DailyYield(plan.prof)
-		for _, l in ipairs(y.lines) do table.insert(parts, string.format("%d %s", daily[l.key] or 0, l.label)) end
-		table.insert(L, T.Color("accent", "Goal: ") .. y.name .. T.Color("muted", "  (Midnight gear into materials, " .. table.concat(parts, ", ") .. " a day: /aiq de to change)"))
+		local parts = {}
+		local daily, from, days = P.DailyYield(plan.prof)
+		for _, l in ipairs(y.lines) do table.insert(parts, string.format("%.0f %s", daily[l.key] or 0, l.label)) end
+		local src = from == "seen" and string.format("what you disenchanted over the last %d day%s", days, days == 1 and "" or "s")
+			or from == "set" and "as you set it with /aiq de" or "a starting guess until you disenchant something"
+		table.insert(L, T.Color("accent", "Goal: ") .. y.name .. T.Color("muted", "  (" .. table.concat(parts, ", ") .. " a day, " .. src .. ")"))
 	else
 		table.insert(L, T.Color("accent", "Goal: ") .. "sell " .. plan.label .. T.Color("muted", string.format("  (%d recipes in %s)", #plan.recipes, prof)))
 	end
@@ -536,7 +628,15 @@ function P.Describe(plan)
 		table.insert(L, string.format("Concentration earns %s a point at best (now %s).", m(plan.finalConc), m(plan.startConc)))
 	end
 	if y then
-		table.insert(L, T.Color("muted", "Disenchanting skill lifts the share of rank 2 materials. The game doesn't publish the curve, so the plan assumes it rises evenly from none at no points to all with the path full. Perks that give extra materials are listed but not counted in the gold."))
+		local seen = P.Observed(plan.prof)
+		local got = {}
+		for _, l in ipairs(y.lines) do
+			local s = seen and seen[l.key]
+			if s and s.share then table.insert(got, string.format("%s %d%%", l.label, math.floor(s.share * 100 + 0.5))) end
+		end
+		table.insert(L, T.Color("muted", "Disenchanting skill lifts the share of rank 2 materials. The game doesn't publish the curve, so the plan has it rise evenly to all with the path full, "
+			.. (#got > 0 and ("starting from the rank 2 share you really got (" .. table.concat(got, ", ") .. ").") or "from none at no points until AuctionIQ has seen you disenchant.")
+			.. " Perks that give extra materials are listed but not counted in the gold."))
 		return L
 	end
 	table.insert(L, T.Color("muted", string.format("Gold a day counts up to %d sold a day per item (/aiq cap to change) and a day's Concentration on the best recipe.",

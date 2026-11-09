@@ -134,7 +134,8 @@ is drawn on the profession's own trees in the Paths tab, and marked with step ba
 Specializations tab. All eight crafting professions, from Blizzard's own game data. Each profession
 has its own goal groups (Enchants, Gems, Garments, Weapons...), and Enchanting has a
 **Disenchanting** goal: it plans the Disenchanting tree for a bigger share of rank 2 dust, shards and
-crystals, from what you disenchant a day (`/aiq de 40 8 2`).
+crystals. AuctionIQ records what your disenchants really give, so the plan uses your own amounts
+and rank 2 share from the last two weeks (`/aiq de 40 8 2` sets them by hand, `/aiq de auto` goes back).
 
 </details>
 
@@ -207,7 +208,7 @@ cost is TSM's own `crafting` price.
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
 `/aiq results` - what your crafts really gave<br>
 `/aiq cap <n>` - most of one item you'd sell a day, for gold a day _(default 10)_<br>
-`/aiq de <dust> <shards> <crystals>` - what you disenchant a day, for Disenchanting plans _(default 40 8 2)_<br>
+`/aiq de` - what Disenchanting plans count a day; `/aiq de 40 8 2` sets it by hand, `/aiq de auto` uses what you really disenchant _(the default)_<br>
 `/aiq tooltip` - tooltip lines on or off<br>
 `/aiq coins` - coin icons or g/s/c text<br>
 `/aiq minimap` - hide or show the minimap button

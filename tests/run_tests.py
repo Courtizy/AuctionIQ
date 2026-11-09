@@ -265,6 +265,24 @@ check("disenchanting: plan puts points into dust when only dust sells", dp.steps
 check("disenchanting: describes the rank 2 share and the perk", any("rank 2 share" in plain(l) for l in dp.text.values())
       and any("more Eversinging Dust" in plain(l) for l in dp.text.values()))
 check("disenchanting: default points finish its paths", CH.Paths.PathCost(2909, L.eval("{}"), "disenchanting") == 42)
+# Disenchanting: what you really loot from items is recorded and used instead of the guess
+check("disenchanting: a starting guess before anything is seen", L.eval("(select(2, Clearinghouse.Paths.DailyYield(2909)))") == "guess")
+run("""local loot = { { "item:243599", 3, "Item-1-2-3" }, { "item:243600", 1, "Item-1-2-3" }, { "item:243600", 5, "Creature-0-1" } }
+GetNumLootItems = function() return #loot end
+GetLootSlotLink = function(i) return loot[i][1] end
+GetLootSlotInfo = function(i) return nil, nil, loot[i][2] end
+GetLootSourceInfo = function(i) return loot[i][3], 1 end
+Clearinghouse.Paths.RecordLoot(86400 * 100)""")
+ob = L.eval("(Clearinghouse.Paths.Observed(2909, 86400 * 100))")
+check("disenchanting: only loot out of items counts", ob.dust.n == 4 and abs(ob.dust.share - 0.25) < 1e-9 and ob.shard.n == 0)
+run("STUB.realTime = time; time = function() return 86400 * 100 end")
+check("disenchanting: plans use what was really disenchanted", L.eval("(select(2, Clearinghouse.Paths.DailyYield(2909)))") == "seen")
+dp2 = CH.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
+check("disenchanting: the plan starts from your real rank 2 share", any("you really got (Eversinging Dust 25%)" in plain(l) for l in dp2.text.values())
+      and dp2.startPer.dust.share == 0.25)
+run("Clearinghouse.Paths.SetDailyYield(2909, { dust = 10, shard = 1, crystal = 0 })")
+check("disenchanting: /aiq de by hand wins", L.eval("(select(2, Clearinghouse.Paths.DailyYield(2909)))") == "set")
+run("Clearinghouse.Paths.SetDailyYield(2909, nil); time = STUB.realTime; GetNumLootItems = nil")
 run("Clearinghouse.Spec.Tree = STUB.oldTree")
 cost = CH.Paths.PathCost(2906, L.eval("{ 10 }"))
 check("paths: default points finish the path for the goal", cost > 0 and CH.Paths.PathCost(2906, L.eval("{ }")) == 0)
