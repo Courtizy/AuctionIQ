@@ -23,13 +23,12 @@ makes you a better goblin.
 
 - **One window, four tabs**: everything a gold-maker needs, from the first scan to the final tally
 - **Know what's worth crafting**: every recipe ranked by profit, Concentration included
-- **Never overpay for reagents**: the advisor finds the cheapest mix for every quality
+- **Compare reagent costs**: the advisor looks for the cheapest mix for each quality
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
 - **A plan for every knowledge point**, drawn right on your profession trees
-- **One queue for your whole warband**: craft, buy, post and mail, one click at a time
-- **Prices you can trust**: your own AH scans checked against TSM and Oribos Exchange
-- **Books that balance**: real profit by item, with 7, 30 and 90 day reports
-- ...and more!
+- **Plan crafting, shopping, auctions and mail** across your warband
+- **Compare price sources**: your own AH scans side by side with TSM and Oribos Exchange
+- **Track sales, costs and estimated profit**, with 7, 30 and 90 day reports
 
 | | |
 |---|---|
@@ -38,15 +37,10 @@ makes you a better goblin.
 | <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | Getting it done |
 | <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What actually happened |
 
-## Required AddOns
+## AddOns
 
-None.
-
-## Supported AddOns
-
-- [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master) for prices and sales
-  history. Strongly recommended: without it, AuctionIQ can't value items.
-- [Oribos Exchange](https://www.curseforge.com/wow/addons/oribos-exchange) for a second opinion on prices.
+AuctionIQ loads on its own. Install [TradeSkillMaster](https://www.curseforge.com/wow/addons/tradeskill-master)
+for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/addons/oribos-exchange) is optional.
 
 ## Install
 
@@ -55,6 +49,7 @@ None.
 2. Unzip it into `World of Warcraft\_retail_\Interface\AddOns` and make sure the folder is named
    `AuctionIQ` (rename `AuctionIQ-main` if that's what you got).
 3. Log in and open each profession window once, so AuctionIQ learns your recipes.
+4. Type `/aiq` to open AuctionIQ. For crafting, open a profession and type `/aiq scan` to get started.
 
 ## Chat Commands
 
@@ -72,17 +67,18 @@ See the [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 
 ## Development
 
+<details>
+<summary>Code layout, tests and releases</summary>
+
 Plain Lua, no libraries. One folder per tab (`Dashboard`, `Research`, `Operations`, `Accounting`),
 plus `Core` and `Data` underneath them. The look is described in [THEME.md](THEME.md).
 
-### Tests
+**Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
+environment, on every pull request.
 
-`python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW environment.
-It runs on every pull request.
+**Releases:** tagging `v*` builds a release with the BigWigs packager.
 
-### Releases
-
-Tagging `v*` builds a release with the BigWigs packager.
+</details>
 
 ## License
 
