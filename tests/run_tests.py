@@ -1147,6 +1147,101 @@ p2 = L.eval("(function() for _, r in ipairs(Clearinghouse.Ledger.Records('Sales'
 check("ledger: an edited record of the same length is read again", p1 == 10000 and p2 == 90000)
 run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales; Clearinghouse.Ledger.ClearStats()""")
 
+# Second and third review fixes -------------------------------------------------------------------
+# the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13
+run("""STUB.prices['i:961'] = { mat = 1 }; STUB.prices['i:962'] = { mat = 10 }
+STUB.prices['i:963'] = { mat = 1 }; STUB.prices['i:964'] = { mat = 3 }; Clearinghouse.Prices.ClearCache()
+STUB.cm = { qual = { { qty = 1, items = { 961, 962 } }, { qty = 3, items = { 963, 964 } } }, fixed = {},
+  perUnit = { { [1] = 0, [2] = 10 }, { [1] = 0, [2] = 3 } }, maxQ = 2, thresholds = { [2] = 10 } }""")
+cheap = L.eval("Clearinghouse.Advisor.Cheapest(STUB.cm, 0)")
+q2 = cheap[2]
+cost2 = (q2[1][1] or 0) * 1 + (q2[1][2] or 0) * 10 + (q2[2][1] or 0) * 1 + (q2[2][2] or 0) * 3
+check("advisor: the exact cheapest mix for a quality, not the greedy one", cost2 == 13 and (q2[1][2] or 0) == 1)
+
+# one evaluation with no finishing reagents asks the game once per mix, not twice
+run("STUB.m10 = Clearinghouse.Advisor.Measure(10)")
+run("""STUB.opCalls = 0; STUB.oldOp = C_TradeSkillUI.GetCraftingOperationInfo
+C_TradeSkillUI.GetCraftingOperationInfo = function(...) STUB.opCalls = STUB.opCalls + 1; return STUB.oldOp(...) end""")
+run("Clearinghouse.Advisor.Evaluate(STUB.m10)")
+calls = L.eval("STUB.opCalls")
+run("C_TradeSkillUI.GetCraftingOperationInfo = STUB.oldOp")
+check("advisor: no finishing reagents means one build, not two", calls > 0 and calls <= 11)
+
+# opening an order for another recipe keeps the order in the advisor
+run("Clearinghouse.AdvisorUI.Show(11, true)")
+run("Clearinghouse.AdvisorUI.ShowOrder({ orderID = 88, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, reagents = {} })")
+check("advisor: opening an order for a different recipe keeps its order", L.eval("Clearinghouse.AdvisorUI.Current() and Clearinghouse.AdvisorUI.Current().order ~= nil") is True)
+
+# knowledge paths: a day's Concentration can't sell more than demand
+run("""STUB.oldDU = Clearinghouse.Scan.DailyUnits; Clearinghouse.Scan.DailyUnits = function() return 1 end
+STUB.oldEval = Clearinghouse.Advisor.Evaluate
+Clearinghouse.Advisor.Evaluate = function() return { made = 1, best = { profit = 1000, item = 1 },
+  bestConc = { profit = 1100, perPoint = 1100 / 30, avgConcentration = 30, concentration = 30, item = 1 } } end
+STUB.oldDelta = Clearinghouse.Spec.Delta; Clearinghouse.Spec.Delta = function() return {} end""")
+pv = L.eval("Clearinghouse.Paths.Value({ recipes = { 1 }, models = { [1] = {} }, prof = 2906, tree = {} }, {})")
+run("Clearinghouse.Scan.DailyUnits = STUB.oldDU; Clearinghouse.Advisor.Evaluate = STUB.oldEval; Clearinghouse.Spec.Delta = STUB.oldDelta")
+check("paths: Concentration only replaces crafts the demand can sell", abs(pv[0] - 1100) < 1e-6)
+
+# the craft log prices the reagents the craft really used
+run("Clearinghouse.AdvisorUI.Show(10, true)")
+r10 = L.eval("Clearinghouse.AdvisorUI.Current()")
+check("craft log: a matching row is found for the test recipe", r10 is not None)
+other = L.eval("(function() for _, r in ipairs(Clearinghouse.AdvisorUI.Current().rows) do if not r.concentration and r ~= Clearinghouse.AdvisorUI.Current().best then return r end end end)()")
+if other is not None:
+    run("""STUB.logOther = (function() for _, r in ipairs(Clearinghouse.AdvisorUI.Current().rows) do if not r.concentration and r ~= Clearinghouse.AdvisorUI.Current().best then return r end end end)()
+local infos = {}
+for i, slot in ipairs(Clearinghouse.AdvisorUI.Current().qual) do
+  for q, id in ipairs(slot.items) do local n = STUB.logOther.picks[i][q] or 0; if n > 0 then table.insert(infos, { itemID = id, quantity = n }) end end
+end
+Clearinghouse.Log.Started(10, 1, false, infos, nil)""")
+    check("craft log: the row matching the craft's reagents is the one expected", L.eval("Clearinghouse.Log.Pending().cost") == other.cost)
+
+# posting: a confirmed post counts toward the cap before the owned list comes back
+run("Clearinghouse.db.auctions = {}; Clearinghouse.Auction.Posted(971, 5)")
+check("auctions: fresh posts count before the owned list updates", L.eval("Clearinghouse.Auction.Listed(971)") == 5)
+run("Clearinghouse.db.auctions = {}")
+
+# gear with no copy in the bags is searched as an item, not a commodity
+check("auction search: gear at an item level isn't a commodity", L.eval("Clearinghouse.Auction.IsCommodity(999999, 645)") is False)
+
+# cancels wait for the AH
+run("""STUB.cancelled = nil; C_AuctionHouse.CancelAuction = function(id) STUB.cancelled = id end""")
+run("""local plan = Clearinghouse.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
+table.insert(plan, { id = 302, auctionID = 4242, d = { action = 'cancel', why = 'undercut' } })""")
+run("Clearinghouse.AuctionUI.CancelNext()")
+pend = L.eval("Clearinghouse.AuctionUI.Plan()[1].done")
+run("STUB.Fire('AUCTION_CANCELED', 4242)")
+check("cancel: a row is done only once the AH says it's cancelled", L.eval("STUB.cancelled") == 4242 and not pend and L.eval("Clearinghouse.AuctionUI.Plan()[1].done") is True)
+run("""table.insert(Clearinghouse.AuctionUI.Plan(), { id = 302, auctionID = 4243, d = { action = 'cancel', why = 'undercut' } })
+Clearinghouse.AuctionUI.CancelNext(); STUB.RunTimers()""")
+check("cancel: no answer from the AH marks it failed, not done", L.eval("Clearinghouse.AuctionUI.Plan()[2].failed") is True)
+run("local plan = Clearinghouse.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; C_AuctionHouse.CancelAuction = nil")
+
+# a fulfilled order leaves the cache, and an old sighting isn't live
+run("""Clearinghouse.Orders.cache = {}; Clearinghouse.Orders.seen = {}
+STUB.oldCO = C_CraftingOrders; C_CraftingOrders = C_CraftingOrders or {}
+STUB.oldList = C_CraftingOrders.GetCrafterOrders
+C_CraftingOrders.GetCrafterOrders = function() return { { orderID = 501, spellID = 10 } } end
+Clearinghouse.Orders.All()
+C_CraftingOrders.GetCrafterOrders = function() return {} end""")
+live1 = L.eval("Clearinghouse.Orders.Live(501) ~= nil")
+run("STUB.Fire('CRAFTINGORDERS_FULFILL_ORDER_RESPONSE', 0, 501)")
+check("orders: a fulfilled order leaves the list", live1 is True and L.eval("Clearinghouse.Orders.Live(501)") is None)
+run("""C_CraftingOrders.GetCrafterOrders = function() return { { orderID = 502 } } end; Clearinghouse.Orders.All()
+C_CraftingOrders.GetCrafterOrders = function() return {} end
+Clearinghouse.Orders.seen['502'] = time() - 3600""")
+check("orders: an order the game hasn't listed for an hour isn't live", L.eval("Clearinghouse.Orders.Live(502)") is None)
+run("C_CraftingOrders.GetCrafterOrders = STUB.oldList; C_CraftingOrders = STUB.oldCO; Clearinghouse.Orders.cache = {}; Clearinghouse.Orders.seen = {}")
+
+# opening a page refreshes it once
+run("""STUB.refreshes = 0; STUB.oldRefresh = Clearinghouse.UI.Refresh
+Clearinghouse.UI.Refresh = function(...) STUB.refreshes = STUB.refreshes + 1; return STUB.oldRefresh(...) end""")
+run("Clearinghouse.UI.Page('today')")
+n1 = L.eval("STUB.refreshes")
+run("Clearinghouse.UI.Refresh = STUB.oldRefresh")
+check("ui: opening a page refreshes it once", n1 == 1)
+
+
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob
 check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1e-9 and abs(P.BetaCDF(0.3, 1, 1) - 0.3) < 1e-9

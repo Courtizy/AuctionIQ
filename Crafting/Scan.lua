@@ -8,7 +8,8 @@ local Sc = {}
 CH.Scan = Sc
 Sc.models = {} -- [professionID][recipeID] = advisor model, for simulations this session
 
-local PER_FRAME = 2
+local PER_FRAME = 2  -- at least this many recipes a frame...
+local BUDGET_MS = 8  -- ...and more while a frame has spent less than this
 local running
 
 local function settings() return CH.db.settings.scan end
@@ -137,8 +138,13 @@ function Sc.Run(onStep, onDone)
 	local i, rows = 0, {}
 	Sc.models[profID] = Sc.models[profID] or {}
 	running = true
+	local clock = debugprofilestop
 	local function step()
-		for _ = 1, PER_FRAME do
+		-- the profession changed under us: this scan's results would be for the wrong one
+		if CH.OpenProfessionID() ~= profID then running = false; if onDone then onDone(rows, "stopped: the profession changed") end; return end
+		local start, n = clock and clock(), 0
+		while n < PER_FRAME or (clock and clock() - start < BUDGET_MS) do
+			n = n + 1
 			i = i + 1
 			local id = ids[i]
 			if not id then

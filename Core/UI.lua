@@ -817,22 +817,26 @@ function UI.Refresh()
 end
 
 --- Open a tab, and optionally one of its views: UI.Go("analytics", "par").
-function UI.Go(tab, view)
+local function choose(tab, view)
 	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
-	if not FRAME[tab] then return end
+	if not FRAME[tab] then return false end
 	page = tab
 	if tab == "settings" then settingsView = view == "groups" and "groups" or "main" end
 	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view }) end
-	if frame then UI.Refresh() end
+	return true
+end
+
+function UI.Go(tab, view)
+	if choose(tab, view) and frame then UI.Refresh() end
 end
 
 --- Show a tab: "today", "markets", "crafting", "trading", "analytics" or "ledger" (the
 --- Clearinghouse). The old names (dashboard, groups, plan, briefing, report) still work.
 function UI.Page(name, view)
 	if not frame then build() end
-	if name then UI.Go(name, view) end
+	if name then choose(name, view) end
+	-- one refresh: showing the frame refreshes it (OnShow), else refresh it here
 	if not frame:IsShown() then frame:Show() else UI.Refresh() end
-	return UI.Refresh()
 end
 
 function UI.SetRange(r) range = r end

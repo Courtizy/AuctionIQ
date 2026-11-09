@@ -61,12 +61,19 @@ local function match()
 		end
 	end
 	table.sort(sales, function(a, c) return a.time < c.time end)
+	-- a cursor per item skips batches already sold out, so the pass is about sales + batches
+	local cursor = {}
 	for _, s in ipairs(sales) do
 		local left = s.quantity
 		local each = (s.amount / s.quantity) * CH.AH_CUT
-		for _, b in ipairs(byItem[s.id]) do
-			if left <= 0 then break end
-			if b.at <= s.time and b.sold < b.qty then
+		local list = byItem[s.id]
+		local i = cursor[s.id] or 1
+		while list[i] and list[i].sold >= list[i].qty do i = i + 1 end
+		cursor[s.id] = i
+		for k = i, #list do
+			local b = list[k]
+			if left <= 0 or b.at > s.time then break end -- batches are oldest first: later ones aren't made yet
+			if b.sold < b.qty then
 				local n = math.min(left, b.qty - b.sold)
 				b.sold = b.sold + n
 				b.revenue = b.revenue + each * n

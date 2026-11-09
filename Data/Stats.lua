@@ -108,10 +108,14 @@ function St.AverageConcentration(cost, s)
 end
 
 -- Sorted {index, value} pairs from a {[x] = y} table.
+-- The curves are fixed data, so each is sorted once and the sorted copy kept.
+local sortedCache = setmetatable({}, { __mode = "k" })
 local function sorted(t)
+	if sortedCache[t] then return sortedCache[t] end
 	local out = {}
 	for k, v in pairs(t) do table.insert(out, { k, v }) end
 	table.sort(out, function(a, b) return a[1] < b[1] end)
+	sortedCache[t] = out
 	return out
 end
 

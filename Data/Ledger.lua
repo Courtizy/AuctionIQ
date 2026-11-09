@@ -99,14 +99,21 @@ local function itemID(s) return tonumber((s or ""):match("^i:(%d+)")) end
 --- TSM's records of one kind for this realm: "Sales", "Buys", "Income", "Expense", "Expired",
 --- "Cancelled". Each row: time, player, other, item (itemString), id, quantity, price (each),
 --- amount (total copper), source or type.
+-- Normalized records, kept per parsed CSV (a new parse, when TSM's text changes, makes new ones).
+local normalized = setmetatable({}, { __mode = "k" })
+
+--- TSM's accounting records of one kind, normalized. Shared between callers: read them, don't change them.
 function Lg.Records(kind)
+	local rows = csv("r@" .. realm() .. "@internalData@csv" .. kind)
+	if normalized[rows] then return normalized[rows] end
 	local out = {}
-	for _, r in ipairs(csv("r@" .. realm() .. "@internalData@csv" .. kind)) do
+	for _, r in ipairs(rows) do
 		local q = num(r.quantity)
 		local amount = r.amount and num(r.amount) or num(r.price) * q
 		table.insert(out, { time = num(r.time), player = r.player, other = r.otherPlayer, item = r.itemString,
 			id = itemID(r.itemString), quantity = q, price = num(r.price), amount = amount, source = r.source or r.type })
 	end
+	if rows[1] then normalized[rows] = out end
 	return out
 end
 

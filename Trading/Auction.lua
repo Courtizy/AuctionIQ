@@ -200,10 +200,18 @@ end
 
 local function isCommodity(id, level)
 	local slots = A.BagSlots(id, level)
-	if not slots[1] or not ItemLocation then return true end
+	if not slots[1] or not ItemLocation then
+		-- none in your bags to ask about: gear (an item level, or a weapon or armor) is never a commodity
+		if level then return false end
+		local classID = select(6, (C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant or function() end)(id))
+		if classID == 2 or classID == 4 then return false end
+		return true
+	end
 	local loc = ItemLocation:CreateFromBagAndSlot(slots[1].bag, slots[1].slot)
 	return AH.GetItemCommodityStatus(loc) == Enum.ItemCommodityStatus.Commodity
 end
+
+A.IsCommodity = isCommodity
 
 -- Search one item (gear at one item level); calls back with its results once the AH answers (or
 -- after 3 seconds).
@@ -287,6 +295,7 @@ function A.Posted(id, n)
 	local rec = store()[me()] or { at = time(), items = {} }
 	rec.items[id] = (rec.items[id] or 0) + n
 	rec.at = rec.at or time()
+	rec.realm = realm()
 	store()[me()] = rec
 end
 

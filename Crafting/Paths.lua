@@ -409,10 +409,12 @@ local function yieldValue(ctx, ranks)
 	return total, per, 0, total
 end
 
--- Gold a day for a set of recipes at these ranks.
+-- Gold a day for a set of recipes at these ranks. Each recipe sells only so many a day (its demand):
+-- plain crafts fill it, and a day's Concentration goes to the crafts where it adds the most gold per
+-- point over the plain craft it replaces, never more crafts than the demand.
 local function value(ctx, ranks)
 	if ctx.yield then return yieldValue(ctx, ranks) end
-	local total, concBest, per = 0, 0, {}
+	local total, concBest, per, swaps = 0, 0, {}, {}
 	for _, id in ipairs(ctx.recipes) do
 		local m = ctx.models[id]
 		local delta = CH.Spec.Delta(ctx.prof, ctx.tree, ranks, id)
@@ -421,15 +423,28 @@ local function value(ctx, ranks)
 			local b, c = r.best, r.bestConc
 			local item = b and b.item or (c and c.item)
 			local crafts = CH.Scan.DailyUnits(item) / (r.made or 1)
-			local g = b and b.profit and b.profit > 0 and b.profit * crafts or 0
+			local plain = b and b.profit and b.profit > 0 and b.profit or 0
+			local g = plain * crafts
 			total = total + g
 			if c and c.perPoint and c.perPoint > concBest then concBest = c.perPoint end
+			local pc = c and c.avgConcentration or (c and c.concentration)
+			if c and c.profit and pc and pc > 0 and c.profit > plain and crafts > 0 then
+				swaps[#swaps + 1] = { gain = (c.profit - plain) / pc, points = pc, crafts = crafts }
+			end
 			per[id] = { quality = b and b.quality, profit = b and b.profit, perPoint = c and c.perPoint, perDay = g, name = r.name }
 		end
 	end
-	local concDay = concBest * CH.CONC_PER_HOUR * 24
+	table.sort(swaps, function(a, b) return a.gain > b.gain end)
+	local left, concDay = CH.CONC_PER_HOUR * 24, 0
+	for _, w in ipairs(swaps) do
+		if left <= 0 then break end
+		local n = math.min(w.crafts, left / w.points)
+		concDay, left = concDay + n * w.points * w.gain, left - n * w.points
+	end
 	return total + concDay, per, concBest, total
 end
+
+P.Value = value -- for tests
 
 local function relevantNodes(ctx)
 	local out = {}
