@@ -860,7 +860,8 @@ Clearinghouse.db.characters['Alt-Realm'] = { name = 'Alt', class = 'MAGE', profe
 Clearinghouse.Queue.Clear()""")
 spend = [e for e in CH.Next.List().values() if e.title == "Spend Concentration" and "Alt" in e.detail]
 check("do next: full Concentration names the best craft per point and how many", len(spend) == 1 and "x3" in spend[0].detail and spend[0].act is not None)
-run("(function() for _, e in ipairs(Clearinghouse.Next.List()) do if e.title == 'Spend Concentration' and e.act and e.detail:find('Alt') then e.act.run() return end end end)()")
+acted = L.eval("(function() for _, e in ipairs(Clearinghouse.Next.List()) do if e.title == 'Spend Concentration' and e.act and e.detail:find('Alt') then return { e.act.run() } end end end)()")
+check("do next: the button says what it did, for the card", acted[1] is True and "Queued 3 x Test Flask with Concentration for Alt" == acted[2])
 qe = list(CH.db.queue.values())
 check("do next: its button queues that craft with Concentration for that character", len(qe) == 1 and qe[0].char == "Alt-Realm" and qe[0].qty == 3
       and qe[0].concentration == 300 and qe[0].reagents[1].slot == 1)
@@ -1173,6 +1174,24 @@ check("shopping: done only once the AH says it went through", plan[1].done and n
 run("""Clearinghouse.Queue.ShoppingList = STUB.oldSL; Clearinghouse.Auction.Search = STUB.oldSearch
 local plan = Clearinghouse.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
 C_AuctionHouse.StartCommoditiesPurchase = nil; C_AuctionHouse.ConfirmCommoditiesPurchase = nil; Clearinghouse.Depth.Forget()""")
+
+# UI pass: visible scroll position, and mail says Sent only once the game confirms it
+run("""STUB.sb = Clearinghouse.Window.ScrollBar(UIParent, 100, -10, 100)
+STUB.sb:Set(17, 17, 83)""")
+check("scroll bar: says which rows are showing", L.eval("STUB.sb.text") == "18-34 of 83")
+run("STUB.sb:Set(0, 17, 10)")
+check("scroll bar: hides when everything fits", L.eval("STUB.sb.text") is None)
+run("""STUB.oldNextTo = Clearinghouse.Mail.NextTo; STUB.oldSendNext = Clearinghouse.Mail.SendNext
+Clearinghouse.Mail.NextTo = function() return 'Luxaren', { { id = 302, count = 1 } } end
+Clearinghouse.Mail.SendNext = function() return 'Luxaren', 1 end
+STUB.oldOutbox = Clearinghouse.Mail.Outbox; Clearinghouse.Mail.Outbox = function() return { Luxaren = { { id = 302, count = 1 } } } end
+Clearinghouse.MailUI.Build(); Clearinghouse.MailUI.Refresh()""")
+check("mail: the button names who the next mail goes to", plain(L.eval("Clearinghouse.MailUI.Build().sendButton.label")) == "Send: Luxaren")
+run("Clearinghouse.MailUI.Build().sendButton.scripts.OnClick()")
+check("mail: sending, not sent, until the game says so", L.eval("Clearinghouse.MailUI.sending ~= nil") is True)
+run("STUB.Fire('MAIL_SEND_SUCCESS')")
+check("mail: sent once the game confirms it", L.eval("Clearinghouse.MailUI.sending") is None and "Sent 1 to Luxaren" in plain(L.eval("Clearinghouse.MailUI.Build().status:GetText()")))
+run("Clearinghouse.Mail.NextTo = STUB.oldNextTo; Clearinghouse.Mail.SendNext = STUB.oldSendNext; Clearinghouse.Mail.Outbox = STUB.oldOutbox")
 
 # Second and third review fixes -------------------------------------------------------------------
 # the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13

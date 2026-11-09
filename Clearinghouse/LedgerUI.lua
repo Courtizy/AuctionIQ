@@ -24,7 +24,7 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
 	inventory = { label = "Inventory", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
-		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Value", 596, 128 } } },
+		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Market value", 596, 128 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
 	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
@@ -36,7 +36,7 @@ local VIEWS = {
 	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 5, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
 	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
-		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Profit", 542, 100 }, { "Margin", 646, 78 } } },
+		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Realized profit", 542, 100 }, { "Margin", 646, 78 } } },
 	perf = { label = "Forecast vs actual", parent = "Profit", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
 		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
 	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
@@ -484,6 +484,7 @@ function LUI.Build(p, fs, panel)
 		p.rows[i] = r
 	end
 	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
+	p.bar = CH.Window.ScrollBar(body, X0 + TW - 3, -50, ROWS * RH, true)
 	p:EnableMouseWheel(true)
 	p:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 5); CH.UI.Refresh() end)
 end
@@ -540,6 +541,7 @@ function LUI.Refresh()
 		sortRows(rows, sortCol or 1, sortDesc)
 	end
 	offset = math.max(0, math.min(offset, #rows - ROWS))
+	if p.bar then p.bar:Set(offset, ROWS, #rows) end
 	for i, r in ipairs(p.rows) do
 		local d = rows[i + offset]
 		r.hit.id = d and d.id

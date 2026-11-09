@@ -44,10 +44,18 @@ function M.Outbox()
 	return out
 end
 
+--- Who the next mail goes to (alphabetical, so the button can name them), and what's in it.
+function M.NextTo()
+	local box, names = M.Outbox(), {}
+	for to in pairs(box) do table.insert(names, to) end
+	table.sort(names)
+	return names[1], names[1] and box[names[1]]
+end
+
 --- Send the next mail (up to 12 attachments to one character). Run from a click. Returns who to.
 function M.SendNext()
-	local box = M.Outbox()
-	for to, list in pairs(box) do
+	local to, list = M.NextTo()
+	if to then
 		-- attachments only take when the Send Mail tab is the one showing
 		if SendMailFrame and not SendMailFrame:IsShown() and MailFrameTab_OnClick then pcall(MailFrameTab_OnClick, nil, 2) end
 		if ClearSendMail then ClearSendMail() end

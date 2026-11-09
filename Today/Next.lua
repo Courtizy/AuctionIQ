@@ -14,8 +14,8 @@ local function queueAct(label, charKey, char, row, conc, qty)
 	if not e then return nil end
 	return { label = label, run = function()
 		CH.Queue.AddEntry(e, qty)
-		CH.Print(string.format("queued %d x %s%s for %s", qty, row.name or "?", conc and " with Concentration" or "", char.name or charKey))
 		if CH.QueueUI and CH.QueueUI.Show then pcall(CH.QueueUI.Show) end
+		return true, string.format("Queued %d x %s%s for %s", qty, row.name or "?", conc and " with Concentration" or "", char.name or charKey)
 	end }
 end
 
@@ -24,9 +24,9 @@ local function postAct(label)
 		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
 			CH.AuctionUI.Build():Show()
 			CH.AuctionUI.PostScan()
-		else
-			CH.Print("open the auction house: Auctioning opens beside it with a post scan ready")
+			return true, "Post scan running beside the AH"
 		end
+		return false, "Open the Auction House first, then press this again"
 	end }
 end
 
@@ -40,6 +40,7 @@ local function makeAct(id, n)
 end
 
 --- { { title, detail, gold, tier, go = { tab, view }, act = { label, run } } }, best first.
+--- act.run() returns ok and a line saying what happened (or why it couldn't), shown on the card.
 function Next.List(now)
 	now = now or time()
 	local out = {}

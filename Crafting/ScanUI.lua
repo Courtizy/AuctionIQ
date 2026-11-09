@@ -11,17 +11,18 @@ CH.ScanUI = SUI
 local frame, status
 local N, W, H = 16, 836, 18
 local offset, data = 0, {}
+local scrollBar
 local showOlder = true
 local mode = "recipes"
 local tables, heads = {}, {}
 
 -- { label, x, width, sort key, justify }
 local COLS = {
-	recipes = { { "Recipe", 12, 196, "name" }, { "Profit", 210, 114, "profit" }, { "%", 326, 40, "pct" },
+	recipes = { { "Recipe", 12, 196, "name" }, { "Profit/craft", 210, 114, "profit" }, { "%", 326, 40, "pct" },
 		{ "With Conc.", 368, 128, "concProfit" }, { "Per pt", 498, 60, "perPoint" }, { "Sold/day", 560, 64, "soldPerDay" },
-		{ "Gold/day", 626, 98, "perDay" }, { "Buy or craft", 728, 96, "buySave" } },
+		{ "Est. gold/day", 626, 98, "perDay" }, { "Buy or craft", 728, 96, "buySave" } },
 	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
-		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
+		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Order profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Sells for", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
@@ -259,10 +260,12 @@ local function build()
 			heads[m][j] = hb
 		end
 	end
+	scrollBar = Wd.ScrollBar(frame, W - 8, -70, N * H)
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
 		SUI.Refresh()
+		scrollBar:Set(offset, N, #data)
 	end)
 	T.Fonts(frame)
 	Wd.Attach("scan", frame)
@@ -377,6 +380,7 @@ local function refreshLists()
 	end
 	data = sortRows(list, SORT[mode].key, SORT[mode].asc)
 	offset = math.max(0, math.min(offset, #data - N))
+	scrollBar:Set(offset, N, #data)
 	if mode == "orders" then
 		local pays, kp = 0, 0
 		for _, d in ipairs(data) do
@@ -463,8 +467,11 @@ function SUI.Refresh()
 	end
 	SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	if not CH.Scan.IsRunning() then
-		status:SetText(s and T.Color("muted", string.format("%d recipes, scanned %s. Sorted by %s.%s", count,
-			date and date("%H:%M", s.at) or "", NAMES[SORT.recipes.key] or SORT.recipes.key,
+		local age = s and time() - s.at
+		local ago = age and (age < 3600 and string.format("%d min ago", math.floor(age / 60))
+			or age < 86400 and string.format("%dh ago", math.floor(age / 3600)) or string.format("%d days ago, scan again", math.floor(age / 86400)))
+		status:SetText(s and T.Color(age and age >= 86400 and "bad" or "muted", string.format("%d recipes, scanned %s. Sorted by %s.%s", count,
+			ago or "", NAMES[SORT.recipes.key] or SORT.recipes.key,
 			hidden > 0 and string.format(" %d from older expansions hidden.", hidden) or ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
