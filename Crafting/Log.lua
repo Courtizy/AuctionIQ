@@ -203,13 +203,13 @@ local function resultRows(ctx)
 		.. T.Color("muted", "  Rates are what you got / what was expected. /aiq results clear empties this character's log.")
 end
 
--- (Analytics/Views.lua puts it in the Analytics nav, in order)
-CH.LedgerUI.Register("analytics", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
+-- (Analytics/Views.lua puts it in Research, under Performance)
+CH.LedgerUI.Register("research", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
 	cols = { { "Recipe", 0, 190 }, { "Character", 194, 90 }, { "Crafts", 288, 50 }, { "Multicraft", 342, 76 }, { "Resourceful", 422, 80 },
 		{ "Ingenuity", 506, 70 }, { "At market", 580, 72 }, { "Expected", 656, 68 } } } }, {})
 
 --- Craft results now live in Analytics.
-function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("analytics", "results") end end
+function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("research", "results") end end
 LUI.Toggle = LUI.Open
 function LUI.Refresh() end
 

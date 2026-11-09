@@ -67,13 +67,13 @@ function Next.List(now)
 				local n = conc and conc.concentration and conc.concentration > 0 and math.max(1, math.floor(cur / conc.concentration)) or 1
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or ""),
-					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "crafting" },
+					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "research", "professions" },
 					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
 		end
 	end
 	for _, cd in ipairs(CH.Cooldowns and CH.Cooldowns.All(now) or {}) do
-		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "crafting" } }) end
+		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "research", "professions" } }) end
 	end
 	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
 	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
@@ -84,7 +84,7 @@ function Next.List(now)
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
-					gold = e.gold, tier = 1, go = { "markets", "when" }, act = postAct("Post") })
+					gold = e.gold, tier = 1, go = { "research", "when" }, act = postAct("Post") })
 			end
 		end
 
@@ -92,7 +92,7 @@ function Next.List(now)
 		local ok, r = pcall(CH.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
-				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2, go = { "crafting" },
+				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2, go = { "operations", "queue" },
 					act = makeAct(e.id, e.sold) })
 			end
 			for _, e in ipairs(r.expired or {}) do
@@ -102,13 +102,13 @@ function Next.List(now)
 			end
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
-					go = { "trading", "dead" } })
+					go = { "operations", "dead" } })
 			end
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
-					gold = e.value, tier = 2, go = { "trading", "par" }, act = makeAct(e.id, e.short) })
+					gold = e.value, tier = 2, go = { "operations", "par" }, act = makeAct(e.id, e.short) })
 			end
 		end
 	end
@@ -117,7 +117,7 @@ function Next.List(now)
 	if CH.Planner then
 		local left = 0
 		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
-		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3, go = { "crafting" } }) end
+		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3, go = { "research", "professions" } }) end
 	end
 
 	table.sort(out, function(a, b)

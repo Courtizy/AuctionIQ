@@ -47,23 +47,22 @@ local VIEWS = {
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	report = { label = "Report", cols = {} },
+	report = { label = "Report", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Three tabs share this table page, each with its own left nav: the Clearinghouse (the books),
--- Markets and Analytics.
+-- Research (Markets, Professions, Performance: what to do and why) and Operations (Production,
+-- Inventory, Moving: the work planned or underway). The other two fill theirs in with LUI.Register.
 local SECTIONS = {
 	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
 		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
-	markets = {}, -- Markets/MarketsUI.lua fills this in with LUI.Register
-	-- Analytics explains performance; inventory decisions (stock targets, dead stock) are in Trading
-	analytics = {}, -- Analytics/Views.lua fills this in, in order
-
+	research = {},
+	operations = {},
 }
 local section = "ledger"
-local lastView = { ledger = "inventory", markets = "compare", analytics = "performance" }
+local lastView = { ledger = "inventory" }
 LUI.SECTIONS = SECTIONS
 LUI.VIEWS = VIEWS
 
@@ -78,22 +77,44 @@ end
 local function signed(c) return CH.Theme.Color(c >= 0 and "ok" or "bad", money(c)) end
 LUI.Money, LUI.Signed = money, signed
 
---- Another tab adds its views to this page: section is "markets" or "analytics", views maps a view
---- key to { label, sort, cols, rows = function(ctx) return rows, footer end, noTime = true }, and nav
---- lists the keys in the order the left nav shows them. ctx carries now, since, opts, keepName, keepRec.
---- Which tab's nav lists a view ("ledger", "markets", "trading", "analytics"), or nil.
-function LUI.SectionOf(v)
-	for sec, nav in pairs(SECTIONS) do
-		for _, n in ipairs(nav) do if n[1] == v or n[2] == v then return sec end end
-	end
-end
-
-function LUI.Register(sec, views, nav)
+--- Another tab adds its views to this page: section is "research" or "operations", views maps a
+--- view key to { label, sort, cols, rows = function(ctx) return rows, footer end, noTime = true },
+--- nav lists the keys in the order the left nav shows them, and group, if given, files them under
+--- a heading ("Markets"). ctx carries now, since, opts, keepName, keepRec. A view with page = "plan"
+--- shows that page frame beside the nav instead of a table; one with go = function opens elsewhere.
+function LUI.Register(sec, views, nav, group)
 	SECTIONS[sec] = SECTIONS[sec] or {}
 	for k, def in pairs(views) do VIEWS[k] = def end
-	for _, k in ipairs(nav) do table.insert(SECTIONS[sec], { k }) end
+	if group and nav[1] then
+		SECTIONS[sec].tabbed = true
+		table.insert(SECTIONS[sec], { group, nav[1] })
+		for _, k in ipairs(nav) do
+			if VIEWS[k] then VIEWS[k].parent = group end
+			table.insert(SECTIONS[sec], { k, sub = true })
+		end
+	else
+		for _, k in ipairs(nav) do table.insert(SECTIONS[sec], { k }) end
+	end
 	lastView[sec] = lastView[sec] or nav[1]
 end
+
+--- A tab's sub-tabs: { { label, view } } with the view each one opens (the last one open in it),
+--- or nil for a tab without them (the Clearinghouse).
+local lastIn = {}
+function LUI.Groups(sec)
+	local list = SECTIONS[sec]
+	if not (list and list.tabbed) then return nil end
+	local out = {}
+	for _, n in ipairs(list) do
+		if not n.sub then table.insert(out, { n[1], lastIn[n[1]] or n[2] }) end
+	end
+	return out
+end
+--- The sub-tab the open view is in, or nil.
+function LUI.Group() return SECTIONS[section] and SECTIONS[section].tabbed and VIEWS[view] and VIEWS[view].parent or nil end
+
+--- A view's definition (label, cols, page...), for the main window.
+function LUI.ViewDef(v) return VIEWS[v or view] end
 
 --- An item as TSM shows it: icon, name in its rarity colour with its quality pip. Plain name too.
 function LUI.ItemText(id)
@@ -350,8 +371,10 @@ end
 
 -- Building ------------------------------------------------------------------------------------
 local function setView(v)
+	if VIEWS[v] and VIEWS[v].go then return VIEWS[v].go() end
 	view, offset = v, 0
 	lastView[section] = v
+	if VIEWS[v].parent then lastIn[VIEWS[v].parent] = v end
 	sortCol, sortDesc = VIEWS[v].sort, not VIEWS[v].asc
 	CH.UI.Refresh()
 end
@@ -377,49 +400,57 @@ function LUI.Build(p, fs, panel)
 	page = p
 	sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc
 	local nav = panel(p, 0, 0, 160, p:GetHeight() or 552)
+	p.navPanel = nav
 	p.nav = {}
 	for sec, list in pairs(SECTIONS) do
 	local y = -8
+	local group
 	for _, n in ipairs(list) do
-		local target = n[2] or n[1]
-		local label = VIEWS[n[1]] and VIEWS[n[1]].label or n[1]
-		if n[2] and y ~= -8 then y = y - 6 end -- breathing room before each group
-		local b = T.Button(nav, label, n.sub and 120 or 144, n.sub and 18 or 20)
-		b:SetPoint("TOPLEFT", n.sub and 32 or 8, y)
-		b:SetScript("OnClick", function() setView(target) end)
-		b.view, b.parent, b.sub, b.section, b.guide = n[1], not n.sub and n[2] and n[1] or false, n.sub or false, sec, false
-		-- left-aligned labels: groups flush left, their views indented under a guide line
-		local f = b.text or (b.GetFontString and b:GetFontString())
-		if f then
-			f:ClearAllPoints()
-			f:SetPoint("LEFT", 8, 0)
-			f:SetPoint("RIGHT", -4, 0)
-			f:SetJustifyH("LEFT")
-			if n.sub and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
+	-- a tab with sub-tabs (Research, Operations): its group headings are the sub-tabs across the
+	-- top, and the nav lists only the open sub-tab's views, each flush left from the top
+	if list.tabbed and not n.sub then group, y = n[1], -8 else
+			local sub = n.sub and not list.tabbed
+			local target = n[2] or n[1]
+			local label = VIEWS[n[1]] and VIEWS[n[1]].label or n[1]
+			if n[2] and y ~= -8 then y = y - 6 end -- breathing room before each group
+			local b = T.Button(nav, label, sub and 120 or 144, sub and 18 or 20)
+			b:SetPoint("TOPLEFT", sub and 32 or 8, y)
+			b:SetScript("OnClick", function() setView(target) end)
+			b.view, b.parent, b.sub, b.section, b.guide = n[1], not sub and n[2] and n[1] or false, sub or false, sec, false
+			-- left-aligned labels: groups flush left, their views indented under a guide line
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			if f then
+				f:ClearAllPoints()
+				f:SetPoint("LEFT", 8, 0)
+				f:SetPoint("RIGHT", -4, 0)
+				f:SetJustifyH("LEFT")
+				if sub and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
+			end
+			if sub then
+				local c = T.line
+				local v = nav:CreateTexture(nil, "ARTWORK")
+				v:SetColorTexture(c[1], c[2], c[3], 1)
+				v:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y + 3)
+				v:SetSize(1, 21)
+				local h = nav:CreateTexture(nil, "ARTWORK")
+				h:SetColorTexture(c[1], c[2], c[3], 1)
+				h:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y - 9)
+				h:SetSize(12, 1)
+				b.guide = { v, h }
+			end
+			local mark = b:CreateTexture(nil, "OVERLAY")
+			mark:SetPoint("TOPLEFT", 1, -1)
+			mark:SetPoint("BOTTOMLEFT", 1, 1)
+			mark:SetWidth(2)
+			b.mark = mark
+			b:HookScript("OnLeave", function(self)
+				local fs, c = self.text or (self.GetFontString and self:GetFontString()), self.navColor
+				if fs and c then fs:SetTextColor(c[1], c[2], c[3]) end
+			end)
+			table.insert(p.nav, b)
+			y = y - (sub and 21 or 25)
+			b.group = list.tabbed and group or nil
 		end
-		if n.sub then
-			local c = T.line
-			local v = nav:CreateTexture(nil, "ARTWORK")
-			v:SetColorTexture(c[1], c[2], c[3], 1)
-			v:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y + 3)
-			v:SetSize(1, 21)
-			local h = nav:CreateTexture(nil, "ARTWORK")
-			h:SetColorTexture(c[1], c[2], c[3], 1)
-			h:SetPoint("TOPLEFT", nav, "TOPLEFT", 18, y - 9)
-			h:SetSize(12, 1)
-			b.guide = { v, h }
-		end
-		local mark = b:CreateTexture(nil, "OVERLAY")
-		mark:SetPoint("TOPLEFT", 1, -1)
-		mark:SetPoint("BOTTOMLEFT", 1, 1)
-		mark:SetWidth(2)
-		b.mark = mark
-		b:HookScript("OnLeave", function(self)
-			local fs, c = self.text or (self.GetFontString and self:GetFontString()), self.navColor
-			if fs and c then fs:SetTextColor(c[1], c[2], c[3]) end
-		end)
-		table.insert(p.nav, b)
-		y = y - (n.sub and 21 or 25)
 	end
 	end
 	-- the table and its controls; hidden while the Report shows in their place
@@ -452,6 +483,25 @@ function LUI.Build(p, fs, panel)
 		for _, t in ipairs(TIMES) do table.insert(list, { t[1], t[2] or false, selected = days == t[2] }) end
 		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; CH.UI.Refresh() end)
 	end)
+
+	-- a view's own settings (Scenarios: how far reagents rise, prices fall): left-click up, right-click down
+	p.controls = {}
+	for i, x in ipairs({ 424, 614 }) do
+		local b = T.Button(body, "", 104, 20)
+		b:SetPoint("TOPLEFT", X0 + x, -4)
+		if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+		b:SetScript("OnClick", function(self, button)
+			local c = VIEWS[view].controls and VIEWS[view].controls[i]
+			if c then c.click(button == "RightButton" and -1 or 1); CH.UI.Refresh() end
+		end)
+		b:SetScript("OnEnter", function(self)
+			local c = VIEWS[view].controls and VIEWS[view].controls[i]
+			if c and c.tip then CH.Window.Tooltip(self, { { c.tip }, { "Left-click raises it, right-click lowers it." } }) end
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		b:Hide()
+		p.controls[i] = b
+	end
 
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
@@ -511,11 +561,11 @@ function LUI.Refresh()
 	local T = CH.Theme
 	local v = VIEWS[view]
 	for _, b in ipairs(p.nav) do
-		local mine = b.section == section
+		local mine = b.section == section and (not b.group or b.group == v.parent)
 		b:SetShown(mine)
 		if b.guide then for _, g in ipairs(b.guide) do g:SetShown(mine) end end
 	end
-	p.body:SetShown(view ~= "report")
+	p.body:SetShown(not v.page)
 	for _, b in ipairs(p.nav) do
 		local on = b.view == view or (b.parent and v.parent == b.parent)
 		local f = b.text or (b.GetFontString and b:GetFontString())
@@ -528,12 +578,21 @@ function LUI.Refresh()
 			b.mark:SetShown(b.view == view)
 		end
 	end
-	if view == "report" then return {}, "" end
+	if v.page then return {}, "" end
 	local charLabel = char or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
 	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
 
+	for i, b in ipairs(p.controls) do
+		local c = v.controls and v.controls[i]
+		if c then
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			if f then f:SetText(c.label()) end
+			b.label = c.label()
+		end
+		b:SetShown(c ~= nil)
+	end
 	for j, h in ipairs(p.heads) do
 		local c = v.cols[j]
 		if c then
@@ -592,7 +651,7 @@ function LUI.ParClick(id, mod)
 	return CH.Par.Target(id)
 end
 
---- Which tab's views the page shows: "ledger" (the Clearinghouse), "markets" or "analytics".
+--- Which tab's views the page shows: "ledger" (the Clearinghouse), "research" or "operations".
 function LUI.SetSection(sec)
 	if not SECTIONS[sec] then return end
 	if section ~= sec then
@@ -613,6 +672,7 @@ function LUI.Set(opts)
 	if opts.view then
 		section = LUI.SectionOf(opts.view) or section
 		view = opts.view; lastView[section] = view
+		if VIEWS[view].parent then lastIn[VIEWS[view].parent] = view end
 		sortCol = VIEWS[view].sort; sortDesc = not VIEWS[view].asc
 	end
 	if opts.filter ~= nil then filter = opts.filter end

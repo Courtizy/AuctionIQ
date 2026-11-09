@@ -525,19 +525,23 @@ local function buildBriefing(p)
 	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
 end
 
-local TABS = { { "today", "Today" }, { "markets", "Markets" }, { "crafting", "Crafting" }, { "trading", "Trading" },
-	{ "analytics", "Analytics" }, { "ledger", "Clearinghouse" } }
--- which page frame each tab shows; Markets, Analytics and the Clearinghouse share the table page
-local FRAME = { today = "dashboard", markets = "ledger", crafting = "plan", trading = "ledger", analytics = "ledger", ledger = "ledger",
-	settings = "settings" }
--- old page names (commands, other modules) and where they live now
+-- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
+-- Operations: the work planned or underway (Production, Inventory, Moving). Clearinghouse: what
+-- happened. The AH, profession and mailbox windows carry out what Operations plans.
+local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Clearinghouse" } }
+-- which page frame each tab shows; Research, Operations and the Clearinghouse share the table page
+local FRAME = { today = "dashboard", research = "ledger", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
 local settingsView = "main"
 local function frameOf(pg)
 	if pg == "settings" and settingsView == "groups" then return "groups" end
 	return FRAME[pg]
 end
-local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "crafting" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
+-- old tab names (commands, other modules, saved links) and where they live now
+local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "research", "professions" },
+	crafting = { "research", "professions" }, markets = { "research", "compare" }, analytics = { "research", "performance" },
+	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
+UI.TABS, UI.OLD = TABS, OLD
 
 --- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
 --- after the widest title so a title change never pushes into them.
@@ -574,6 +578,14 @@ local function build()
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
+	-- sub-tabs under the tabs, for a tab that has them (Research: Markets, Professions, Performance)
+	frame.subs = {}
+	for i = 1, 4 do
+		local b = T.Button(frame, "", 90, 20)
+		b:SetScript("OnClick", function(self) if self.view then UI.Go(page, self.view) end end)
+		b:Hide()
+		frame.subs[i] = b
+	end
 	local settings = T.Button(frame.bar, "Settings", 70, 20)
 	settings:SetPoint("RIGHT", frame.close, "LEFT", -6, 0)
 	settings:SetScript("OnClick", function() UI.Go(page == "settings" and "today" or "settings") end)
@@ -587,7 +599,8 @@ local function build()
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
-		if b == buildBriefing then
+		-- the Report and Professions sit in a tab's table page, right of its nav
+		if b == buildBriefing or b == buildPlan then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", 12 + 172, -36)
 			p:SetSize(W - 24 - 172, H - 48)
@@ -809,15 +822,19 @@ function UI.Refresh()
 		frame.title:SetText(CH.Theme.Color("accent", want == "clearinghouse" and "Clearinghouse" or "AuctionIQ"))
 	end
 	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
-	local report = page == "ledger" and CH.LedgerUI.View() == "report"
-	for k, p in pairs(pages) do p:SetShown(k == frameOf(page) or (report and k == "briefing")) end
+	-- a view that is a page of its own (the Report, Professions) shows beside the nav
+	local def = FRAME[page] == "ledger" and CH.LedgerUI.ViewDef()
+	local beside = def and def.page
+	local report = beside == "briefing"
+	for k, p in pairs(pages) do p:SetShown(k == frameOf(page) or k == beside) end
+	UI.LayoutSubTabs()
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
-	frame.foot:SetText(CH.Theme.Color("muted", "/aiq today, markets, crafting, trading, analytics, report.  /aiq help for more.")
+	frame.foot:SetText(CH.Theme.Color("muted", "/aiq dashboard, research, operations, report.  /aiq help for more.")
 		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
 	if page == "today" then return refreshDashboard()
-	elseif page == "crafting" then return CH.PlanUI.Refresh()
+	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
 	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
 	elseif report then
 		refreshLedger()
@@ -827,7 +844,42 @@ function UI.Refresh()
 	else return refreshLedger() end
 end
 
---- Open a tab, and optionally one of its views: UI.Go("trading", "par").
+--- The open tab's sub-tabs across the top, and the table page moved down under them. Returns the
+--- sub-tab labels shown, for tests.
+function UI.LayoutSubTabs()
+	local groups = FRAME[page] == "ledger" and CH.LedgerUI.Groups(page)
+	local open = CH.LedgerUI.Group()
+	local shift = groups and 26 or 0
+	local x, shown = 12, {}
+	for i, b in ipairs(frame.subs) do
+		local g = groups and groups[i]
+		if g then
+			setLabel(b, g[1])
+			b.label, b.view = g[1], g[2]
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			local w = math.max(80, math.ceil((f and f:GetStringWidth() or 70) + 24))
+			b:SetWidth(w)
+			b:ClearAllPoints()
+			b:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -36)
+			colorButton(b, g[1] == open)
+			x = x + w + 4
+			table.insert(shown, g[1])
+		end
+		b:SetShown(g ~= nil)
+	end
+	for k, left in pairs({ ledger = 12, plan = 12 + 172, briefing = 12 + 172 }) do
+		local p = pages[k]
+		if p then
+			p:ClearAllPoints()
+			p:SetPoint("TOPLEFT", frame, "TOPLEFT", left, -36 - shift)
+			p:SetHeight(H - 48 - shift)
+		end
+	end
+	if pages.ledger and pages.ledger.navPanel then pages.ledger.navPanel:SetHeight(H - 48 - shift) end
+	return shown
+end
+
+--- Open a tab, and optionally one of its views: UI.Go("operations", "par").
 local function choose(tab, view)
 	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return false end
@@ -844,8 +896,8 @@ function UI.Go(tab, view)
 	if choose(tab, view) and frame then UI.Refresh() end
 end
 
---- Show a tab: "today", "markets", "crafting", "trading", "analytics" or "ledger" (the
---- Clearinghouse). The old names (dashboard, groups, plan, briefing, report) still work.
+--- Show a tab: "today" (the Dashboard), "research", "operations" or "ledger" (the Clearinghouse),
+--- and optionally a view. The old names (markets, crafting, trading, analytics, plan, report...) still work.
 function UI.Page(name, view)
 	if not frame then build() end
 	if name then choose(name, view) end
@@ -854,6 +906,8 @@ function UI.Page(name, view)
 end
 
 function UI.SetRange(r) range = r end
+--- The page frames by name (dashboard, ledger, plan...), for tests.
+function UI.Pages() return pages end
 
 function UI.IsShown()
 	return frame ~= nil and frame:IsShown()

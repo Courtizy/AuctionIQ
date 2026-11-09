@@ -1,4 +1,7 @@
--- Trading tab: what to do at the auction house and the mailbox, worked out before you get there.
+-- Operations tab: the work planned or underway, worked out before you get to the auction house,
+-- the profession window or the mailbox. The AH, profession and mailbox windows carry it out.
+--   Production queue: every queued craft on every character, and what holds it up.
+--   Shopping list: the reagents the queue still needs to buy (Shopping at the AH buys them).
 --   Ready to post: each item in a posting group, what you hold on every character and the warband
 --     bank, what's already up, how many to post under the group's cap and what they're worth, and
 --     whether the AH's last price is under your minimum (hold) or not (post).
@@ -148,5 +151,84 @@ TUI.VIEWS = {
 		{ "Qty", 412, 50 }, { "Worth", 466, 100 }, { "", 570, 154 } } },
 }
 
--- Trading is what to buy, hold, post or move: stock targets and dead stock are inventory decisions
-LUI.Register("trading", TUI.VIEWS, { "post", "par", "dead", "mail" })
+-- Production ----------------------------------------------------------------------------------
+local function count(id)
+	if not (C_Item and C_Item.GetItemCount) then return 0 end
+	return C_Item.GetItemCount(id, true, false, true, true) or 0
+end
+
+--- The craft queue with each entry's status: { e, short = reagents still to buy, status }.
+function TUI.QueuePlan()
+	local out = {}
+	for _, e in ipairs(CH.db.queue or {}) do
+		local short = 0
+		for _, sh in ipairs(e.shop or {}) do short = short + math.max(0, sh.n * e.qty - count(sh.itemID)) end
+		local status
+		if e.orderID then status = CH.Queue.OrderStep(e) == "Turn in" and "turn in" or (e.stage or "order")
+		elseif short > 0 then status = "buy reagents"
+		else status = "ready to craft" end
+		table.insert(out, { e = e, short = short, status = status })
+	end
+	return out
+end
+
+local STATUS = { ["ready to craft"] = "ok", ["turn in"] = "ok", ["buy reagents"] = "bad" }
+
+local function queueRows(ctx)
+	local T = CH.Theme
+	local out, profit, ready, blocked = {}, 0, 0, 0
+	for _, x in ipairs(TUI.QueuePlan()) do
+		local e = x.e
+		if ctx.keepName(e.name) then
+			local p = (e.profit or 0) * e.qty
+			profit = profit + p
+			if x.status == "buy reagents" then blocked = blocked + 1 else ready = ready + 1 end
+			local name = (e.item and CH.Window.ItemIcon(e.item, 14) or "") .. (e.name or "?") .. (e.quality and T.Color("muted", " Q" .. e.quality) or "")
+			table.insert(out, { id = e.item, cells = { name, e.charName or "?", e.qty, e.profit and LUI.Signed(e.profit) or "-", LUI.Signed(p),
+				e.concentration and T.Color("accent", "yes") or T.Color("muted", "-"), x.short > 0 and x.short or T.Color("muted", "-"),
+				T.Color(STATUS[x.status] or "fg", x.status) },
+				sort = { e.name or "", e.charName or "", e.qty, e.profit or 0, p, e.concentration and 1 or 0, x.short, x.status } })
+		end
+	end
+	if not out[1] then
+		return out, T.Color("muted", "Nothing queued. Queue crafts from the advisor, Scan or Paths at a profession window.")
+	end
+	return out, string.format("%d queued, %s expected profit (estimated, not yet realized). %d ready, %d waiting on reagents.",
+		#out, money(profit), ready, blocked)
+		.. T.Color("muted", "   Craft them at the profession window: Queue and shopping.")
+end
+
+local function shoppingRows(ctx)
+	local T = CH.Theme
+	local out = {}
+	local list, total = CH.Queue.ShoppingList()
+	local buys = 0
+	for _, r in ipairs(list) do
+		local text, name = LUI.ItemText(r.itemID)
+		if ctx.keepName(name) then
+			if r.buy > 0 then buys = buys + 1 end
+			table.insert(out, { id = r.itemID, cells = { text, r.need, r.have, r.buy > 0 and r.buy or T.Color("ok", "have all"),
+				r.unit and money(r.unit) or T.Color("muted", "no price"), r.buy > 0 and money(r.cost) or "-",
+				r.short and r.short > 0 and T.Color("bad", r.short .. " short on the AH") or T.Color("muted", r.source or "") },
+				sort = { name, r.need, r.have, r.buy, r.unit or 0, r.cost or 0, r.short or 0 } })
+		end
+	end
+	if not out[1] then return out, T.Color("muted", "Nothing to buy: the queue is empty or you hold every reagent.") end
+	return out, string.format("%d reagents to buy, about %s (planned purchase budget).", buys, money(total))
+		.. T.Color("muted", "   At the AH, Auctioning's Shop queue buys them.")
+end
+
+TUI.PRODUCTION = {
+	queue = { label = "Production queue", sort = 5, noTime = true, rows = queueRows, cols = { { "Craft", 0, 190 }, { "Character", 194, 90 },
+		{ "Qty", 288, 36 }, { "Profit/craft", 328, 82 }, { "Profit", 414, 86 }, { "Conc.", 504, 44 }, { "To buy", 552, 50 }, { "Status", 606, 118 } } },
+	shopping = { label = "Shopping list", sort = 6, noTime = true, rows = shoppingRows, cols = { { "Reagent", 0, 200 }, { "Need", 204, 54 },
+		{ "Have", 262, 54 }, { "Buy", 320, 60 }, { "Each", 384, 84 }, { "Cost", 472, 96 }, { "", 572, 152 } } },
+}
+TUI.MOVING = {
+	rules = { label = "Groups and rules", noTime = true, cols = {}, go = function() CH.UI.Go("settings", "groups") end },
+}
+
+-- Operations: produce, then hold or post (stock targets and dead stock are inventory decisions), then move
+LUI.Register("operations", TUI.PRODUCTION, { "queue", "shopping" }, "Production")
+LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead" }, "Inventory")
+LUI.Register("operations", TUI.MOVING, { "mail", "rules" }, "Moving")
