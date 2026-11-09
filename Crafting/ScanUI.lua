@@ -325,7 +325,10 @@ function SUI.Next()
 	if not nextOrder() then
 		local before = CH.Queue.Count()
 		SUI.QueueAll()
-		if CH.Queue.Count() == before then return end
+		if CH.Queue.Count() == before then
+			CH.Print("no work order to start: none pays or gives knowledge at a rank you can reach. Type /aiq orders to see why for each.")
+			return
+		end
 	end
 	local step, e = CH.Queue.DoNext()
 	if step == "Claim" then

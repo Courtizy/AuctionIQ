@@ -73,6 +73,9 @@ local function operation(model, picks, concentrate, fin)
 	local ok, info
 	if model.orderID and ui.GetCraftingOperationInfoForOrder then
 		ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
+		if not (ok and info) then -- the game may not answer for an order you haven't claimed
+			ok, info = pcall(ui.GetCraftingOperationInfo, model.recipeID, infos, nil, concentrate or false)
+		end
 	else
 		ok, info = pcall(ui.GetCraftingOperationInfo, model.recipeID, infos, model.allocationGUID, concentrate or false)
 	end

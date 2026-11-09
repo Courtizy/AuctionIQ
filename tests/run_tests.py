@@ -919,6 +919,7 @@ for i = 1, 40 do STUB.Fire("CRAFTINGORDERS_CAN_REQUEST"); STUB.RunTimers() end""
 check("orders fetch: asks for patron, personal, public and guild, retrying a throttle", L.eval("STUB.fetched") == 4
       and len(list(L.eval("STUB.requests").values())) == 5)
 check("orders fetch: the list holds every kind, not just the last one shown", len(list(CH.Orders.List().values())) == 4)
+check("/aiq orders explains each order without erroring", L.eval("(pcall(Clearinghouse.Orders.Debug))"))
 check("orders fetch: order IDs compare as text", L.eval("Clearinghouse.Orders.Same(77, '77')") and not L.eval("Clearinghouse.Orders.Same(77, nil)"))
 run("C_CraftingOrders.GetCrafterOrders = STUB.oldList; C_CraftingOrders.RequestCrafterOrders = nil; Clearinghouse.Orders.cache = {}")
 run("Clearinghouse.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = nil")

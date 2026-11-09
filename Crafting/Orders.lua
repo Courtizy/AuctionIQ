@@ -257,6 +257,32 @@ function O.List()
 	return out
 end
 
+--- Print, for each listed order, what the advisor makes of it: the rank it needs, the ranks it
+--- found with and without Concentration, and any error. For working out "can't reach".
+function O.Debug()
+	local orders = O.All()
+	CH.Print(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
+	for _, order in ipairs(orders) do
+		local ok, result = pcall(O.Analyze, order)
+		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
+		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
+		if not ok then
+			CH.Print(head .. " error " .. tostring(result))
+		elseif not result then
+			CH.Print(head .. " no result")
+		else
+			local m = result.model or {}
+			local parts = {}
+			for _, r in ipairs(result.rows or {}) do
+				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
+					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
+			end
+			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
+				#(result.rows or {}), table.concat(parts, "; ")))
+		end
+	end
+end
+
 --- Learned recipes of the open profession that still give their first-craft knowledge point, at
 --- their cheapest craft: { recipeID, name, item, quality, cost, value (what the item sells for,
 --- after the cut), net (value less cost: negative is what the point costs you), row, result }.
