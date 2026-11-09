@@ -154,6 +154,7 @@ CH.LogUI = LUI
 local frame, rows
 local N, W = 14, 680
 local offset = 0
+local scrollBar
 local COLS = { { "Recipe", 12, 200 }, { "Crafts", 214, 50 }, { "Multicraft", 266, 86 }, { "Resourceful", 354, 90 },
 	{ "Ingenuity", 446, 80 }, { "Market vs expected", 528, 140 } }
 
@@ -172,6 +173,7 @@ function LUI.Refresh()
 		or T.Color("muted", "Proc rates are what you got / what the advisor expected."))
 	local out = {}
 	offset = math.max(0, math.min(offset, #data - N))
+	if scrollBar then scrollBar:Set(offset, N, #data) end
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
 		if d then
@@ -197,7 +199,8 @@ function LUI.Toggle()
 		clear:SetScript("OnClick", function() Lg.Clear() end)
 		frame.note = CH.Window.Text(frame, 12, -34, W - 24)
 		rows = CH.Window.Table(frame, COLS, N, -54, 18, nil, nil, W)
-		CH.Window.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #Lg.Rows() end, LUI.Refresh)
+		scrollBar = CH.Window.ScrollBar(frame, W - 8, -70, N * 18)
+		CH.Window.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #Lg.Rows() end, LUI.Refresh, scrollBar)
 		CH.Theme.Fonts(frame)
 		CH.Window.Attach("results", frame)
 	end

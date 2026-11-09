@@ -14,7 +14,7 @@ local live -- the result without simulation, to compare against
 local gearPick -- top gear for the recipe on screen
 -- name, x, width. Hover breakdowns on cost (3), sell (4), profit (5) and max (7).
 local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, { "Sells for", 206, 86 },
-	{ "Profit", 292, 124 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
+	{ "Avg profit/craft", 292, 124 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
 local HOVER = { 3, 4, 5, 7 }
 local WIDTH = 540
 
@@ -230,13 +230,17 @@ function AUI.Render(result, reason)
 	end
 	local lines = {}
 	if result.best then
-		table.insert(lines, T.Color("accent", "Recommended: ") .. CH.Advisor.PicksText(result, result.best.picks, result.best.finishing))
+		local b = result.best
+		table.insert(lines, T.Color("accent", string.format("Make Q%d: ", b.quality)) .. money(b.profit) .. " avg profit a craft, reagents "
+			.. CH.FormatMoney(b.cost) .. ". " .. T.Color("muted", "Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
 	elseif result.order then
 		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
 	end
 	if result.bestConc then
-		table.insert(lines, T.Color("accent", "With Concentration: ") .. CH.FormatMoney(result.bestConc.perPoint) .. " per point, using "
-			.. CH.Advisor.PicksText(result, result.bestConc.picks, result.bestConc.finishing))
+		local c = result.bestConc
+		table.insert(lines, T.Color("accent", string.format("With Concentration, Q%d: ", c.quality)) .. money(c.profit) .. " a craft for "
+			.. string.format("%d points", c.concentration or 0) .. " (" .. CH.FormatMoney(c.perPoint) .. " a point). " .. T.Color("muted", "Use ")
+			.. CH.Advisor.PicksText(result, c.picks, c.finishing))
 	end
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end

@@ -5,7 +5,7 @@ local _, CH = ...
 
 local AUI = {}
 CH.AuctionUI = AUI
-local frame, rows, status, postButton, skipButton, cancelButton, buyButton
+local frame, rows, status, postButton, skipButton, cancelButton, buyButton, scrollBar
 local W, H, N = 460, 470, 17
 local plan, mode, confirmNext = {}, nil, false
 local offset = 0
@@ -40,6 +40,7 @@ function AUI.Refresh()
 		end
 	end
 	offset = math.max(0, math.min(offset, #plan - N))
+	scrollBar:Set(offset, N, #plan)
 	for i, r in ipairs(rows) do
 		local e = plan[i + offset]
 		if e then
@@ -380,7 +381,8 @@ local function build()
 	status = Wd.Text(frame, 12, -90, W - 24)
 	status:SetText(CH.Theme.Color("muted", "Your whole Warband counts as one seller: your own listings are never undercut."))
 	rows = Wd.Table(frame, { { "Item", 12, 190 }, { "Post / price", 206, 100 }, { "Why", 310, 140, "LEFT" } }, N, -110, 20, nil, hover, W)
-	Wd.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #plan end, AUI.Refresh)
+	scrollBar = Wd.ScrollBar(frame, W - 10, -128, N * 20)
+	Wd.Wheel(frame, N, function() return offset end, function(v) offset = v end, function() return #plan end, AUI.Refresh, scrollBar)
 	T.Fonts(frame)
 	frame:Hide()
 end

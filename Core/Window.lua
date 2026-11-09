@@ -105,12 +105,49 @@ end
 
 --- Scroll a list with the mouse wheel over frame: get() and set(n) hold the offset, total() the
 --- row count and n the rows shown; refresh() redraws.
-function W.Wheel(frame, n, get, set, total, refresh)
+--- With bar (from W.ScrollBar), the wheel also moves it.
+function W.Wheel(frame, n, get, set, total, refresh, bar)
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
-		set(math.max(0, math.min(math.max(0, total() - n), get() - d * 3)))
+		local t = total()
+		set(math.max(0, math.min(math.max(0, t - n), get() - d * 3)))
 		refresh()
+		if bar then bar:Set(get(), n, t) end
 	end)
+end
+
+--- A visible scroll position for a list: a thin track and thumb at x (from the parent's left) down
+--- from y for h pixels, and a "1-17 of 83" count under it, right-aligned to the track. bar:Set(offset,
+--- shown, total) after each redraw; both hide when everything fits. noCount leaves out the count
+--- (for lists that already say it in their heading).
+function W.ScrollBar(parent, x, y, h, noCount)
+	local T = CH.Theme
+	local bar = {}
+	local track = parent:CreateTexture(nil, "ARTWORK")
+	track:SetPoint("TOPLEFT", x, y)
+	track:SetSize(4, h)
+	track:SetColorTexture(T.muted[1], T.muted[2], T.muted[3], 0.25)
+	local thumb = parent:CreateTexture(nil, "OVERLAY")
+	thumb:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.8)
+	thumb:SetSize(4, h)
+	local count = noCount and { SetText = function() end } or W.OneLine(W.Text(parent, x - 116, y - h - 2, 120, "RIGHT", "GameFontDisableSmall"))
+	bar.track, bar.thumb, bar.count = track, thumb, count
+	function bar:Set(offset, shown, total)
+		offset, shown, total = offset or 0, shown or 0, total or 0
+		local scrolls = total > shown
+		track:SetShown(scrolls)
+		thumb:SetShown(scrolls)
+		if not scrolls then count:SetText(""); bar.text = nil; return end
+		local th = math.max(12, h * shown / total)
+		local room = h - th
+		local at = total > shown and room * offset / (total - shown) or 0
+		thumb:ClearAllPoints()
+		thumb:SetPoint("TOPLEFT", x, y - at)
+		thumb:SetHeight(th)
+		bar.text = string.format("%d-%d of %d", offset + 1, math.min(total, offset + shown), total)
+		count:SetText(bar.text)
+	end
+	return bar
 end
 
 --- Show tooltip lines ({left, right} or {left}) on owner.

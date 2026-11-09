@@ -378,11 +378,18 @@ local function buildDashboard(p)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		c.act = T.Button(top, "", 84, 22)
 		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 15)
-		c.act:SetScript("OnClick", function(self) if self.run then self.run(); UI.Refresh() end end)
+		c.act:SetScript("OnClick", function(self)
+			if not self.run then return end
+			local ok, msg = self.run()
+			-- what happened stays on the card (by its title), not only in chat
+			if self.key and msg then d.acted[self.key] = { ok = ok ~= false, msg = msg } end
+			UI.Refresh()
+		end)
 		c.act:Hide()
 		d.cards[i] = c
 	end
 	d.logOffset = 0
+	d.acted = {} -- [card title] = { ok, msg } after its button was pressed
 	top:EnableMouseWheel(true)
 	top:SetScript("OnMouseWheel", function(_, delta) d.logOffset = math.max(0, d.logOffset - delta * 2); UI.Refresh() end)
 
@@ -749,12 +756,16 @@ local function refreshDashboard()
 			local e = list[i + d.logOffset]
 			c.hit.go = e and e.go
 			c.act.run = e and e.act and e.act.run
+			c.act.key = e and e.title
 			if e and e.act then setLabel(c.act, e.act.label); c.act:Show() else c.act:Hide() end
 			if e then
+				local did = d.acted[e.title]
 				c.who:SetText(T.Color(e.tier == 1 and "accent" or "fg", e.title))
 				c.time:SetText(e.gold and e.gold > 0 and money(e.gold) or "")
 				c.l1:SetText(e.detail)
-				c.l2:SetText("")
+				-- after its button: one line of detail, then what happened (or why not)
+				if c.l1.SetMaxLines then c.l1:SetMaxLines(did and 1 or 2) end
+				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg) or "")
 				c.l3:SetText((not e.act and e.go) and T.Color("muted", "click to open") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")

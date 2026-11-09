@@ -29,7 +29,9 @@ function MUI.Refresh()
 		or "Nothing in your bags belongs to a routed group."
 	list:SetText((#lines > 0 and table.concat(lines, "\n") or CH.Theme.Color("muted", why))
 		.. "\n\n" .. CH.Theme.Color("muted", "Routes (Routes button, or right-click a group in Settings, Edit groups):\n" .. (#routes > 0 and table.concat(routes, "\n") or "none yet")))
-	sendButton:SetEnabled(n > 0)
+	local nextTo = CH.Mail.NextTo()
+	sendButton:SetEnabled(n > 0 and not MUI.sending)
+	sendButton:SetText(MUI.sending and "Sending..." or nextTo and ("Send: " .. nextTo) or "Send")
 	MUI.sendCount = n
 end
 
@@ -46,20 +48,27 @@ local function build()
 			MUI.Refresh()
 		end)
 	end)
-	sendButton = T.Button(frame, "Send", 80, 22)
+	sendButton = T.Button(frame, "Send", 140, 22)
 	sendButton:SetPoint("TOPLEFT", 108, -36)
 	sendButton:SetScript("OnClick", function()
+		if MUI.sending then return end
 		local to, n = CH.Mail.SendNext()
-		if to then status:SetText(string.format("Sent %d to %s.", n, to)) end
-		C_Timer.After(1, MUI.Refresh)
+		if not to then return end
+		-- sent only once the game says so (MAIL_SEND_SUCCESS), failed on MAIL_FAILED or no answer
+		local s = { to = to, n = n }
+		MUI.sending = s
+		status:SetText(T.Color("accent", string.format("Sending %d to %s ...", n, to)))
+		C_Timer.After(6, function() if MUI.sending == s then MUI.SendDone(false, "no answer from the mailbox") end end)
+		MUI.Refresh()
 	end)
 	routeButton = T.Button(frame, "Routes", 80, 22)
-	routeButton:SetPoint("TOPLEFT", 194, -36)
+	routeButton:SetPoint("TOPLEFT", 254, -36)
 	routeButton:SetScript("OnClick", function(self) MUI.RouteMenu(self) end)
 	frame.waiting = Wd.Text(frame, 12, -64, 336)
 	status = Wd.Text(frame, 12, -82, 336)
 	list = Wd.Text(frame, 12, -104, 336)
 	list:SetJustifyV("TOP")
+	frame.sendButton, frame.status = sendButton, status
 	T.Fonts(frame)
 	frame:Hide()
 end
@@ -72,6 +81,21 @@ CH.On("MAIL_SHOW", function()
 	MUI.Refresh()
 end)
 CH.On("MAIL_CLOSED", function() if frame then frame:Hide() end end)
+
+--- The game answered the mail just sent (or it timed out).
+function MUI.SendDone(ok, why)
+	local s = MUI.sending
+	if not s then return end
+	MUI.sending = nil
+	if status then
+		status:SetText(ok and CH.Theme.Color("ok", string.format("Sent %d to %s.", s.n, s.to))
+			or CH.Theme.Color("bad", string.format("Not sent to %s: %s", s.to, why or "the game refused it")))
+	end
+	MUI.Refresh()
+end
+CH.On("MAIL_SEND_SUCCESS", function() MUI.SendDone(true) end)
+CH.On("MAIL_FAILED", function() MUI.SendDone(false, MUI.lastError) end)
+CH.On("UI_ERROR_MESSAGE", function(_, _, msg) if MUI.sending and type(msg) == "string" then MUI.lastError = msg end end)
 CH.On("MAIL_INBOX_UPDATE", function() if frame and frame:IsShown() then MUI.Refresh() end end)
 CH.On("BAG_UPDATE_DELAYED", function() if frame and frame:IsShown() then MUI.Refresh() end end)
 
