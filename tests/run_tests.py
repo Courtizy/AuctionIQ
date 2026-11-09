@@ -1147,6 +1147,33 @@ p2 = L.eval("(function() for _, r in ipairs(Clearinghouse.Ledger.Records('Sales'
 check("ledger: an edited record of the same length is read again", p1 == 10000 and p2 == 90000)
 run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales; Clearinghouse.Ledger.ClearStats()""")
 
+# Shopping: buy the queue's reagents at the AH, quoted first, confirmed on a second click
+run("""STUB.buys = {}
+C_AuctionHouse.StartCommoditiesPurchase = function(id, n) table.insert(STUB.buys, { 'start', id, n }) end
+C_AuctionHouse.ConfirmCommoditiesPurchase = function(id, n) table.insert(STUB.buys, { 'confirm', id, n }) end
+STUB.prices['i:981'] = { mat = 10000 }; STUB.prices['i:982'] = { mat = 10000 }; Clearinghouse.Prices.ClearCache()
+Clearinghouse.AuctionUI.Build()""")
+d1 = L.eval("Clearinghouse.AuctionUI.DecideBuy({ itemID = 981, need = 5, have = 1, buy = 4 }, { { price = 10500, qty = 10 } })")
+d2 = L.eval("Clearinghouse.AuctionUI.DecideBuy({ itemID = 982, need = 5, have = 0, buy = 5 }, { { price = 20000, qty = 10 } })")
+check("shopping: buys at the live price, skips one far over the usual price", d1.action == "buy" and d1.qty == 4 and d1.unit == 10500
+      and d2.action == "skip" and "100%" in d2.why)
+run("""STUB.oldSL = Clearinghouse.Queue.ShoppingList; STUB.oldSearch = Clearinghouse.Auction.Search
+Clearinghouse.Queue.ShoppingList = function() return { { itemID = 981, need = 5, have = 1, buy = 4 }, { itemID = 982, need = 5, have = 0, buy = 5 } } end
+Clearinghouse.Auction.Search = function(id, done) done(id == 981 and { { price = 10500, qty = 10 } } or { { price = 20000, qty = 10 } }) end
+Clearinghouse.AuctionUI.ShopScan(); for i = 1, 5 do STUB.RunTimers() end""")
+plan = L.eval("Clearinghouse.AuctionUI.Plan()")[0]
+check("shopping: Shop queue lists the queue's buys first", plan[1].id == 981 and plan[1].d.action == "buy" and plan[2].d.action == "skip")
+run("Clearinghouse.AuctionUI.BuyNext()")
+check("shopping: the first click asks for a quote, nothing bought yet", L.eval("#STUB.buys") == 1 and L.eval("STUB.buys[1][1]") == "start" and L.eval("STUB.buys[1][3]") == 4)
+run("STUB.Fire('COMMODITY_PRICE_UPDATED', 10500, 42000)")
+run("Clearinghouse.AuctionUI.BuyNext()")
+check("shopping: the second click confirms the quoted buy", L.eval("STUB.buys[2][1]") == "confirm" and not plan[1].done)
+run("STUB.Fire('COMMODITY_PURCHASE_SUCCEEDED')")
+check("shopping: done only once the AH says it went through", plan[1].done and not plan[1].failed and "bought" in plan[1].d.why)
+run("""Clearinghouse.Queue.ShoppingList = STUB.oldSL; Clearinghouse.Auction.Search = STUB.oldSearch
+local plan = Clearinghouse.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
+C_AuctionHouse.StartCommoditiesPurchase = nil; C_AuctionHouse.ConfirmCommoditiesPurchase = nil; Clearinghouse.Depth.Forget()""")
+
 # Second and third review fixes -------------------------------------------------------------------
 # the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13
 run("""STUB.prices['i:961'] = { mat = 1 }; STUB.prices['i:962'] = { mat = 10 }
