@@ -26,6 +26,7 @@ takes over the jobs that today need both TSM and CraftSim.
 - One window, six tabs: Today, Markets, Crafting, Trading, Analytics and Clearinghouse
 - Tooltips on every item: the value after the 5% cut, the price to buy it, and the profit of crafting it
 - A crafting advisor that works out profit the way CraftSim does, Concentration included
+- Work orders and first crafts priced up, with the ones that give a knowledge point marked 1KP
 - Every learned recipe ranked by profit, gold per Concentration point, or gold a day
 - Knowledge point plans drawn on the profession's own trees
 - A craft queue, with a shopping list priced by walking the AH listings
@@ -70,7 +71,7 @@ so. After that, delete the Clearinghouse folder.
 | **Today** | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
 | **Markets** | Compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. |
 | **Crafting** | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and Scan, Paths, Queue, Results and the advisor. |
-| **Trading** | Groups, operations and mail routes. |
+| **Trading** | Groups, operations and mail routes (also set from the mailbox's Routes button). |
 | **Analytics** | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour. |
 | **Clearinghouse** | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 
@@ -106,10 +107,21 @@ best use of Concentration, worked out the same way CraftSim does:
 </details>
 
 <details>
-<summary><b>Recipe scan</b>: every learned recipe, ranked</summary>
+<summary><b>Recipe scan, work orders and first crafts</b></summary>
 
-`/aiq scan`, or the Scan tab. Every learned recipe ranked by profit per craft, gold per
-Concentration point, or gold a day (profit times what the region sells, up to your daily cap).
+`/aiq scan`, or the Scan tab. Click any column header to sort by it, and again to flip.
+
+- **Recipes**: every learned recipe ranked by profit per craft, gold per Concentration point, or
+  gold a day (profit times what the region sells, up to your daily cap).
+- **Work orders**: every order the game has shown you (search Patron and Personal on the Crafting
+  Orders tab first) with the commission after the consortium's cut, the rewards (valued after the
+  cut when they sell), the reagents you'd supply and the profit. Orders whose reward gives a
+  knowledge point are marked **1KP**.
+- **First crafts**: recipes that still give their first-craft knowledge point, at their cheapest
+  reagents, with what the point costs you after selling what it makes.
+
+Click a row to open it, shift-click to queue it. Queue all queues every order that pays or gives
+knowledge, or every first craft.
 
 </details>
 
