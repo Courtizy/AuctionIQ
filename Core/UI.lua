@@ -328,7 +328,7 @@ function UI.LedgerRows(view, filter)
 end
 
 -- Building ------------------------------------------------------------------------------------
-local CARDS = 6 -- Do next cards: two columns of three
+local CARDS = 4 -- Do next cards: two columns of two (the wheel scrolls to more)
 
 local function buildDashboard(p)
 	local T = CH.Theme
@@ -336,8 +336,26 @@ local function buildDashboard(p)
 	pages.dashboard = p
 	p.d = d
 	local PW = W - 24
+	-- the figures across the top: gold, stock, queued work and Concentration, each opening its page
+	d.figures = {}
+	local FW = math.floor((PW - 3 * 8) / 4)
+	for i, f in ipairs({ { "gold", "Available gold", { "ledger", "inventory" } }, { "stock", "Inventory value", { "ledger", "inventory" } },
+		{ "queued", "Queued crafts", { "operations", "queue" } }, { "conc", "Full Concentration", { "research", "professions" } } }) do
+		local x = (i - 1) * (FW + 8)
+		local box = panel(p, x, 0, FW, 46)
+		local lab = fs(box, 10, -6, FW - 20, "LEFT", "GameFontNormalSmall")
+		lab:SetText(f[2])
+		local v = fs(box, 10, -22, FW - 20, "LEFT", "GameFontHighlightLarge")
+		local sub = fs(box, 112, -7, FW - 122, "RIGHT", "GameFontDisableSmall")
+		local hit = CreateFrame("Button", nil, box)
+		hit:SetAllPoints(box)
+		hit:SetScript("OnClick", function() UI.Go(f[3][1], f[3][2]) end)
+		hit:SetScript("OnEnter", function(self) if self.tip then CH.Window.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		d.figures[f[1]] = { value = v, sub = sub, hit = hit }
+	end
 	-- Do next, the page's main block: what to do now, each card with a button that does it
-	local top = panel(p, 0, 0, PW, 200)
+	local top = panel(p, 0, -54, PW, 148)
 	d.top = top
 	d.heading = fs(top, 10, -8, 400, "LEFT", "GameFontNormal")
 	d.mode = "next"
@@ -727,9 +745,60 @@ function UI.CharacterMenu(owner, name)
 	end)
 end
 
+--- The Dashboard's figures: gold, inventory value, queued crafts (ready, short of reagents, on
+--- other characters) and how many professions sit at full Concentration.
+function UI.DashboardFigures(now)
+	now = now or time()
+	local L = CH.Ledger
+	local f = { queued = 0, ready = 0, short = 0, elsewhere = 0, conc = 0, concList = {} }
+	if L and L.Available() then f.gold = L.Gold(); f.stock = L.InventoryValue() end
+	local me = CH.CharacterKey and CH.CharacterKey()
+	for _, x in ipairs(CH.TradingUI and CH.TradingUI.QueuePlan() or {}) do
+		f.queued = f.queued + (x.e.qty or 0)
+		if x.e.char ~= me then f.elsewhere = f.elsewhere + 1
+		elseif x.status == "buy reagents" then f.short = f.short + 1
+		else f.ready = f.ready + 1 end
+	end
+	for _, c in pairs(CH.db.characters or {}) do
+		for _, pr in pairs(c.professions or {}) do
+			local cur, max
+			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(pr, now) end
+			if cur and max and max > 0 and cur >= max then
+				f.conc = f.conc + 1
+				table.insert(f.concList, (c.name or "?") .. ": " .. (pr.name or "?"))
+			end
+		end
+	end
+	return f
+end
+
+local function refreshFigures(d)
+	local T = CH.Theme
+	local f = UI.DashboardFigures()
+	local F = d.figures
+	F.gold.value:SetText(f.gold and CH.FormatMoney(f.gold) or T.Color("muted", "-"))
+	F.gold.sub:SetText("")
+	F.gold.hit.tip = { { "Gold on the characters you count, and the warband bank." }, { T.Color("muted", "Pick who counts with Characters, below.") } }
+	F.stock.value:SetText(f.stock and CH.FormatMoney(f.stock) or T.Color("muted", "-"))
+	F.stock.sub:SetText(T.Color("muted", "estimated"))
+	F.stock.hit.tip = { { "What you hold, at market value. An estimate, not gold in hand." }, { T.Color("muted", "Click for the inventory records.") } }
+	F.queued.value:SetText(tostring(f.queued))
+	F.queued.sub:SetText(f.queued > 0 and (f.short > 0 and T.Color("bad", f.short .. " short") or T.Color("ok", f.ready .. " ready")) or "")
+	F.queued.hit.tip = { { "Crafts in the queue on every character." },
+		{ string.format("%d ready here, %d missing reagents, %d on other characters", f.ready, f.short, f.elsewhere) },
+		{ T.Color("muted", "Click for the work queue in Operations.") } }
+	F.conc.value:SetText(f.conc > 0 and T.Color("accent", f.conc) or "0")
+	F.conc.sub:SetText(f.conc > 0 and T.Color("muted", "wasting") or T.Color("muted", "none full"))
+	local tip = { { "Professions at full Concentration: it stops refilling until you spend it." } }
+	for _, n in ipairs(f.concList) do table.insert(tip, { n }) end
+	F.conc.hit.tip = tip
+	return f
+end
+
 local function refreshDashboard()
 	local d = pages.dashboard.d
 	local T = CH.Theme
+	refreshFigures(d)
 	for k, b in pairs(d.rangeButtons) do colorButton(b, k == range) end
 	if not CH.Ledger.Available() then
 		d.title:SetText("Dashboard")

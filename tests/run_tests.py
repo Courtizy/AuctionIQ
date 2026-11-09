@@ -813,6 +813,19 @@ run("Clearinghouse.UI.Page('analytics', 'dead')")
 check("a view that moved opens on its new tab: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Inventory")
 run("Clearinghouse.UI.Page('markets')")
 check("markets opens Research on compare prices", LUI.Section() == "research" and LUI.View() == "compare")
+# Dashboard figures: queued crafts split into ready, short of reagents, and on other characters
+run("""STUB.oldQueue = Clearinghouse.db.queue
+Clearinghouse.db.queue = { { char = Clearinghouse.CharacterKey(), name = 'A', qty = 3, shop = {} },
+  { char = Clearinghouse.CharacterKey(), name = 'B', qty = 2, shop = { { itemID = 987654, n = 5 } } },
+  { char = 'Other-Realm', name = 'C', qty = 1, shop = {} } }""")
+fig = CH.UI.DashboardFigures()
+check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
+run("Clearinghouse.UI.Page('today')")
+qf = L.eval("Clearinghouse.UI.Pages().dashboard.d.figures.queued")
+check("dashboard: the queued figure shows", plain(L.eval("Clearinghouse.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
+run("Clearinghouse.UI.Pages().dashboard.d.figures.queued.hit.scripts.OnClick()")
+check("dashboard: clicking it opens Operations, Work queue", CH.LedgerUI.View() == "queue" and CH.LedgerUI.Section() == "operations")
+run("Clearinghouse.db.queue = STUB.oldQueue; Clearinghouse.UI.Page('markets')")
 check("tabs: Dashboard, Research, Operations, Accounting", [t[2] for t in L.eval("Clearinghouse.UI.TABS").values()] == ["Dashboard", "Research", "Operations", "Accounting"])
 check("research sub-tabs: Markets, Professions, Performance", list(L.eval("Clearinghouse.UI.LayoutSubTabs()").values()) == ["Markets", "Professions", "Performance"])
 run("Clearinghouse.UI.Page('operations')")
