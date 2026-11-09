@@ -44,7 +44,8 @@ check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
 run('Clearinghouse.db.settings.coins = true')
 check("tooltip shows value, buy now / post and profit",
       lines == ["AuctionIQ value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
-               "  AH cut (5%)=-25g", "  Value after cut=475g", "Craft profit=375g"])
+               "  AH cut (5%)=-25g", "  Value after cut=475g",
+               "Values=", "  MV  Market Value=500g", "  EV  Estimated Value=475g", "Craft profit=375g"])
 run('Clearinghouse.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
@@ -89,7 +90,7 @@ rl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best,
 check("reagent hover lists each reagent with rank, price each and total",
       ("4x item 202 Q2", "15g ea  60g") in rl and ("2x item 205", "1g ea  2g") in rl and rl[-1] == ("Total", "212g"))
 sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
-check("sell hover shows realm and region prices", ("   Market value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and sl[-1] == ("After 5% auction cut", "285g"))
+check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and sl[-1] == ("After 5% auction cut", "285g"))
 pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
 check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on reagents", "34%") in pl)
 mx = CH.Advisor.MaxCraftable(res, best)
@@ -1230,6 +1231,17 @@ check("results: every character's crafts are listed", len(res) == 1 and res[0].c
 run("Clearinghouse.LogUI.Open()")
 check("results: /aiq results opens the Analytics view", L.eval("Clearinghouse.LedgerUI.View()") == "results")
 run("Clearinghouse.db.characters['Alt-Realm'] = nil; Clearinghouse.UI.Page('today')")
+
+# Values: MV, RV, EV and RZ (realized, from your own sales) explain a price
+run("""STUB.oldSales2 = TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"]
+TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = "itemString,stackSize,quantity,price,otherPlayer,player,time,source\\ni:100,1,2,100000,Bob,Courtizy," .. (time() - 86400) .. ",Auction"
+Clearinghouse.Ledger.ClearStats()""")
+vals = L.eval("Clearinghouse.Prices.Values(100)")
+check("values: realized is what you sold it for after the cut", vals.realized == 95000 and vals.n == 2 and vals.mv is not None and vals.ev is not None)
+vl = [plain(l[0+1]) for l in L.eval("Clearinghouse.Prices.ValueLines(100)").values()]
+check("values: short codes in the tooltip", vl[0] == "Values" and any(x.startswith("  MV") for x in vl) and any(x.startswith("  RZ  Realized, 2 sold, last 1d ago") for x in vl))
+check("values: each code has its full meaning for the hover", all(L.eval(f"Clearinghouse.GLOSSARY.{c} ~= nil") for c in ["MV", "RV", "EV", "RZ"]))
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales2; Clearinghouse.Ledger.ClearStats()""")
 
 # Second and third review fixes -------------------------------------------------------------------
 # the exact cheapest mix: greedy cost-per-skill takes 19, the cheapest that clears the threshold is 13

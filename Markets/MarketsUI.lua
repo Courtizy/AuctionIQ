@@ -111,7 +111,7 @@ end
 
 MUI.VIEWS = {
 	compare = { label = "Compare prices", sort = 7, noTime = true, rows = compareRows, cols = { { "Item", 0, 190 }, { "AH scan", 194, 84 },
-		{ "Age", 282, 52 }, { "TSM", 338, 84 }, { "Oribos", 426, 84 }, { "Region", 514, 84 }, { "Gap", 602, 50 }, { "Read", 656, 68 } } },
+		{ "Age", 282, 52 }, { "MV", 338, 84 }, { "Oribos", 426, 84 }, { "RV", 514, 84 }, { "Gap", 602, 50 }, { "Read", 656, 68 } } },
 	market = { label = "Market prices", sort = 7, noTime = true, rows = marketRows, cols = { { "Item", 0, 220 }, { "Held", 224, 50 }, { "Market now", 278, 96 },
 		{ "Average", 378, 96 }, { "Trend", 478, 60 }, { "Listed", 542, 70 }, { "Held worth", 616, 108 } } },
 	when = { label = "When it sells", sort = 2, rows = whenRows, cols = { { "Item", 0, 220 }, { "Sold", 224, 60 }, { "Best day", 288, 90 },
