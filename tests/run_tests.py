@@ -893,6 +893,25 @@ tip = [plain(l[1]) for l in CH.ScanUI.OrderLines(by[78]).values()]
 check("scan tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
 run("Clearinghouse.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
+run("Clearinghouse.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
+nohave = list(CH.Orders.List().values())
+check("orders: each says whether you hold the reagents, and which are missing", not nohave[0].have and len(list(nohave[0].missing.values())) > 0)
+CH.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the reagents for", CH.ScanUI.QueueAll() == 0)
+tipm = [plain(l[1]) for l in CH.ScanUI.OrderLines(nohave[0]).values()]
+check("orders hover: lists the missing reagents", "Missing reagents" in tipm)
+run("C_Item.GetItemCount = STUB.oldCount; Clearinghouse.Queue.Clear(); Clearinghouse.ScanUI.Refresh(); Clearinghouse.ScanUI.QueueAll()")
+# orders from an older expansion are tagged, and Older: hidden leaves them out
+run("""STUB.oldLine = C_TradeSkillUI.GetTradeSkillLineForRecipe
+C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) if id == 10 then return 2871, 'Khaz Algar Alchemy' end return 2906, 'Midnight Alchemy' end
+STUB.oldInfos = C_TradeSkillUI.GetChildProfessionInfos
+C_TradeSkillUI.GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = 'Midnight' }, { professionID = 2871, expansionName = 'Khaz Algar' } } end""")
+olist = list(CH.Orders.List().values())
+check("orders: each order knows its expansion and whether it's the current one", olist[0].expansion == "Khaz Algar" and not olist[0].current)
+run("Clearinghouse.ScanUI.ToggleOlder()")
+check("orders: Older: hidden leaves older-expansion orders out", len(list(CH.ScanUI.Refresh().values())) == 0)
+run("Clearinghouse.ScanUI.ToggleOlder()")
+check("orders: Older: shown brings them back", len(list(CH.ScanUI.Refresh().values())) == 3)
+run("C_TradeSkillUI.GetTradeSkillLineForRecipe = STUB.oldLine; C_TradeSkillUI.GetChildProfessionInfos = STUB.oldInfos")
 run("Clearinghouse.ScanUI.SortBy('from')")
 srt = list(CH.ScanUI.Refresh().values())
 check("scan tab: clicking a header sorts by that column", srt[0].startswith("Test Flask from=Pat ") and "from=Patron" in srt[-1])

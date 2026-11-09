@@ -235,11 +235,27 @@ end
 function O.List()
 	local co = C_CraftingOrders
 	local out = {}
+	local current = CH.Scan and CH.Scan.CurrentLine and CH.Scan.CurrentLine()
+	local ui = C_TradeSkillUI
+	local child = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	local cid = child and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(child.professionID)
+	local cinfo = cid and cid ~= 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(cid)
+	local concNow = cinfo and cinfo.quantity
 	for _, order in ipairs(O.All()) do
+		local line, expansion
+		if CH.Scan and CH.Scan.Expansion then line, expansion = CH.Scan.Expansion(order.spellID) end
 		local ok, result = pcall(O.Analyze, order)
 		result = ok and result or nil
 		local r = result and (result.best or result.bestConc)
 		local rewards, value, kp = O.Rewards(order)
+		-- whether your bags, banks and warband bank hold the reagents (and Concentration) for one craft
+		local have, missing
+		if r then
+			local n, lines = CH.Advisor.MaxCraftable(result, r, concNow)
+			have = n >= 1
+			missing = {}
+			for _, l in ipairs(lines) do if l.have < l.need then table.insert(missing, l) end end
+		end
 		local info = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		table.insert(out, { order = order, orderID = order.orderID, recipeID = order.spellID, item = order.itemID,
 			name = (info and info.name) or (order.itemID and C_Item.GetItemNameByID and C_Item.GetItemNameByID(order.itemID)) or "?",
@@ -247,10 +263,13 @@ function O.List()
 			minQuality = order.minQuality, commission = (order.tipAmount or 0) - (order.consortiumCut or 0),
 			rewards = rewards, rewardValue = value, kp = kp, row = r, result = result, ok = r ~= nil,
 			tiers = result and result.model and result.model.maxQ,
-			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration })
+			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
+			line = line, expansion = expansion, current = not line or not current or line == current,
+			have = have, missing = missing })
 	end
 	table.sort(out, function(a, b)
 		if a.ok ~= b.ok then return a.ok end
+		if (a.have or false) ~= (b.have or false) then return a.have or false end
 		if a.kp ~= b.kp then return a.kp end
 		return (a.profit or -math.huge) > (b.profit or -math.huge)
 	end)
