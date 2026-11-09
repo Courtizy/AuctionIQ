@@ -580,7 +580,8 @@ local function build()
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Clearinghouse ledger last
 	for _, pg in ipairs(TABS) do
-		local b = T.Button(frame.bar, pg[2], 84, 20)
+		-- a small symbol before each name, the same size and style on every tab
+		local b = T.Button(frame.bar, "|TInterface\\AddOns\\AuctionIQ\\Media\\Tab-" .. pg[2] .. ":14:14:0:0|t " .. pg[2], 84, 20)
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
