@@ -595,6 +595,10 @@ end
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("AuctionIQFrame", "", W, H)
+	-- above the windows docked to the profession window (and other addons' crafting windows), and
+	-- brought to the front when clicked
+	frame:SetFrameStrata("DIALOG")
+	if frame.SetToplevel then frame:SetToplevel(true) end
 	frame.title:SetText(titleText())
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Accounting ledger last
