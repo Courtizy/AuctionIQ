@@ -83,6 +83,7 @@ function LUI.Register(sec, views, nav)
 	SECTIONS[sec] = SECTIONS[sec] or {}
 	for k, def in pairs(views) do VIEWS[k] = def end
 	for _, k in ipairs(nav) do table.insert(SECTIONS[sec], { k }) end
+	lastView[sec] = lastView[sec] or nav[1]
 end
 
 --- An item as TSM shows it: icon, name in its rarity colour with its quality pip. Plain name too.

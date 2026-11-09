@@ -71,7 +71,7 @@ so. After that, delete the Clearinghouse folder.
 | **Today** | Where to focus now: the gold chart and a ranked **Do next** list (full Concentration, ready cooldowns, post-now windows, mail, restock, below stock target, reposts). Click a card to go where the work is. |
 | **Markets** | Compare prices (your AH scans against TSM and Oribos Exchange), market prices, competition, when items sell. |
 | **Crafting** | Concentration, best crafts, buy instead of craft, the weekly knowledge plan, and Scan, Paths, Queue, Results and the advisor. |
-| **Trading** | Groups, operations and mail routes (also set from the mailbox's Routes button). |
+| **Trading** | What to do at the auction house and mailbox before you get there: what each character holds that's ready to post (under each group's cap, held back when the AH is under your min) and what to mail to which character. Groups, operations and routes are set in Settings. |
 | **Analytics** | Stock targets (a week of demand at a 90% service level, both settable), dead stock, gold per hour. |
 | **Clearinghouse** | The books: the Report (7/30/90 days and the daily rundown), inventory, revenue, expenses, failed auctions (with the deposits they cost), profit by product, holdings, overhead, CSV export. |
 

@@ -45,7 +45,12 @@ function SUI.Build(p, fs, panel)
 	plus:SetScript("OnClick", function() S.DailyCap(S.DailyCap() + 1); SUI.Refresh() end)
 
 	local gy = cy - 36
-	fs(gen, 12, gy, 256, "LEFT", "GameFontNormal"):SetText("Groups")
+	fs(gen, 12, gy, 140, "LEFT", "GameFontNormal"):SetText("Groups")
+	local groupsBtn = T.Button(gen, "Edit groups", 110, 18)
+	groupsBtn:SetPoint("TOPLEFT", 156, gy + 2)
+	groupsBtn:SetScript("OnClick", function() CH.UI.Go("settings", "groups") end)
+	groupsBtn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The group tree: which items are in which group, their prices, and mail routes (right-click a group)." } }) end)
+	groupsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	p.useTSM = T.Button(gen, "", 80, 18); p.useTSM:SetPoint("TOPLEFT", 186, gy - 24)
 	fs(gen, 12, gy - 27, 170, "LEFT"):SetText("Use TSM's groups")
 	p.useTSM:SetScript("OnClick", function() S.UseTSM(not S.UseTSM()); CH.UI.Refresh() end)
@@ -222,7 +227,7 @@ function SUI.Refresh()
 		.. (op.imported and T.Color("muted", "  (from TSM, now yours)") or ""))
 	local used = S.OpGroups(selected)
 	p.uses:SetText(#used > 0 and ("Used by " .. table.concat(used, ", ", 1, math.min(#used, 4)) .. (#used > 4 and string.format(" and %d more", #used - 4) or ""))
-		or "No group picks it directly yet: choose it on the Trading tab.")
+		or "No group picks it directly yet: choose it in Edit groups.")
 	for _, e in ipairs(p.fields) do
 		local k = e.f[1]
 		if e.f[3] == "num" then
