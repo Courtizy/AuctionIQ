@@ -340,6 +340,14 @@ end
 local crafting -- the entry being crafted, to count finished crafts off it
 local delivering = {} -- orders turned in, until the game says it took them
 
+-- The game's order page when it is showing this order, else nil.
+local function orderView(orderID)
+	local page = ProfessionsFrame and ProfessionsFrame.OrdersPage
+	local view = page and page.OrderView
+	local o = view and view.order
+	if o and o.orderID == orderID and (not view.IsShown or view:IsShown()) then return view end
+end
+
 local function okResult(result)
 	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
 	return result == nil or result == ok
@@ -380,9 +388,30 @@ function Q.Craft(e, amount)
 			Q.Changed()
 			return true
 		elseif step == "Turn in" then
-			C_CraftingOrders.FulfillOrder(e.orderID, "", profession())
+			local view = orderView(e.orderID)
+			local done = view and view.CompleteOrderButton
+			if done and done.IsShown and done:IsShown() and (not done.IsEnabled or done:IsEnabled()) then
+				done:Click()
+			else
+				C_CraftingOrders.FulfillOrder(e.orderID, "", profession())
+			end
 			delivering[e.orderID] = e
 			Q.Remove(e)
+			return true
+		end
+		-- Craft an order through the game's own order page, the way its Craft button does, so the
+		-- item goes into the order: open the order there first if it isn't showing.
+		local view = orderView(e.orderID)
+		if not view then
+			local co = C_CraftingOrders
+			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+			if claimed and claimed.orderID == e.orderID and CH.Orders and CH.Orders.Open then CH.Orders.Open(claimed) end
+			view = orderView(e.orderID)
+		end
+		crafting = e
+		local create = view and view.CreateButton
+		if create and create.Click and (not create.IsEnabled or create:IsEnabled()) then
+			create:Click()
 			return true
 		end
 		amount = 1
@@ -395,7 +424,22 @@ end
 -- A recipe ID is its spell ID: each successful cast is one craft done.
 CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 	if unit ~= "player" or not crafting or crafting.recipeID ~= spellID then return end
-	if crafting.orderID then crafting.stage = "crafted"; crafting = nil; Q.Changed(); return end
+	if crafting.orderID then
+		-- crafted for the order only if the game now says it can be turned in
+		local e, co = crafting, C_CraftingOrders
+		crafting = nil
+		local function settle()
+			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+			if not claimed or claimed.orderID ~= e.orderID or claimed.isFulfillable then
+				e.stage = "crafted"
+			else
+				CH.Print("that craft didn't go into the order. Press Craft on the order's page (Crafting Orders tab), then Turn in next.")
+			end
+			Q.Changed()
+		end
+		if co and co.GetClaimedOrder and C_Timer then C_Timer.After(0.5, settle) else settle() end
+		return
+	end
 	Q.Remove(crafting, 1)
 	if crafting.qty <= 0 then crafting = nil end
 end)

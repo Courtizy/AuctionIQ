@@ -832,6 +832,24 @@ check("next step: the game saying it's done means Turn in", CH.Queue.OrderStep(C
 st = L.eval("(Clearinghouse.Queue.DoNext())")
 check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil")
+# Crafting an order goes through the game's order page, and only counts once the game says it's done
+run("""Clearinghouse.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.crafted = nil; STUB.created = nil; STUB.completed = nil
+Clearinghouse.Queue.FillOrders(); Clearinghouse.Queue.DoNext()
+STUB.claimedOrder = { orderID = 77, isFulfillable = false }
+C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
+ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
+ProfessionsFrame.OrdersPage = ProfessionsFrame.OrdersPage or {}
+ProfessionsFrame.OrdersPage.OrderView = { order = { orderID = 77 }, IsShown = function() return true end,
+  CreateButton = { Click = function() STUB.created = true end, IsEnabled = function() return true end },
+  CompleteOrderButton = { Click = function() STUB.completed = true end, IsShown = function() return true end, IsEnabled = function() return true end } }""")
+st = L.eval("(Clearinghouse.Queue.DoNext())")
+check("order craft: presses the order page's own Craft", st == "Craft" and L.eval("STUB.created") is True and L.eval("STUB.crafted") is None)
+run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
+check("order craft: a craft that didn't go into the order stays Craft", CH.Queue.OrderStep(CH.db.queue[1]) == "Craft")
+run('STUB.claimedOrder.isFulfillable = true')
+st = L.eval("(Clearinghouse.Queue.DoNext())")
+check("order craft: Turn in presses the page's Complete button", st == "Turn in" and L.eval("STUB.completed") is True and CH.Queue.Count() == 0)
+run("C_CraftingOrders.GetClaimedOrder = nil; ProfessionsFrame.OrdersPage.OrderView = nil")
 run("STUB.claimed = nil; Clearinghouse.ScanUI.Open(); Clearinghouse.ScanUI.SetMode('orders'); Clearinghouse.ScanUI.Next()")
 check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
 run("""STUB.viewed = nil; ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
@@ -954,7 +972,7 @@ check("learn: mostly expiring cuts it, by up to 10%", 0.9 <= f903[0] <= 0.93)
 run("""
 STUB.items[905] = STUB.items[905] or {}
 local gi = C_Item.GetItemInfo
-C_Item.GetItemInfo = function(id) if id == 905 then return "Thing", "link", 3, 1, 1, "", "", 20, "", 0, 400000 end return gi(id) end
+C_Item.GetItemInfo = function(id) if id == 905 then return "Thing", "link", 3, 1, 1, "", "", 20, "", 0, 400000 end return gi and gi(id) end
 STUB.sellThrough[905] = { 5, 15 }
 """)
 ev, d = CH.Expect.Value(905, 1000000, 24)
