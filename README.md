@@ -182,6 +182,10 @@ hold), splitting a stack when they need part of it. Operations, To mail lists th
 
 ## Clearinghouse, the ledger
 
+<p align="center">
+  <img src="Media/Clearinghouse-Branded.png" width="240" alt="Clearinghouse">
+</p>
+
 The books: sales, purchases, income, expenses, expired and cancelled auctions (with the deposits
 each one cost), inventory, and the Goblin CFO views (profit by product, holdings, overhead). It reads
 TradeSkillMaster's accounting and never writes to it.

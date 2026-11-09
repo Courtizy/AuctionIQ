@@ -543,13 +543,21 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
 UI.TABS, UI.OLD = TABS, OLD
 
+--- The window title: the icon and name of AuctionIQ, or of the Clearinghouse on its tab.
+local function titleText(which)
+	local ch = which == "clearinghouse"
+	local icon = "|TInterface\\AddOns\\AuctionIQ\\Media\\" .. (ch and "Clearinghouse" or "Icon") .. ":16:16:0:0|t "
+	return icon .. CH.Theme.Color("accent", ch and "Clearinghouse" or "AuctionIQ")
+end
+UI.TitleText = titleText
+
 --- Lay the tabs out from their real text widths (fonts differ under ElvUI and ToxiUI), starting
 --- after the widest title so a title change never pushes into them.
 local function layoutTabs()
 	local title = frame.title
 	local keep = title:GetText()
 	local widest = 0
-	for _, t in ipairs({ CH.Theme.Color("accent", "AuctionIQ"), CH.Theme.Color("accent", "Clearinghouse") }) do
+	for _, t in ipairs({ titleText("auctioniq"), titleText("clearinghouse") }) do
 		title:SetText(t)
 		widest = math.max(widest, title:GetStringWidth() or 0)
 	end
@@ -570,7 +578,7 @@ end
 local function build()
 	local T = CH.Theme
 	frame = CH.Window.New("ClearinghouseFrame", "", W, H)
-	frame.title:SetText(T.Color("accent", "AuctionIQ"))
+	frame.title:SetText(titleText("auctioniq"))
 	frame.TitleText = frame.title
 	-- AuctionIQ's pages first, then its Clearinghouse ledger last
 	for _, pg in ipairs(TABS) do
@@ -819,7 +827,7 @@ function UI.Refresh()
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
 		frame.palette = want
-		frame.title:SetText(CH.Theme.Color("accent", want == "clearinghouse" and "Clearinghouse" or "AuctionIQ"))
+		frame.title:SetText(titleText(want))
 	end
 	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
 	-- a view that is a page of its own (the Report, Professions) shows beside the nav
