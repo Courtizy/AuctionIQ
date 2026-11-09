@@ -121,7 +121,9 @@ best use of Concentration, worked out the same way CraftSim does:
   reagents, with what the point costs you after selling what it makes.
 
 Click a row to open it, shift-click to queue it. Queue all queues every order that pays or gives
-knowledge, or every first craft.
+knowledge, or every first craft. On Work orders, **Claim next** walks the orders one click at a
+time: claim the order, craft it with the advisor's reagents, turn it in, then on to the next. If
+the game refuses a claim or a turn-in, the order goes back to that step.
 
 </details>
 

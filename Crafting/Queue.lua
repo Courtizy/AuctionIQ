@@ -181,10 +181,43 @@ local function profession()
 	return info and info.profession
 end
 
---- What the queue row's button does next for an order: "Claim", "Craft" or "Deliver".
+--- What the queue row's button does next for an order: "Claim", "Craft" or "Turn in". The game's
+--- own claimed order wins over what we remember: crafted when it says the order can be turned in.
 function Q.OrderStep(e)
 	if not e.orderID then return "Craft" end
-	return e.stage == "crafted" and "Deliver" or e.stage == "claimed" and "Craft" or "Claim"
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed and claimed.orderID == e.orderID then
+		if claimed.isFulfillable then e.stage = "crafted" elseif e.stage ~= "crafted" then e.stage = "claimed" end
+	end
+	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
+end
+
+--- The next thing to do in the queue on this character: the order you have claimed first, then the
+--- first order, then the first craft. Returns the entry and its step, or nil.
+function Q.NextStep()
+	local first, firstOrder
+	for _, e in ipairs(list()) do
+		if Q.CanCraftHere(e) then
+			if e.orderID then
+				if e.stage == "claimed" or e.stage == "crafted" then return e, Q.OrderStep(e) end
+				firstOrder = firstOrder or e
+			end
+			first = first or e
+		end
+	end
+	local e = firstOrder or first
+	if e then return e, Q.OrderStep(e) end
+end
+
+--- Do the next step (one click, one step: claim, craft, turn in, next order). Returns the step done
+--- and the entry, or false and why.
+function Q.DoNext()
+	local e, step = Q.NextStep()
+	if not e then return false, "nothing in the queue you can craft here" end
+	local ok, why = Q.Craft(e, e.orderID and 1 or e.qty)
+	if not ok then return false, why end
+	return step, e
 end
 
 --- Fill the queue from the saved scan of a profession, on a Concentration budget:
@@ -305,6 +338,31 @@ function Q.CanCraftHere(e)
 end
 
 local crafting -- the entry being crafted, to count finished crafts off it
+local delivering = {} -- orders turned in, until the game says it took them
+
+local function okResult(result)
+	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
+	return result == nil or result == ok
+end
+
+-- The game answers a claim or a turn-in later: undo what we assumed if it said no.
+CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
+	if okResult(result) then return end
+	for _, e in ipairs(list()) do
+		if e.orderID == orderID and e.stage == "claimed" then e.stage = nil end
+	end
+	CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
+	Q.Changed()
+end)
+CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
+	local e = delivering[orderID]
+	delivering[orderID] = nil
+	if not e or okResult(result) then return end
+	e.stage, e.qty = "crafted", 1
+	table.insert(list(), 1, e)
+	CH.Print("the game didn't take that order (" .. tostring(result) .. "). It's back at the top of the queue.")
+	Q.Changed()
+end)
 
 --- Craft an entry with its queued reagents and Concentration. Must be called from a click.
 function Q.Craft(e, amount)
@@ -321,8 +379,9 @@ function Q.Craft(e, amount)
 			e.stage = "claimed"
 			Q.Changed()
 			return true
-		elseif step == "Deliver" then
+		elseif step == "Turn in" then
 			C_CraftingOrders.FulfillOrder(e.orderID, "", profession())
+			delivering[e.orderID] = e
 			Q.Remove(e)
 			return true
 		end

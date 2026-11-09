@@ -811,9 +811,37 @@ check("orders: Claim claims it, then Craft", L.eval("STUB.claimed") == 77 and CH
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
 check("orders: crafting passes the order ID", L.eval("STUB.crafted.id") == 10)
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
-check("orders: after the craft it's Deliver", CH.Queue.OrderStep(oq[0]) == "Deliver")
+check("orders: after the craft it's Turn in", CH.Queue.OrderStep(oq[0]) == "Turn in")
 run("Clearinghouse.Queue.Craft(Clearinghouse.db.queue[1])")
-check("orders: Deliver fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+check("orders: Turn in fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
+check("orders: a turn-in the game refuses comes back to the top", CH.Queue.Count() == 1 and CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+run("Clearinghouse.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil")
+# One button: Next step walks claim, craft, turn in
+run("Clearinghouse.Queue.FillOrders()")
+st = L.eval("(Clearinghouse.Queue.DoNext())")
+check("next step: first click claims", st == "Claim" and L.eval("STUB.claimed") == 77)
+run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 3, 77)')
+check("next step: a refused claim goes back to Claim", CH.Queue.OrderStep(CH.db.queue[1]) == "Claim")
+run("Clearinghouse.Queue.DoNext()")
+run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = false } end")
+st = L.eval("(Clearinghouse.Queue.DoNext())")
+check("next step: then crafts", st == "Craft" and L.eval("STUB.crafted.id") == 10)
+run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = true } end")
+check("next step: the game saying it's done means Turn in", CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+st = L.eval("(Clearinghouse.Queue.DoNext())")
+check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+run("C_CraftingOrders.GetClaimedOrder = nil")
+run("STUB.claimed = nil; Clearinghouse.ScanUI.Open(); Clearinghouse.ScanUI.SetMode('orders'); Clearinghouse.ScanUI.Next()")
+check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
+run("""STUB.viewed = nil; ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
+ProfessionsFrame.craftingOrdersTabID = 3; ProfessionsFrame.tab = 1
+ProfessionsFrame.GetTab = function(self) return self.tab end; ProfessionsFrame.SetTab = function(self, t) self.tab = t end
+ProfessionsFrame.OrdersPage = ProfessionsFrame.OrdersPage or {}
+ProfessionsFrame.OrdersPage.ViewOrder = function(_, o) STUB.viewed = o.orderID end
+Clearinghouse.Orders.Open({ orderID = 77 }, 10)""")
+check("clicking an order opens it on the Crafting Orders tab", L.eval("STUB.viewed") == 77 and L.eval("ProfessionsFrame.tab") == 3)
+run("Clearinghouse.ScanUI.SetMode('recipes'); Clearinghouse.Queue.Clear()")
 # Orders tab: every listed order with what it pays and whether it gives a knowledge point
 run("""STUB.items = STUB.items or {}
 C_Item.GetItemNameByID = function(id) if id == 901 then return "Alchemist's Knowledge Notes" end if id == 902 then return "Spark Shard" end end

@@ -66,6 +66,22 @@ end
 
 CH.On("TRADE_SKILL_SHOW", function() O.Hook() end)
 
+--- Open an order the way the game does: the profession's Crafting Orders tab, showing that order.
+--- Falls back to the recipe when the order view isn't there. Returns true when the order opened.
+function O.Open(order, recipeID)
+	local pf = ProfessionsFrame
+	local page = pf and pf.OrdersPage
+	if order and page and page.ViewOrder then
+		if pf.craftingOrdersTabID and pf.SetTab and pf.GetTab and pf:GetTab() ~= pf.craftingOrdersTabID then
+			pf:SetTab(pf.craftingOrdersTabID)
+		end
+		local ok = pcall(page.ViewOrder, page, order)
+		if ok then return true end
+	end
+	if recipeID and C_TradeSkillUI and C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(recipeID) end
+	return false
+end
+
 -- Order and first-craft lists (the Orders tab) ------------------------------------------------
 
 local knowledge = {}

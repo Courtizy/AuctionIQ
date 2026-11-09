@@ -78,6 +78,7 @@ local function click(i)
 	if not r then return end
 	if mode ~= "recipes" then
 		if IsShiftKeyDown and IsShiftKeyDown() then queueRow(r)
+		elseif mode == "orders" then CH.Orders.Open(r.order, r.recipeID)
 		elseif C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(r.recipeID) end
 		return
 	end
@@ -207,7 +208,13 @@ local function build()
 	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)
 	SUI.ordersButton = barButton("Work orders", 90, function() setMode("orders") end)
 	barButton("Scan", 50, function() SUI.Start() end)
+	local olderX = x
 	SUI.olderButton = barButton("Older: shown", 100, function() showOlder = not showOlder; offset = 0; SUI.Refresh() end)
+	-- Work orders: one button that walks the orders: claim, craft, turn in, next order
+	x = olderX
+	SUI.nextButton = barButton("Claim next", 100, function() SUI.Next() end)
+	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
+	SUI.nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	status = Wd.Text(frame, 12, -34, W - 24)
 	for m, cols in pairs(COLS) do
 		local blank = {}
@@ -255,6 +262,7 @@ local function showTable()
 	end
 	if SUI.olderButton then SUI.olderButton:SetShown(mode == "recipes") end
 	if SUI.allButton then SUI.allButton:SetShown(mode ~= "recipes") end
+	if SUI.nextButton then SUI.nextButton:SetShown(mode == "orders"); SUI.UpdateNext() end
 	for m, b in pairs({ orders = SUI.ordersButton, first = SUI.firstButton }) do
 		if b and b.SetAlpha then b:SetAlpha(mode == m and 1 or 0.65) end
 	end
@@ -271,6 +279,56 @@ function SUI.QueueAll()
 	end
 	if n == 0 then CH.Print(mode == "first" and "no first crafts to queue" or "no work orders pay or give knowledge") end
 	return n
+end
+
+-- The next order step, for the one-button walk through the queued orders.
+local function nextOrder()
+	local e, step = CH.Queue.NextStep()
+	if e and e.orderID then return e, step end
+end
+
+function SUI.UpdateNext()
+	local b = SUI.nextButton
+	if not b then return end
+	local _, step = nextOrder()
+	local label = (step == "Turn in" and "Turn in next") or (step == "Craft" and "Craft next") or "Claim next"
+	if b.text then b.text:SetText(label) elseif b.SetText then b:SetText(label) end
+end
+
+function SUI.NextLines()
+	local T = CH.Theme
+	local e, step = nextOrder()
+	local lines = { { "Next step" } }
+	if e then
+		table.insert(lines, { step .. ": " .. (e.name or "?"), e.customer or "" })
+	else
+		table.insert(lines, { T.Color("muted", "Nothing queued yet: the first click queues every order that pays or gives knowledge.") })
+	end
+	table.insert(lines, { T.Color("muted", "Each click does one step: claim the order, craft it with the advisor's reagents, turn it in, then the next order.") })
+	return lines
+end
+
+--- One click, one step through the work orders. Queues the worthwhile orders first if none are.
+function SUI.Next()
+	if not nextOrder() then
+		local before = CH.Queue.Count()
+		SUI.QueueAll()
+		if CH.Queue.Count() == before then return end
+	end
+	local step, e = CH.Queue.DoNext()
+	if step == "Claim" then
+		-- show the claimed order, as the game does when you claim it yourself
+		local co = C_CraftingOrders
+		for _, o in ipairs(co and co.GetCrafterOrders and co.GetCrafterOrders() or {}) do
+			if o.orderID == e.orderID then CH.Orders.Open(o); break end
+		end
+	end
+	if step then
+		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
+	elseif e then
+		CH.Print(e)
+	end
+	SUI.UpdateNext()
 end
 
 -- Work orders and first crafts.
