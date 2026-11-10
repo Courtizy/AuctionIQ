@@ -24,6 +24,8 @@ makes you a better goblin.
 - **One window, four tabs**: everything a gold-maker needs, from the first scan to the final tally
 - **Know what's worth crafting**: every recipe ranked by profit, Concentration included
 - **Compare reagent costs**: the advisor looks for the cheapest mix for each quality
+- **Know where an estimate breaks**: break-even sale price per item, a downside scenario, what Concentration adds over the plain craft per point, and what each sales estimate rests on
+- **Analyze a batch**: the chance a week's sales pay back 10, 30 or 100 crafts, the cash that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
 - **A plan for every knowledge point**, drawn right on your profession trees
 - **Plan crafting, shopping, auctions and mail** across your warband

@@ -612,8 +612,17 @@ function A.Evaluate(model, opts)
 	local best, bestConc = pickBest(rows)
 	if best then best.recommended = true end
 	if bestConc then bestConc.bestConcentration = true end
-	return { recipeID = model.recipeID, name = model.name, rows = rows, qual = model.qual, fixed = model.fixed,
+	local result = { recipeID = model.recipeID, name = model.name, rows = rows, qual = model.qual, fixed = model.fixed,
 		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order }
+	-- the decision numbers: break-even sale price, and what Concentration adds over the plain craft
+	local Dc = CH.Decide
+	if Dc then
+		for _, r in ipairs(rows) do
+			r.breakEven = Dc.BreakEven(result, r)
+			if r.concentration then r.gain = Dc.ConcGain(r, best and best.profit) end
+		end
+	end
+	return result
 end
 
 --- What each finishing reagent is worth on this recipe: { itemID, own, buy, cost, gain, effect,

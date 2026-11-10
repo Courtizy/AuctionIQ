@@ -54,9 +54,11 @@ function Next.List(now)
 			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
 			if cur and max and max > 0 and cur >= max then
 				-- the craft that turns a point into the most gold, else the best plain craft
-				local best, conc
+				-- by what the points add over the plain craft, per expected point
+				local best, conc, gpp
 				for _, r in ipairs(p.scan and p.scan.rows or {}) do
-					if r.perPoint and r.perPoint > 0 and r.concProfit and (not conc or r.perPoint > conc.perPoint) then conc = r end
+					local g = CH.Scan and CH.Scan.GainPerPoint(r)
+					if g and g > 0 and r.concProfit and (not conc or g > gpp) then conc, gpp = r, g end
 				end
 				if not conc then
 					for _, r in ipairs(p.scan and p.scan.rows or p.crafts or {}) do
@@ -66,11 +68,34 @@ function Next.List(now)
 				local pick = conc or best
 				local n = conc and conc.concentration and conc.concentration > 0 and math.max(1, math.floor(cur / conc.concentration)) or 1
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
-					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or ""),
+					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
+					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
 					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "research", "professions" },
 					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
 		end
+	end
+	-- crafts the scan said pay that now sell under their break-even price
+	local below = {}
+	for _, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				local now = r.breakEven and r.item and r.profit and r.profit > 0 and CH.Prices.Get("chvalue", "i:" .. r.item)
+				if now and now < r.breakEven then
+					table.insert(below, { name = r.name, now = now, be = r.breakEven, char = c.name })
+				end
+			end
+		end
+	end
+	if #below > 0 then
+		table.sort(below, function(a, b) return a.now / a.be < b.now / b.be end)
+		local names = {}
+		for i, x in ipairs(below) do
+			if i > 2 then break end
+			names[#names + 1] = string.format("%s %s < %s", x.name or "?", CH.FormatMoney(x.now), CH.FormatMoney(x.be))
+		end
+		add({ title = "Below break-even", detail = string.format("%d %s now sell under break-even: %s%s", #below, #below == 1 and "craft" or "crafts",
+			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, go = { "research", "scenarios" }, rows = below })
 	end
 	for _, cd in ipairs(CH.Cooldowns and CH.Cooldowns.All(now) or {}) do
 		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "research", "professions" } }) end

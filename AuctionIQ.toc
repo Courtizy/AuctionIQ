@@ -21,6 +21,7 @@ Data\Depth.lua
 Data\Compare.lua
 Data\Formula.lua
 Data\Stats.lua
+Data\Decide.lua
 Research\Specs\ConcentrationCurves.lua
 Research\Specs\SpecAlchemy.lua
 Research\Specs\SpecBlacksmithing.lua

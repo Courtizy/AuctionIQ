@@ -14,9 +14,12 @@ local order -- the crafting order on screen, if any
 local live -- the result without simulation, to compare against
 local gearPick -- top gear for the recipe on screen
 local sel, selQty, selRecipe = nil, 1, nil -- the selected row (by quality and Concentration), how many, and for which recipe
+local pane = "notes" -- what the area under the rows shows: notes, chart (break-even) or batch
+local batchCache = {} -- batch analyses by row, so redrawing doesn't run them again
+local PANE_H = 104
 -- name, x, width. Hover breakdowns on cost (3), proceeds (4), profit (5) and max (7).
 local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, { "Expected proceeds", 206, 106 },
-	{ "Avg profit/craft", 312, 104 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
+	{ "Avg profit/craft", 312, 104 }, { "Extra/pt", 416, 70 }, { "Max", 486, 40 } }
 local HOVER = { 3, 4, 5, 7 }
 local WIDTH = 540
 
@@ -71,6 +74,19 @@ local function build()
 	queue:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	queue:SetScript("OnClick", function() CH.QueueUI.Toggle() end)
 	panel.queue = queue
+	-- the area under the rows shows the notes, the break-even chart or a batch analysis
+	local function paneButton(label, w, anchor, key, tip)
+		local b = T.Button(bar, label, w, 18)
+		b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+		b:SetScript("OnClick", function() AUI.SetPane(pane == key and "notes" or key) end)
+		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return b
+	end
+	panel.chartBtn = paneButton("Break-even", 72, queue, "chart", { { "Break-even chart" },
+		{ T.Color("muted", "Profit a craft against the sale price, for the plain and Concentration crafts. Click again for the notes.") } })
+	panel.batchBtn = paneButton("Analyze batch", 96, panel.chartBtn, "batch", { { "Analyze batch" },
+		{ T.Color("muted", "What could happen to 10, 30 or 100 of the selected craft over a week: the chance the sales pay back the reagents, the cash that comes back, and the stock left. Click again for the notes.") } })
 
 	panel.recipe = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	panel.recipe:SetPoint("TOPLEFT", 12, -34)
@@ -158,6 +174,18 @@ local function build()
 	notes:SetJustifyH("LEFT")
 	notes:SetSpacing(3)
 
+	-- Break-even chart and batch bars share one frame over the notes
+	local chart = CreateFrame("Frame", nil, panel)
+	chart:SetPoint("TOPLEFT", 0, ay - 26)
+	chart:SetSize(WIDTH, PANE_H)
+	chart:Hide()
+	panel.chart = chart
+	chart.title = CH.Window.OneLine(CH.Window.Text(chart, 12, 0, WIDTH - 24))
+	chart.foot = CH.Window.OneLine(CH.Window.Text(chart, 12, -(PANE_H - 14), WIDTH - 24))
+	chart.labels = {}
+	for i = 1, 8 do chart.labels[i] = CH.Window.OneLine(CH.Window.Text(chart, 12, -16, 120)) end
+	chart.dots = {}
+
 	-- Top gear: equip the better set
 	panel.equip = T.Button(panel, "Equip", 54, 16)
 	panel.equip:SetPoint("BOTTOMRIGHT", -10, 64)
@@ -231,6 +259,7 @@ function AUI.Render(result, reason)
 		panel.recipe:SetText(T.Color("muted", reason or "Select a recipe."))
 		notes:SetText("")
 		AUI.RenderAction()
+		AUI.RenderPane()
 		return {}
 	end
 	-- a new recipe (or order) selects its recommended craft, one of it
@@ -266,7 +295,9 @@ function AUI.Render(result, reason)
 		row.cells[4]:SetText(r.value and (r.post and T.Color("bad", CH.FormatMoney(r.value) .. " !") or CH.FormatMoney(r.value))
 			or CH.Theme.Color("muted", "no price"))
 		row.cells[5]:SetText(money(r.profit) .. (pct ~= "" and CH.Theme.Color(r.profit >= 0 and "ok" or "bad", pct) or ""))
-		row.cells[6]:SetText(r.perPoint and money(r.perPoint) or "")
+		-- per point: what the points add over the plain craft (the whole profit per point is in the hover)
+		local gpp = r.gain and r.gain.perPoint or r.perPoint
+		row.cells[6]:SetText(gpp and money(gpp) or "")
 		row.cells[7]:SetText(r.max > 0 and tostring(r.max) or CH.Theme.Color("muted", "0"))
 		if r.recommended or r.bestConcentration then row.bg:Show() end
 		if AUI.IsSelected(r) then row.sel:Show() end
@@ -274,25 +305,7 @@ function AUI.Render(result, reason)
 			tostring(r.cost and math.floor(r.cost)), tostring(r.profit and math.floor(r.profit)), tostring(r.perPoint and math.floor(r.perPoint)),
 			r.recommended and " BEST" or "", r.bestConcentration and " BESTCONC" or ""))
 	end
-	local lines = {}
-	if result.best then
-		local b = result.best
-		table.insert(lines, T.Color("accent", string.format("Make Q%d: ", b.quality)) .. money(b.profit) .. " avg profit a craft, reagents "
-			.. CH.FormatMoney(b.cost) .. ". " .. T.Color("muted", "Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
-	elseif result.order then
-		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
-	end
-	if result.bestConc then
-		local c = result.bestConc
-		table.insert(lines, T.Color("accent", string.format("With Concentration, Q%d: ", c.quality)) .. money(c.profit) .. " a craft for "
-			.. string.format("%d points", c.concentration or 0) .. " (" .. CH.FormatMoney(c.perPoint) .. " a point). " .. T.Color("muted", "Use ")
-			.. CH.Advisor.PicksText(result, c.picks, c.finishing))
-		-- what spending the points adds over the plain craft you'd make anyway
-		local plain = result.best and result.best.profit
-		if plain and plain > 0 and c.profit then
-			table.insert(lines, T.Color("muted", "  Over the plain craft: ") .. money(c.profit - plain) .. T.Color("muted", " more a craft"))
-		end
-	end
+	local lines = AUI.SummaryLines(result)
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
 	local src = AUI.SourceLine(result)
 	if src then table.insert(lines, src) end
@@ -308,6 +321,7 @@ function AUI.Render(result, reason)
 	end
 	notes:SetText(table.concat(lines, "\n"))
 	AUI.RenderAction()
+	AUI.RenderPane()
 	-- simulation bar
 	local st = {}
 	if sim.skill > 0 then table.insert(st, "+" .. sim.skill .. " skill") end
@@ -320,6 +334,285 @@ function AUI.Render(result, reason)
 		panel.status:SetText("")
 	end
 	return out
+end
+
+local function pctText(x) return string.format("%d%%", math.floor(x * 100 + 0.5)) end
+
+--- The decision summary at the top of the notes: the craft to make and its profit, its break-even
+--- sale price against the estimate, the downside scenario and what the sales estimate rests on, then
+--- what Concentration adds over it and how many crafts your points cover. Units on every number.
+function AUI.SummaryLines(result)
+	local T, M, Dc = CH.Theme, CH.FormatMoney, CH.Decide
+	local mut = function(t) return T.Color("muted", t) end
+	local lines = {}
+	local b, c = result.best, result.bestConc
+	if b then
+		local roc = b.profit and b.cost and b.cost > 0 and b.profit / b.cost
+		table.insert(lines, T.Color("accent", string.format("Craft Q%d: ", b.quality)) .. money(b.profit) .. " expected profit per craft"
+			.. (roc and mut("  (return on cost " .. pctText(roc) .. ")") or ""))
+		local be = b.breakEven
+		if be then
+			local cushion = be.cushion >= 0 and mut(string.format(": the price can fall %s before it loses", pctText(be.cushion)))
+				or T.Color("bad", ": already below break-even")
+			table.insert(lines, "  Break-even " .. M(be.price) .. mut(" per item, estimated sale price ") .. M(be.estimate) .. mut(" per item") .. cushion)
+		end
+		local parts = Dc and Dc.RowParts(result, b)
+		if parts then
+			local sc = Dc.Scenario()
+			local down = Dc.Reprice(parts, sc.reagents, sc.price)
+			local basis = Dc.EvidenceText(Dc.Evidence(b.item)).basis
+			table.insert(lines, "  Downside " .. money(down) .. mut(string.format(" per craft if reagents rise %s and the price falls %s", pctText(sc.reagents), pctText(sc.price)))
+				.. mut("; sell rate: " .. basis))
+		end
+		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
+	elseif result.order then
+		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
+	end
+	if c then
+		local g = c.gain
+		local head = T.Color("accent", string.format("Concentration Q%d: ", c.quality))
+		if g and b then
+			head = head .. money(g.gain) .. " more per craft than the plain craft, " .. money(g.perPoint) .. " per expected point"
+		else
+			head = head .. money(c.profit) .. " per craft, " .. money(g and g.perPoint or c.perPoint) .. " per expected point"
+		end
+		table.insert(lines, head .. mut(string.format("  (%d points; %s a point in all)", c.concentration or 0, M(c.perPoint or 0))))
+		local f = Dc and Dc.ConcForecastFor(c, concNow())
+		if f then table.insert(lines, mut("  " .. Dc.ConcForecastText(f) .. ".")) end
+		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, c.picks, c.finishing))
+	end
+	return lines
+end
+
+-- Break-even chart --------------------------------------------------------------------------------
+
+--- The chart's lines: profit per craft for the plain and Concentration crafts as the sale price moves,
+--- in steps of the estimated price (factor 1 = the estimate). { lo, hi, ymin, ymax, series = { { label,
+--- color, be, estimate, points = { {f, profit} } } } }, or nil when nothing has a price.
+function AUI.ChartData(result, steps)
+	local Dc = CH.Decide
+	if not (Dc and result) or result.order then return nil end
+	steps = steps or 48
+	local series = {}
+	local function add(r, label, color)
+		local parts = r and Dc.RowParts(result, r)
+		if parts and r.price and r.price > 0 then table.insert(series, { r = r, parts = parts, label = label, color = color, be = r.breakEven, estimate = r.price }) end
+	end
+	if result.best then add(result.best, string.format("Plain Q%d", result.best.quality), "accent") end
+	if result.bestConc then add(result.bestConc, string.format("Concentration Q%d", result.bestConc.quality), "ok") end
+	if #series == 0 then return nil end
+	local lo, hi = 0.5, 1.3
+	for _, s in ipairs(series) do if s.be and s.be.factor < lo + 0.1 then lo = math.max(0, s.be.factor - 0.1) end end
+	local ymin, ymax = 0, 0
+	for _, s in ipairs(series) do
+		s.points = {}
+		for k = 0, steps do
+			local f = lo + (hi - lo) * k / steps
+			local y = Dc.ProfitAt(s.parts, s.estimate, f * s.estimate)
+			s.points[#s.points + 1] = { f, y }
+			ymin, ymax = math.min(ymin, y), math.max(ymax, y)
+		end
+	end
+	if ymax - ymin < 1 then ymax = ymin + 1 end
+	return { lo = lo, hi = hi, ymin = ymin, ymax = ymax, series = series }
+end
+
+--- The chart's legend lines, for its foot and the tests.
+function AUI.ChartLines(data)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = {}
+	for _, s in ipairs(data and data.series or {}) do
+		local be = s.be
+		table.insert(out, T.Color(s.color, s.label) .. ": " .. (be and ("breaks even at " .. M(be.price) .. " per item, "
+			.. (be.cushion >= 0 and (pctText(be.cushion) .. " under") or (pctText(-be.cushion) .. " over")) .. " the estimate of " .. M(s.estimate))
+			or "no break-even price"))
+	end
+	return out
+end
+
+local function chartTexture(chart, i)
+	local t = chart.dots[i]
+	if not t then
+		t = chart:CreateTexture(nil, "ARTWORK")
+		chart.dots[i] = t
+	end
+	return t
+end
+
+local function drawChart(chart, data)
+	local T = CH.Theme
+	local x0, y0, w, h = 70, 18, WIDTH - 70 - 16, PANE_H - 18 - 44
+	local n = 0
+	local function dot(px, py, sw, sh, color, a)
+		n = n + 1
+		local t = chartTexture(chart, n)
+		local c = T[color] or T.fg or { 1, 1, 1 }
+		t:SetColorTexture(c[1], c[2], c[3], a or 1)
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", chart, "TOPLEFT", x0 + px, -(y0 + py))
+		t:SetSize(sw, sh)
+		t:Show()
+	end
+	local function X(f) return (f - data.lo) / (data.hi - data.lo) * w end
+	local function Y(v) return (data.ymax - v) / (data.ymax - data.ymin) * h end
+	dot(0, Y(0), w, 1, "muted", 0.6)                 -- zero profit
+	dot(X(1), 0, 1, h, "muted", 0.6)                 -- the estimate
+	for _, s in ipairs(data.series) do
+		for _, p in ipairs(s.points) do dot(X(p[1]) - 1, Y(p[2]) - 1, 3, 3, s.color) end
+		if s.be and s.be.factor >= data.lo and s.be.factor <= data.hi then dot(X(s.be.factor) - 3, Y(0) - 3, 7, 7, "bad") end
+	end
+	for i = n + 1, #chart.dots do chart.dots[i]:Hide() end
+	local L, M = chart.labels, CH.FormatMoney
+	local function label(i, text, x, y, wd, just)
+		local fs = L[i]
+		fs:ClearAllPoints()
+		fs:SetPoint("TOPLEFT", chart, "TOPLEFT", x, y)
+		fs:SetWidth(wd)
+		fs:SetJustifyH(just or "LEFT")
+		fs:SetText(T.Color("muted", text))
+		fs:Show()
+	end
+	label(1, M(data.ymax), 4, -y0, x0 - 8, "RIGHT")
+	label(2, M(data.ymin), 4, -(y0 + h - 10), x0 - 8, "RIGHT")
+	label(3, pctText(data.lo), x0, -(y0 + h + 2), 60)
+	label(4, "estimate", x0 + X(1) - 30, -(y0 + h + 2), 60, "CENTER")
+	label(5, pctText(data.hi), x0 + w - 60, -(y0 + h + 2), 60, "RIGHT")
+	for i = 6, #L do L[i]:Hide() end
+end
+
+-- Batch analysis ----------------------------------------------------------------------------------
+
+-- The row the batch analysis is for: the selected one, made as you can make it now.
+local function batchRow()
+	local r = AUI.SelectedRow()
+	if r and shown and shown.sim then
+		for _, lr in ipairs(live and live.rows or {}) do
+			if lr.quality == r.quality and (lr.concentration ~= nil) == (r.concentration ~= nil) then return live, lr end
+		end
+		return nil
+	end
+	return shown, r
+end
+
+--- Batch outcomes for the selected craft (run once per row and kept): result, row, inputs, outcomes.
+function AUI.BatchFor(result, r)
+	if not (result and r and CH.Decide) or result.order then return nil end
+	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0) }, ":")
+	local hit = batchCache[key]
+	if hit then return hit end
+	local inp = CH.Decide.BatchInputs(result, r)
+	if not inp then return nil end
+	local out = { inputs = inp, sizes = CH.Decide.Batch(inp) }
+	batchCache[key] = out
+	return out
+end
+
+--- Lines for the batch pane: one per batch size, then where the inputs come from.
+function AUI.BatchLines(b)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = {}
+	if not b then return out end
+	for _, s in ipairs(b.sizes or {}) do
+		table.insert(out, string.format("%d crafts: %s chance the week's sales pay back %s of reagents; median cash back %s, net %s; about %d left unsold (%s)",
+			s.n, pctText(s.recover), M(s.spend), M(s.cashBack.p50 or 0), M(s.net.p50 or 0), math.floor((s.left or 0) + 0.5), M(s.leftValue or 0)))
+	end
+	local inp = b.inputs
+	local ev = CH.Decide.EvidenceText(inp.evidence)
+	local cap = CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
+	table.insert(out, string.format("Sales %s a day for %d days (%s, capped at your %d a day). Price spread: falls %s or more in 1 run of 10 (Scenarios).",
+		inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), CH.Decide.HORIZON, ev.volume:gsub("^Volume: ", ""), cap, pctText(CH.Decide.Scenario().price)))
+	table.insert(out, "Procs from your stats. Cash counts only what sells; unsold stock is valued apart. " .. ev.rate .. ".")
+	return out
+end
+
+local function drawBatch(chart, b)
+	local T, M = CH.Theme, CH.FormatMoney
+	local sizes = b and b.sizes or {}
+	local lo, hi = 0, 0
+	for _, s in ipairs(sizes) do lo, hi = math.min(lo, s.net.p10 or 0), math.max(hi, s.net.p90 or 0) end
+	if hi - lo < 1 then hi = lo + 1 end
+	local x0, w = 200, WIDTH - 200 - 150
+	local function X(v) return (v - lo) / (hi - lo) * w end
+	local n = 0
+	local function bar(px, py, sw, sh, color, a)
+		n = n + 1
+		local t = chartTexture(chart, n)
+		local c = T[color] or { 1, 1, 1 }
+		t:SetColorTexture(c[1], c[2], c[3], a or 1)
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", chart, "TOPLEFT", x0 + px, py)
+		t:SetSize(math.max(1, sw), sh)
+		t:Show()
+	end
+	local L = chart.labels
+	for i, s in ipairs(sizes) do
+		local y = -16 - (i - 1) * 20
+		bar(X(s.net.p10), y - 3, X(s.net.p90) - X(s.net.p10), 10, (s.net.p50 or 0) >= 0 and "ok" or "bad", 0.45)
+		bar(X(s.net.p50) - 1, y - 1, 3, 14, "fg")
+		local l = L[i * 2 - 1]
+		l:ClearAllPoints(); l:SetPoint("TOPLEFT", chart, "TOPLEFT", 12, y); l:SetWidth(184); l:SetJustifyH("LEFT")
+		l:SetText(string.format("%d crafts  ", s.n) .. T.Color(s.recover >= 0.8 and "ok" or s.recover >= 0.5 and "fg" or "bad", pctText(s.recover)) .. T.Color("muted", " pay back"))
+		l:Show()
+		local r = L[i * 2]
+		r:ClearAllPoints(); r:SetPoint("TOPLEFT", chart, "TOPLEFT", WIDTH - 146, y); r:SetWidth(134); r:SetJustifyH("RIGHT")
+		r:SetText(money(s.net.p50) .. T.Color("muted", string.format(", %d left", math.floor((s.left or 0) + 0.5))))
+		r:Show()
+	end
+	if #sizes > 0 then bar(X(0), -14, 1, #sizes * 20, "muted", 0.8) end -- where the batch breaks even
+	for i = n + 1, #chart.dots do chart.dots[i]:Hide() end
+	for i = #sizes * 2 + 1, #L do L[i]:Hide() end
+end
+
+--- Show the notes, the break-even chart ("chart") or the batch analysis ("batch") under the rows.
+function AUI.SetPane(p)
+	pane = (p == "chart" or p == "batch") and p or "notes"
+	AUI.RenderPane()
+	return pane
+end
+
+function AUI.Pane() return pane end
+
+--- Draw the area under the rows for the pane that's on. Returns its text lines, for the tests.
+function AUI.RenderPane()
+	if not panel or not panel.chart then return {} end
+	local chart, T = panel.chart, CH.Theme
+	local function setOn(b, on) if b and b.SetAlpha then b:SetAlpha(on and 1 or 0.7) end end
+	setOn(panel.chartBtn, pane == "chart"); setOn(panel.batchBtn, pane == "batch")
+	local lines = {}
+	if pane == "notes" or not shown then
+		chart:Hide(); notes:Show()
+		return lines
+	end
+	notes:Hide(); chart:Show()
+	if pane == "chart" then
+		local data = AUI.ChartData(shown)
+		if not data then
+			chart.title:SetText(T.Color("muted", shown.order and "An order pays a set commission: there's no sale price to break even on." or "No sale price for this recipe."))
+			chart.foot:SetText("")
+			drawBatch(chart, nil)
+			return lines
+		end
+		chart.title:SetText(T.Color("accent", "Break-even") .. T.Color("muted", "  profit per craft (up) against the sale price, as a share of the estimate (across)"))
+		lines = AUI.ChartLines(data)
+		chart.foot:SetText(table.concat(lines, "   "))
+		drawChart(chart, data)
+	else
+		local result, r = batchRow()
+		local b = AUI.BatchFor(result, r)
+		if not b then
+			chart.title:SetText(T.Color("muted", (shown and shown.order) and "Orders pay a set commission: there's no batch to sell." or "Select a craft with a sale price to analyze a batch."))
+			chart.foot:SetText("")
+			drawBatch(chart, nil)
+			return lines
+		end
+		chart.title:SetText(T.Color("accent", "Batch, " .. CH.Decide.HORIZON .. " days") .. T.Color("muted", "  bars: net cash, middle 80% of runs; tick: median; line: break-even"))
+		lines = AUI.BatchLines(b)
+		local inp = b.inputs
+		chart.foot:SetText(T.Color("muted", string.format("Sales %s a day (region), price -%s in 1 run of 10, procs from your stats",
+			inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), pctText(CH.Decide.Scenario().price))))
+		drawBatch(chart, b)
+	end
+	return lines
 end
 
 local function rankText(q, tiers)
@@ -414,6 +707,25 @@ function AUI.PostingLines(item, level, price)
 	return out
 end
 
+--- Replacement cost (today's prices: should I craft another?) against paid cost (your purchases:
+--- what did the last batch likely cost?), per item made, and how much of the paid figure is from
+--- known purchases. Empty without TradeSkillMaster's accounting or for an order.
+function AUI.PaidLines(result, r)
+	local out = {}
+	if result.order or not (CH.Ledger and CH.Ledger.Available() and CH.Scan and CH.Scan.Accounts) then return out end
+	local ok, acc = pcall(CH.Scan.Accounts, result, r)
+	if not ok or not acc then return out end
+	local now = CH.Scan.CraftEach(r, result.made)
+	local paid, share = CH.Ledger.CostAtPaid(acc, CH.Ledger.Paid())
+	if not now or not paid then return out end
+	local T, M = CH.Theme, CH.FormatMoney
+	table.insert(out, { T.Color("accent", "Cost per item made") .. T.Color("muted", "  after Resourcefulness and Multicraft"), "" })
+	table.insert(out, { "   Replacement, today's prices" .. T.Color("muted", "  craft another batch?"), M(now) })
+	table.insert(out, { "   At what you paid" .. T.Color("muted", "  what this batch cost you"), M(paid) })
+	table.insert(out, { T.Color("muted", string.format("   %s from your purchases (30 days), the rest at today's prices", pctText(share))), "" })
+	return out
+end
+
 --- Lines for a row's hover breakdown: col 3 reagents, col 4 profit. Also used by the tests.
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
@@ -430,6 +742,8 @@ function AUI.BreakdownLines(result, r, col)
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
 		add(CH.Theme.Color("muted", "Bought reagents at chmat: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
 		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
+		-- two questions, two costs: restocking today against what the reagents you hold cost you
+		for _, l in ipairs(AUI.PaidLines(result, r)) do add(l[1], l[2]) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
@@ -469,11 +783,27 @@ function AUI.BreakdownLines(result, r, col)
 		end
 		if r.oldValue then add("Less the item you recraft", CH.FormatMoney(-r.oldValue)) end
 		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
-		if r.profit and r.cost and r.cost > 0 then add("Return on reagents", string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
+		if r.profit and r.cost and r.cost > 0 then add("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
+		-- margin: profit over what the craft brings in (proceeds, Multicraft's extras included)
+		local proceeds = r.value and r.parts and (r.value + (r.parts.mcGold or 0))
+		if r.profit and proceeds and proceeds > 0 and not result.order then
+			add("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5)))
+		end
+		if r.breakEven then
+			add("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item")
+			add(CH.Theme.Color("muted", string.format("  estimate %s per item; can fall %s", CH.FormatMoney(r.breakEven.estimate),
+				pctText(math.max(0, r.breakEven.cushion)))), "")
+		end
 		if r.concentration then
-			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
-			local plain = result.best and result.best.profit
-			if plain and plain > 0 and r.profit then add("  More than the plain craft", money(r.profit - plain)) end
+			local g = r.gain
+			if g then
+				add(string.format("Concentration %d points", r.concentration), "")
+				add("  Over the best plain craft" .. CH.Theme.Color("muted", g.plain > 0 and "" or "  (none pays, so over not crafting)"), money(g.gain) .. " per craft")
+				add("  Extra per expected point", money(g.perPoint))
+				add(CH.Theme.Color("muted", "  Whole profit per point (as CraftSim)"), money(r.perPoint))
+			else
+				add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+			end
 			if (r.ingenuity or 0) > 0 then
 				add(string.format("  Ingenuity %d%%, %.0f points on average", math.floor(r.ingenuity * 100 + 0.5), r.avgConcentration or r.concentration), "")
 			end
@@ -729,7 +1059,14 @@ function AUI.SourceLine(result)
 	end
 	local text = "Expected proceeds: TSM price (chvalue) after the 5% cut" .. (modeled and ", expected deposits and carrying" or "")
 	if #shaded > 0 then text = text .. ". Your sales: " .. table.concat(shaded, ", ") end
-	return T.Color("muted", text .. ". Hover for each step.")
+	text = text .. ". Hover for each step."
+	-- the evidence behind the recommended craft's estimate: source, age, and how much is yours
+	local pick = result.best or result.bestConc
+	if pick and pick.item and CH.Decide then
+		local e = CH.Decide.EvidenceText(CH.Decide.Evidence(pick.item))
+		text = text .. "\n" .. e.price .. ". " .. e.rate .. ". " .. e.sales .. ". " .. e.volume .. "."
+	end
+	return T.Color("muted", text)
 end
 
 --- Lines for rows whose item posting wouldn't sell at the proceeds shown (marked ! in the table),

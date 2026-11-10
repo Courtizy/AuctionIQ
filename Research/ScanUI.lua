@@ -31,7 +31,7 @@ local COLS = {
 		{ "Reagents", 418, 96, "cost" }, { "Can make", 516, 70, "canMake" }, { "Sold/day", 588, 70, "soldPerDay" },
 		{ "Est. gold/day", 660, 164, "perDay" } },
 	conc = { { "Recipe", 12, 236, "name" }, { "Plain", 250, 130, "profit" }, { "With Conc.", 382, 140, "concProfit" },
-		{ "Points", 524, 60, "concentration" }, { "Per pt", 586, 100, "perPoint" }, { "Can make", 688, 136, "canMakeConc" } },
+		{ "Points", 524, 60, "concentration" }, { "Extra/pt", 586, 100, "gainPerPoint" }, { "Can make", 688, 136, "canMakeConc" } },
 	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
 		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
 	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
@@ -39,10 +39,10 @@ local COLS = {
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
-local SORT = { craft = { key = "profit" }, conc = { key = "perPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
+local SORT = { craft = { key = "profit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
 local VIEWS = { { "craft", "Craft", 60 }, { "conc", "Concentration", 108 }, { "buy", "Buy vs craft", 96 } }
 local NAMES = { name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
-	perPoint = "gold per Concentration point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
+	perPoint = "gold per Concentration point", gainPerPoint = "gold Concentration adds per expected point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
 	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
 	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit",
 	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
@@ -224,10 +224,10 @@ local function hover(owner, i)
 	if r.cost then table.insert(lines, { "Reagents", CH.FormatMoney(r.cost) }) end
 	if r.perPoint then
 		table.insert(lines, { "Best with Concentration", CH.Window.QualityIcon(r.concQuality, 14, r.tiers) .. " " .. CH.FormatMoney(r.concProfit) })
-		table.insert(lines, { string.format("  %d points", r.concentration or 0), CH.FormatMoney(r.perPoint) .. " per point" })
-		if r.profit and r.profit > 0 and r.concProfit then
-			table.insert(lines, { "  More than the plain craft", CH.FormatMoney(r.concProfit - r.profit) })
-		end
+		local gain = r.concProfit and (r.concProfit - math.max(0, r.profit or 0))
+		if gain then table.insert(lines, { "  More than the plain craft", CH.FormatMoney(gain) .. " per craft" }) end
+		if r.gainPerPoint then table.insert(lines, { string.format("  Extra per expected point (%d points)", r.concentration or 0), CH.FormatMoney(r.gainPerPoint) }) end
+		table.insert(lines, { T.Color("muted", "  Whole profit per point (as CraftSim)"), CH.FormatMoney(r.perPoint) })
 	end
 	local function short(id)
 		if id == "concentration" then return "Concentration" end
@@ -625,6 +625,7 @@ function SUI.Refresh()
 		r.bc = CH.Scan.BuyOrCraft(r)
 		r.buySave = r.bc and r.bc.save
 		r.buyPrice, r.resell, r.flip = r.bc and r.bc.buy, r.bc and r.bc.resell, r.bc and r.bc.flip
+		r.gainPerPoint = CH.Scan.GainPerPoint(r)
 		if not INVIEW[view](r) then
 			-- not part of this view
 		elseif r.current or showOlder then
@@ -686,7 +687,7 @@ function SUI.Refresh()
 				r.cells[2]:SetText(d.profit and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. money(d.profit)) or T.Color("muted", "-"))
 				r.cells[3]:SetText(CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit))
 				r.cells[4]:SetText(tostring(d.concentration or "-"))
-				r.cells[5]:SetText(m(d.perPoint))
+				r.cells[5]:SetText(m(d.gainPerPoint or d.perPoint))
 				r.cells[6]:SetText(n(d.canMakeConc))
 				table.insert(out, string.format("%s conc=%d pp=%d", d.name, math.floor(d.concProfit or 0), math.floor(d.perPoint or 0)))
 			else
