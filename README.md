@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Media/Logo-Branded.png" width="320" alt="AuctionIQ">
+  <img src="Media/Logo-Branded.png" width="560" alt="AUCTIONIQ: economic intelligence for the Auction House">
 </p>
 
 <p align="center"><b>Economic intelligence for the Auction House.</b><br>
