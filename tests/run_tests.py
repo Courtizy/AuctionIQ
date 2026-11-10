@@ -2354,6 +2354,11 @@ run("AuctionIQ.UI.Page('ledger', 'inventory')")
 check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
 ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
 check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
+fo = CH.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
+  { source = 1, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
+  { source = 2, reagentInfo = { reagent = { itemID = 202 }, dataSlotIndex = 2, quantity = 3 } } } }"""))
+check("orders: only reagents the customer gives come off your cost, not ones the crafter must bring",
+      fo.providedSlots[1] == 2 and fo.providedSlots[2] is None and len(list(fo.provided.values())) == 1)
 # Reports > Performance: the headline, eight weeks of profit and what drove the change
 PF = CH.Performance
 run("AuctionIQ.UI.Page('ledger', 'overview')")

@@ -189,7 +189,12 @@ function SUI.OrderLines(d)
 			if not (d.missing and d.missing[1]) then table.insert(lines, { "  Concentration", T.Color("bad", "not enough right now") }) end
 		end
 		if d.ok then
-			table.insert(lines, { "Your reagents", M(d.cost or 0) })
+			-- commission and rewards less your reagents, then what procs save on average
+			local pays = (d.commission or 0) + (d.rewardValue or 0)
+			table.insert(lines, { "Your reagents", "-" .. M(d.cost or 0) })
+			table.insert(lines, { "Commission and rewards less reagents", money(pays - (d.cost or 0)) })
+			local procs = (d.profit or 0) - (pays - (d.cost or 0))
+			if math.abs(procs) >= 100 then table.insert(lines, { "Resourcefulness, on average", money(procs) }) end
 			table.insert(lines, { "Profit", money(d.profit) })
 			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
 		elseif d.learned == false then
@@ -544,8 +549,8 @@ local function refreshLists()
 			r.cells[2]:SetText(d.from)
 			r.cells[3]:SetText(money(d.commission))
 			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
-			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or d.have and T.Color("ok", "have")
-				or T.Color("bad", "buy " .. CH.FormatMoney(d.cost or 0)))
+			-- what your reagents cost, always (like CraftSim): green when you hold them, red when you'd buy
+			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost or 0)))
 			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or "can't reach"))
 			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))

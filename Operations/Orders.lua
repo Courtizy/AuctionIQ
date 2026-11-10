@@ -13,10 +13,15 @@ local function price(id) return id and CH.Prices.Get("chvalue", "i:" .. id) end
 function O.FromOrder(order)
 	if not order then return nil end
 	local provided, slots = {}, {}
+	-- only what the customer gives comes off your cost: an order's list can also name reagents the
+	-- crafter must bring (source Crafter), which you still pay for
+	local SRC = Enum and Enum.CraftingOrderReagentSource
+	local customer = SRC and SRC.Customer or 1
 	for _, r in ipairs(order.reagents or {}) do
 		local info = r.reagentInfo or r
 		local slot = info.dataSlotIndex or r.dataSlotIndex or r.slotIndex
-		if info and info.reagent and slot then
+		local given = r.source == nil or r.source == customer
+		if info and info.reagent and slot and given then
 			table.insert(provided, { reagent = { itemID = info.reagent.itemID }, itemID = info.reagent.itemID, dataSlotIndex = slot, quantity = info.quantity or 1 })
 			slots[slot] = (slots[slot] or 0) + (info.quantity or 1) -- units the customer gives in this slot
 		end
