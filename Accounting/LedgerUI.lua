@@ -552,6 +552,23 @@ function LUI.Build(p, fs, panel)
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
 	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
+	-- a view's own action in Export's place (Compare crafts: scan your professions)
+	p.actionButton = T.Button(body, "", 70, 20)
+	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
+	T.Primary(p.actionButton)
+	p.actionButton:SetScript("OnClick", function()
+		local a = VIEWS[view] and VIEWS[view].action
+		if not a then return end
+		local ok, msg = a.click()
+		said = msg and { ok = ok, msg = msg } or nil
+		CH.UI.Refresh()
+	end)
+	p.actionButton:SetScript("OnEnter", function(self)
+		local a = VIEWS[view] and VIEWS[view].action
+		if a and a.tip then CH.Window.Tooltip(self, a.tip()) end
+	end)
+	p.actionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p.actionButton:Hide()
 
 	-- sortable headers
 	p.heads = {}
@@ -614,7 +631,26 @@ function LUI.Build(p, fs, panel)
 	det:SetSize(SIDE, ROWS * RH + 20)
 	local dbg = det:CreateTexture(nil, "BACKGROUND")
 	dbg:SetAllPoints()
-	dbg:SetColorTexture(1, 1, 1, 0.04)
+	dbg:SetColorTexture(1, 1, 1, 0.03)
+	-- the Next Move block and the price scenarios each sit on a darker card, so they read apart
+	-- from each other and from the table
+	local function card(top, bottom, accent)
+		local t = det:CreateTexture(nil, "BORDER")
+		t:SetPoint("TOPLEFT", 4, top)
+		t:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, bottom)
+		t:SetColorTexture(0, 0, 0, 0.45)
+		if accent then
+			local a = det:CreateTexture(nil, "ARTWORK")
+			a:SetPoint("TOPLEFT", 4, top)
+			a:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, top - 2)
+			local c = CH.Theme.accent
+			a:SetColorTexture(c[1], c[2], c[3], 1)
+			det.accentBar = a
+		end
+		return t
+	end
+	det.cardTop = card(-4, -114, true)
+	det.cardPrices = card(-220, -324)
 	local IW = SIDE - 20
 	det.kicker = fs(det, 10, -8, IW, "LEFT", "GameFontNormalSmall")
 	det.title = fs(det, 10, -24, IW, "LEFT", "GameFontNormalLarge")
@@ -651,6 +687,7 @@ function LUI.Build(p, fs, panel)
 	for k = 1, 3 do
 		local b = CH.Theme.Button(det, "", IW, 22)
 		b:SetPoint("BOTTOMLEFT", 10, 10 + (k - 1) * 26)
+		if k == 1 then CH.Theme.Primary(b) end -- the main action, filled with the accent like the design
 		b:SetScript("OnClick", function(self)
 			if not self.run then return end
 			local ok, msg = self.run()
@@ -705,6 +742,14 @@ function LUI.Refresh()
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
 	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
 
+	local act = v.action
+	p.actionButton:SetShown(act ~= nil)
+	p.exportButton:SetShown(act == nil)
+	if act then
+		local f = p.actionButton.text or (p.actionButton.GetFontString and p.actionButton:GetFontString())
+		if f then f:SetText(act.label()) end
+		p.actionButton.label = act.label()
+	end
 	for i, b in ipairs(p.controls) do
 		local c = v.controls and v.controls[i]
 		if c then
@@ -867,7 +912,8 @@ function LUI.DrawDetail(p, v, sel, shown)
 	end
 	det.said:ClearAllPoints()
 	det.said:SetPoint("BOTTOMLEFT", 10, 14 + nb * 26)
-	det.said:SetText(said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
+	local busy = v.action and v.action.status and v.action.status()
+	det.said:SetText(busy and CH.Theme.Color("accent", busy) or said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
 	det:Show()
 	LUI.lastDetail = d
 	return d

@@ -151,6 +151,24 @@ check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc)
 for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "Recover")):
     tp = list(L.eval("AuctionIQ.AdvisorUI.NextTip('%s')" % w).values())
     check("advisor: the %s hover explains it and shows the breakdown" % head, tp[0][1] == head and len(tp) >= 3)
+bc = L.eval('function() local inp = { reagents = { { n = 1, unit = 100, finishing = true } }, have = function(id) return C_Item.GetItemCount(id, true) end }; return AuctionIQ.Decide.BatchCost(inp, 3) end')()
+check("decide: a reagent with no item id (an older scan's account) doesn't ask the game for its count", bc is not None)
+run('AuctionIQ.Scan.ScanAll(nil, function(r) STUB.allDone = r end)')
+for _ in range(400):
+    if CH.Scan.all is None: break
+    run('STUB.RunTimers()')
+ad = L.eval('STUB.allDone')
+check("scan all: rolls through each profession and reports each", ad is not None and len(list(ad.values())) == 3 and ad[3].name == "Cooking")
+check("scan all: opens the ones that aren't showing", "333," in (L.eval('STUB.opened') or "") and "185," in (L.eval('STUB.opened') or ""))
+check("scan all: Compare crafts has a Scan button for it", L.eval('AuctionIQ.Research and 1 or 1') and L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()') == "Scan")
+run('STUB.base = 171')
+af = CH.AdvisorUI.Frame()
+check("advisor redesign: Next Move sits on a shaded card with the accent line", af.nextCard is not None and af.accentBar is not None and af.tableCard is not None and af.paneCard is not None)
+check("advisor redesign: the title bar keeps only Queue; the pane has its own tabs", af.notesBtn is not None and af.chartBtn is not None and af.batchBtn is not None
+      and L.eval("function(b) return select(2, b:GetPoint()) end")(af.chartBtn) != L.eval("function(f) return f end")(af.queue))
+check("advisor redesign: the Queue button is the filled main action", af.act.queue.aiqFill is not None)
+check("advisor redesign: the Break-even tab opens the chart, Notes goes back", CH.AdvisorUI.SetPane("chart") == "chart" and CH.AdvisorUI.SetPane("notes") == "notes" and af.notesBtn.on)
+check("advisor redesign: the sub line has the card's full width", af.next.sub.w is None or af.next.sub.w >= 400)
 run("AuctionIQ.AdvisorUI.SetQty(1)")
 g = L.eval("{ AuctionIQ.Theme.GradientColors('MAGE') }")
 check("theme: ToxiUI's class gradient for bars", abs(g[1][1] - 0) < 1e-6 and abs(g[1][3] - 0xd7 / 255) < 1e-6 and abs(g[2][3] - 1) < 1e-6)
@@ -1417,6 +1435,8 @@ check("Queue: execution plan, production queue, shopping list, to mail", LUI.Gro
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
+check("Compare crafts shows a Scan button in Export's place", L.eval("AuctionIQ.UI.Pages().ledger.actionButton:IsShown()")
+      and not L.eval("AuctionIQ.UI.Pages().ledger.exportButton:IsShown()") and L.eval("AuctionIQ.UI.Pages().ledger.actionButton.label") == "Scan")
 check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
       LUI.View() == "scenarios" and LUI.Group() == "Craft" and LUI.Focus().name == "Test Flask"
       and plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "Test Flask"
@@ -1443,6 +1463,16 @@ check("Craft pane: profit, gold at risk and break-even up top; make, stock left 
 check("Craft pane: if prices move, each scenario explaining itself on hover",
       plain(det.section.head) == "IF PRICES MOVE" and [plain(r[1]) for r in srows] == ["Profit now", "Reagents +10%", "Price -10%", "Both", "Room to rise"]
       and all(r.tip is not None and plain(r.tip[1][1]) != "" for r in srows))
+acts = [plain(a.label) for a in det.actions.values()]
+check("Craft pane: a Rescan button for the scan's profession", acts[-1].startswith("Rescan "))
+rs = L.eval("(function() local x = AuctionIQ.LedgerUI.Selected and nil; return { AuctionIQ.AnalyticsViews.Rescan({ charKey = 'Someone-Else', char = 'Someone', prof = 'Alchemy' }) } end)()")
+check("Craft pane: Rescan says whose scan it is when another character made it", not rs[1] and "log in as them" in rs[2] and "Someone" in rs[2])
+figc = [f[2] for f in det.figures.values()]
+check("Craft pane: the figures are coloured (profit green or red, gold at risk red, break-even gold)",
+      all("|c" in f for f in figc))
+# an older scan without a saved sale price still gets a break-even, from today's market price
+pa_old = L.eval("AuctionIQ.Decide.AccountParts({ item = 100, accounts = { sales = 120, cost = 100, unit = 12 } })")
+check("older scans: break-even falls back to today's market price", pa_old.price is not None and pa_old.priceFrom == "market")
 run("AuctionIQ.db.queue = {}; AuctionIQ.db.decisions = {}")
 run("local b = AuctionIQ.UI.Pages().ledger.detail.buttons[1]; b.scripts.OnClick(b)")
 q = list(L.eval("AuctionIQ.db.queue").values())

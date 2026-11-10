@@ -299,6 +299,17 @@ function T.Button(parent, label, w, h)
 	return b
 end
 
+--- The main action of a panel: the button filled with the accent colour (the design's Queue button).
+function T.Primary(b)
+	if not b or not b.CreateTexture then return b end
+	local t = type(b.aiqFill) == "table" and b.aiqFill or b:CreateTexture(nil, "BORDER")
+	t:SetPoint("TOPLEFT", 1, -1)
+	t:SetPoint("BOTTOMRIGHT", -1, 1)
+	t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.4)
+	b.aiqFill = t
+	return b
+end
+
 -- ElvUI sets its media during its own login; take its colours once everything has loaded.
 T.Use("auctioniq")
 CH.On("PLAYER_LOGIN", function()

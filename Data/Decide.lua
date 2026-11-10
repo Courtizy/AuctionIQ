@@ -41,8 +41,16 @@ function D.AccountParts(row, acc)
 	if a and a.sales and a.cost then
 		local revenue = a.sales + (a.mcGold or 0)
 		local units = (a.unit and a.unit > 0) and revenue / a.unit or 0
+		-- scans before the sale price was saved: today's market price for the item, else the price
+		-- worked back from what an item kept after the cut
+		local price, from = a.price, "scan"
+		if not price then
+			price = row and row.item and CH.Prices and CH.Prices.Get and CH.Prices.Get("chvalue", "i:" .. row.item)
+			from = price and "market" or nil
+			if not price and a.unit and a.unit > 0 then price, from = a.unit / (CH.AH_CUT or 0.95), "kept" end
+		end
 		return { revenue = revenue, consumed = a.cost, returned = a.resGold or 0, deposits = (a.deposit or 0) * units,
-			fixed = 0, items = units, price = a.price }
+			fixed = 0, items = units, price = price, priceFrom = from }
 	end
 	return { revenue = (row.profit or 0) + (row.cost or 0), consumed = row.cost or 0, returned = 0, deposits = 0, fixed = 0 }
 end
@@ -295,7 +303,7 @@ function D.BatchInputs(result, r)
 	local ev = D.Evidence(item)
 	return { item = item, made = made, mc = mc, maxExtra = math.max(1, maxExtra), res = res, saved = r.parts and r.parts.saved or 0,
 		price = r.price, deposit = deposit, unit = r.unit, reagents = lines, daily = daily,
-		have = function(id) return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end,
+		have = function(id) return id and C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end,
 		evidence = ev, seed = (result.recipeID or 1) * 7 + r.quality * 131 + (r.concentration and 1 or 0) }
 end
 
@@ -309,7 +317,7 @@ function D.BatchCost(inp, n)
 		local d = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, need)
 		local all = d and d.cost or unit * need
 		material = material + all
-		local buy = math.max(0, need - (inp.have and inp.have(c.id) or 0))
+		local buy = math.max(0, need - (c.id and inp.have and inp.have(c.id) or 0))
 		if buy > 0 then
 			local db = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, buy)
 			cash = cash + (db and db.cost or unit * buy)

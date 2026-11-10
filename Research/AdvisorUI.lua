@@ -7,8 +7,9 @@ local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
-local TOP = 68 -- the Next Move block under the title bar
-local HEIGHT = 456 + TOP
+local TOP = 86 -- the Next Move card under the title bar
+local TABS = 22 -- the Notes / Break-even / Analyze batch tabs over the pane
+local HEIGHT = 456 + TOP + TABS
 -- Simulation: extra skill, and a knowledge point plan from the Paths window.
 local sim = { skill = 0, plan = nil }
 local order -- the crafting order on screen, if any
@@ -72,53 +73,56 @@ local function build()
 	queue:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	queue:SetScript("OnClick", function() CH.QueueUI.Toggle() end)
 	panel.queue = queue
-	-- the area under the rows shows the notes, the break-even chart or a batch analysis
-	local function paneButton(label, w, anchor, key, tip)
-		local b = T.Button(bar, label, w, 18)
-		b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
-		b:SetScript("OnClick", function() AUI.SetPane(pane == key and "notes" or key) end)
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		return b
+
+	-- A shaded card: black over the panel, with an accent line along the top for the main one
+	local function card(top, h, accent)
+		local t = panel:CreateTexture(nil, "BACKGROUND", nil, 1)
+		t:SetPoint("TOPLEFT", 6, top)
+		t:SetSize(WIDTH - 12, h)
+		t:SetColorTexture(0, 0, 0, 0.45)
+		if accent then
+			local a = panel:CreateTexture(nil, "BORDER")
+			a:SetPoint("TOPLEFT", 6, top)
+			a:SetSize(WIDTH - 12, 2)
+			T.AccentTexture(a)
+			panel.accentBar = a
+		end
+		return t
 	end
-	panel.chartBtn = paneButton("Break-even", 72, queue, "chart", { { "Break-even chart" },
-		{ T.Color("muted", "Profit a craft against the sale price, for the plain and Concentration crafts. Click again for the notes.") } })
-	panel.batchBtn = paneButton("Analyze batch", 96, panel.chartBtn, "batch", { { "Analyze batch" },
-		{ T.Color("muted", "What could happen to 10, 30 or 100 of the selected craft over a week: the chance the sales pay back the reagents, the cash that comes back, and the stock left. Click again for the notes.") } })
 
 	-- Next Move: the selected craft and how many, then profit, break-even and the chance to
 	-- recover the spend in a week, biggest first (the summary hierarchy from the style review)
-	local nx = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-	T.Panel(nx, "panel", 1)
+	local nx = CreateFrame("Frame", nil, panel)
 	nx:SetPoint("TOPLEFT", 6, -32)
 	nx:SetSize(WIDTH - 12, TOP - 6)
 	panel.next = nx
-	nx.label = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 8, -5, 120, "LEFT", "GameFontNormalSmall")), 9, "bold")
+	panel.nextCard = card(-32, TOP - 6, true)
+	nx.label = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 10, -8, 120, "LEFT", "GameFontNormalSmall")), 9, "bold")
 	nx.label:SetText(T.Color("accent", "NEXT MOVE"))
-	nx.head = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 8, -17, 330, "LEFT", "GameFontHighlight")), 14)
-	nx.sub = CH.Window.OneLine(CH.Window.Text(nx, WIDTH - 12 - 8 - 180, -20, 180, "RIGHT", "GameFontDisableSmall"))
+	nx.head = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 10, -20, WIDTH - 32, "LEFT", "GameFontNormalLarge")), 16)
+	nx.sub = CH.Window.OneLine(CH.Window.Text(nx, 10, -39, WIDTH - 32, "LEFT", "GameFontDisableSmall"))
 	nx.stats = {}
 	-- short labels; each figure's hover says what it means and how it was reached
 	local hit = CreateFrame("Button", nil, nx)
 	hit:SetPoint("TOPLEFT", 0, 0)
-	hit:SetSize(WIDTH - 12, 32)
+	hit:SetSize(WIDTH - 12, 50)
 	hit:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip()) end)
 	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	for i, f in ipairs({ { "PROFIT", "profit" }, { "BREAK-EVEN", "breakEven" }, { "RECOVER", "recover" } }) do
-		local x = 8 + (i - 1) * 132
-		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -36, 128, "LEFT", "GameFontDisableSmall")), 9, "bold")
+	for i, f in ipairs({ { "PROFIT", "profit" }, { "BREAK-EVEN", "breakEven" }, { "RECOVER IN A WEEK", "recover" } }) do
+		local x = 10 + (i - 1) * 140
+		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -54, 136, "LEFT", "GameFontDisableSmall")), 9, "bold")
 		l:SetText(T.Color("muted", f[1]))
-		local v = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -46, 128, "LEFT", "GameFontHighlight")), 13)
+		local v = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -64, 136, "LEFT", "GameFontHighlight")), 14)
 		nx.stats[i] = v
 		local h = CreateFrame("Button", nil, nx)
-		h:SetPoint("TOPLEFT", x - 4, -32)
-		h:SetSize(i == 3 and (WIDTH - 12 - x) or 132, 30) -- Recover takes in the bar beside it
+		h:SetPoint("TOPLEFT", x - 4, -50)
+		h:SetSize(i == 3 and (WIDTH - 12 - x) or 140, 30) -- Recover takes in the bar beside it
 		h:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip(f[2])) end)
 		h:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	end
 	nx.back = nx:CreateTexture(nil, "ARTWORK")
-	nx.back:SetPoint("TOPLEFT", 8 + 3 * 132, -50)
-	nx.barW = WIDTH - 12 - 16 - 3 * 132
+	nx.back:SetPoint("TOPLEFT", 10 + 2 * 140 + 64, -69)
+	nx.barW = WIDTH - 12 - 10 - (10 + 2 * 140 + 64)
 	nx.back:SetSize(nx.barW, 6)
 	nx.back:SetColorTexture(0, 0, 0, 0.6)
 	nx.fill = nx:CreateTexture(nil, "OVERLAY")
@@ -133,6 +137,7 @@ local function build()
 	CH.Window.OneLine(panel.recipe)
 
 	local y = -56 - TOP
+	panel.tableCard = card(-30 - TOP, 26 + (ROWS + 1) * 20, false)
 	for _, c in ipairs(COLS) do
 		local h = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		h:SetPoint("TOPLEFT", 12 + c[2], y)
@@ -197,6 +202,7 @@ local function build()
 	act.queue = aButton("Queue", 128, -10, function(self) if not self.off then AUI.QueueSelected() end end, function(self)
 		return { { self.text and self.text:GetText() or "Queue" }, { T.Color("muted", self.off or self.tip or "") } }
 	end)
+	T.Primary(act.queue)
 	act.max = aButton("Max", 38, -142, function() AUI.SetQty(AUI.SelectedRow() and AUI.SelectedRow().max or 1) end,
 		function() return { { "As many as you can make now" }, { T.Color("muted", "From bags, banks and the warband bank, and your Concentration.") } } end)
 	act.plus = aButton("+", 20, -184, function() AUI.SetQty(selQty + (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
@@ -205,6 +211,24 @@ local function build()
 	act.minus = aButton("-", 20, -242, function() AUI.SetQty(selQty - (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
 		function() return { { "One fewer" }, { T.Color("muted", "Shift-click for 10.") } } end)
 	CH.Window.OneLine(CH.Window.Text(act, WIDTH - 262 - 24, -4, 22, "RIGHT")):SetText("Qty")
+
+	-- Tabs for the area under the rows: the notes, the break-even chart or a batch analysis
+	local function paneTab(label, w, x, key, tip)
+		local b = T.Button(panel, label, w, 18)
+		b:SetPoint("TOPLEFT", x, ay - 26)
+		b:SetScript("OnClick", function() AUI.SetPane(key) end)
+		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return b
+	end
+	panel.notesBtn = paneTab("Notes", 60, 6, "notes", { { "Notes" },
+		{ T.Color("muted", "Why this pick, what the prices come from, and anything to watch.") } })
+	panel.chartBtn = paneTab("Break-even", 84, 70, "chart", { { "Break-even chart" },
+		{ T.Color("muted", "Profit a craft against the sale price, for the plain and Concentration crafts.") } })
+	panel.batchBtn = paneTab("Analyze batch", 104, 158, "batch", { { "Analyze batch" },
+		{ T.Color("muted", "What could happen to 10, 30 or 100 of the selected craft over a week: the chance the sales pay back the reagents, the cash that comes back, and the stock left.") } })
+	ay = ay - TABS
+	panel.paneCard = card(ay - 24, PANE_H + 8, false)
 
 	notes = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	notes:SetPoint("TOPLEFT", 12, ay - 28)
@@ -627,6 +651,8 @@ function AUI.SetPane(p)
 end
 
 function AUI.Pane() return pane end
+--- The panel frame, for the tests.
+function AUI.Frame() return panel end
 --- The pane's title as shown, for the tests.
 function AUI.PaneTitle() return panel and panel.chart and panel.chart.title:GetText() or "" end
 
@@ -634,8 +660,14 @@ function AUI.PaneTitle() return panel and panel.chart and panel.chart.title:GetT
 function AUI.RenderPane()
 	if not panel or not panel.chart then return {} end
 	local chart, T = panel.chart, CH.Theme
-	local function setOn(b, on) if b and b.SetAlpha then b:SetAlpha(on and 1 or 0.7) end end
-	setOn(panel.chartBtn, pane == "chart"); setOn(panel.batchBtn, pane == "batch")
+	local function setOn(b, on)
+		if not b then return end
+		if b.SetAlpha then b:SetAlpha(on and 1 or 0.6) end
+		if on then T.Primary(b) end
+		if type(b.aiqFill) == "table" then if on then b.aiqFill:Show() else b.aiqFill:Hide() end end
+		b.on = on
+	end
+	setOn(panel.notesBtn, pane == "notes"); setOn(panel.chartBtn, pane == "chart"); setOn(panel.batchBtn, pane == "batch")
 	local lines = {}
 	if pane == "notes" or not shown then
 		chart:Hide(); notes:Show()

@@ -142,7 +142,7 @@ TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) STUB.tooltipFn = f
 
 -- Professions
 STUB.bags = { [201] = 9, [202] = 8, [203] = 20, [204] = 12, [205] = 3, [211] = 30, [212] = 9, [221] = 2 }
-C_Item = { GetItemCount = function(id) return STUB.bags[id] or 0 end }
+C_Item = { GetItemCount = function(id) if id == nil then error("bad argument #1 to GetItemCount") end return STUB.bags[id] or 0 end }
 C_CurrencyInfo = { GetCurrencyInfo = function() return { quantity = 400, maxQuantity = 1000 } end }
 C_TradeSkillUI = {
 	IsTradeSkillReady = function() return true end,
@@ -151,6 +151,9 @@ C_TradeSkillUI = {
 	IsNPCCrafting = function() return false end,
 	GetChildProfessionInfo = function() return { professionID = 2906, profession = 3, parentProfessionName = "Alchemy", professionName = "Midnight Enchanting", skillLevel = 80, maxSkillLevel = 100 } end,
 	GetProfessionSlots = function() return { 20, 21, 22 } end,
+	GetBaseProfessionInfo = function() return { professionID = STUB.base } end,
+	OpenTradeSkill = function(line) STUB.base = line; STUB.opened = (STUB.opened or "") .. line .. "," end,
+	CloseTradeSkill = function() STUB.closed = true end,
 	GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = "Midnight" }, { professionID = 2871, expansionName = "Khaz Algar" } } end,
 	GetTradeSkillLineForRecipe = function(id)
 		if id == 11 then return 2871, "Khaz Algar Alchemy", 171 end
@@ -263,6 +266,9 @@ C_Container = { GetContainerNumSlots = function(bag) return STUB.bagItems[bag] a
 	PickupContainerItem = function(bag, s) STUB.cursor = STUB.bagItems[bag][s] end }
 function EquipCursorItem(slot) STUB.equipped = STUB.equipped or {}; STUB.equipped[slot] = STUB.cursor end
 function InCombatLockdown() return false end
+STUB.base = 171
+function GetProfessions() return 1, 2, nil, nil, 3 end
+function GetProfessionInfo(i) return ({ "Alchemy", "Enchanting", "Cooking" })[i], 0, 1, 100, 0, 0, ({ 171, 333, 185 })[i] end
 date = os.date
 
 -- Auction House (posting)
