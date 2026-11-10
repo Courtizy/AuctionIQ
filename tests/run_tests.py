@@ -1784,6 +1784,18 @@ C_CraftingOrders.ClaimOrder = function(id)
 end
 C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
 STUB.oldOpen = AuctionIQ.Orders.Open; AuctionIQ.Orders.Open = function(o) STUB.opened = o and o.orderID end""")
+sk = L.eval("""(function()
+  local old = C_TradeSkillUI.GetCraftingOperationInfoForOrder
+  -- the customer's reagents add skill only when they're passed in
+  C_TradeSkillUI.GetCraftingOperationInfoForOrder = function(id, infos, orderID, conc)
+    return { baseSkill = 100, bonusSkill = #infos > 0 and 180 or 0, baseDifficulty = 455 }
+  end
+  local m = { orderID = 5, recipeID = 10, qual = {}, provided = { { reagent = { itemID = 1 }, itemID = 1, dataSlotIndex = 1, quantity = 5 } } }
+  local info = AuctionIQ.Advisor.Operation(m, {}, false)
+  C_TradeSkillUI.GetCraftingOperationInfoForOrder = old
+  return info.bonusSkill
+end)()""")
+check("orders: the customer's reagents' quality counts toward skill (a claimed Phoenix Oil read 141 instead of 323)", sk == 180)
 check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
 run("AuctionIQ.Queue.Clear()")
 check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77

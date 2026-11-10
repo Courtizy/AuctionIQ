@@ -83,16 +83,22 @@ local function reagentInfos(model, picks, fin, ownOnly)
 	return t
 end
 
+local function skillOf(info) return (info.baseSkill or 0) + (info.bonusSkill or 0) end
+
 local function operation(model, picks, concentrate, fin)
 	local ui = api()
 	local infos = reagentInfos(model, picks, fin)
 	local ok, info
 	if model.orderID and ui.GetCraftingOperationInfoForOrder then
-		-- the game knows what the customer gives: first ask with only your own reagents, then with theirs
-		ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, reagentInfos(model, picks, fin, true), model.orderID, concentrate or false)
-		if not (ok and info) then
-			ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
-		end
+		-- Ask with the customer's reagents and with only yours, and keep the answer with more skill:
+		-- the one that counts their reagents. (Only yours can leave their reagents' quality out: a
+		-- claimed Phoenix Oil read skill 141 that way, where the order's page says 323.)
+		local ok1, all = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
+		local ok2, own = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, reagentInfos(model, picks, fin, true), model.orderID, concentrate or false)
+		all, own = ok1 and all or nil, ok2 and own or nil
+		info = all
+		if own and (not all or skillOf(own) > skillOf(all)) then info = own end
+		ok = info ~= nil
 		if not (ok and info) then -- the game may not answer for an order you haven't claimed
 			ok, info = pcall(ui.GetCraftingOperationInfo, model.recipeID, infos, nil, concentrate or false)
 		end
@@ -103,7 +109,6 @@ local function operation(model, picks, concentrate, fin)
 end
 A.Operation = operation
 
-local function skillOf(info) return (info.baseSkill or 0) + (info.bonusSkill or 0) end
 
 local function lowest(qual)
 	local picks = {}
