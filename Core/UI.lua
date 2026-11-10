@@ -676,7 +676,7 @@ function UI.PlaceName(go)
 	return (tabName or "AuctionIQ") .. (group and (" > " .. group) or "")
 end
 
---- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
+--- The window title: AuctionIQ, on every tab.
 local function titleText()
 	return CH.Theme.Wordmark() -- the icon is the title bar's badge, beside it
 end
@@ -1238,8 +1238,8 @@ local function refreshLedger() return CH.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end
-	-- the Accounting tab is the ledger: plum and parchment; every other page is AuctionIQ navy
-	local want = page == "ledger" and "accounting" or "auctioniq"
+	-- one palette on every tab (Accounting used to switch to plum)
+	local want = "auctioniq"
 	if CH.Theme.palette ~= want or frame.palette ~= want then
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)

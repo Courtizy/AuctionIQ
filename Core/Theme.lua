@@ -1,6 +1,6 @@
 -- AuctionIQ look, after ToxiUI's Dark style: graphite panels with black 1px borders and a soft
 -- shadow, the player's class colour as the accent, ToxiUI's class gradients on progress bars and
--- Montserrat titles. The Accounting tab keeps its plum, parchment and gold. With ElvUI (and ToxiUI on
+-- Montserrat titles. Every tab uses the AuctionIQ palette (the old plum Accounting palette is kept but unused). With ElvUI (and ToxiUI on
 -- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
 -- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
 local _, CH = ...
