@@ -99,7 +99,7 @@ LUI.Money, LUI.Signed = money, signed
 --- shows that page frame beside the nav instead of a table; one with go = function opens elsewhere.
 function LUI.Register(sec, views, nav, group)
 	SECTIONS[sec] = SECTIONS[sec] or {}
-	for k, def in pairs(views) do VIEWS[k] = def end
+	for k, def in pairs(views) do VIEWS[k] = def; def.section = def.section or sec end
 	if group and nav[1] then
 		SECTIONS[sec].tabbed = true
 		table.insert(SECTIONS[sec], { group, nav[1] })
@@ -820,6 +820,7 @@ function LUI.View() return view end
 --- The tab a view lives in.
 function LUI.SectionOf(v)
 	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
+	return VIEWS[v] and VIEWS[v].section
 end
 
 --- The line a handed-over recommendation puts over a view's footer.

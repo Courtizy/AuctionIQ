@@ -393,11 +393,25 @@ end
 function AV.PlanFor(item)
 	for _, sum in pairs(CH.db.plans or {}) do
 		for _, r in ipairs(sum.rows or {}) do
-			if r.id == item and r.toProfit and r.fromProfit and math.abs(r.toProfit - r.fromProfit) >= 1 then
-				return { from = r.fromProfit, to = r.toProfit, char = sum.char, label = sum.label }
+			local saves = r.concQ and r.fromConc and r.toConc and r.fromConc - r.toConc >= 1 and math.floor(r.fromConc - r.toConc + 0.5) or nil
+			local qUp = r.fromQ and r.toQ and r.toQ > r.fromQ and r.toQ or nil
+			if r.id == item and (saves or qUp or (r.toProfit and r.fromProfit and math.abs(r.toProfit - r.fromProfit) >= 1)) then
+				return { from = r.fromProfit, to = r.toProfit, char = sum.char, label = sum.label, saves = saves, quality = qUp }
 			end
 		end
 	end
+end
+
+--- A plan's effect on one recipe, in a line: "This plan saves 12 Concentration a craft", "... makes it
+--- Q2 without Concentration", else its profit now and planned.
+function AV.PlanText(plan)
+	local M = CH.FormatMoney
+	local name = "Your plan (" .. (plan.label or "Paths") .. ")"
+	local d = plan.from and plan.to and plan.to - plan.from
+	local more = d and math.abs(d) >= 1 and string.format(", %s%s a craft", d >= 0 and "+" or "", M(d)) or ""
+	if plan.quality then return string.format("%s makes it Q%d without Concentration%s.", name, plan.quality, more) end
+	if plan.saves then return string.format("%s saves %d Concentration a craft%s.", name, plan.saves, more) end
+	return string.format("%s takes it from %s to %s a craft.", name, M(plan.from or 0), M(plan.to or 0))
 end
 
 --- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
@@ -450,7 +464,7 @@ function AV.CraftDetail(d, ctx)
 			or T.Color("muted", "Concentration doesn't pay on this craft.")
 	end
 	local plan = AV.PlanFor(x.id)
-	if plan then lines[#lines + 1] = string.format("Your plan (%s) takes it from %s to %s a craft.", plan.label or "Paths", M(plan.from), M(plan.to)) end
+	if plan then lines[#lines + 1] = AV.PlanText(plan) end
 	lines[#lines + 1] = T.Color("muted", "Reagents for " .. n .. ": about " .. M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (x.row.cost or 0) * n) .. ".")
 	local actions = { { label = "Queue " .. n, tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
 		run = function() return AV.QueueScan(x, n, false, inp) end } }
@@ -546,7 +560,9 @@ AV.VIEWS.scenarios.controls = {
 LUI.Register("ledger", AV.VIEWS, { "performance", "batches", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
 -- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
 -- the market) and Queue (the work planned: crafts, shopping, mail and what's blocking it).
-LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Craft")
+LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")
+-- Plan payoff by recipe opens from Specialization, so it sits in Craft without its own nav line
+if LUI.ViewDef("plans") then LUI.ViewDef("plans").parent = "Craft" end
 LUI.Register("operations", {}, { "post", "market", "compare", "when", "rivals", "par", "dead", "rules" }, "Trade")
 LUI.Register("operations", {}, { "work", "queue", "shopping", "mail" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })
