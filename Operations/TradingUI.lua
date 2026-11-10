@@ -93,25 +93,53 @@ end
 
 local VERDICT = { post = { "ok", "post" }, hold = { "bad", "hold: AH under your min" }, full = { "muted", "full" } }
 
+--- Posting advice for every Ready to post row, saved once an item a day: { [id] = advice }.
+function TUI.Advice(plan, now)
+	now = now or time()
+	local times = {}
+	if CH.Ledger and CH.Ledger.Available() then
+		for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do times[e.id] = e end
+	end
+	local hour = tonumber(date("%H", now))
+	local out = {}
+	for _, r in ipairs(plan or TUI.PostPlan()) do
+		local a = CH.Decide.PostAdvice(r, { times = times[r.id], hour = hour })
+		out[r.id] = a
+		if a then CH.Decide.SaveAdvice(r.id, a, now) end
+	end
+	return out
+end
+
+local function D_LABEL(a) return CH.Decide.PostLabel(a) end
+local ACTION = { post = "ok", fewer = "accent", wait = "muted" }
+
 local function postRows(ctx)
 	local T = CH.Theme
-	local out, n, worth, held, full = {}, 0, 0, 0, 0
-	for _, r in ipairs(TUI.PostPlan()) do
+	local out, n, worth, held, full, fewer, wait = {}, 0, 0, 0, 0, 0, 0
+	local plan = TUI.PostPlan()
+	local advice = TUI.Advice(plan, ctx.now)
+	for _, r in ipairs(plan) do
 		local text, name = LUI.ItemText(r.id)
 		if ctx.keepName(name) then
-			if r.verdict == "post" then n, worth = n + r.post, worth + r.value
-			elseif r.verdict == "hold" then held = held + 1
-			else full = full + 1 end
-			local v = VERDICT[r.verdict]
+			local a = advice[r.id]
+			if r.verdict == "hold" then held = held + 1 elseif r.verdict == "full" then full = full + 1 end
+			if a and a.action ~= "wait" then n, worth = n + a.qty, worth + (r.price or 0) * a.qty * CH.AH_CUT end
+			if a and a.action == "fewer" then fewer = fewer + 1 elseif a and a.action == "wait" then wait = wait + 1 end
 			-- EV: what one is worth to you at this price; RZ: what you've really sold it for
 			local vals = CH.Prices.Values(r.id)
 			local ev = r.price and CH.Expect and CH.Expect.Value(r.id, r.price)
-			table.insert(out, { id = r.id, cells = { text, r.held, string.format("%d / %d", r.up, r.cap or 0),
+			local tip = a and {
+				{ D_LABEL(a) .. (a.action ~= "wait" and r.price and ("  at " .. CH.FormatMoney(r.price)) or "") },
+				{ T.Color("muted", "Because " .. a.reason .. ".") },
+				{ "TSM would post", (r.verdict == "post" and r.post or 0) .. T.Color("muted", string.format("  (%d up of a %d cap)", r.up, r.cap or 0)) },
+				r.min and { "Your min", CH.FormatMoney(r.min) } or nil,
+			}
+			table.insert(out, { id = r.id, tip = tip, cells = { text, r.held, string.format("%d / %d", r.up, r.cap or 0),
 				money(r.price), r.ah and money(r.ah) or T.Color("muted", "no scan"), ev and money(ev) or T.Color("muted", "-"),
 				vals.realized and money(vals.realized) or T.Color("muted", "none sold"),
-				T.Color(v[1], r.verdict == "post" and ("post " .. r.post) or v[2]) },
+				a and T.Color(ACTION[a.action], D_LABEL(a)) or "" },
 				sort = { name, r.held, r.up, r.price or 0, r.ah or 0, ev or 0, vals.realized or 0,
-					(r.verdict == "post" and 0 or r.verdict == "hold" and 1 or 2) * 1e15 - r.value } })
+					(a and (a.action == "post" and 0 or a.action == "fewer" and 1 or 2) or 3) * 1e15 - r.value } })
 		end
 	end
 	if not CH.Ledger.Available() then
@@ -121,9 +149,10 @@ local function postRows(ctx)
 		return out, T.Color("muted", "Nothing to post: no items you hold are in a posting group. Set groups up in Settings, Edit groups.")
 	end
 	return out, string.format("%s to post, worth %s after the cut", T.Color("ok", n), money(worth))
-		.. (held > 0 and T.Color("bad", string.format("   %d held: the AH is under your min", held)) or "")
-		.. (full > 0 and T.Color("muted", string.format("   %d at their cap", full)) or "")
-		.. T.Color("muted", "   Post them at the AH: Auctioning opens beside it.")
+		.. (fewer > 0 and T.Color("accent", string.format("   %d fewer than TSM would", fewer)) or "")
+		.. (wait > 0 and T.Color("muted", string.format("   %d to wait on", wait)) or "")
+		.. (held > 0 and T.Color("bad", string.format(" (%d under your min)", held)) or "")
+		.. T.Color("muted", string.format("   Enough up is %d days of sales; hover a row for why. Post at the AH: Auctioning opens beside it.", CH.Decide.POST_DAYS))
 end
 
 local function mailRows(ctx)
@@ -151,7 +180,7 @@ end
 TUI.VIEWS = {
 	post = { label = "Ready to post", sort = 8, asc = true, noTime = true, rows = postRows, cols = { { "Item", 0, 170 },
 		{ "Held", 174, 40 }, { "Up / cap", 218, 56 }, { "Price", 278, 76 }, { "AH now", 358, 76 }, { "EV", 438, 76 }, { "RZ", 518, 76 },
-		{ "Do", 598, 126 } } },
+		{ "Advice", 598, 126 } } },
 	mail = { label = "To mail", sort = 5, noTime = true, rows = mailRows, cols = { { "Item", 0, 200 }, { "From", 204, 100 }, { "To", 308, 100 },
 		{ "Qty", 412, 50 }, { "Worth", 466, 100 }, { "", 570, 154 } } },
 }
@@ -215,11 +244,17 @@ function TUI.WorkPlan()
 			char = e.charName or "?", qty = e.qty, worth = (e.profit or 0) * e.qty, status = status, where = "Profession window",
 			tone = STATUS[status] or "fg" })
 	end
-	for _, r in ipairs(TUI.PostPlan()) do
-		if r.verdict == "post" and r.post > 0 then
+	-- posts follow the posting advice: how many it says, not just what TSM would put up
+	local plan = TUI.PostPlan()
+	local advice = TUI.Advice(plan)
+	for _, r in ipairs(plan) do
+		local a = advice[r.id]
+		local qty = a and a.action ~= "wait" and a.qty or 0
+		if r.verdict == "post" and qty > 0 then
 			local _, name = LUI.ItemText(r.id)
-			table.insert(out, { kind = "post", task = "Post " .. name, id = r.id, char = "any", qty = r.post, worth = r.value,
-				status = "ready to post", where = "Auction House", tone = "ok" })
+			table.insert(out, { kind = "post", task = "Post " .. name, id = r.id, char = "any", qty = qty,
+				worth = (r.price or 0) * qty * CH.AH_CUT, status = a.action == "fewer" and "post fewer" or "ready to post",
+				where = "Auction House", tone = "ok" })
 		end
 	end
 	local trips = {}
