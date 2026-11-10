@@ -110,6 +110,27 @@ function Next.List(now)
 	end
 	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
 	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
+	-- the queue's shopping list: what still has to be bought before queued crafts can start
+	if CH.Queue and CH.Queue.ShoppingList then
+		local ok, list, total = pcall(CH.Queue.ShoppingList)
+		if ok and list then
+			local buys, names, ids = {}, {}, {}
+			for _, r in ipairs(list) do
+				if (r.buy or 0) > 0 then
+					buys[#buys + 1] = r
+					ids[r.itemID] = true
+					if #names < 3 then names[#names + 1] = string.format("%d x %s", r.buy, name(r.itemID)) end
+				end
+			end
+			if #buys > 0 then
+				-- a cost, not a gain: it goes in the text, so the card doesn't read it as expected benefit
+				add({ title = "Buy reagents", detail = string.format("%d reagent%s for your queue, about %s: %s%s", #buys, #buys == 1 and "" or "s",
+					CH.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
+					risk = "listings move: the AH's Shop queue buys at what's up when you get there",
+					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
+			end
+		end
+	end
 
 	if CH.Ledger and CH.Ledger.Available() then
 		local hour = tonumber(date("%H", now))

@@ -1427,6 +1427,8 @@ run("""STUB.oldQueue = AuctionIQ.db.queue
 AuctionIQ.db.queue = { { char = AuctionIQ.CharacterKey(), name = 'A', qty = 3, shop = {} },
   { char = AuctionIQ.CharacterKey(), name = 'B', qty = 2, shop = { { itemID = 987654, n = 5 } } },
   { char = 'Other-Realm', name = 'C', qty = 1, shop = {} } }""")
+nb = [e for e in CH.Next.List().values() if e.title == "Buy reagents"]
+check("do next: the queue's shopping list is a card that opens it", len(nb) == 1 and nb[0].go[2] == "shopping" and "for your queue" in nb[0].detail)
 fig = CH.UI.DashboardFigures()
 check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
 work = list(CH.TradingUI.WorkPlan().values())
