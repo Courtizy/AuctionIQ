@@ -746,7 +746,7 @@ function AUI.PostLines(result)
 			if p.kind == "nopost" then
 				table.insert(out, tag .. T.Color("muted", string.format(" Your %s operation doesn't post this item.", p.op or "?")))
 			else
-				local what = (not p.reset or p.reset == "none") and "posting would skip it"
+				local what = (not p.reset or p.reset == "none" or p.reset == "ignore") and "posting would skip it"
 					or ("posting lists it at your " .. tostring(p.reset):gsub("Price", "") .. " price instead")
 				table.insert(out, tag .. T.Color("muted", string.format(" Below posting minimum (%s min %s): %s.", p.op or "?", M(p.min), what)))
 			end
