@@ -239,7 +239,7 @@ check("ElvUI: a theme colour change re-colours the brand", "336699" in L.eval("A
 run("AuctionIQ.db.settings.theme = 'elvui'; AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: /aiq theme takes its value colour as the accent", T.hex.accent == "336699")
 run("AuctionIQ.db.settings.theme = nil; AuctionIQ.Theme.Use('auctioniq')")
-check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
+check("ElvUI: panels use its opaque Default template", L.eval("STUB.p.template") == "Default")
 check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
 run("ElvUI = nil; AuctionIQ.Theme.Use('auctioniq')")
 check("no ElvUI again: back to AuctionIQ blue and its gradient", T.hex.accent == "3fc7eb"

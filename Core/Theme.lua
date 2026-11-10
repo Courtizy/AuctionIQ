@@ -233,7 +233,9 @@ end
 function T.Panel(frame, bg, alpha)
 	frame.aiqBg, frame.aiqAlpha = bg or "bg", alpha
 	if T.Elv() and frame.SetTemplate then
-		frame:SetTemplate(bg == "panel" and "Default" or "Transparent")
+		-- Default, not Transparent: ElvUI repaints Transparent frames with its own (see-through)
+		-- fade colour whenever its media updates, which undoes the tint below
+		frame:SetTemplate("Default")
 		T.Tint(frame)
 		return frame
 	end
