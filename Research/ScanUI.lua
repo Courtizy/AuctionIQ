@@ -245,7 +245,7 @@ function SUI.OrderCellLines(d, col)
 		for _, l in ipairs(d.costLines or {}) do
 			table.insert(lines, { CH.Window.ItemIcon(l.id, 14) .. l.n .. " x " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or "")
 				.. T.Color(l.have >= l.n and "ok" or "bad", string.format("  (have %d)", l.have)), l.total and M(l.total) or T.Color("bad", "no price") })
-			for _, t in ipairs(CH.Advisor.HeldText(l)) do table.insert(lines, { t }) end
+			for _, t in ipairs(CH.Advisor.HeldText(l)) do table.insert(lines, t) end
 		end
 		if not (d.costLines and d.costLines[1]) then table.insert(lines, { T.Color("ok", "The customer provides every reagent.") }) end
 		table.insert(lines, { "Total", M(d.cost or 0) })

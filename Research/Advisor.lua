@@ -805,17 +805,26 @@ function A.HeldLine(l, model)
 	l.ownEach = h.each or l.buy
 	l.sell = h.each
 	l.paidEach = h.paid
+	l.stock = h.n
 	return l
 end
 
---- The held split of a reagent line, as muted text lines (empty off the held basis or when you hold none).
+--- A reagent line's prices for its hover, as { label, value } rows: the opportunity cost of the
+--- units you hold, then what you paid, the current lowest listing and what you'd list it at, and
+--- what the rest cost to buy. Empty off the held basis or when you hold none.
 function A.HeldText(l)
 	local out = {}
 	if not (l and l.own and l.own > 0) then return out end
 	local M, T = CH.FormatMoney, CH.Theme
-	out[#out + 1] = T.Color("muted", string.format("   %d yours at %s (%s)", l.own, l.ownEach and M(l.ownEach) or "-", l.sell and "what they'd sell for after the cut" or "no sale price: today's price"))
-	if (l.buyN or 0) > 0 then out[#out + 1] = T.Color("muted", string.format("   %d to buy at %s", l.buyN, l.buy and M(l.buy) or "-")) end
-	if l.paidEach then out[#out + 1] = T.Color("muted", string.format("   you paid about %s each (already spent, so not counted)", M(l.paidEach))) end
+	local function m(v) return v and M(v) or T.Color("muted", "-") end
+	local list = CH.Prices.Get("chvalue", "i:" .. l.id)
+	local lowest = CH.Prices.Raw and CH.Prices.Raw("dbminbuyout", l.id) or l.buy
+	out[#out + 1] = { string.format("   Opportunity cost (%d yours)", l.own), m(l.ownEach) }
+	out[#out + 1] = { T.Color("muted", "      Stock"), tostring(l.stock or l.own) }
+	out[#out + 1] = { T.Color("muted", "      Paid price"), m(l.paidEach) }
+	out[#out + 1] = { T.Color("muted", "      Current price"), m(lowest) }
+	out[#out + 1] = { T.Color("muted", "      Sell price"), m(list) }
+	if (l.buyN or 0) > 0 then out[#out + 1] = { string.format("   To buy (%d)", l.buyN), m(l.buy) } end
 	return out
 end
 

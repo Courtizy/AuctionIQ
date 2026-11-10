@@ -869,7 +869,7 @@ function AUI.BreakdownLines(result, r, col)
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
 			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
-			for _, t in ipairs(CH.Advisor.HeldText(c)) do add(t) end
+			for _, t in ipairs(CH.Advisor.HeldText(c)) do add(t[1], t[2]) end
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
 			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
 		end
@@ -878,6 +878,7 @@ function AUI.BreakdownLines(result, r, col)
 		for _, l in ipairs(AUI.BasisLines(result, r)) do add(l[1], l[2]) end
 		add(CH.Theme.Color("muted", "Replacement: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
 		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
+		add(CH.Theme.Color("muted", "Opportunity cost: what yours would bring sold at the sell price, after the 5% cut."))
 		-- two questions, two costs: restocking today against what the reagents you hold cost you
 		for _, l in ipairs(AUI.PaidLines(result, r)) do add(l[1], l[2]) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end

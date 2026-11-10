@@ -1175,9 +1175,9 @@ run("AuctionIQ.Prices.CostBasis('replacement')")
 check("replacement basis: every unit at today's price", L.eval("AuctionIQ.Advisor.UnitsCost({ heldCache = { [205] = { n = 5, each = 4000 } } }, 205, 8)") == 80000)
 run("AuctionIQ.Prices.CostBasis('held')")
 hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { heldCache = { [205] = { n = 5, each = 4000 } } })")
-ht = [plain(x) for x in CH.Advisor.HeldText(hl).values()]
-check("held basis: the hover splits yours from what you'd buy", hl.own == 5 and hl.buyN == 3 and any("5 yours at" in x and "sell for" in x for x in ht)
-      and any("3 to buy at" in x for x in ht))
+ht = [plain(x[1]).strip() for x in CH.Advisor.HeldText(hl).values()]
+check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
+      and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
