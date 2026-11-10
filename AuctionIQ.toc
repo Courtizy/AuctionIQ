@@ -1,6 +1,6 @@
 ## Interface: 120105
 ## Title: AuctionIQ
-## Notes: Economic intelligence for the Auction House: what to craft, buy, post and cancel, with its own Accounting ledger behind it. Uses TradeSkillMaster prices.
+## Notes: Intelligence for the Auction House: what to craft, buy, post and cancel, with its own Accounting ledger behind it. Uses TradeSkillMaster prices.
 ## Author: Courtizy
 ## Version: @project-version@
 ## IconTexture: Interface\AddOns\AuctionIQ\Media\Icon

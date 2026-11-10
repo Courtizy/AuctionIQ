@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="Media/Logo-Readme-Dark.png">
-    <img src="Media/Logo-Readme-Light.png" width="600" alt="AUCTIONIQ: economic intelligence for the Auction House">
+    <img src="Media/Logo-Readme-Light.png" width="600" alt="AUCTIONIQ: intelligence for the Auction House">
   </picture>
 </p>
 
