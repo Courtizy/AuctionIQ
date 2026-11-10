@@ -250,6 +250,13 @@ function Q.OrderStep(e)
 	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
 end
 
+--- The queue entry for an order, or nil.
+function Q.ForOrder(orderID)
+	for _, e in ipairs(list()) do
+		if e.orderID and CH.Orders.Same(e.orderID, orderID) then return e end
+	end
+end
+
 --- The next thing to do in the queue on this character: the order you have claimed first, then the
 --- first order, then the first craft. Returns the entry and its step, or nil.
 function Q.NextStep()

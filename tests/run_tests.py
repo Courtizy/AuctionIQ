@@ -1784,25 +1784,19 @@ C_CraftingOrders.ClaimOrder = function(id)
 end
 C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
 STUB.oldOpen = AuctionIQ.Orders.Open; AuctionIQ.Orders.Open = function(o) STUB.opened = o and o.orderID end""")
-check("orders: an order's Claim button starts free", CH.ScanUI.ClaimState(by[77]) == "free")
-check("orders: Claim claims that order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77)
+check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
+run("AuctionIQ.Queue.Clear()")
+check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77
+      and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
-check("orders: once claimed, the order opens and its button opens it again",
-      L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "claimed" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Open"))
-uc = L.eval("""(function()
-  local checked, clicks = false, 0
-  local button = { IsShown = function() return true end, IsEnabled = function() return true end,
-    GetChecked = function() return checked end, Click = function() checked = not checked; clicks = clicks + 1 end }
-  local old = ProfessionsFrame
-  ProfessionsFrame = { OrdersPage = { OrderView = { OrderDetails = { SchematicForm = { Details = {
-    CraftingChoicesContainer = { ConcentrateContainer = { ConcentrateToggleButton = button } } } } } } } }
-  local a = AuctionIQ.Orders.UseConcentration(true)
-  local b = AuctionIQ.Orders.UseConcentration(true) -- already on: no second click
-  ProfessionsFrame = old
-  return a and b and checked and clicks == 1
-end)()""")
-check("orders: an order whose craft uses Concentration gets Use Concentration ticked on its page", uc)
+check("orders: once claimed, the order opens and its button moves on to Craft",
+      L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "craft" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
 check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
+run("STUB.crafted = nil; STUB.oldCraft = C_TradeSkillUI.CraftRecipe; C_TradeSkillUI.CraftRecipe = function(id, n, r, _, order, conc) STUB.crafted = { id = id, order = order, conc = conc } end")
+check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
+run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
+check("orders: when crafted, the button reads Turn in and turns it in", CH.ScanUI.ClaimState(by[77]) == "turnin" and CH.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
+run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
