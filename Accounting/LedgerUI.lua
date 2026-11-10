@@ -14,6 +14,11 @@ local BASE_TW = 724 -- the width the columns are laid out for; a wider table spr
 local function colX(c) return math.floor(c[2] * TW / BASE_TW) end
 local function cellWidth(c) return math.min(math.floor(c[3] * TW / BASE_TW), TW - 10 - colX(c)) end
 local ROWS, RH = 23, 18 -- rows shown: as many as the window height has room for (LUI.SetRows)
+-- A view with detail = function(row, ctx) shows the selected row's detail under the table, in the
+-- room of this many rows: { title, lines = { text... }, actions = { { label, run, tip } } }. run()
+-- returns ok and a line saying what happened, shown in the pane.
+local DROWS = 8
+local selected, said -- the selected row's key (row.key, else its id and first cell), and the last action's result
 local MAX_ROWS = 60
 
 local view = "inventory"
@@ -395,7 +400,7 @@ end
 -- Building ------------------------------------------------------------------------------------
 local function setView(v)
 	if VIEWS[v] and VIEWS[v].go then return VIEWS[v].go() end
-	if v ~= view then focus = nil end
+	if v ~= view then focus = nil; selected = nil; said = nil end
 	view, offset = v, 0
 	lastView[section] = v
 	if VIEWS[v].parent then lastIn[VIEWS[v].parent] = v end
@@ -582,14 +587,44 @@ function LUI.Build(p, fs, panel)
 			end
 		end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		hit:SetScript("OnClick", function(self) if view == "par" and self.id then LUI.ParClick(self.id) end end)
+		hit:SetScript("OnClick", function(self)
+			if view == "par" and self.id then LUI.ParClick(self.id) end
+			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
+		end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
 		bg:SetAllPoints()
 		bg:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.03 or 0)
+		r.bg, r.zebra = bg, i % 2 == 0 and 0.03 or 0
 		r.hit = hit
-		for j = 1, 8 do r.cells[j] = fs(body, 0, -52 - (i - 1) * RH, 10) end
+		for j = 1, 10 do r.cells[j] = fs(body, 0, -52 - (i - 1) * RH, 10) end
 		p.rows[i] = r
 	end
+	-- the selected row's detail, under the table, for a view that has one
+	local det = CreateFrame("Frame", nil, body)
+	det:SetSize(TW, DROWS * RH - 6)
+	local dbg = det:CreateTexture(nil, "BACKGROUND")
+	dbg:SetAllPoints()
+	dbg:SetColorTexture(1, 1, 1, 0.04)
+	det.title = fs(det, 8, -6, TW - 220, "LEFT", "GameFontNormal")
+	det.lines = {}
+	for k = 1, 6 do det.lines[k] = fs(det, 8, -8 - k * 17, TW - 220, "LEFT", "GameFontHighlightSmall") end
+	det.said = fs(det, TW - 204, -8 - 4 * 17, 196, "RIGHT", "GameFontHighlightSmall")
+	det.buttons = {}
+	for k = 1, 3 do
+		local b = CH.Theme.Button(det, "", 196, 20)
+		b:SetPoint("TOPRIGHT", -8, -6 - (k - 1) * 24)
+		b:SetScript("OnClick", function(self)
+			if not self.run then return end
+			local ok, msg = self.run()
+			said = msg and { ok = ok, msg = msg } or nil
+			CH.UI.Refresh()
+		end)
+		b:SetScript("OnEnter", function(self) if self.tipText then CH.Window.Tooltip(self, { { self.tipText } }) end end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		det.buttons[k] = b
+	end
+	det:Hide()
+	p.detail = det
 	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
 	p.bar = CH.Window.ScrollBar(body, X0 + TW - 3, -50, ROWS * RH, true)
 	LUI.SetRows(ROWS)
@@ -621,7 +656,10 @@ function LUI.Refresh()
 			b.mark:SetShown(b.view == view)
 		end
 	end
-	if v.page then return {}, "" end
+	if v.page then
+		if p.detail then p.detail:Hide(); LUI.lastDetail = nil end
+		return {}, ""
+	end
 	local charLabel = char or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
@@ -658,13 +696,26 @@ function LUI.Refresh()
 		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil })
 		sortRows(rows, sortCol or 1, sortDesc)
 	end
-	offset = math.max(0, math.min(offset, #rows - ROWS))
-	if p.bar then p.bar:Set(offset, ROWS, #rows) end
+	-- a view with a detail pane gives up the bottom rows to it
+	local SHOWN = v.detail and math.max(5, ROWS - DROWS) or ROWS
+	offset = math.max(0, math.min(offset, #rows - SHOWN))
+	if p.bar then
+		p.bar:Set(offset, SHOWN, #rows)
+		if p.bar.SetLength then p.bar:SetLength(SHOWN * RH) end
+	end
+	local function keyOf(d) return d.key or (tostring(d.id) .. ":" .. tostring(d.cells[1]) .. ":" .. tostring(d.cells[2])) end
+	local sel
+	if v.detail then
+		for _, d in ipairs(rows) do if keyOf(d) == selected then sel = d end end
+		if not sel and rows[1] then sel = rows[1]; selected = keyOf(sel); said = nil end
+	end
 	for i, r in ipairs(p.rows) do
-		local d = i <= ROWS and rows[i + offset] or nil
-		r.hit:SetShown(i <= ROWS)
+		local d = i <= SHOWN and rows[i + offset] or nil
+		r.hit:SetShown(i <= SHOWN)
 		r.hit.id = d and d.id
 		r.hit.tip = d and d.tip
+		r.hit.key = d and keyOf(d)
+		if r.bg then r.bg:SetColorTexture(1, 1, 1, (sel and d == sel) and 0.14 or r.zebra) end
 		for j, cell in ipairs(r.cells) do
 			local c = v.cols[j]
 			if c and d then
@@ -678,7 +729,8 @@ function LUI.Refresh()
 			end
 		end
 	end
-	local more = #rows > ROWS and T.Color("muted", string.format("   rows %d-%d of %d, scroll for more", offset + 1, math.min(#rows, offset + ROWS), #rows)) or ""
+	local more = #rows > SHOWN and T.Color("muted", string.format("   rows %d-%d of %d, scroll for more", offset + 1, math.min(#rows, offset + SHOWN), #rows)) or ""
+	LUI.DrawDetail(p, v, sel, SHOWN)
 	if p.search and (p.search:GetText() or "") ~= filter then
 		p.search:SetText(filter)
 		p.hint:SetText(filter == "" and "Filter by name" or "")
@@ -686,6 +738,43 @@ function LUI.Refresh()
 	if focus and CH.Ledger.Available() then footer = LUI.FocusText(focus) .. "   " .. footer end
 	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
+end
+
+--- Select a row of a view with a detail pane, by its key; the pane shows it.
+function LUI.Select(key)
+	if key ~= selected then said = nil end
+	selected = key
+	CH.UI.Refresh()
+end
+function LUI.Selected() return selected end
+
+--- Draw the detail pane for the selected row, under the table's `shown` rows. Returns what it drew
+--- ({ title, lines, actions }), for tests.
+function LUI.DrawDetail(p, v, sel, shown)
+	local det = p and p.detail
+	if not det then return nil end
+	if not (v.detail and sel) then det:Hide(); LUI.lastDetail = nil; return nil end
+	local ok, d = pcall(v.detail, sel, { focus = focus })
+	if not ok or not d then det:Hide(); LUI.lastDetail = nil; return nil end
+	det:ClearAllPoints()
+	det:SetPoint("TOPLEFT", X0, -52 - shown * RH - 2)
+	det:SetWidth(TW)
+	det.title:SetText(d.title or "")
+	for k, f in ipairs(det.lines) do f:SetText(d.lines and d.lines[k] or "") end
+	for k, b in ipairs(det.buttons) do
+		local a = d.actions and d.actions[k]
+		b.run, b.tipText = a and a.run, a and a.tip
+		if a then
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			if f then f:SetText(a.label) elseif b.SetText then b:SetText(a.label) end
+			b.label = a.label
+		end
+		b:SetShown(a ~= nil)
+	end
+	det.said:SetText(said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
+	det:Show()
+	LUI.lastDetail = d
+	return d
 end
 
 --- How many table rows to show (the window got taller or shorter). Returns the count.
@@ -746,7 +835,7 @@ function LUI.Focus() return focus end
 --- Switch the view, filters and sort from code (tests, slash commands). opts.focus hands over a
 --- recommendation: { name, id, char, qty, title }; the view opens filtered to its name.
 function LUI.Set(opts)
-	if opts.view and opts.view ~= view then focus = nil end
+	if opts.view and opts.view ~= view then focus = nil; selected = nil; said = nil end
 	if opts.focus then
 		focus = opts.focus
 		if opts.filter == nil then opts.filter = focus.name or "" end

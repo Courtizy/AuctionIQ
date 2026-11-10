@@ -339,7 +339,8 @@ function AV.Scenarios(ctx, r, p)
 					local now = AV.Reprice(parts, 0, 0)
 					local net = parts.consumed - parts.returned
 					local be = CH.Decide.BreakEvenParts(parts, parts.price)
-					table.insert(out, { id = row.item, name = row.name, char = c.name or key, profit = now,
+					table.insert(out, { id = row.item, name = row.name, char = c.name or key, charKey = key, c = c, row = row,
+						prof = prof.name, scanAt = prof.scan.at, profit = now,
 						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
 						breakEven = net > 0 and now / net or math.huge,
 						-- the sale price per item where the craft makes nothing, and how far the estimate can fall
@@ -361,7 +362,8 @@ local function scenarioRows(ctx)
 		local be = x.salePrice and (money(x.salePrice) .. T.Color(x.cushion < 0.1 and "bad" or "muted", " " .. pct(x.cushion))) or T.Color("muted", "older scan")
 		local sg = x.suggest
 		local make = not sg and T.Color("muted", "-") or sg.n == 0 and T.Color(sg.limit == "rate" and "muted" or "bad", sg.limit == "rate" and "-" or "0") or tostring(sg.n)
-		table.insert(out, { id = x.id, cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
+		table.insert(out, { id = x.id, key = (x.charKey or "") .. ":" .. tostring(x.row and x.row.recipeID) .. ":" .. tostring(x.id), x = x,
+			cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
 			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)), make },
 			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven, sg and sg.n or -1 },
 			tip = sg and { { CH.Decide.SuggestText(sg) }, sg.n > 0 and { sg.why } or nil } or nil })
@@ -371,6 +373,92 @@ local function scenarioRows(ctx)
 	return out, string.format("Reagents +%d%%, selling price -%d%%. %d of %d crafts lose money if both happen.",
 		math.floor(sc.reagents * 100 + 0.5), math.floor(sc.price * 100 + 0.5), fragile, #out)
 		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Room: how far reagents can rise before it stops paying. Make: how many to craft (hover for the scenarios).")
+end
+
+-- Craft detail -------------------------------------------------------------------------------
+-- The selected craft in Operations > Craft > Compare crafts: the same result the Crafting Advisor
+-- shows when that recipe is open in the profession window (live), else the last scan, labelled with
+-- its character and age. How many to make, what it costs and risks, whether Concentration is worth
+-- it, and what a knowledge plan changes; its buttons queue the batch and save the decision.
+
+--- The live advisor result for a recipe, if the profession window has it open: result, row.
+function AV.LiveFor(recipeID)
+	local a = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
+	if not (a and recipeID and a.recipeID == recipeID and not a.order and not a.sim) then return nil end
+	if ProfessionsFrame and ProfessionsFrame.IsShown and not ProfessionsFrame:IsShown() then return nil end
+	return a, (CH.AdvisorUI.SelectedRow and CH.AdvisorUI.SelectedRow()) or a.best
+end
+
+--- What a knowledge plan does to this craft: { from, to, char } or nil.
+function AV.PlanFor(item)
+	for _, sum in pairs(CH.db.plans or {}) do
+		for _, r in ipairs(sum.rows or {}) do
+			if r.id == item and r.toProfit and r.fromProfit and math.abs(r.toProfit - r.fromProfit) >= 1 then
+				return { from = r.fromProfit, to = r.toProfit, char = sum.char, label = sum.label }
+			end
+		end
+	end
+end
+
+--- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
+function AV.QueueScan(x, n, conc, inp)
+	local e = CH.Queue and CH.Queue.FromScan(x.charKey, x.c, x.row, conc)
+	if not e then return false, "This scan is too old to queue from: scan the profession again." end
+	CH.Queue.AddEntry(e, n)
+	if inp and CH.Forecast and CH.Forecast.SaveDecision then
+		local sc = CH.Decide.Scenarios(inp, n).expected
+		CH.Forecast.SaveDecision({ item = e.item, recipe = x.row.recipeID, name = x.name, char = x.char, quality = e.quality, conc = conc or nil,
+			n = n, itemsEach = CH.Decide.ItemsPerCraft(inp), costEach = sc.cost / n, priceEach = inp.price, netEach = sc.each,
+			daily = inp.daily, leftWeek = sc.left, profit = sc.items * sc.each - sc.cost, source = "the last scan", from = "craft" })
+	end
+	return true, string.format("Queued %d x %s%s for %s", n, x.name or "?", conc and " with Concentration" or "", x.char or "?")
+end
+
+function AV.CraftDetail(d, ctx)
+	local x = d.x
+	if not x then return nil end
+	local T, M = CH.Theme, CH.FormatMoney
+	local live, lr = AV.LiveFor(x.row.recipeID)
+	local inp, sug
+	if live and lr then
+		local b = CH.AdvisorUI.BatchFor(live, lr)
+		inp, sug = b and b.inputs, b and b.suggest
+	end
+	inp = inp or CH.Decide.ScanInputs(x.row)
+	sug = sug or (inp and CH.Decide.Suggest(inp, {}))
+	local age = x.scanAt and CH.Scans and CH.Scans.Age(time() - x.scanAt) or "?"
+	local src = live and T.Color("ok", "Live from the profession window") or T.Color("muted", string.format("Last scan on %s, %s old", x.char or "?", age))
+	-- how many: the Dashboard's quantity when it handed this over, else the suggestion
+	local f = ctx and ctx.focus
+	local n = (f and f.name == x.name and f.qty and f.qty > 0) and f.qty or (sug and sug.n > 0 and sug.n) or 1
+	local lines = {}
+	local profit = live and lr and lr.profit or x.profit
+	lines[1] = string.format("Profit %s a craft.", M(profit))
+		.. (x.salePrice and string.format(" Breaks even at %s an item, %s under the estimate.", M(x.salePrice), pct(x.cushion)) or "")
+	local sc = sug and sug.n > 0 and sug.scenarios
+	local function whole(v) return math.floor(v + 0.5) end
+	if sc then
+		lines[2] = string.format("Make %d: %s at risk if it sells slowly.", sug.n, M(sc.slow.atRisk))
+		lines[3] = T.Color("muted", string.format("Left after a week: %d slow, %d expected, %d fast.", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)))
+	else
+		lines[2] = sug and sug.why or T.Color("muted", "No sale price in this scan, so no batch size.")
+	end
+	local row = x.row
+	if row.concProfit and row.concentration and row.concentration > 0 then
+		local gain = row.concProfit - (row.profit or 0)
+		lines[#lines + 1] = gain > 0 and string.format("Concentration adds %s a craft for %d points (%s a point).", M(gain), row.concentration, M(gain / row.concentration))
+			or T.Color("muted", "Concentration doesn't pay on this craft.")
+	end
+	local plan = AV.PlanFor(x.id)
+	if plan then lines[#lines + 1] = string.format("Your plan (%s) takes it from %s to %s a craft.", plan.label or "Paths", M(plan.from), M(plan.to)) end
+	lines[#lines + 1] = T.Color("muted", "Reagents for " .. n .. ": about " .. M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (x.row.cost or 0) * n) .. ".")
+	local actions = { { label = "Queue " .. n, tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
+		run = function() return AV.QueueScan(x, n, false, inp) end } }
+	if row.concProfit and row.concProfit > (row.profit or 0) and row.concAccounts then
+		actions[2] = { label = "Queue " .. n .. " with Concentration", tip = "Spend Concentration on these crafts.",
+			run = function() return AV.QueueScan(x, n, true, inp) end }
+	end
+	return { title = (x.name or "?") .. "  " .. src, lines = lines, actions = actions, n = n, live = live ~= nil }
 end
 
 -- Batch results ------------------------------------------------------------------------------
@@ -431,7 +519,7 @@ AV.VIEWS = {
 	batches = { label = "Batch results", sort = 7, asc = true, noTime = true, rows = batchRows, cols = { { "Batch", 0, 172 },
 		{ "Character", 176, 74 }, { "Crafts", 254, 46 }, { "Sold", 304, 54 }, { "Forecast", 362, 86 }, { "Actual", 452, 86 },
 		{ "Miss", 542, 80 }, { "Why", 626, 98 } } },
-	scenarios = { label = "Compare crafts", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
+	scenarios = { label = "Compare crafts", detail = function(d, ctx) return AV.CraftDetail(d, ctx) end, sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
 		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
 		{ "Room", 628, 50 }, { "Make", 682, 42 } } },
 }
