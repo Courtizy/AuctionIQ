@@ -11,8 +11,9 @@ end
 
 local PALETTES = {
 	-- ToxiUI's ElvUI colours: backdrop #1a1a1a, see-through backdrop #292929 at 80%, black borders.
-	-- The accent becomes the player's class colour once the game knows the class.
-	auctioniq = { bg = "292929", panel = "1a1a1a", line = "000000", fg = "f2f2f2", muted = "a3a3ab", accent = "3fc7eb", iq = "34c77b", ok = "34c77b", bad = "ef7d72", gold = "e0a83a", bgAlpha = 0.8, classAccent = true },
+	-- The accent follows the theme colour (ElvUI's value colour, which ToxiUI sets to the class
+	-- colour), else stays AuctionIQ blue.
+	auctioniq = { bg = "292929", panel = "1a1a1a", line = "000000", fg = "f2f2f2", muted = "a3a3ab", accent = "3fc7eb", iq = "34c77b", ok = "34c77b", bad = "ef7d72", gold = "e0a83a", bgAlpha = 0.8, themeAccent = true },
 	-- the earlier navy look
 	navy = { bg = "0e1729", panel = "15213b", line = "263a63", fg = "e6e8ee", muted = "9aa6bd", accent = "e0a83a", iq = "34c77b", ok = "6cc58f", bad = "ef7d72", gold = "e0a83a" },
 	accounting = { bg = "1c1222", panel = "281a30", line = "45304f", fg = "efe4c8", muted = "b8a69a", accent = "e0a83a", iq = "d8c39a", ok = "6cc58f", bad = "ef7d72", gold = "e0a83a" },
@@ -25,8 +26,18 @@ local GRADIENTS = {
 	ROGUE = { "ffb759", "fff368" }, SHAMAN = { "0061bf", "0a7ded" }, WARLOCK = { "562fbd", "9946ff" },
 	WARRIOR = { "946837", "dfaa73" },
 }
-local T = { hex = {}, PALETTES = PALETTES, GRADIENTS = GRADIENTS }
+-- AuctionIQ blue, the brand colour and accent without ElvUI, and its gradient.
+local BRAND = "3fc7eb"
+local BRAND_GRADIENT = { "0080d7", "00d8ff" }
+local T = { hex = {}, PALETTES = PALETTES, GRADIENTS = GRADIENTS, BRAND = BRAND }
+local toxiLoaded
 CH.Theme = T
+
+toxiLoaded = function()
+	local f = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+	return f and f("ElvUI_ToxiUI") and true or false
+end
+T.ToxiLoaded = toxiLoaded
 
 local function playerClass()
 	if not UnitClass then return nil end
@@ -44,9 +55,31 @@ function T.ClassHex(class)
 	return string.format("%02x%02x%02x", b(c.r), b(c.g), b(c.b))
 end
 
---- The class gradient for progress bars: two colours { r, g, b }. ToxiUI's own map when it is
---- loaded (it may be customised), else the same defaults; the accent for an unknown class.
+local function toHex(c)
+	local function b(v) return math.floor(v * 255 + 0.5) end
+	return string.format("%02x%02x%02x", b(c[1]), b(c[2]), b(c[3]))
+end
+
+--- The theme colour as hex: ElvUI's value colour when ElvUI is loaded (ToxiUI sets it to the class
+--- colour, so it changes with the character), else AuctionIQ blue. Second result: where it came from,
+--- "toxiui", "elvui" or "auctioniq".
+function T.ThemeHex()
+	local E = T.Elv()
+	local c = E and E.media and E.media.rgbvaluecolor
+	if c and c[1] then return toHex(c), toxiLoaded() and "toxiui" or "elvui" end
+	return BRAND, "auctioniq"
+end
+
+--- The gradient for progress bars: two colours { r, g, b }. With ToxiUI, its class gradient (from
+--- its own settings, which may be customised); with ElvUI alone, a shade of its value colour into
+--- it; otherwise AuctionIQ blue's gradient.
 function T.GradientColors(class)
+	local _, from = T.ThemeHex()
+	if from == "auctioniq" and not class then return hex(BRAND_GRADIENT[1]), hex(BRAND_GRADIENT[2]) end
+	if from == "elvui" and not class then
+		local a = hex((T.ThemeHex()))
+		return { a[1] * 0.6, a[2] * 0.6, a[3] * 0.6 }, a
+	end
 	class = class or playerClass()
 	local E = T.Elv()
 	local db = E and E.db and E.db.TXUI and E.db.TXUI.themes and E.db.TXUI.themes.gradientMode
@@ -79,10 +112,6 @@ end
 
 -- ToxiUI's title fonts, when it is installed.
 local FONTS = { black = "Montserrat-Black.ttf", bold = "Montserrat-Bold.ttf" }
-local function toxiLoaded()
-	local f = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
-	return f and f("ElvUI_ToxiUI") and true or false
-end
 
 --- A title in Montserrat Black (bold for "bold"), as ToxiUI sets its headings; keeps the game font
 --- without ToxiUI. size defaults to the string's own.
@@ -99,9 +128,42 @@ function T.TitleFont(fs, size, kind)
 	return fs
 end
 
---- The "AUCTIONIQ" wordmark, with IQ in the accent.
+--- The brand: "AUCTIONIQ" with IQ in the theme colour (on every palette, Accounting too).
 function T.Wordmark()
-	return T.Color("fg", "AUCTION") .. T.Color("accent", "IQ")
+	return T.Color("fg", "AUCTION") .. "|cff" .. (T.hex.brand or BRAND) .. "IQ|r"
+end
+
+-- Title bars and accent rules that follow the theme colour when it changes.
+local brandTitles, accentTex = {}, {}
+
+--- Put the brand in a title bar: the wordmark in Montserrat Black, then the window's name in grey.
+--- It follows the theme colour if that changes while you play.
+function T.BrandTitle(fs, name)
+	T.TitleFont(fs, 13)
+	fs.aiqName = name
+	fs:SetText(T.Wordmark() .. (name and name ~= "" and ("  " .. T.Color("muted", name)) or ""))
+	brandTitles[#brandTitles + 1] = fs
+	return fs
+end
+
+--- A rule or bar in the accent colour that follows it when it changes.
+function T.AccentTexture(tex)
+	tex:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+	accentTex[#accentTex + 1] = tex
+	return tex
+end
+
+--- Re-apply the theme colour (ElvUI or ToxiUI changed it): accent rules, brand titles, open windows.
+function T.Follow()
+	T.Use(T.palette)
+	for _, t in ipairs(accentTex) do t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1) end
+	for _, fs in ipairs(brandTitles) do
+		local name = rawget(fs, "aiqName")
+		fs:SetText(T.Wordmark() .. (type(name) == "string" and name ~= "" and ("  " .. T.Color("muted", name)) or ""))
+	end
+	local f = _G.AuctionIQFrame
+	if f and f.IsShown and f:IsShown() and CH.UI and CH.UI.Refresh then CH.UI.Refresh() end
+	if CH.AdvisorUI and CH.AdvisorUI.Show and _G.AuctionIQAdvisor and _G.AuctionIQAdvisor:IsShown() then CH.AdvisorUI.Show() end
 end
 
 local function elvColours()
@@ -114,8 +176,9 @@ function T.Use(name)
 	local pal = PALETTES[T.palette]
 	for k, h in pairs(pal) do if type(h) == "string" then T.hex[k] = h; T[k] = hex(h) end end
 	T.bgAlpha = pal.bgAlpha
-	local class = pal.classAccent and T.ClassHex()
-	if class then T.hex.accent = class; T.accent = hex(class) end
+	local brand, from = T.ThemeHex()
+	T.hex.brand, T.brand, T.themeFrom = brand, hex(brand), from
+	if pal.themeAccent then T.hex.accent = brand; T.accent = hex(brand) end
 	if T.Sync then T.Sync() end
 end
 
@@ -237,4 +300,11 @@ end
 
 -- ElvUI sets its media during its own login; take its colours once everything has loaded.
 T.Use("auctioniq")
-CH.On("PLAYER_LOGIN", function() T.Use(T.palette) end)
+CH.On("PLAYER_LOGIN", function()
+	T.Use(T.palette)
+	-- ElvUI tells its listeners when the value colour changes (ToxiUI's theme settings): follow it
+	local E = T.Elv()
+	if E and type(E.valueColorUpdateFuncs) == "table" then
+		E.valueColorUpdateFuncs[function() T.Follow() end] = true
+	end
+end)

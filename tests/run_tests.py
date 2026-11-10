@@ -195,13 +195,22 @@ AuctionIQ.Theme.Sync()
 STUB.p = CreateFrame("Frame"); AuctionIQ.Theme.Panel(STUB.p, "bg")
 STUB.b = AuctionIQ.Theme.Button(STUB.p, "Dock"); STUB.x = AuctionIQ.Theme.Button(STUB.p, "x")''')
 T = CH.Theme
-check("ElvUI: our palette stays by default, on ElvUI's templates", T.hex.accent == "ff7c0a" and T.hex.bg == "292929")
+check("no ElvUI: the accent and brand are AuctionIQ blue", L.eval("AuctionIQ.Theme.hex.accent") == "3fc7eb" and T.hex.bg == "292929")
+run("AuctionIQ.Theme.Use('auctioniq')")
+check("ElvUI: the accent and the brand's IQ follow its theme (value) colour", T.hex.accent == "336699" and T.hex.brand == "336699"
+      and "|cff336699IQ|r" in L.eval("AuctionIQ.Theme.Wordmark()") and T.hex.bg == "292929")
+gl = L.eval("{ AuctionIQ.Theme.GradientColors() }")
+check("ElvUI without ToxiUI: bars shade into its theme colour", abs(gl[2][1] - 0.2) < 1e-6 and abs(gl[1][1] - 0.12) < 1e-6)
+run("AuctionIQ.Theme.Follow()")
+check("ElvUI: a theme colour change re-colours the brand", "336699" in L.eval("AuctionIQ.Theme.Wordmark()"))
 run("AuctionIQ.db.settings.theme = 'elvui'; AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: /aiq theme takes its value colour as the accent", T.hex.accent == "336699")
 run("AuctionIQ.db.settings.theme = nil; AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
 check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
-run('ElvUI = nil')
+run("ElvUI = nil; AuctionIQ.Theme.Use('auctioniq')")
+check("no ElvUI again: back to AuctionIQ blue and its gradient", T.hex.accent == "3fc7eb"
+      and abs(L.eval("({ AuctionIQ.Theme.GradientColors() })[1][3]") - 0xd7 / 255) < 1e-6)
 
 # CraftSim parity: average profit with Multicraft and Resourcefulness, Ingenuity, finishing reagents
 St = CH.Stats
@@ -1121,7 +1130,7 @@ check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,C
 run("AuctionIQ.UI.Page('ledger')")
 check("theme: the Accounting tab is plum", L.eval("AuctionIQ.Theme.palette == 'accounting' and AuctionIQ.Theme.hex.bg == '1c1222'"))
 run("AuctionIQ.UI.Page('markets')")
-check("theme: other pages are ToxiUI graphite with the class accent", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '292929' and AuctionIQ.Theme.hex.panel == '1a1a1a' and AuctionIQ.Theme.hex.accent == 'ff7c0a'"))
+check("theme: other pages are ToxiUI graphite with the class accent", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '292929' and AuctionIQ.Theme.hex.panel == '1a1a1a' and AuctionIQ.Theme.hex.accent == '3fc7eb'"))
 # AH scans: any search answered in the AH window is saved (Data/Scans.lua)
 run("""C_AuctionHouse.GetNumItemSearchResults = function() return 3 end
 C_AuctionHouse.GetItemSearchResultInfo = function(key, i) return ({ { buyoutAmount = 100000, quantity = 1 }, { buyoutAmount = 140000, quantity = 1 },

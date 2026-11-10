@@ -38,7 +38,9 @@ function CH.Unsellable(id)
 end
 
 function CH.Print(msg)
-	print("|cffe0a83aAuctionIQ|r: " .. tostring(msg))
+	local T = CH.Theme
+	local brand = T and T.hex and T.hex.brand or "3fc7eb"
+	print("|cfff2f2f2Auction|r|cff" .. brand .. "IQ|r: " .. tostring(msg))
 end
 
 local COIN = {

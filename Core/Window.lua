@@ -57,19 +57,15 @@ function W.New(name, title, width, height)
 	bar:SetPoint("TOPRIGHT")
 	bar:SetHeight(26)
 	local rule = bar:CreateTexture(nil, "ARTWORK")
-	rule:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+	T.AccentTexture(rule)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
 	rule:SetHeight(2) -- ToxiUI's accent line under the title bar
 	f.rule = rule
-	local badge = bar:CreateTexture(nil, "ARTWORK")
-	badge:SetTexture(CH.ICON)
-	badge:SetSize(20, 20) -- a little larger than the 14px tab symbols
-	badge:SetPoint("LEFT", 4, 0)
+	-- the brand alone, no icon: AUCTIONIQ with IQ in the theme colour
 	f.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	f.title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
-	T.TitleFont(f.title, 13)
-	f.title:SetText(T.Wordmark() .. "  " .. T.Color("muted", title))
+	f.title:SetPoint("LEFT", 10, 0)
+	T.BrandTitle(f.title, title)
 	f.close = T.Button(bar, "x", 18, 18)
 	f.close:SetPoint("RIGHT", -4, 0)
 	f.close:SetScript("OnClick", function() f:Hide() end)

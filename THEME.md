@@ -9,11 +9,16 @@ see-through backdrop `#292929` at 80%, black borders, a 4px soft shadow at 60%, 
 ElvUI's value colour, ToxiUI's font for text and Montserrat Black for titles.
 
 - Graphite panels with a black 1px border, no Blizzard frame art (ElvUI style).
-- Title bar in the panel colour with a 2px accent rule under it. The wordmark is AUCTIONIQ in
-  Montserrat Black with IQ in the accent; the page name is grey.
-- The accent is the player's class colour. The active tab has the accent text and a 2px accent line.
+- Title bar in the panel colour with a 2px accent rule under it. The brand stands alone, with no
+  icon: AUCTIONIQ in Montserrat Black, IQ in the theme colour, then the window's name in grey.
+  Chat messages start with the same brand.
+- The theme colour follows ToxiUI's (ElvUI's value colour, which ToxiUI sets to the class colour, so
+  it changes as you swap characters), or ElvUI's value colour without ToxiUI. With neither it is
+  AuctionIQ blue `#3fc7eb`. If the colour changes while you play, the windows follow it.
+- The active tab has the accent text and a 2px accent line.
 - Progress bars (the advisor's recovery chance, the footer's Concentration bars) use ToxiUI's class
-  gradient, from its own settings when it is loaded. Action buttons stay solid.
+  gradient from its own settings, a shade of ElvUI's value colour into it, or AuctionIQ blue's
+  gradient `#0080d7` to `#00d8ff`. Action buttons stay solid.
 - Money uses the game's gold, silver and copper coin icons, as TSM does. `/aiq coins` switches to `g s c` text.
   Break-even prices are gold (`#e0a83a`).
 - Profit is green, loss and warnings are red. Numbers in tables are right-aligned.
@@ -49,7 +54,7 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
 | line   | `#000000` | `#45304f` | borders |
 | fg     | `#f2f2f2` | `#efe4c8` parchment | body text |
 | muted  | `#a3a3ab` | `#b8a69a` | hints, page name, footer |
-| accent | class colour | `#e0a83a` | wordmark IQ, headings, active tab, selection |
+| accent | theme colour, default `#3fc7eb` | `#e0a83a` | wordmark IQ, headings, active tab, selection |
 | gold   | `#e0a83a` | `#e0a83a` | break-even prices |
 | iq     | `#34c77b` emerald | `#d8c39a` | the trend line in the icon, highlights |
 | ok     | `#6cc58f` | `#6cc58f` | profit |
