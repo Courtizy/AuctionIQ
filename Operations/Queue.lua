@@ -241,13 +241,77 @@ end
 --- What the queue row's button does next for an order: "Claim", "Craft" or "Turn in". The game's
 --- own claimed order wins over what we remember: crafted when it says the order can be turned in.
 function Q.OrderStep(e)
-	if not e.orderID then return "Craft" end
+	if not e.orderID then return Q.NeedsShatter(e.recipeID) and "Shatter" or "Craft" end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
 		if claimed.isFulfillable then e.stage = "crafted" elseif e.stage ~= "crafted" then e.stage = "claimed" end
 	end
+	if e.stage == "claimed" and Q.NeedsShatter(e.recipeID) then return "Shatter" end
 	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
+end
+
+-- Shatter -----------------------------------------------------------------------------------------
+-- Midnight enchanting: casting Shatter on a mote gives Shattering Essence (more Resourcefulness,
+-- Multicraft and Ingenuity on the crafts after it). Like CraftSim, an enchanting craft casts it first
+-- whenever the buff is missing.
+Q.SHATTER = { recipe = 1235731, buff = 1235733 }
+
+local function professionOf(recipeID)
+	local ui = C_TradeSkillUI
+	local p = ui and ui.GetProfessionInfoByRecipeID and recipeID and ui.GetProfessionInfoByRecipeID(recipeID)
+	return p and p.professionID
+end
+
+--- Whether Shattering Essence is on you.
+function Q.HasShatterBuff()
+	local ua = C_UnitAuras
+	return ua and ua.GetPlayerAuraBySpellID and ua.GetPlayerAuraBySpellID(Q.SHATTER.buff) ~= nil or false
+end
+
+--- Whether a craft of this recipe should cast Shatter first: a Midnight enchanting recipe (same
+--- skill line as Shatter), Shatter learned, and the buff not on you.
+function Q.NeedsShatter(recipeID)
+	if not recipeID or recipeID == Q.SHATTER.recipe then return false end
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetRecipeInfo and ui.GetRecipeInfo(Q.SHATTER.recipe)
+	if not (info and info.learned) then return false end
+	local line = professionOf(Q.SHATTER.recipe)
+	if not line or professionOf(recipeID) ~= line then return false end
+	return not Q.HasShatterBuff()
+end
+
+--- What Shatter would use: the cheapest mote you hold. Returns itemID, bag, slot, or nil.
+function Q.ShatterItem()
+	local ui = C_TradeSkillUI
+	local ids = ui and ui.GetSalvagableItemIDs and ui.GetSalvagableItemIDs(Q.SHATTER.recipe) or {}
+	local best, bestPrice
+	for _, id in ipairs(ids) do
+		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id) or 0
+		if n > 0 then
+			local p = CH.Prices.Get("chmat", "i:" .. id) or math.huge
+			if not best or p < bestPrice then best, bestPrice = id, p end
+		end
+	end
+	if not best then return nil end
+	local C = C_Container
+	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
+		for slot = 1, (C and C.GetContainerNumSlots and C.GetContainerNumSlots(bag) or 0) do
+			if C.GetContainerItemID(bag, slot) == best then return best, bag, slot end
+		end
+	end
+	return best -- in a bank, not your bags
+end
+
+--- Cast Shatter on the cheapest mote in your bags. Must be called from a click. true, or false and why.
+function Q.Shatter()
+	local id, bag, slot = Q.ShatterItem()
+	if not id then return false, "no mote to Shatter in your bags" end
+	if not bag then return false, "your motes for Shatter are in the bank: take one out first" end
+	local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
+	if not loc then return false, "can't find the mote in your bags" end
+	C_TradeSkillUI.CraftSalvage(Q.SHATTER.recipe, 1, loc, {}, false)
+	return true
 end
 
 --- The queue entry for an order, or nil.
@@ -581,6 +645,7 @@ function Q.Craft(e, amount)
 	for _, r in ipairs(e.reagents) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
 	end
+	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
 	if e.orderID then
 		local step = Q.OrderStep(e)
 		if step == "Claim" then

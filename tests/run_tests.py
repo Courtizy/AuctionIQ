@@ -1796,6 +1796,40 @@ sk = L.eval("""(function()
   return info.bonusSkill
 end)()""")
 check("orders: the customer's reagents' quality counts toward skill (a claimed Phoenix Oil read 141 instead of 323)", sk == 180)
+# Shatter: a Midnight enchanting craft casts Shatter first when Shattering Essence is missing
+sh = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local o = { info = ui.GetRecipeInfo, prof = ui.GetProfessionInfoByRecipeID, salv = ui.GetSalvagableItemIDs, cs = ui.CraftSalvage }
+  local oldUA, oldC, oldIL, oldCount = C_UnitAuras, C_Container, ItemLocation, C_Item.GetItemCount
+  STUB.aura = nil; STUB.salvaged = nil
+  ui.GetRecipeInfo = function(id) if id == 1235731 then return { learned = true, name = 'Shatter' } end return o.info(id) end
+  ui.GetProfessionInfoByRecipeID = function(id) return { professionID = (id == 1235731 or id == 10) and 2909 or 1 } end
+  ui.GetSalvagableItemIDs = function() return { 501, 502 } end
+  ui.CraftSalvage = function(id, n, loc) STUB.salvaged = { id = id, bag = loc.bag, slot = loc.slot } end
+  C_UnitAuras = { GetPlayerAuraBySpellID = function(id) return STUB.aura end }
+  C_Item.GetItemCount = function(id) return (id == 501 or id == 502) and 3 or (oldCount and oldCount(id) or 0) end
+  AuctionIQ.db.prices = AuctionIQ.db.prices or {}
+  local oldGet = AuctionIQ.Prices.Get
+  AuctionIQ.Prices.Get = function(src, key) if key == 'i:501' then return 900 elseif key == 'i:502' then return 300 end return oldGet(src, key) end
+  C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+    GetContainerItemID = function(bag, slot) return slot == 1 and 501 or 502 end }
+  ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+  local e = { recipeID = 10 }
+  local r = {}
+  r.step = AuctionIQ.Queue.OrderStep(e)
+  r.other = AuctionIQ.Queue.OrderStep({ recipeID = 99 })
+  r.cast = AuctionIQ.Queue.Shatter()
+  r.salv = STUB.salvaged
+  STUB.aura = { spellId = 1235733 }
+  r.after = AuctionIQ.Queue.OrderStep(e)
+  ui.GetRecipeInfo, ui.GetProfessionInfoByRecipeID, ui.GetSalvagableItemIDs, ui.CraftSalvage = o.info, o.prof, o.salv, o.cs
+  C_UnitAuras, C_Container, ItemLocation, C_Item.GetItemCount = oldUA, oldC, oldIL, oldCount
+  AuctionIQ.Prices.Get = oldGet
+  return r
+end)()""")
+check("shatter: a Midnight enchanting craft without Shattering Essence shows Shatter first (others don't)", sh.step == "Shatter" and sh.other == "Craft")
+check("shatter: casts Shatter on the cheapest mote in your bags", sh.cast and sh.salv.id == 1235731 and sh.salv.slot == 2)
+check("shatter: with the buff on, the step is Craft again", sh.after == "Craft")
 check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
 run("AuctionIQ.Queue.Clear()")
 check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77

@@ -280,6 +280,7 @@ function QUI.Refresh()
 				GameTooltip:AddLine(not can and ("Craft " .. why)
 					or step == "Claim" and ("Claim " .. (e.customer or "the") .. "'s order")
 					or step == "Turn in" and "Turn in the order"
+					or step == "Shatter" and "Cast Shatter first (Shattering Essence: more Resourcefulness, Multicraft and Ingenuity)"
 					or ("Craft " .. e.qty .. " with the queued reagents" .. (e.concentration and " and Concentration" or "")), 1, 1, 1)
 				GameTooltip:Show()
 			end)

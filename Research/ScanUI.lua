@@ -518,7 +518,7 @@ function SUI.UpdateNext()
 	local b = SUI.nextButton
 	if not b then return end
 	local _, step = nextOrder()
-	local label = (step == "Turn in" and "Turn in next") or (step == "Craft" and "Craft next") or "Claim next"
+	local label = (step == "Turn in" and "Turn in next") or (step == "Craft" and "Craft next") or (step == "Shatter" and "Shatter next") or "Claim next"
 	if b.text then b.text:SetText(label) elseif b.SetText then b:SetText(label) end
 end
 
@@ -555,7 +555,7 @@ function SUI.Next()
 		C_Timer.After(1, SUI.FetchOrders)
 	end
 	if step then
-		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
+		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or step == "Shatter" and "shattering a mote before" or "crafting", e.name or "?"))
 	elseif e then
 		CH.Print(e)
 	end
@@ -576,11 +576,14 @@ end
 function SUI.ClaimState(d)
 	if not (d and d.orderID) then return nil end
 	local c = claimedOrder()
-	if c and CH.Orders.Same(c.orderID, d.orderID) then return c.isFulfillable and "turnin" or "craft" end
+	if c and CH.Orders.Same(c.orderID, d.orderID) then
+		if c.isFulfillable then return "turnin" end
+		return CH.Queue.NeedsShatter(d.recipeID) and "shatter" or "craft"
+	end
 	return c and "busy" or "claim"
 end
 
-local LABELS = { claim = "Claim", busy = "Claim", craft = "Craft", turnin = "Turn in" }
+local LABELS = { claim = "Claim", busy = "Claim", shatter = "Shatter", craft = "Craft", turnin = "Turn in" }
 function SUI.ClaimLabel(state) return LABELS[state] end
 
 function SUI.ClaimLines(d)
@@ -588,7 +591,13 @@ function SUI.ClaimLines(d)
 	local state = SUI.ClaimState(d)
 	if not state then return { { "Claim" } } end
 	local lines = { { LABELS[state] .. " " .. (d.name or "the order"), d.customer or d.from or "" } }
-	if state == "craft" then
+	if state == "shatter" then
+		local id = CH.Queue.ShatterItem()
+		local name = id and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+		table.insert(lines, { T.Color("muted", "Casts Shatter on " .. (id and (CH.Window.ItemIcon(id, 12) .. (name or "a mote")) .. " (your cheapest mote)" or "a mote")
+			.. " for Shattering Essence: more Resourcefulness, Multicraft and Ingenuity on the craft. Then the button crafts.") })
+		if not id then table.insert(lines, { T.Color("bad", "You have no mote to Shatter.") }) end
+	elseif state == "craft" then
 		table.insert(lines, { T.Color("muted", "Crafts it into the order with the advisor's reagents"
 			.. (d.concentration and (" and " .. CH.Window.ConcIcon(12) .. " " .. math.floor(d.concentration + 0.5) .. " Concentration") or "") .. ".") })
 	elseif state == "turnin" then
@@ -667,6 +676,13 @@ CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 end)
 -- the button moves on (Craft, Turn in) as the game updates the claimed order
 CH.On("CRAFTINGORDERS_CLAIMED_ORDER_UPDATED", function() redraw() end)
+-- and to Craft once Shatter's buff lands
+local hadShatter
+CH.On("UNIT_AURA", function(_, unit)
+	if unit ~= "player" then return end
+	local has = CH.Queue.HasShatterBuff()
+	if has ~= hadShatter then hadShatter = has; redraw() end
+end)
 CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function() redraw() end)
 CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit)
 	if unit == "player" and C_Timer then C_Timer.After(0.8, redraw) end
