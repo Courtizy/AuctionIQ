@@ -74,7 +74,29 @@ CH.On("TRADE_SKILL_SHOW", function() O.Hook() end)
 
 --- Open an order the way the game does: the profession's Crafting Orders tab, showing that order.
 --- Falls back to the recipe when the order view isn't there. Returns true when the order opened.
-function O.Open(order, recipeID)
+--- Tick (or untick) Use Concentration on the order's page, as clicking its toggle would.
+--- Returns true when the page took it.
+function O.UseConcentration(on)
+	local pf = ProfessionsFrame
+	local view = pf and pf.OrdersPage and pf.OrdersPage.OrderView
+	local form = view and view.OrderDetails and view.OrderDetails.SchematicForm
+	if not form then return false end
+	local choices = form.Details and form.Details.CraftingChoicesContainer
+	local button = (choices and choices.ConcentrateContainer and choices.ConcentrateContainer.ConcentrateToggleButton)
+		or (form.Concentrate and form.Concentrate.ConcentrateToggleButton)
+	if button and button.GetChecked and button.Click and button.IsShown and button:IsShown() then
+		if button.IsEnabled and not button:IsEnabled() then return false end -- not enough, or already top rank
+		if (button:GetChecked() and true or false) ~= on then button:Click() end
+		return (button:GetChecked() and true or false) == on
+	end
+	local tx = form.GetTransaction and form:GetTransaction() or form.transaction
+	if tx and tx.SetApplyConcentration then tx:SetApplyConcentration(on); return true end
+	return false
+end
+
+--- Show an order on the Crafting Orders tab. conc ticks Use Concentration once the page is up,
+--- when the advisor's craft for it uses Concentration.
+function O.Open(order, recipeID, conc)
 	local pf = ProfessionsFrame
 	local page = pf and pf.OrdersPage
 	if order and page and page.ViewOrder then
@@ -82,7 +104,14 @@ function O.Open(order, recipeID)
 			pf:SetTab(pf.craftingOrdersTabID)
 		end
 		local ok = pcall(page.ViewOrder, page, order)
-		if ok then return true end
+		if ok then
+			if conc then
+				-- the page fills in its reagents a moment later, and that can reset the toggle
+				local function tick() O.UseConcentration(true) end
+				if C_Timer then C_Timer.After(0.2, tick); C_Timer.After(0.8, tick) else tick() end
+			end
+			return true
+		end
 	end
 	if recipeID and C_TradeSkillUI and C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(recipeID) end
 	return false

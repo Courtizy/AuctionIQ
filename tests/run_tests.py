@@ -1789,6 +1789,19 @@ check("orders: Claim claims that order", CH.ScanUI.Claim(by[77]) and L.eval("STU
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
 check("orders: once claimed, the order opens and its button opens it again",
       L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "claimed" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Open"))
+uc = L.eval("""(function()
+  local checked, clicks = false, 0
+  local button = { IsShown = function() return true end, IsEnabled = function() return true end,
+    GetChecked = function() return checked end, Click = function() checked = not checked; clicks = clicks + 1 end }
+  local old = ProfessionsFrame
+  ProfessionsFrame = { OrdersPage = { OrderView = { OrderDetails = { SchematicForm = { Details = {
+    CraftingChoicesContainer = { ConcentrateContainer = { ConcentrateToggleButton = button } } } } } } } }
+  local a = AuctionIQ.Orders.UseConcentration(true)
+  local b = AuctionIQ.Orders.UseConcentration(true) -- already on: no second click
+  ProfessionsFrame = old
+  return a and b and checked and clicks == 1
+end)()""")
+check("orders: an order whose craft uses Concentration gets Use Concentration ticked on its page", uc)
 check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")

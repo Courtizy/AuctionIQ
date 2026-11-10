@@ -549,7 +549,7 @@ function SUI.Next()
 	if step == "Claim" then
 		-- show the claimed order, as the game does when you claim it yourself
 		local o = CH.Orders.Live(e.orderID)
-		if o then CH.Orders.Open(o) end
+		if o then CH.Orders.Open(o, e.recipeID, e.concentration ~= nil) end
 	elseif step == "Turn in" and C_Timer then
 		-- the list changes once the game takes it: fetch again for the next order
 		C_Timer.After(1, SUI.FetchOrders)
@@ -563,7 +563,7 @@ function SUI.Next()
 end
 
 -- Claiming an order from its row ---------------------------------------------------------------
-local claimedID -- the order we asked the game to claim, to show it once the game says yes
+local claimedID, claimedRow -- the order we asked the game to claim, to show it once the game says yes
 
 local function claimedOrder()
 	local co = C_CraftingOrders
@@ -599,7 +599,7 @@ end
 function SUI.Claim(d)
 	local state = SUI.ClaimState(d)
 	if not state then return false end
-	if state == "claimed" then CH.Orders.Open(claimedOrder(), d.recipeID); return true end
+	if state == "claimed" then CH.Orders.Open(claimedOrder(), d.recipeID, d.concentration ~= nil); return true end
 	if state == "busy" then
 		CH.Print("you already have an order claimed: turn it in or release it before claiming another.")
 		return false
@@ -611,7 +611,7 @@ function SUI.Claim(d)
 	end
 	local ui = C_TradeSkillUI
 	local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
-	claimedID = o.orderID
+	claimedID, claimedRow = o.orderID, d
 	C_CraftingOrders.ClaimOrder(o.orderID, info and info.profession)
 	return true
 end
@@ -624,8 +624,9 @@ CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it.")
 	else
 		local o = CH.Orders.Live(orderID)
-		if o then CH.Orders.Open(o) end
+		if o then CH.Orders.Open(o, nil, claimedRow and claimedRow.concentration ~= nil) end
 	end
+	claimedRow = nil
 	if frame and frame:IsShown() then SUI.Refresh() end
 end)
 
