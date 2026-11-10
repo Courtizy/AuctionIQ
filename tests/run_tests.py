@@ -317,8 +317,23 @@ run('AuctionIQ.PathsUI.Open()')
 drawn = list(CH.PathsUI.DrawTree().values())
 check("paths: opens in the main window, Operations > Craft > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths"
       and CH.LedgerUI.Section() == "operations" and CH.LedgerUI.Group() == "Craft")
-check("paths: Professions lists Knowledge, Paths, Plan payoff",
-      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Knowledge", "Paths", "Plan payoff"])
+check("Craft: Specialization, the weekly checklist and plan payoff by recipe",
+      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Weekly checklist", "Specialization", "Plan payoff by recipe"])
+run('AuctionIQ.UI.Refresh()')
+kp = plain(L.eval("AuctionIQ.UI.Pages().paths.kpText:GetText()"))
+pay = plain(L.eval("AuctionIQ.UI.Pages().paths.payText:GetText()"))
+check("Specialization: Knowledge for the profession, then Plan payoff, above Paths",
+      kp.startswith("Knowledge  ") and "unspent" in kp and pay.startswith("Plan payoff  ") and "a day" in pay and "points in" in pay)
+spent, total = L.eval("AuctionIQ.PathsUI.PlanProgress")(saved[0], CH.Spec.Tree(2906))
+check("Plan payoff: how many of the plan's points are in the tree now", total == sum(s.to - s["from"] for s in saved[0].steps.values()) and 0 <= spent < total)
+run("AuctionIQ.UI.Pages().paths.byRecipe.scripts.OnClick(AuctionIQ.UI.Pages().paths.byRecipe)")
+check("Specialization: By recipe opens plan payoff, still in Craft", CH.LedgerUI.View() == "plans" and CH.LedgerUI.Group() == "Craft" and CH.LedgerUI.Section() == "operations")
+pt = L.eval("AuctionIQ.AnalyticsViews.PlanText")
+check("a plan's effect on a recipe: Concentration saved, quality without it, else profit",
+      plain(pt(L.eval("{ label = 'Flasks', saves = 12, from = 100, to = 100 }"))) == "Your plan (Flasks) saves 12 Concentration a craft."
+      and plain(pt(L.eval("{ label = 'Flasks', quality = 2, from = 10000, to = 30000 }"))).startswith("Your plan (Flasks) makes it Q2 without Concentration, +")
+      and "takes it from" in plain(pt(L.eval("{ label = 'Flasks', from = 10000, to = 30000 }"))))
+run('AuctionIQ.PathsUI.Open()')
 check("paths tab draws the tree with the plan on it",
       len(drawn) == 2 and drawn[0].planned and drawn[0].steps.startswith("1") and ">" in drawn[0].rank)
 # Paths with the profession window closed: your professions from the game, the tree as you've spent it
@@ -1395,7 +1410,7 @@ check("Trade: what you hold, the market and the rules, in one sub-tab", LUI.Grou
       "Compare prices", "When it sells", "Competition", "Stock targets", "Dead stock", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Professions: Compare crafts first, then the knowledge pages", navshown == ["Compare crafts", "Knowledge", "Paths", "Plan payoff"])
+check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
 run("AuctionIQ.UI.Page('operations', 'mail')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Execution plan", "Production queue", "Shopping list", "To mail"])
@@ -1980,7 +1995,28 @@ check("performance nav: performance first, batch results, forecast accuracy and 
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[9]) != "-"}
 check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[9]) == "50"
-      and plain(made["Test Flask"].tip[1][1]).startswith("Make 50: "))
+      and any(plain(l[1]).startswith("Make 50: ") for l in made["Test Flask"].cellTip(9).values()))
+# Compare crafts hover: the craft's name shows the item, every other column what it is and how it was worked out
+ft = made["Test Flask"]
+def money_of(t):
+    t = letters(plain(t)).replace(",", "")
+    sign = -1 if t.startswith("-") else 1
+    g = re.search(r"(\d+)g", t); sv = re.search(r"(\d+)s", t); c = re.search(r"(\d+)c", t)
+    return sign * ((int(g.group(1)) * 10000 if g else 0) + (int(sv.group(1)) * 100 if sv else 0) + (int(c.group(1)) if c else 0))
+heads = [plain(ft.cellTip(j)[1][1]) for j in range(2, 10)]
+check("Compare crafts: each column after the craft explains itself on hover",
+      heads == ["Character", "Profit now", "Reagents +10%", "Price -10%", "Both", "Break-even per item", "Room", "Make"])
+pn = [l for l in ft.cellTip(3).values()][2:]
+check("Compare crafts: Profit now's breakdown adds up to the profit shown",
+      abs(sum(money_of(l[2]) for l in pn[:-1]) - money_of(pn[-1][2])) <= len(pn) and plain(pn[-1][1]) == "Profit a craft")
+ru = [l for l in ft.cellTip(4).values()][2:]
+check("Compare crafts: Reagents +10% starts from profit now and ends at the column's number",
+      plain(ru[0][1]) == "Profit now" and abs(sum(money_of(l[2]) for l in ru[:-1]) - money_of(ru[-1][2])) <= len(ru))
+run("STUB.hit = { id = 12345, cellTip = function(j) return AuctionIQ.AnalyticsViews.ScenarioTip(STUB.lastX, j) end }")
+L.globals().STUB.lastX = ft.x
+check("Compare crafts: hovering the craft name shows the item, another column its explanation",
+      L.eval("AuctionIQ.LedgerUI.ShowCellTip(STUB.hit, 1)") == 1 and L.eval("AuctionIQ.LedgerUI.ShowCellTip(STUB.hit, 3)") == 3
+      and L.eval("AuctionIQ.LedgerUI.ColumnAt(0)") == 1)
 # Scenarios reprice revenue, consumed reagents and what Resourcefulness gives back separately:
 # 130 revenue - 100 reagents + 20 back = 50; reagents +10% = 42, price -10% = 37, both = 29
 parts = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 0 }")

@@ -431,7 +431,8 @@ local function value(ctx, ranks)
 			if c and c.profit and pc and pc > 0 and c.profit > plain and crafts > 0 then
 				swaps[#swaps + 1] = { gain = (c.profit - plain) / pc, points = pc, crafts = crafts }
 			end
-			per[id] = { quality = b and b.quality, profit = b and b.profit, perPoint = c and c.perPoint, perDay = g, name = r.name }
+			per[id] = { quality = b and b.quality, profit = b and b.profit, perPoint = c and c.perPoint, perDay = g, name = r.name,
+				conc = pc, concQ = c and c.quality }
 		end
 	end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
@@ -679,11 +680,12 @@ function P.Summary(plan)
 	local out = { prof = plan.prof, profName = CH.SpecData and CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or tostring(plan.prof),
 		label = plan.label or plan.goal, char = me.name, at = time(), budget = plan.budget, start = plan.start, final = plan.final,
 		startConc = plan.startConc, finalConc = plan.finalConc, steps = {}, rows = {} }
-	for _, s in ipairs(plan.steps or {}) do table.insert(out.steps, { name = s.name, from = s.from, to = s.to, cost = s.cost }) end
+	for _, s in ipairs(plan.steps or {}) do table.insert(out.steps, { name = s.name, node = s.node, from = s.from, to = s.to, cost = s.cost }) end
 	for id, a in pairs(plan.startPer or {}) do
 		local b = (plan.finalPer or {})[id] or a
 		table.insert(out.rows, { id = id, name = a.name or b.name, fromQ = a.quality, toQ = b.quality, fromShare = a.share, toShare = b.share,
-			fromProfit = a.profit, toProfit = b.profit, fromDay = a.perDay or 0, toDay = b.perDay or 0 })
+			fromProfit = a.profit, toProfit = b.profit, fromDay = a.perDay or 0, toDay = b.perDay or 0,
+			fromConc = a.conc, toConc = b.conc, concQ = (a.concQ == b.concQ) and a.concQ or nil })
 	end
 	return out
 end

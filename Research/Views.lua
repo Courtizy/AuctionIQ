@@ -354,6 +354,80 @@ function AV.Scenarios(ctx, r, p)
 	return out
 end
 
+--- Compare crafts: what each column is and how this craft's number was worked out, for its hover.
+--- Columns: 2 character, 3 profit now, 4 reagents up, 5 price down, 6 both, 7 break-even, 8 room, 9 make.
+function AV.ScenarioTip(x, j)
+	local T, M = CH.Theme, CH.FormatMoney
+	local sc = AV.Scenario()
+	local r, p = sc.reagents, sc.price
+	local parts = AV.Parts(x.row)
+	local net = parts.consumed - parts.returned
+	local function head(t, say) return { { T.Color("accent", t) }, { T.Color("muted", say) } } end
+	local function add(out, label, v, sign) table.insert(out, { label, (sign and v >= 0 and "+" or "") .. M(v) }) end
+	-- the craft's money now: revenue after the cut, deposits, reagents, what Resourcefulness gives back
+	local function now(out)
+		add(out, "Revenue after the AH cut" .. (x.row.accounts and x.row.accounts.mcGold and x.row.accounts.mcGold > 0 and ", Multicraft in" or ""), parts.revenue)
+		if parts.deposits >= 1 then add(out, "Deposits lost to expiries", -parts.deposits) end
+		add(out, "Reagents used", -parts.consumed)
+		if parts.returned >= 1 then add(out, "Resourcefulness gives back", parts.returned, true) end
+	end
+	local pctR, pctP = math.floor(r * 100 + 0.5), math.floor(p * 100 + 0.5)
+	local out
+	if j == 2 then
+		local age = x.scanAt and CH.Scans and CH.Scans.Age(time() - x.scanAt) or "?"
+		out = head("Character", "Whose scan this is. Their skill, Multicraft and Resourcefulness make this craft's numbers.")
+		table.insert(out, { string.format("%s, %s, scanned %s ago", x.char or "?", x.prof or "?", age) })
+	elseif j == 3 then
+		out = head("Profit now", "Profit a craft at today's prices, from the last scan.")
+		now(out)
+		add(out, "Profit a craft", x.profit, true)
+	elseif j == 4 then
+		out = head(string.format("Reagents +%d%%", pctR), "Profit a craft if reagent prices rise this much. Resourcefulness gives back more too. Change it with the button above.")
+		add(out, "Profit now", x.profit, true)
+		add(out, string.format("Reagents used, +%d%%", pctR), -parts.consumed * r)
+		if parts.returned >= 1 then add(out, string.format("Resourcefulness back, +%d%%", pctR), parts.returned * r, true) end
+		add(out, "Profit a craft", x.reagentsUp, true)
+	elseif j == 5 then
+		out = head(string.format("Price -%d%%", pctP), "Profit a craft if your selling price falls this much. Deposits stay the same. Change it with the button above.")
+		add(out, "Profit now", x.profit, true)
+		add(out, string.format("Revenue, -%d%%", pctP), -p * (parts.revenue + parts.deposits))
+		add(out, "Profit a craft", x.priceDown, true)
+	elseif j == 6 then
+		out = head("Both", string.format("Reagents +%d%% and price -%d%% together: the downside case.", pctR, pctP))
+		add(out, "Profit now", x.profit, true)
+		add(out, string.format("Reagents used, +%d%%", pctR), -parts.consumed * r)
+		if parts.returned >= 1 then add(out, string.format("Resourcefulness back, +%d%%", pctR), parts.returned * r, true) end
+		add(out, string.format("Revenue, -%d%%", pctP), -p * (parts.revenue + parts.deposits))
+		add(out, "Profit a craft", x.both, true)
+	elseif j == 7 then
+		out = head("Break-even per item", "The sale price per item where this craft makes nothing, and how far today's estimate can fall before it does.")
+		if x.salePrice then
+			add(out, "Estimated sale price", x.estimate or 0)
+			add(out, "Costs to cover a craft", parts.deposits + net)
+			add(out, "Revenue at the estimate, before deposits", parts.revenue + parts.deposits)
+			table.insert(out, { "Break-even = estimate x costs / revenue", M(x.salePrice) })
+			table.insert(out, { "The estimate can fall", pct(x.cushion) })
+		else
+			table.insert(out, { T.Color("muted", "This scan is older and didn't save a sale price. Scan the profession again.") })
+		end
+	elseif j == 8 then
+		out = head("Room", "How far reagent prices can rise before this craft stops paying.")
+		add(out, "Profit now", x.profit, true)
+		add(out, "Reagents, less what Resourcefulness gives back", net)
+		table.insert(out, { "Room = profit / reagents", x.breakEven == math.huge and "any" or ("+" .. pct(x.breakEven)) })
+	elseif j == 9 then
+		local sg = x.suggest
+		out = head("Make", "How many to craft: the biggest batch that still pays back if it sells slowly, without piling up stock.")
+		if sg then
+			table.insert(out, { CH.Decide.SuggestText(sg) })
+			if sg.n > 0 and sg.why then table.insert(out, { T.Color("muted", sg.why) }) end
+		else
+			table.insert(out, { T.Color("muted", "No sale price in this scan, so no batch size.") })
+		end
+	end
+	return out
+end
+
 local function scenarioRows(ctx)
 	local T = CH.Theme
 	local out, fragile = {}, 0
@@ -366,7 +440,7 @@ local function scenarioRows(ctx)
 			cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
 			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)), make },
 			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven, sg and sg.n or -1 },
-			tip = sg and { { CH.Decide.SuggestText(sg) }, sg.n > 0 and { sg.why } or nil } or nil })
+			cellTip = function(j) return AV.ScenarioTip(x, j) end })
 	end
 	if not out[1] then return out, T.Color("muted", "Scan a profession first: scenarios use your saved scans' profitable crafts.") end
 	local sc = AV.Scenario()
@@ -393,11 +467,25 @@ end
 function AV.PlanFor(item)
 	for _, sum in pairs(CH.db.plans or {}) do
 		for _, r in ipairs(sum.rows or {}) do
-			if r.id == item and r.toProfit and r.fromProfit and math.abs(r.toProfit - r.fromProfit) >= 1 then
-				return { from = r.fromProfit, to = r.toProfit, char = sum.char, label = sum.label }
+			local saves = r.concQ and r.fromConc and r.toConc and r.fromConc - r.toConc >= 1 and math.floor(r.fromConc - r.toConc + 0.5) or nil
+			local qUp = r.fromQ and r.toQ and r.toQ > r.fromQ and r.toQ or nil
+			if r.id == item and (saves or qUp or (r.toProfit and r.fromProfit and math.abs(r.toProfit - r.fromProfit) >= 1)) then
+				return { from = r.fromProfit, to = r.toProfit, char = sum.char, label = sum.label, saves = saves, quality = qUp }
 			end
 		end
 	end
+end
+
+--- A plan's effect on one recipe, in a line: "This plan saves 12 Concentration a craft", "... makes it
+--- Q2 without Concentration", else its profit now and planned.
+function AV.PlanText(plan)
+	local M = CH.FormatMoney
+	local name = "Your plan (" .. (plan.label or "Paths") .. ")"
+	local d = plan.from and plan.to and plan.to - plan.from
+	local more = d and math.abs(d) >= 1 and string.format(", %s%s a craft", d >= 0 and "+" or "", M(d)) or ""
+	if plan.quality then return string.format("%s makes it Q%d without Concentration%s.", name, plan.quality, more) end
+	if plan.saves then return string.format("%s saves %d Concentration a craft%s.", name, plan.saves, more) end
+	return string.format("%s takes it from %s to %s a craft.", name, M(plan.from or 0), M(plan.to or 0))
 end
 
 --- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
@@ -450,7 +538,7 @@ function AV.CraftDetail(d, ctx)
 			or T.Color("muted", "Concentration doesn't pay on this craft.")
 	end
 	local plan = AV.PlanFor(x.id)
-	if plan then lines[#lines + 1] = string.format("Your plan (%s) takes it from %s to %s a craft.", plan.label or "Paths", M(plan.from), M(plan.to)) end
+	if plan then lines[#lines + 1] = AV.PlanText(plan) end
 	lines[#lines + 1] = T.Color("muted", "Reagents for " .. n .. ": about " .. M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (x.row.cost or 0) * n) .. ".")
 	local actions = { { label = "Queue " .. n, tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
 		run = function() return AV.QueueScan(x, n, false, inp) end } }
@@ -546,7 +634,9 @@ AV.VIEWS.scenarios.controls = {
 LUI.Register("ledger", AV.VIEWS, { "performance", "batches", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
 -- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
 -- the market) and Queue (the work planned: crafts, shopping, mail and what's blocking it).
-LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Craft")
+LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")
+-- Plan payoff by recipe opens from Specialization, so it sits in Craft without its own nav line
+if LUI.ViewDef("plans") then LUI.ViewDef("plans").parent = "Craft" end
 LUI.Register("operations", {}, { "post", "market", "compare", "when", "rivals", "par", "dead", "rules" }, "Trade")
 LUI.Register("operations", {}, { "work", "queue", "shopping", "mail" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })

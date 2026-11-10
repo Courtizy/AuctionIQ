@@ -7,8 +7,10 @@ local PUI = {}
 CH.PathsUI = PUI
 local frame, input, out, pointsText, goalButtons, tabButtons, view, treeNote
 local W = 724 -- the page's width, and the tree's: both follow the window (set in Build)
-local TREE_W, TREE_H = 724, 250 -- the whole tree across the page; the plan explained below it
-local ASK_Y, INPUT_Y, GOALS_Y, POINTS_Y, TABS_Y, TREE_Y = -30, -48, -74, -100, -124, -148
+local TREE_W, TREE_H = 724, 228 -- the whole tree across the page; the plan explained below it
+-- top down: the profession, Knowledge and Plan payoff for it, then Paths (ask, goals, points, the tree)
+local KP_Y, PAY_Y = -4, -26
+local ASK_Y, INPUT_Y, GOALS_Y, POINTS_Y, TABS_Y, TREE_Y = -52, -70, -96, -122, -146, -170
 local extra = 0
 local lastPlan
 local selectedTab
@@ -185,7 +187,7 @@ function PUI.Build(p)
 	frame = p
 	W = math.max(724, math.floor(p:GetWidth() or 724))
 	TREE_W = W
-	TREE_H = 250 + math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600) -- a taller window, a taller tree
+	TREE_H = 228 + math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600) -- a taller window, a taller tree
 	selectedTab = nil
 	-- your professions, to pick whose tree to show
 	profButtons = {}
@@ -195,8 +197,17 @@ function PUI.Build(p)
 		b:Hide()
 		profButtons[i] = b
 	end
+	-- Knowledge and Plan payoff for the profession picked, above Paths
+	frame.kpText = Wd.OneLine(Wd.Text(frame, 336, KP_Y, W - 336, "LEFT", "GameFontHighlightSmall"))
+	frame.payText = Wd.OneLine(Wd.Text(frame, 0, PAY_Y, W - 110, "LEFT", "GameFontHighlightSmall"))
+	local byRecipe = T.Button(frame, "By recipe", 100, 18)
+	byRecipe:SetPoint("TOPRIGHT", 0, PAY_Y + 2)
+	byRecipe:SetScript("OnClick", function() CH.UI.Go("operations", "plans") end)
+	byRecipe:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Each saved plan, recipe by recipe: quality and profit now against planned." } }) end)
+	byRecipe:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	frame.byRecipe = byRecipe
 	local ask = Wd.Text(frame, 0, ASK_Y, W, "LEFT", "GameFontNormal")
-	ask:SetText("What do you want to sell?" .. T.Color("muted", "  a knowledge point plan for the open profession"))
+	ask:SetText("Paths: what do you want to sell?" .. T.Color("muted", "  a knowledge point plan for the open profession"))
 	input = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
 	input:SetSize(420, 20)
 	input:SetPoint("TOPLEFT", 6, INPUT_Y)
@@ -342,6 +353,65 @@ end
 
 function PUI.Open() CH.UI.Page("operations", "paths") end
 
+--- Knowledge for a profession on this character, in a line: unspent points, gained this week and the
+--- weekly sources ticked off.
+function PUI.KnowledgeLine(prof)
+	local T = CH.Theme
+	local name = CH.SpecData and CH.SpecData[prof] and CH.SpecData[prof].name
+	local tree = prof and CH.Spec.Tree(prof)
+	local key = CH.CharacterKey and CH.CharacterKey()
+	local row
+	pcall(CH.Planner.RecordKP)
+	for _, r in ipairs(CH.Planner.Knowledge()) do
+		if r.key == key and name and (r.prof == name or r.prof:find(name, 1, true) or name:find(r.prof, 1, true)) then row = r end
+	end
+	local unspent = tree and tree.unspent or (row and row.unspent) or 0
+	local t = T.Color("accent", "Knowledge  ") .. string.format("%d unspent", unspent)
+	if row then
+		local done = 0
+		for _, task in ipairs(row.tasks) do if task.done then done = done + 1 end end
+		t = t .. string.format(", %s this week. Weekly sources: %d of %d done.", row.gained > 0 and ("+" .. row.gained) or "0", done, #row.tasks)
+	else
+		t = t .. "."
+	end
+	return t
+end
+
+--- How far a saved plan has got on the tree now: points in, points it plans (nil without node ids).
+function PUI.PlanProgress(sum, tree)
+	if not (sum and tree and tree.layout) then return nil end
+	local done, total = 0, 0
+	for _, s in ipairs(sum.steps or {}) do
+		if not s.node then return nil end
+		local span = (s.to or 0) - (s.from or 0)
+		local cur = tree.layout[s.node] and tree.layout[s.node].rank or -1
+		total = total + span
+		done = done + math.max(0, math.min(span, cur - (s.from or 0)))
+	end
+	return done, total
+end
+
+--- Plan payoff for a profession, in a line: this character's saved plan, its gold a day now and once
+--- finished, and how many of its points are in.
+function PUI.PayoffLine(prof)
+	local T, M = CH.Theme, CH.FormatMoney
+	local me = CH.Me and CH.Me() or {}
+	local sum
+	for _, s in pairs(CH.db.plans or {}) do
+		if s.prof == prof and (not sum or s.char == me.name) then sum = s end
+	end
+	local name = CH.SpecData and CH.SpecData[prof] and CH.SpecData[prof].name or "this profession"
+	if not sum then return T.Color("accent", "Plan payoff  ") .. T.Color("muted", "No saved plan for " .. name .. " yet. Plan below and it shows here.") end
+	local gain = (sum.final or 0) - (sum.start or 0)
+	local t = T.Color("accent", "Plan payoff  ") .. string.format("%s, %d points: %s to %s a day ", sum.label or "?", sum.budget or 0, M(sum.start or 0), M(sum.final or 0))
+		.. T.Color(gain >= 0 and "ok" or "bad", string.format("(%s%s)", gain >= 0 and "+" or "", M(gain)))
+	local done, total = PUI.PlanProgress(sum, CH.Spec.Tree(prof))
+	if done and total > 0 then
+		t = t .. (done >= total and T.Color("ok", ". Done.") or string.format(". %d of %d points in.", done, total))
+	end
+	return t
+end
+
 --- Fill the page: the goal groups, the points and the tree. The main window calls it when the
 --- page shows.
 function PUI.Refresh()
@@ -349,6 +419,10 @@ function PUI.Refresh()
 	fillGoals()
 	fillProfessions()
 	updatePoints()
+	local prof = PUI.Prof()
+	frame.kpText:SetText(prof and PUI.KnowledgeLine(prof) or "")
+	frame.payText:SetText(prof and PUI.PayoffLine(prof) or "")
+	frame.byRecipe:SetShown(prof ~= nil)
 	if not PUI.Prof() then
 		render({ CH.Theme.Color("muted", "No crafting profession with a specialization tree on this character.") })
 	elseif not canPlan() then
