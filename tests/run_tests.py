@@ -2281,6 +2281,13 @@ check("expect: the advisor hover shows each step", any("Deposits lost" in x for 
 check("failed auctions: deposits lost", CH.Expect.LostDeposit(905, 3) == 360000)
 run("STUB.sellThrough = nil")
 
+# One theme across the addon: every window's main action is the filled button, and the main blocks
+# carry the accent line or a shaded card
+run('AuctionIQ.AuctionUI.Build(); AuctionIQ.MailUI.Build()')
+check("theme: Auction and Mail windows build with their main buttons filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil and AuctionIQ.MailUI.Build() ~= nil"))
+check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2, AuctionIQ.Theme.Card(CreateFrame('Frame'), 0, 0, 10, 10, true)) ~= nil"))
+check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
+
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)

@@ -299,6 +299,23 @@ function T.Button(parent, label, w, h)
 	return b
 end
 
+--- A shaded card behind a block of a window (the design's darker panels): black over the panel, and
+--- with accent, a 2 px accent line along its top for the block that matters most. Returns the textures.
+function T.Card(parent, x, y, w, h, accent)
+	local t = parent:CreateTexture(nil, "BACKGROUND", nil, 1)
+	t:SetPoint("TOPLEFT", x, y)
+	t:SetSize(w, h)
+	t:SetColorTexture(0, 0, 0, 0.45)
+	local a
+	if accent then
+		a = parent:CreateTexture(nil, "BORDER")
+		a:SetPoint("TOPLEFT", x, y)
+		a:SetSize(w, 2)
+		T.AccentTexture(a)
+	end
+	return t, a
+end
+
 --- The main action of a panel: the button filled with the accent colour (the design's Queue button).
 function T.Primary(b)
 	if not b or not b.CreateTexture then return b end

@@ -54,7 +54,7 @@ local function build()
 			MUI.Refresh()
 		end)
 	end)
-	sendButton = T.Button(frame, "Send", 140, 22)
+	sendButton = T.Primary(T.Button(frame, "Send", 140, 22))
 	sendButton:SetPoint("TOPLEFT", 108, -36)
 	sendButton:SetScript("OnClick", function()
 		if MUI.sending then return end
