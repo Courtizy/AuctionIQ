@@ -865,6 +865,60 @@ run("AuctionIQ.Depth.Remember(205, { { price = 20000, qty = 1 }, { price = 40000
 bl = [(plain(l[0+1]), plain(l[1+1])) for l in CH.AdvisorUI.BuyNowLines(L.eval("{ id = 205, n = 2, unit = 10000, total = 20000 }")).values()]
 check("advisor: buy-now cost from listings seen, apart from the estimate", len(bl) == 1 and "buy now" in bl[0][0] and "3g ea" in bl[0][1] and "6g" in bl[0][1])
 run("AuctionIQ.Depth.Forget(205)")
+
+# TSM Crafting and Shopping operations: queue and shopping rules
+run("""
+TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302"] = "Alch`Flasks", ["i:205"] = "Mats" }
+TradeSkillMasterDB["p@Warband@userData@groups"]["Alch`Flasks"].Crafting = { "Restock Flasks", override = true }
+TradeSkillMasterDB["p@Warband@userData@groups"]["Mats"] = { Shopping = { "Cheap Mats", override = true } }
+local ops = TradeSkillMasterDB["g@ @userData@sharedOperations"]
+ops.Crafting = { ["Restock Flasks"] = { minRestock = 1, maxRestock = 1000, minProfit = "1c" } }
+ops.Shopping = { ["Cheap Mats"] = { maxPrice = "1s", showAboveMaxPrice = true, restockQuantity = 50 } }
+""")
+imp = L.eval("AuctionIQ.Groups.ImportTSM()")
+cr = CH.Groups.CraftRule(302)
+check("import: TSM Crafting operations become queue rules", imp.craftOps == 1 and imp.shopOps == 1 and cr.op == "Restock Flasks" and cr.maxRestock == 1000 and cr.minProfit == 1)
+check("import: a Shopping restock quantity is reported as not followed", imp.unsupported["Shopping Cheap Mats"] is not None)
+run("AuctionIQ.Queue.Clear()")
+CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+q302 = sum(e.qty for e in CH.db.queue.values() if e.item == 302 and not e.concentration)
+check("restock: queues up to the operation's max, past a day's sales", q302 > 10)
+run("AuctionIQ.Queue.Clear(); AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minRestock = 100000")
+CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("restock: nothing when what's missing is under the min restock", not any(e.item == 302 for e in CH.db.queue.values()))
+run("AuctionIQ.Queue.Clear(); AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minRestock = 1; AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minProfit = '100000g'")
+CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("restock: nothing under the operation's minimum profit", not any(e.item == 302 for e in CH.db.queue.values()))
+run("AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minProfit = '1c'")
+sr205 = CH.Groups.ShopRule(205)
+check("shopping rule: the operation's max price", sr205.op == "Cheap Mats" and sr205.maxPrice == 100)
+run("AuctionIQ.Queue.Clear()")
+CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 50 } })")
+row205 = [r for r in CH.Queue.ShoppingList()[0].values() if r.itemID == 205]
+if row205 and row205[0].buy > 0:
+    tip = [plain(l) for l in CH.QueueUI.CostLines(row205[0]).values()]
+    check("shopping: over the operation's max price is flagged", row205[0].overMax and row205[0].underMax == 0 and any("Max price" in t for t in tip))
+    db = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 205, need = 5, have = 0, buy = 5 }, { { price = 90, qty = 2 }, { price = 15000, qty = 50 } })")
+    check("shopping: buys only what's under the operation's max price", db.action == "buy" and db.qty == 2 and db.short == 3)
+    db = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 205, need = 5, have = 0, buy = 5 }, { { price = 15000, qty = 50 } })")
+    check("shopping: skips when every listing is over the max price", db.action == "skip" and "max price" in db.why)
+else:
+    check("shopping: the queue needs item 205 to test the max price", False)
+run("AuctionIQ.Depth.Forget(205); AuctionIQ.Queue.Clear()")
+
+# Costing basis: replacement, TSM's material cost, what you paid
+run("STUB.prices['i:205'].matprice = 7000; AuctionIQ.Prices.ClearCache()")
+check("basis: replacement by default", CH.Prices.CostBasis() == "replacement" and CH.Prices.ReagentCost(205)[0] == 10000)
+check("basis: TSM's material cost when chosen", L.eval("(AuctionIQ.Prices.ReagentCost(205, 'tsm'))") == 7000
+      and L.eval("select(2, AuctionIQ.Prices.ReagentCost(201, 'tsm'))") == "replacement")
+run("AuctionIQ.Prices.CostBasis('tsm')")
+check("basis: the setting prices the advisor's reagents", CH.Scan.ReagentPrice(205) == 7000)
+bres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+bl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BasisLines(bres, bres.best).values()]
+check("advisor: each costing basis totalled, the one in use marked", len(bl) == 4 and any("TSM material cost" in a and "in use" in a for a, _ in bl)
+      and any("Replacement" in a for a, _ in bl) and any("paid" in a for a, _ in bl))
+run("AuctionIQ.Prices.CostBasis('replacement'); STUB.prices['i:205'].matprice = nil; AuctionIQ.Prices.ClearCache()")
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")

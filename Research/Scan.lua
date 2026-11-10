@@ -91,7 +91,8 @@ function Sc.SubrecipesOn() return not (CH.db and CH.db.settings.subrecipes == fa
 --- A reagent's price for a craft: buying it (chmat), or making it when that's cheaper. Returns the
 --- price and the craft it came from (nil when buying wins). notRecipe skips the recipe being priced.
 function Sc.ReagentPrice(itemID, notRecipe)
-	local buy = itemID and CH.Prices.Get("chmat", "i:" .. itemID)
+	-- buying it, on the costing basis in Settings (replacement by default: chmat)
+	local buy = itemID and CH.Prices.ReagentCost(itemID)
 	if not Sc.SubrecipesOn() then return buy end
 	local c = Sc.Crafted(itemID)
 	if c and c.recipeID ~= notRecipe and (not buy or c.each < buy) then return c.each, c end

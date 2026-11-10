@@ -250,6 +250,22 @@ function AUI.DecideBuy(s, results)
 		if s.buy - short <= 0 then return { action = "skip", qty = s.buy, short = short, why = "none listed" } end
 		d = CH.Depth.Cost(s.itemID, s.buy - short)
 	end
+	-- a TSM Shopping operation's maximum price: buy only what's listed at or under it (the AH
+	-- sells commodities cheapest first, so n units under it cost no more than it each)
+	local rule = CH.Groups.ShopRule and CH.Groups.ShopRule(s.itemID)
+	if rule and rule.maxPrice then
+		local rows = CH.Depth.Book(s.itemID)
+		local under = 0
+		for _, r in ipairs(rows or {}) do if r[1] <= rule.maxPrice then under = under + r[2] end end
+		local want = s.buy - short
+		if under <= 0 then
+			return { action = "skip", qty = s.buy, unit = d.unit, why = string.format("over %s's max price %s", rule.op, money(rule.maxPrice)) }
+		elseif under < want then
+			short = short + (want - under)
+			why = why .. string.format(", only %d at or under %s", under, money(rule.maxPrice))
+			d = CH.Depth.Cost(s.itemID, under)
+		end
+	end
 	if usual and d.unit > usual * AUI.SHOP_OVER then
 		return { action = "skip", qty = s.buy, unit = d.unit, why = string.format("%d%% over the usual %s", math.floor((d.unit / usual - 1) * 100 + 0.5), money(usual)) }
 	end

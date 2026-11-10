@@ -278,6 +278,9 @@ end
 ---      for (budget, default what you have now) and as many as sell in a day (less what you own).
 ---   2. Then crafts that make a profit without Concentration, up to what sells in a day.
 --- Returns a summary { conc, plain, points, budget, profit, recipes }, or nil and why.
+--- The TSM Crafting rule for an item (Groups.CraftRule), or nil.
+function Q.Rule(itemID) return itemID and CH.Groups and CH.Groups.CraftRule and CH.Groups.CraftRule(itemID) or nil end
+
 function Q.FillPlan(profID, opts)
 	opts = opts or {}
 	local scan = CH.Scan and CH.Scan.Results(profID)
@@ -295,11 +298,24 @@ function Q.FillPlan(profID, opts)
 		return results[id]
 	end
 	local function demand(r, itemID)
-		-- up to your stock target when the item has one (counting stock on every character), else a day's sales
+		-- a TSM Crafting operation's restock rule first (up to its max, held across the warband, and
+		-- nothing under its min), else your stock target (counting stock on every character), else a day's sales
+		local rule = Q.Rule(itemID)
+		if rule then
+			local want = rule.maxRestock - CH.Par.Held(itemID) - (queued[itemID] or 0)
+			if want < math.max(1, rule.minRestock) then return 0 end
+			return math.ceil(want / (r.made or 1))
+		end
 		local par = CH.Par and itemID and CH.Par.Target(itemID)
 		local units = par or CH.Scan.DailyUnits(itemID)
 		local held = par and CH.Par.Held(itemID) or have(itemID or 0)
 		return math.max(0, math.ceil((units - held - (queued[itemID or 0] or 0)) / (r.made or 1)))
+	end
+	-- a TSM Crafting operation's minimum profit, per item made
+	local function profitable(r, itemID, profit)
+		local rule = Q.Rule(itemID)
+		if not (rule and rule.minProfit) then return true end
+		return profit and profit / math.max(r.made or 1, 0.01) >= rule.minProfit
 	end
 	local function add(r, row, n, isConc)
 		if not done[r.recipeID] then
@@ -327,7 +343,7 @@ function Q.FillPlan(profID, opts)
 	for _, c in ipairs(conc) do
 		local r = c.row
 		local raw = r.concentration or c.avg
-		if budget >= raw then
+		if budget >= raw and profitable(r, r.concItem, r.concProfit) then
 			local n = math.min(demand(r, r.concItem), 1 + math.floor((budget - raw) / c.avg))
 			local res = n > 0 and analyze(r.recipeID)
 			if res and res.bestConc then
@@ -346,7 +362,7 @@ function Q.FillPlan(profID, opts)
 	end
 	table.sort(plain, function(a, b) return (a.perDay or 0) > (b.perDay or 0) end)
 	for _, r in ipairs(plain) do
-		local n = demand(r, r.item)
+		local n = profitable(r, r.item, r.profit) and demand(r, r.item) or 0
 		local res = n > 0 and analyze(r.recipeID)
 		if res and res.best then add({ recipeID = r.recipeID, made = r.made, result = res }, res.best, n, false) end
 	end
@@ -376,7 +392,22 @@ function Q.ShoppingList()
 		local made = CH.Scan and CH.Scan.SubrecipesOn and CH.Scan.SubrecipesOn() and CH.Scan.Crafted(id)
 		local craft = made and buy > 0 and (not unit or made.each < unit) and
 			{ char = made.char, key = made.key, recipeID = made.recipeID, name = made.name, each = made.each, cost = made.each * buy } or nil
+		-- a TSM Shopping operation's maximum price: how many the listings seen offer at or under it
+		local rule = CH.Groups and CH.Groups.ShopRule and CH.Groups.ShopRule(id)
+		local maxPrice = rule and rule.maxPrice
+		local overMax, underMax
+		if maxPrice and buy > 0 then
+			local rows, src = CH.Depth.Book(id)
+			if rows and src == "ah" then
+				underMax = 0
+				for _, r in ipairs(rows) do if r[1] <= maxPrice then underMax = underMax + r[2] end end
+				overMax = underMax < buy
+			else
+				overMax = unit and unit > maxPrice or nil
+			end
+		end
 		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost, craft = craft,
+			maxPrice = maxPrice, shopOp = rule and rule.op, overMax = overMax, underMax = underMax,
 			source = d and d.source, short = d and d.short or 0, first = d and d.first, age = d and d.age,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end

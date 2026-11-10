@@ -149,6 +149,17 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		CH.Print(CH.db.settings.theme == "elvui" and "using ElvUI's colours. /reload to apply everywhere." or "using the AuctionIQ and Accounting colours. /reload to apply everywhere.")
 		CH.Theme.Use(CH.Theme.palette)
 		if CH.UI.IsShown() then CH.UI.Refresh() end
+	elseif msg == "basis" or msg:match("^basis ") then
+		local want = msg:match("^basis (%a+)$")
+		local P = CH.Prices
+		if not want then
+			-- no name: the next one
+			local cur, i = P.CostBasis(), 1
+			for k, b in ipairs(P.BASES) do if b == cur then i = k end end
+			want = P.BASES[i % #P.BASES + 1]
+		end
+		if not P.BASIS_NAMES[want] then CH.Print("/aiq basis replacement | tsm | paid")
+		else P.CostBasis(want); CH.Print("reagents costed at: " .. P.BASIS_NAMES[want]); if CH.UI.IsShown() then CH.UI.Refresh() end end
 	elseif msg == "alerts" then
 		CH.Alerts.Toggle()
 	elseif msg == "minimap" then

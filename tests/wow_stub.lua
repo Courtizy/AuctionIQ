@@ -115,6 +115,7 @@ TSM_API = {
 	GetCustomPriceValue = function(s, item)
 		local p = STUB.prices[item]; if not p then return nil, "no data" end
 		if s == "crafting" then return p.crafting end
+		if s == "matprice" then return p.matprice end
 		if s:sub(1, 4) == "min(" then return p.formula_value end
 		if s:sub(1, 4) == "max(" then return p.mat end
 		if s == "dbmarket" then return p.formula_value end

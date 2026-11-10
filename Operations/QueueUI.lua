@@ -36,6 +36,13 @@ function QUI.CostLines(s)
 	end
 	if (s.short or 0) > 0 then out[#out + 1] = T.Color("bad", "Only " .. (s.buy - s.short) .. " listed; the rest is priced at the top listing") end
 	out[#out + 1] = T.Color("muted", "From " .. from)
+	-- a TSM Shopping operation's maximum price for it
+	if s.maxPrice then
+		local head = "Max price " .. M(s.maxPrice) .. (s.shopOp and ("  (" .. s.shopOp .. ")") or "")
+		if s.overMax then
+			out[#out + 1] = T.Color("bad", head .. (s.underMax and (": only " .. s.underMax .. " listed at or under it") or ": the price is above it"))
+		else out[#out + 1] = T.Color("muted", head) end
+	end
 	if s.craft then
 		out[#out + 1] = T.Color("ok", string.format("Cheaper to craft: %s makes it (%s) for %s each, %s for %d",
 			s.craft.char or "?", s.craft.name or "?", M(math.floor(s.craft.each + 0.5)), M(math.floor(s.craft.cost + 0.5)), s.buy))

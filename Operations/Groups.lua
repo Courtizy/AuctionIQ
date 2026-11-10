@@ -146,7 +146,10 @@ end
 ---     applies to the character prices, posts and cancels (as TSM's aucopmin/normal/max read it)
 ---   * settings AuctionIQ can't follow are reported, so you know where it will act differently
 --- After this nothing needs TSM: change the operations here and they stay yours.
---- Returns { ops, sources, groups, multi, unsupported = { [op] = { why } }, conflicts }, or nil and why.
+---   * TSM's Crafting operations (min and max restock, minimum profit) and Shopping operations
+---     (maximum price) become the craft queue's and shopping list's rules (see CraftRule, ShopRule)
+--- Returns { ops, sources, groups, multi, unsupported = { [op] = { why } }, conflicts, craftOps,
+--- shopOps }, or nil and why.
 function G.ImportTSM()
 	local db = TradeSkillMasterDB
 	if type(db) ~= "table" then return nil, "TSM's saved data isn't loaded" end
@@ -202,6 +205,56 @@ function G.ImportTSM()
 			end
 		end
 	end
+	-- TSM's Crafting operations (restock between min and max, minimum profit) and Shopping
+	-- operations (the most to pay), with each group's own, in TSM's order
+	s.craftOps, s.shopOps, s.craftAssign, s.shopAssign = s.craftOps or {}, s.shopOps or {}, {}, {}
+	n.craftOps, n.shopOps = 0, 0
+	local function otherOps(t)
+		if type(t) ~= "table" then return end
+		for name, op in pairs(type(t.Crafting) == "table" and t.Crafting or {}) do
+			if type(op) == "table" then
+				local minProfit = op.minProfit
+				if minProfit == "" or op.minProfitEnabled == false then minProfit = nil end
+				s.craftOps[name] = { imported = "TSM", minRestock = op.minRestock or 1, maxRestock = op.maxRestock or 3,
+					minProfit = minProfit, ignorePlayer = type(op.ignorePlayer) == "table" and next(op.ignorePlayer) and op.ignorePlayer or nil }
+				if type(op.craftPriceMethod) == "string" and op.craftPriceMethod ~= "" then
+					local k = "Crafting " .. name
+					n.unsupported[k] = n.unsupported[k] or {}
+					table.insert(n.unsupported[k], "its own crafted value (AuctionIQ values by chvalue)")
+				end
+				n.craftOps = n.craftOps + 1
+			end
+		end
+		for name, op in pairs(type(t.Shopping) == "table" and t.Shopping or {}) do
+			if type(op) == "table" then
+				s.shopOps[name] = { imported = "TSM", maxPrice = op.maxPrice, showAbove = op.showAboveMaxPrice ~= false,
+					ignorePlayer = type(op.ignorePlayer) == "table" and next(op.ignorePlayer) and op.ignorePlayer or nil }
+				if num(op.restockQuantity) and num(op.restockQuantity) > 0 then
+					local k = "Shopping " .. name
+					n.unsupported[k] = n.unsupported[k] or {}
+					table.insert(n.unsupported[k], "restock quantity (the shopping list buys what the craft queue needs)")
+				end
+				n.shopOps = n.shopOps + 1
+			end
+		end
+	end
+	otherOps(db["g@ @userData@sharedOperations"])
+	otherOps(profile and db["p@" .. profile .. "@userData@operations"])
+	if type(groups) == "table" then
+		for path, g in pairs(groups) do
+			-- TSM's Crafting and Shopping operations don't work on the base group
+			if path ~= "" and type(g) == "table" then
+				for kind, into in pairs({ Crafting = s.craftAssign, Shopping = s.shopAssign }) do
+					local a = g[kind]
+					if type(a) == "table" and a[1] and a.override then
+						local list = {}
+						for _, name in ipairs(a) do list[#list + 1] = name end
+						into[tsmPath(path)] = list
+					end
+				end
+			end
+		end
+	end
 	s.useTSM, s.preferTSM = true, true
 	G.ResetTSM()
 	readTSM()
@@ -212,6 +265,9 @@ end
 --- One line for chat on what an import copied and where AuctionIQ will act differently from TSM.
 function G.ImportSummary(n)
 	local head = string.format("%d operations, %d price sources, %d groups", n.ops, n.sources, n.groups)
+	if (n.craftOps or 0) + (n.shopOps or 0) > 0 then
+		head = head .. string.format(", %d crafting and %d shopping operations", n.craftOps or 0, n.shopOps or 0)
+	end
 	local lines = {}
 	if (n.multi or 0) > 0 then
 		table.insert(lines, string.format("%d groups have more than one operation: kept in TSM's order, the first that applies to the character is used", n.multi))
@@ -348,6 +404,48 @@ function G.Operation(id, level)
 	local top = path:match("^([^" .. SEP .. "]+)")
 	local name = (top == "Crafted" or top == "Resale" or top == "Reagents") and top or "Default"
 	return s.ops[name], name
+end
+
+-- The first operation of a kind that applies here, from the item's group or the nearest parent
+-- that sets one: op, name. assign: { [path] = { names in order } }, ops: { [name] = op }.
+-- These come from TSM, so they follow the item's TSM group even if you moved it here.
+local function ruleFor(id, level, assign, ops)
+	local path = G.TSMPath(id, level)
+	while path do
+		local list = assign and assign[path]
+		if list then
+			for _, name in ipairs(list) do
+				local op = ops and ops[name]
+				if op and appliesHere(op) then return op, name end
+			end
+		end
+		path = path:match("^(.*)" .. SEP .. "[^" .. SEP .. "]+$")
+	end
+end
+
+--- The craft queue's rule for an item, from its TSM Crafting operation: { op, minRestock, maxRestock,
+--- minProfit (copper, nil = none) }, or nil. Restock: queue up to maxRestock held across the
+--- warband, and nothing when that's fewer than minRestock. minProfit: per item made.
+function G.CraftRule(id, level)
+	local s = store()
+	local op, name = ruleFor(id, level, s.craftAssign, s.craftOps)
+	if not op then return nil end
+	local F = CH.Formula
+	local function v(x) return type(x) == "number" and x or (x and F.Value(x, id, nil, level)) end
+	local minR, maxR = v(op.minRestock), v(op.maxRestock)
+	return { op = name, minRestock = math.max(0, math.floor(minR or 1)), maxRestock = math.max(0, math.floor(maxR or 0)),
+		minProfit = op.minProfit and v(op.minProfit) or nil }
+end
+
+--- The shopping list's rule for an item, from its TSM Shopping operation: { op, maxPrice (copper),
+--- showAbove }, or nil.
+function G.ShopRule(id, level)
+	local s = store()
+	local op, name = ruleFor(id, level, s.shopAssign, s.shopOps)
+	if not op then return nil end
+	local mp = op.maxPrice
+	mp = type(mp) == "number" and mp or (mp and CH.Formula.Value(mp, id, nil, level))
+	return { op = name, maxPrice = mp, showAbove = op.showAbove ~= false }
 end
 
 function G.Assign(path, opName)
