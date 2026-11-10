@@ -675,6 +675,11 @@ check("restock plans: lean never queues more than the queue", sum(e.qty for e in
 run("AuctionIQ.db.batchForecasts = nil; AuctionIQ.AdvisorUI.SetQty(2); AuctionIQ.AdvisorUI.QueueSelected()")
 fc = list(L.eval("AuctionIQ.Decide.Forecasts()").values())
 check("batch forecast: queueing saves what the simulation said", len(fc) == 1 and fc[0].n == 2 and fc[0].p50 is not None)
+dec = list(L.eval("AuctionIQ.Forecast.Decisions()").values())[-1]
+check("batch decision: queueing saves batch size, yield, reagents, price, sale rate and what's left after a week",
+      dec.n == 2 and dec.itemsEach > 0 and dec.costEach > 0 and dec.priceEach > 0 and dec.netEach > 0 and dec.daily is not None
+      and dec.leftWeek is not None and dec.profit is not None and dec.crafts == 0 and dec.key >= 1)
+run("AuctionIQ.db.decisions = nil")
 run("AuctionIQ.db.batchForecasts[1].at = time() - 8 * 86400")
 run("""STUB.oldLA, STUB.oldLR = AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records
 AuctionIQ.Ledger.Available = function() return true end
@@ -826,6 +831,41 @@ pf = {e.id: e for e in CH.Forecast.Performance().values()}[302]
 check("forecast: made, sold, sold-each against forecast, realized profit",
       pf.made == 4 and pf.sold == 2 and abs(pf.accuracy - 0.7125) < 1e-6 and abs(pf.realized - 3700000) < 1 and abs(pf.days - 1.4583) < 0.01)
 check("forecast: no shading before anything has sold", CH.Forecast.Shade(999) is None)
+# Batch decisions: crafts link back to what was queued; the miss splits into price, sell-through, reagents, yield
+run("""AuctionIQ.db.decisions = { { key = 1, at = STUB.now - 3 * 86400, item = 302, name = 'Test Elixir', char = 'Seyko', n = 4,
+  itemsEach = 2, costEach = 2000000, netEach = 4000000, priceEach = 4210527, daily = 1, crafts = 2, made = 4, paid = 4000000,
+  first = STUB.now - 2 * 86400 } }
+AuctionIQ.db.batches[1].decision = 1; AuctionIQ.db.batches[2].decision = 1; AuctionIQ.Forecast.Clear()""")
+ex = L.eval("AuctionIQ.Forecast.Explain(AuctionIQ.db.decisions[1], STUB.now)")
+check("batch results: forecast by now (2 of 4 sold at 400g, less 400g reagents) and actual (570g back)",
+      abs(ex.forecast - 4000000) < 1 and abs(ex.actual - 1700000) < 1 and ex.sold == 2 and ex.soldForecast == 2)
+check("batch results: the four causes add up to the miss, here all sale price",
+      abs(sum(ex.causes[k] for k in ["price", "sell", "reagents", "yield"]) - ex.miss) < 1e-6 and abs(ex.causes.price + 2300000) < 1
+      and ex.main == "price" and ex.takeaway == "Sold under the forecast price")
+run("AuctionIQ.db.decisions[1].daily = 3; AuctionIQ.db.decisions[1].paid = 5000000")
+ex2 = L.eval("AuctionIQ.Forecast.Explain(AuctionIQ.db.decisions[1], STUB.now)")
+check("batch results: slower than forecast and dearer reagents show as their own causes",
+      abs(ex2.causes.sell - (2 - 4) * 4000000) < 1 and abs(ex2.causes.reagents + 1000000) < 1
+      and abs(sum(ex2.causes[k] for k in ["price", "sell", "reagents", "yield"]) - ex2.miss) < 1e-6 and ex2.main == "sell")
+run("AuctionIQ.db.decisions[1].daily = 1; AuctionIQ.db.decisions[1].paid = 4000000; AuctionIQ.db.decisions[1].itemsEach = 3")
+ex3 = L.eval("AuctionIQ.Forecast.Explain(AuctionIQ.db.decisions[1], STUB.now)")
+check("batch results: fewer items than expected only costs what couldn't sell", abs(ex3.causes['yield']) < 1e-6 and ex3.expItems == 6)
+brows, bfoot = L.eval("AuctionIQ.LedgerUI.Rows('batches', {})")
+brows = list(brows.values())
+check("batch results view: a row per batch with its main cause, explained on hover", len(brows) == 1 and plain(brows[0].cells[8]) == "Sale price"
+      and plain(brows[0].cells[3]) == "2/4" and "1 batches" in plain(bfoot)
+      and any("Sale price" in plain(l[1]) for l in brows[0].tip().values()))
+run("AuctionIQ.db.decisions = nil")
+CH.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Linked', n = 2, itemsEach = 1, costEach = 10, netEach = 20, daily = 1 }"))
+b1 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+b2 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+b3 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+d777 = list(L.eval("AuctionIQ.Forecast.Decisions()").values())[0]
+check("batch decision: crafts fill it up to the crafts queued, then stop linking", b1.decision == d777.key and b2.decision == d777.key
+      and b3.decision is None and d777.crafts == 2 and d777.made == 2 and d777.paid == 24)
+run("""AuctionIQ.db.decisions = nil
+for i = #AuctionIQ.db.batches, 1, -1 do if AuctionIQ.db.batches[i].id == 777 then table.remove(AuctionIQ.db.batches, i) end end
+AuctionIQ.Forecast.Clear()""")
 # each sale counts with a 30-day half-life, and the ratio is shrunk toward 1 by PRIOR units
 now = L.eval("STUB.now")
 wn = wexp = wrev = 0
@@ -1326,8 +1366,8 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Expenses: purchases, other, expired, cancelled", LUI.Group() == "Expenses" and navshown == ["Purchases", "Other", "Expired", "Cancelled"])
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Performance: forecast accuracy and craft results near the top, no scenarios",
-      navshown[:3] == ["Performance", "Forecast accuracy", "Craft results"] and "Compare crafts" not in navshown and len(navshown) == 7)
+check("Performance: batch results, forecast accuracy and craft results near the top, no scenarios",
+      navshown[:4] == ["Performance", "Batch results", "Forecast accuracy", "Craft results"] and "Compare crafts" not in navshown and len(navshown) == 8)
 run("AuctionIQ.UI.Page('crafting')")
 check("old crafting tab opens Operations, Professions on Compare crafts", LUI.Section() == "operations" and LUI.View() == "scenarios")
 run("AuctionIQ.UI.Page('operations', 'professions')")
@@ -1635,7 +1675,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
@@ -1858,8 +1898,8 @@ run("AuctionIQ.UI.Page('analytics', 'performance')")
 check("analytics: Performance view opens", LUI.View() == "performance" and LUI.Section() == "ledger")
 nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("AuctionIQ.LedgerUI.SECTIONS.ledger").items() if isinstance(k, int))]
 perfnav = nav[nav.index("Performance") + 1:]
-check("performance nav: performance first, forecast accuracy and craft results next, no stock targets",
-      perfnav[:3] == ["performance", "perf", "results"] and "par" not in perfnav and "scenarios" not in perfnav)
+check("performance nav: performance first, batch results, forecast accuracy and craft results next, no stock targets",
+      perfnav[:4] == ["performance", "batches", "perf", "results"] and "par" not in perfnav and "scenarios" not in perfnav)
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[9]) != "-"}
 check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[9]) == "50"

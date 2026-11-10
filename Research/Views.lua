@@ -8,6 +8,8 @@
 --   Scenarios            what reagent or selling price changes would do to each craft
 --   Gold per hour        LedgerUI's "time"
 --   Craft results        Research/Log.lua
+--   Batch results        each batch you queued: forecast against actual, and which of sale price,
+--                        sell-through, reagent cost or yield made the difference (Forecast.Explain)
 -- Profit here is crafted items' real sales after the cut, less reagents at what you paid for them
 -- around the time of each sale (Ledger.ProductPL): an estimate of cost, since bought reagents
 -- aren't tracked batch by batch. Comparisons are against the period of the same length just before.
@@ -371,6 +373,51 @@ local function scenarioRows(ctx)
 		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Room: how far reagents can rise before it stops paying. Make: how many to craft (hover for the scenarios).")
 end
 
+-- Batch results ------------------------------------------------------------------------------
+AV.CAUSES = { { "price", "Sale price", "what each sold for against the forecast price" },
+	{ "sell", "Sell-through", "sold more or fewer than the forecast rate says by now" },
+	{ "reagents", "Reagent cost", "the reagents at craft time against the forecast" },
+	{ "yield", "Craft yield", "items made against expected, as far as they could sell by now" } }
+
+--- One line per cause and the takeaway, for a batch's hover.
+function AV.ExplainLines(d, x)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = { { (d.name or "?") .. T.Color("muted", string.format("  %d of %d crafts, %d days since the first", d.crafts or 0, d.n or 0, math.floor(x.days + 0.5))) } }
+	table.insert(out, { x.takeaway })
+	table.insert(out, { "Forecast by now", M(x.forecast) })
+	for _, c in ipairs(AV.CAUSES) do
+		table.insert(out, { "  " .. c[2] .. T.Color("muted", "  " .. c[3]), signed(x.causes[c[1]]) })
+	end
+	table.insert(out, { "Actual by now", M(x.actual) })
+	table.insert(out, { T.Color("muted", string.format("Sold %d of %d made (%.0f forecast by now, %.1f made a craft expected). %d left, worth %s at the forecast price.",
+		x.sold, x.made, x.soldForecast, d.itemsEach or 0, x.left, M(x.leftWorth))) })
+	if d.source then table.insert(out, { T.Color("muted", "Sell rate from " .. d.source .. "; reagents at market when crafted.") }) end
+	return out
+end
+
+local function batchRows(ctx)
+	local T = CH.Theme
+	local out = {}
+	local fc, act, n = 0, 0, 0
+	for _, d in ipairs(CH.Forecast.Decisions()) do
+		local x = CH.Forecast.Explain(d, ctx.now)
+		if x and ctx.keepName(d.name or "") then
+			n, fc, act = n + 1, fc + x.forecast, act + x.actual
+			local word = x.main and ({ price = "Sale price", sell = "Sell-through", reagents = "Reagent cost", yield = "Craft yield" })[x.main] or "On forecast"
+			table.insert(out, { id = d.item, cells = { (d.name or "?") .. (d.conc and T.Color("muted", " (C)") or ""), d.char or "?",
+				string.format("%d/%d", d.crafts, d.n), string.format("%d/%d", x.sold, x.made), money(x.forecast), money(x.actual), signed(x.miss),
+				T.Color(x.main and (x.causes[x.main] >= 0 and "ok" or "bad") or "muted", word) },
+				sort = { d.name or "", d.char or "", d.crafts, x.sold, x.forecast, x.actual, x.miss, x.main or "" },
+				tip = function() return AV.ExplainLines(d, CH.Forecast.Explain(d)) end })
+		end
+	end
+	if not out[1] then
+		return out, T.Color("muted", "No batches yet. Queue a craft from the advisor, craft it, and its forecast against what really happens shows here.")
+	end
+	return out, string.format("%d batches: %s forecast by now, %s actual.", n, money(fc), money(act))
+		.. T.Color("muted", "  Gold back from sales so far less reagents. Hover a batch for what made the difference.")
+end
+
 AV.VIEWS = {
 	performance = { label = "Performance", sort = 5, rows = performanceRows, cols = { { "Line or character", 0, 180 }, { "", 184, 70 },
 		{ "Sold", 258, 44 }, { "Revenue", 306, 84 }, { "Profit", 394, 84 }, { "Before", 482, 80 }, { "Change", 566, 80 }, { "Share", 650, 74 } } },
@@ -381,6 +428,9 @@ AV.VIEWS = {
 	crafting = { label = "Crafting efficiency", sort = 3, noTime = true, rows = craftingRows, cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 },
 		{ "Crafts", 258, 44 }, { "Per craft", 306, 80 }, { "Per Conc. pt", 390, 80 }, { "Multicraft", 474, 80 }, { "Resourceful", 558, 84 },
 		{ "Ingenuity", 646, 78 } } },
+	batches = { label = "Batch results", sort = 7, asc = true, noTime = true, rows = batchRows, cols = { { "Batch", 0, 172 },
+		{ "Character", 176, 74 }, { "Crafts", 254, 46 }, { "Sold", 304, 54 }, { "Forecast", 362, 86 }, { "Actual", 452, 86 },
+		{ "Miss", 542, 80 }, { "Why", 626, 98 } } },
 	scenarios = { label = "Compare crafts", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
 		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
 		{ "Room", 628, 50 }, { "Make", 682, 42 } } },
@@ -405,6 +455,6 @@ AV.VIEWS.scenarios.controls = {
 -- Gold per hour and Craft results register their own definitions; this sets the order. Performance
 -- explains what happened, so it sits in Accounting. Compare crafts (the downside scenarios beside
 -- break-even) is a craft decision, so it opens Operations, Professions, ahead of the knowledge pages.
-LUI.Register("ledger", AV.VIEWS, { "performance", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
+LUI.Register("ledger", AV.VIEWS, { "performance", "batches", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
 LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Professions")
 LUI.Order("operations", { "Professions", "Markets", "Queue", "Stock" })

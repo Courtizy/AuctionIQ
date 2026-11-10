@@ -37,9 +37,106 @@ function Fc.Record(itemID, qty, f)
 	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
 		cost = cost, expectEach = value and value * CH.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
 		recipe = f.recipeID }
+	-- the batch decision this craft fills, if you queued one for this item on this character
+	local d = Fc.OpenDecision(itemID, b.char, b.at)
+	if d then
+		b.decision = d.key
+		d.crafts = (d.crafts or 0) + 1
+		d.made = (d.made or 0) + qty
+		d.paid = (d.paid or 0) + (cost or 0)
+		d.first = d.first or b.at
+	end
 	table.insert(store(), b)
 	Fc.Clear()
 	return b
+end
+
+-- Batch decisions ------------------------------------------------------------------------------
+-- Queueing a batch saves the whole decision: how many, what each craft should make, what the
+-- reagents and the sale price were, how fast it should sell and what should be left after a week.
+-- The crafts that follow (same item and character, within two weeks, up to the crafts queued) link
+-- back to it, their sales are matched to them as for every craft, and Fc.Explain splits the
+-- difference between forecast and actual into sale price, sell-through, reagent cost and yield.
+
+Fc.KEEP = 200            -- decisions kept
+Fc.LINK = 14 * DAY       -- crafts this long after queueing still fill the decision
+
+local function decisions()
+	CH.db.decisions = CH.db.decisions or {}
+	return CH.db.decisions
+end
+Fc.Decisions = decisions
+
+--- Save a batch decision when it's queued. f = { item, recipe, name, quality, conc, n (crafts),
+--- itemsEach, costEach (reagents a craft, net of Resourcefulness), priceEach (sale price an item),
+--- netEach (an item after the cut and deposit), daily (sales a day), leftWeek, profit, source }.
+function Fc.SaveDecision(f, now)
+	if not (f and f.item and f.n and f.n > 0) then return nil end
+	local list = decisions()
+	CH.db.decisionSeq = (CH.db.decisionSeq or 0) + 1
+	f.key = CH.db.decisionSeq
+	f.at = now or time()
+	f.char = f.char or (UnitName and UnitName("player")) or nil
+	f.crafts, f.made, f.paid = 0, 0, 0
+	f.expDays = (f.daily or 0) > 0 and f.n * (f.itemsEach or 1) / f.daily or nil
+	list[#list + 1] = f
+	while #list > Fc.KEEP do table.remove(list, 1) end
+	return f
+end
+
+--- The newest decision a craft of item on char at time t still fills, or nil.
+function Fc.OpenDecision(item, char, t)
+	local list = decisions()
+	for i = #list, 1, -1 do
+		local d = list[i]
+		if d.item == item and d.char == char and t - d.at <= Fc.LINK and t >= d.at and (d.crafts or 0) < d.n then return d end
+	end
+	return nil
+end
+
+--- Forecast against actual for one decision, by the time of `now`: { forecast, actual, miss, causes
+--- = { price, sell, reagents, yield } (they add up to miss), sold, made, expItems, soldForecast, left
+--- (items still unsold), leftWorth (at the forecast price), days (since the first craft), main (the
+--- cause with the biggest effect), takeaway } or nil before any craft. Forecast and actual both
+--- count gold back from sales so far less what the reagents cost.
+function Fc.Explain(d, now)
+	if not d or (d.crafts or 0) == 0 then return nil end
+	now = now or time()
+	local sold, revenue = 0, 0
+	for _, b in ipairs(Fc.Batches(d.item)) do
+		if b.decision == d.key then sold, revenue = sold + (b.sold or 0), revenue + (b.revenue or 0) end
+	end
+	local net = d.netEach or 0
+	local days = math.max(0, (now - (d.first or d.at)) / DAY)
+	local expItems = d.crafts * (d.itemsEach or 1)
+	local demand = (d.daily or 0) * days
+	local soldForecast = math.min(expItems, demand)        -- what the forecast says has sold by now
+	local soldIfYield = math.min(d.made or 0, demand)      -- the same, from the items really made
+	local forecastCost = d.crafts * (d.costEach or 0)
+	local paid = (d.paid and d.paid > 0) and d.paid or forecastCost
+	local causes = {
+		price = revenue - sold * net,
+		sell = (sold - soldIfYield) * net,
+		yield = (soldIfYield - soldForecast) * net,
+		reagents = forecastCost - paid,
+	}
+	local forecast = soldForecast * net - forecastCost
+	local actual = revenue - paid
+	local main, big = nil, 0
+	for _, k in ipairs({ "price", "sell", "reagents", "yield" }) do
+		if math.abs(causes[k]) > big then main, big = k, math.abs(causes[k]) end
+	end
+	local miss = actual - forecast
+	if big < math.max(1, math.abs(forecast) * 0.05) then main = nil end
+	local WORDS = { price = { "Sold above the forecast price", "Sold under the forecast price" },
+		sell = { "Sold faster than forecast", "Sold slower than forecast" },
+		reagents = { "Reagents cost less than forecast", "Reagents cost more than forecast" },
+		yield = { "Made more than expected (Multicraft)", "Made fewer than expected" } }
+	local takeaway = main and WORDS[main][causes[main] >= 0 and 1 or 2] or "On forecast so far"
+	if main and main ~= "price" and sold > 0 and math.abs(causes.price) < big * 0.25 then takeaway = takeaway .. "; the price held" end
+	return { forecast = forecast, actual = actual, miss = miss, causes = causes, sold = sold, made = d.made or 0, expItems = expItems,
+		soldForecast = soldForecast, left = (d.made or 0) - sold, leftWorth = ((d.made or 0) - sold) * net, days = days, main = main,
+		takeaway = takeaway, revenue = revenue, paid = paid }
 end
 
 -- Match sales to crafts, oldest first per item. Each batch gets sold, revenue (after the cut),
