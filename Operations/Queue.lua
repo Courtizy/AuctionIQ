@@ -251,6 +251,22 @@ function Q.OrderStep(e)
 	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
 end
 
+--- Work an order's craft out again from the game's claimed order, right before crafting it: the
+--- reagents and whether it takes Concentration (only when no plain craft reaches the rank asked),
+--- as CraftSim does with the live order. A plan queued earlier can be stale or missing.
+function Q.Replan(e)
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if not (claimed and CH.Orders.Same(claimed.orderID, e.orderID)) then return false end
+	local ok, result = pcall(CH.Orders.Analyze, claimed)
+	if not (ok and result) then return false end
+	local r = result.best or result.bestConc
+	if not r then return false end
+	local f = Q.FromRow(result, r)
+	e.reagents, e.given, e.concentration, e.quality = f.reagents, f.given, f.concentration, f.quality
+	return true
+end
+
 -- Shatter -----------------------------------------------------------------------------------------
 -- Midnight enchanting: casting Shatter on a mote gives Shattering Essence (more Resourcefulness,
 -- Multicraft and Ingenuity on the crafts after it). Like CraftSim, an enchanting craft casts it first
@@ -665,11 +681,12 @@ end)
 function Q.Craft(e, amount)
 	local ok, why = Q.CanCraftHere(e)
 	if not ok then return false, why end
+	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
+	if e.orderID and Q.OrderStep(e) == "Craft" then Q.Replan(e) end
 	local reagents = {}
 	for _, r in ipairs(e.reagents) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
 	end
-	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
 	if e.orderID then
 		local step = Q.OrderStep(e)
 		if step == "Claim" then
@@ -717,9 +734,18 @@ function Q.Craft(e, amount)
 		if need > 1 and ui.GetCraftingOperationInfoForOrder then
 			local all = {}
 			for _, r in ipairs(mine) do table.insert(all, r) end
+			-- only reagents with qualities: a single-quality one makes the game answer nothing
+			local graded = {}
+			local sch = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+			for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
+				if #(sl.reagents or {}) > 1 then
+					for _, x in ipairs(sl.reagents) do graded[x.itemID or (x.reagent and x.reagent.itemID) or 0] = true end
+				end
+			end
 			for _, r in ipairs(claimed.reagents or {}) do
 				local info = r.reagentInfo or r
-				if info.reagent then table.insert(all, info) end
+				local id = info.reagent and info.reagent.itemID
+				if id and (graded[id] or not sch) then table.insert(all, info) end
 			end
 			local function rank(c)
 				local ok, op = pcall(ui.GetCraftingOperationInfoForOrder, e.recipeID, all, claimed.orderID, c)

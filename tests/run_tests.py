@@ -1886,6 +1886,12 @@ check("orders: once claimed, the order opens and its button moves on to Craft",
       L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "craft" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
 check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
 run("STUB.crafted = nil; STUB.oldCraft = C_TradeSkillUI.CraftRecipe; C_TradeSkillUI.CraftRecipe = function(id, n, r, _, order, conc) STUB.crafted = { id = id, order = order, conc = conc } end")
+rp = L.eval("""(function()
+  local e = { orderID = '77', recipeID = 10, reagents = {}, concentration = 999 }
+  local ok = AuctionIQ.Queue.Replan(e)
+  return { ok = ok, conc = e.concentration, n = #e.reagents }
+end)()""")
+check("orders: Craft works the order out again from the live order (a stale plan's Concentration is dropped)", rp.ok and rp.conc is None and rp.n > 0)
 check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
 run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
 check("orders: when crafted, the button reads Turn in and turns it in", CH.ScanUI.ClaimState(by[77]) == "turnin" and CH.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
