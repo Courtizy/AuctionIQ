@@ -340,7 +340,7 @@ function PUI.Toggle()
 	if PUI.IsShown() then CH.UI.Toggle() else PUI.Open() end
 end
 
-function PUI.Open() CH.UI.Page("research", "paths") end
+function PUI.Open() CH.UI.Page("operations", "paths") end
 
 --- Fill the page: the goal groups, the points and the tree. The main window calls it when the
 --- page shows.

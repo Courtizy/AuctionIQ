@@ -292,7 +292,8 @@ TUI.MOVING = {
 	rules = { label = "Groups and rules", noTime = true, cols = {}, go = function() CH.UI.Go("settings", "groups") end },
 }
 
--- Operations: produce, then hold or post (stock targets and dead stock are inventory decisions), then move
-LUI.Register("operations", TUI.PRODUCTION, { "work", "queue", "shopping" }, "Work queue")
-LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead" }, "Inventory")
-LUI.Register("operations", TUI.MOVING, { "mail", "rules" }, "Rules & routes")
+-- Operations: Queue (what to make and buy), then Stock (post, hold or move what you have). Groups and
+-- rules live in Settings; its view stays defined so old links open it there.
+LUI.Register("operations", TUI.PRODUCTION, { "work", "queue", "shopping" }, "Queue")
+LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead", "mail" }, "Stock")
+LUI.Register("operations", TUI.MOVING, {})

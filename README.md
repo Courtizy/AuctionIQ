@@ -32,12 +32,11 @@ makes you a better goblin.
 - **Compare price sources**: your own AH scans side by side with TSM and Oribos Exchange
 - **Track sales, costs and estimated profit**, with 7, 30 and 90 day reports
 
-| | |
-|---|---|
-| <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What needs you right now |
-| <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> **Research** | What's worth doing |
-| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | Getting it done |
-| <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What actually happened |
+| | The question it answers | Inside |
+|---|---|---|
+| <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What should I do next? | Next Move, Concentration, stock and work that needs you |
+| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Professions, Markets, Queue, Stock |
+| <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Overview, Revenue, Expenses, Profit, Performance |
 
 ## Look and branding
 
@@ -88,8 +87,9 @@ See the [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 <details>
 <summary>Code layout, tests and releases</summary>
 
-Plain Lua, no libraries. One folder per tab (`Dashboard`, `Research`, `Operations`, `Accounting`),
-plus `Core` and `Data` underneath them. The look is described in [THEME.md](THEME.md).
+Plain Lua, no libraries. Folders `Dashboard`, `Operations` and `Accounting` follow the tabs; `Research`
+holds the crafting advisor, scans, specializations and the views that fill Operations › Professions and
+Markets and Accounting › Performance. `Core` and `Data` sit underneath them. The look is described in [THEME.md](THEME.md).
 
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.
