@@ -341,6 +341,42 @@ function UI.DashboardData(now)
 	return d
 end
 
+--- What changed over the range, explained: the change in gold (from TSM's gold log) and up to three
+--- moves behind it, biggest first, each opening the Accounting lines behind it. Moves: sales, other
+--- income, purchases, other expenses, stock (net worth change less the gold change, estimated) and
+--- whatever the ledger can't explain (mail, bank and guild transfers). Returns { gold, moves = {
+--- { key, label, gold, go = { tab, view }, tip } } } or nil without data.
+function UI.WhatChanged(data)
+	if not data or not data.series or not data.series[1] then return nil end
+	local s = data.summary
+	local first, last = data.series[1].v, data.series[#data.series].v
+	local gold = last - first
+	local function name(id) local n = id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id); return n or (id and ("item " .. id)) end
+	local moves = {
+		{ key = "sales", label = "Sales", gold = s.sales, go = { "ledger", "sales" },
+			tip = s.topItem and ("Top seller: " .. name(s.topItem) .. ", " .. CH.FormatMoney(s.topItemGold or 0)) or nil },
+		{ key = "income", label = "Other income", gold = s.income, go = { "ledger", "income" }, tip = "Quest gold, vendor sales, and other gold TSM logged as income." },
+		{ key = "buys", label = "Purchases", gold = -s.buys, go = { "ledger", "purchases" },
+			tip = data.topSpentItem and ("Most spent on: " .. name(data.topSpentItem)) or nil },
+		{ key = "expense", label = "Other expenses", gold = -s.expense, go = { "ledger", "expense" }, tip = "Repairs, deposits, postage, and other gold TSM logged as spent." },
+	}
+	-- what the gold log moved that the ledger doesn't explain: transfers and anything TSM didn't log
+	local other = gold - s.cash
+	if math.abs(other) >= 10000 then
+		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "report" },
+			tip = "Gold that moved without a sale, purchase or expense behind it: mail, bank and guild transfers, and anything TSM didn't log." })
+	end
+	if data.worthChange then
+		table.insert(moves, { key = "stock", label = "Stock (estimated)", gold = data.worthChange - gold, go = { "ledger", "inventory" },
+			tip = "Net worth change less the change in gold: what you hold now against the start, at estimated value." })
+	end
+	local keep = {}
+	for _, m in ipairs(moves) do if math.abs(m.gold or 0) >= 10000 then table.insert(keep, m) end end
+	table.sort(keep, function(a, b) return math.abs(a.gold) > math.abs(b.gold) end)
+	for i = #keep, 4, -1 do keep[i] = nil end
+	return { gold = gold, moves = keep }
+end
+
 local function itemName(id, fallback)
 	local n = id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
 	return n or fallback or (id and ("item " .. id)) or "?"
@@ -383,7 +419,7 @@ local function buildDashboard(p)
 		d.figures[f[1]] = { value = v, sub = sub, hit = hit }
 	end
 	-- Do next, the page's main block: what to do now, each card with a button that does it
-	local top = panel(p, 0, -54, PW, 148)
+	local top = panel(p, 0, -54, PW, 172)
 	d.top = top
 	d.heading = fs(top, 10, -8, 400, "LEFT", "GameFontNormal")
 	d.mode = "next"
@@ -399,19 +435,19 @@ local function buildDashboard(p)
 	for i = 1, CARDS do
 		local c = {}
 		local x = 8 + ((i - 1) % 2) * (CW + 8)
-		local y = -32 - math.floor((i - 1) / 2) * 56
-		c.bg = panel(top, x, y, CW, 52)
+		local y = -32 - math.floor((i - 1) / 2) * 68
+		c.bg = panel(top, x, y, CW, 64)
 		-- the text sits on the card itself: a card is a frame of its own, drawn over its parent's text
 		c.who = fs(c.bg, 8, -6, CW - 200)
 		c.time = fs(c.bg, CW - 196, -6, 100, "RIGHT")
 		c.l1 = fs(c.bg, 8, -22, CW - 104)
 		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
-		c.l2 = fs(c.bg, 8, -36, CW - 104)
+		c.l2 = fs(c.bg, 8, -48, CW - 104)
 		c.l3 = fs(c.bg, CW - 92, -22, 84, "RIGHT")
 		-- the card opens where the work is; its button does the work
 		c.hit = CreateFrame("Button", nil, top)
 		c.hit:SetPoint("TOPLEFT", x, y)
-		c.hit:SetSize(CW - 96, 52)
+		c.hit:SetSize(CW - 96, 64)
 		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2], self.go[3]) end end)
 		c.hit:SetScript("OnEnter", function(self)
 			local lines = {}
@@ -428,7 +464,7 @@ local function buildDashboard(p)
 		end)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		c.act = T.Button(top, "", 84, 22)
-		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 15)
+		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 21)
 		c.act:SetScript("OnClick", function(self)
 			if not self.run then return end
 			local ok, msg = self.run()
@@ -445,7 +481,7 @@ local function buildDashboard(p)
 	top:SetScript("OnMouseWheel", function(_, delta) d.logOffset = math.max(0, d.logOffset - delta * 2); UI.Refresh() end)
 
 	-- gold: the chart and its stats on the left, sales and expenses on the right
-	local y0 = -210
+	local y0 = -234
 	local cw = math.floor(PW * 560 / 896) -- the chart takes the same share of a wider window
 	local extra = H - 600 -- and the height a taller one adds
 	d.title = fs(p, 0, y0 - 2, 200, "LEFT", "GameFontNormalLarge")
@@ -467,7 +503,7 @@ local function buildDashboard(p)
 	who:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
 	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.who = who
-	local chart = panel(p, 0, y0 - 44, cw, 190 + extra)
+	local chart = panel(p, 0, y0 - 44, cw, 166 + extra)
 	d.chart = chart
 	-- hover: a marker on the nearest point and a tooltip with who held what
 	local mark = chart:CreateTexture(nil, "OVERLAY")
@@ -503,7 +539,7 @@ local function buildDashboard(p)
 		d.grid[i] = g
 		d.gridLabels[i] = fs(chart, 4, 0, 56, "RIGHT", "GameFontDisableSmall")
 	end
-	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -174 - extra, 80, "CENTER", "GameFontDisableSmall") end
+	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -150 - extra, 80, "CENTER", "GameFontDisableSmall") end
 
 	-- stat row under the chart
 	d.stats = {}
@@ -512,9 +548,9 @@ local function buildDashboard(p)
 	for i, l in ipairs(labels) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
 		local sx = math.floor(col * cw / 3)
-		local lab = fs(p, sx, y0 - 242 - extra - row * 18, 104, "LEFT", "GameFontNormalSmall")
+		local lab = fs(p, sx, y0 - 218 - extra - row * 18, 104, "LEFT", "GameFontNormalSmall")
 		lab:SetText(l[1])
-		d.stats[l[2]] = fs(p, sx + 104, y0 - 242 - extra - row * 18, math.floor(cw / 3) - 108, "RIGHT")
+		d.stats[l[2]] = fs(p, sx + 104, y0 - 218 - extra - row * 18, math.floor(cw / 3) - 108, "RIGHT")
 	end
 
 	-- sales / expenses / profit
@@ -533,6 +569,29 @@ local function buildDashboard(p)
 		d.box[key] = fs(box, bw - 170, y, 160, "RIGHT")
 		y = y - 15
 	end
+	-- what changed, beside the gold trend: the change in gold and the three moves behind it
+	section("WHAT CHANGED")
+	d.changed = { head = fs(box, 10, y, bw - 20), rows = {} }
+	y = y - 16
+	for k = 1, 3 do
+		local r = { label = fs(box, 18, y, bw - 130), value = fs(box, bw - 120, y, 110, "RIGHT") }
+		local hit = CreateFrame("Button", nil, box)
+		hit:SetPoint("TOPLEFT", 6, y + 2)
+		hit:SetSize(bw - 12, 15)
+		hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
+		hit:SetScript("OnEnter", function(self)
+			if not self.move then return end
+			local lines = { { self.move.label, CH.FormatMoney(self.move.gold) } }
+			if self.move.tip then table.insert(lines, { CH.Theme.Color("muted", self.move.tip) }) end
+			table.insert(lines, { CH.Theme.Color("muted", "Click to see the lines behind it in " .. UI.PlaceName(self.go) .. ".") })
+			CH.Window.Tooltip(self, lines)
+		end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		r.hit = hit
+		d.changed.rows[k] = r
+		y = y - 15
+	end
+	y = y - 4
 	section("SALES")
 	line("earned", "Total earned")
 	line("avgEarned", "Average a day")
@@ -1099,18 +1158,29 @@ local function refreshDashboard()
 	d.box.avgSpent:SetText(money(data.avgSpent))
 	d.box.topSpent:SetText(data.topSpentItem and (CH.Window.ItemIcon(data.topSpentItem, 14) .. itemName(data.topSpentItem)) or "-")
 	d.box.cash:SetText(T.Color(s.cash >= 0 and "ok" or "bad", money(s.cash, true)))
+	local wch = UI.WhatChanged(data)
+	d.changed.head:SetText(wch and ("Gold " .. T.Color(wch.gold >= 0 and "ok" or "bad", money(wch.gold, true)) .. T.Color("muted", " over the range")) or T.Color("muted", "No gold history yet."))
+	for k, r in ipairs(d.changed.rows) do
+		local m = wch and wch.moves[k]
+		r.label:SetText(m and m.label or "")
+		r.value:SetText(m and T.Color(m.gold >= 0 and "ok" or "bad", money(m.gold, true)) or "")
+		r.hit.move, r.hit.go = m, m and m.go
+		r.hit:SetShown(m ~= nil)
+	end
+	d.whatChanged = wch
 	local wc = data.worthChange
 	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
 	d.note:SetText("Cash profit counts reagents as spent, like TSM.\nNet worth change counts stock you still hold.")
 	-- left column: Do next, or the activity log
 	for k, b in pairs(d.modeButtons) do colorButton(b, k == d.mode) end
 	if d.mode == "next" then
-		local list = CH.Next.List()
-		d.logOffset = math.max(0, math.min(d.logOffset, #list - #d.cards))
+		-- the few decisions that matter most, one card per kind of action: no list to scroll
+		local list, all = CH.Next.Ranked(nil, #d.cards)
+		d.logOffset = 0
 		local urgent = 0
 		for _, e in ipairs(list) do if e.tier == 1 then urgent = urgent + 1 end end
 		d.heading:SetText("Do next" .. T.Color("muted", #list == 0 and "  nothing waiting"
-			or string.format("  %d things, %d urgent%s", #list, urgent, #list > #d.cards and ", scroll for more" or "")))
+			or string.format("  the %d that matter most%s", #list, all > #list and string.format(" (of %d)", all) or "")))
 		for i, c in ipairs(d.cards) do
 			local e = list[i + d.logOffset]
 			c.hit.go = e and e.go
@@ -1124,8 +1194,9 @@ local function refreshDashboard()
 				c.time:SetText(e.gold and e.gold > 0 and money(e.gold) or "")
 				c.l1:SetText(e.detail)
 				-- after its button: one line of detail, then what happened (or why not)
-				if c.l1.SetMaxLines then c.l1:SetMaxLines(did and 1 or 2) end
-				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg) or "")
+				if c.l1.SetMaxLines then c.l1:SetMaxLines(2) end
+				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg)
+					or (e.risk and T.Color("muted", "Risk: " .. e.risk)) or "")
 				c.l3:SetText((not e.act and e.go) and T.Color("muted", "click to open") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")

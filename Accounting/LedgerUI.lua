@@ -11,13 +11,15 @@ CH.LedgerUI = LUI
 local X0, TW = 172, 724 -- table left edge and width inside the page (TW follows the window)
 local BASE_TW = 724 -- the width the columns are laid out for; a wider table spreads them
 -- a column's width, kept clear of the scroll bar down the table's right edge
-local function colX(c) return math.floor(c[2] * TW / BASE_TW) end
-local function cellWidth(c) return math.min(math.floor(c[3] * TW / BASE_TW), TW - 10 - colX(c)) end
+local TWT = 724 -- the table's own width: TW, less the side panel on a view that has one
+local SIDE = 270 -- the side panel's width
+local function colX(c) return math.floor(c[2] * TWT / BASE_TW) end
+local function cellWidth(c) return math.min(math.floor(c[3] * TWT / BASE_TW), TWT - 10 - colX(c)) end
 local ROWS, RH = 23, 18 -- rows shown: as many as the window height has room for (LUI.SetRows)
--- A view with detail = function(row, ctx) shows the selected row's detail under the table, in the
--- room of this many rows: { title, lines = { text... }, actions = { { label, run, tip } } }. run()
--- returns ok and a line saying what happened, shown in the pane.
-local DROWS = 8
+-- A view with detail = function(row, ctx) shows the selected row's detail in a panel right of the
+-- table: { kicker, title, sub, figures = { { label, value } x3 }, rows = { { label, value } },
+-- section = { head, rows = { { label, value, tip = lines } } }, note, actions = { { label, run, tip } } }.
+-- run() returns ok and a line saying what happened, shown in the panel.
 local selected, said -- the selected row's key (row.key, else its id and first cell), and the last action's result
 local MAX_ROWS = 60
 
@@ -428,6 +430,7 @@ function LUI.Build(p, fs, panel)
 	local T = CH.Theme
 	page = p
 	TW = math.max(BASE_TW, math.floor((p:GetWidth() or (X0 + BASE_TW)) - X0))
+	TWT = TW
 	sortCol, sortDesc = VIEWS[view].sort, not VIEWS[view].asc
 	local nav = panel(p, 0, 0, 160, p:GetHeight() or 552)
 	p.navPanel = nav
@@ -604,20 +607,50 @@ function LUI.Build(p, fs, panel)
 		for j = 1, 10 do r.cells[j] = fs(body, 0, -52 - (i - 1) * RH, 10) end
 		p.rows[i] = r
 	end
-	-- the selected row's detail, under the table, for a view that has one
+	-- the selected row's detail, in a panel right of the table, for a view that has one: a kicker, a
+	-- headline, three figures, label and value rows, a section of rows (each explains itself on hover),
+	-- a note, and buttons from the bottom up (the first, the main one, lowest)
 	local det = CreateFrame("Frame", nil, body)
-	det:SetSize(TW, DROWS * RH - 6)
+	det:SetSize(SIDE, ROWS * RH + 20)
 	local dbg = det:CreateTexture(nil, "BACKGROUND")
 	dbg:SetAllPoints()
 	dbg:SetColorTexture(1, 1, 1, 0.04)
-	det.title = fs(det, 8, -6, TW - 220, "LEFT", "GameFontNormal")
-	det.lines = {}
-	for k = 1, 6 do det.lines[k] = fs(det, 8, -8 - k * 17, TW - 220, "LEFT", "GameFontHighlightSmall") end
-	det.said = fs(det, TW - 204, -8 - 4 * 17, 196, "RIGHT", "GameFontHighlightSmall")
+	local IW = SIDE - 20
+	det.kicker = fs(det, 10, -8, IW, "LEFT", "GameFontNormalSmall")
+	det.title = fs(det, 10, -24, IW, "LEFT", "GameFontNormalLarge")
+	if det.title.SetMaxLines then det.title:SetWordWrap(true); det.title:SetMaxLines(2) end
+	det.sub = fs(det, 10, -62, IW, "LEFT", "GameFontDisableSmall")
+	det.figures = {}
+	local FW = math.floor(IW / 3)
+	for k = 1, 3 do
+		det.figures[k] = { label = fs(det, 10 + (k - 1) * FW, -82, FW - 4, "LEFT", "GameFontDisableSmall"),
+			value = fs(det, 10 + (k - 1) * FW, -96, FW - 4, "LEFT", "GameFontHighlight") }
+	end
+	local function pair(y)
+		return { label = fs(det, 10, y, IW - 112, "LEFT", "GameFontHighlightSmall"), value = fs(det, IW - 100, y, 110, "RIGHT", "GameFontHighlightSmall") }
+	end
+	det.rows = {}
+	for k = 1, 6 do det.rows[k] = pair(-122 - (k - 1) * 16) end
+	det.head = fs(det, 10, -226, IW, "LEFT", "GameFontNormalSmall")
+	det.srows = {}
+	for k = 1, 5 do
+		local r = pair(-242 - (k - 1) * 16)
+		local hit = CreateFrame("Button", nil, det)
+		hit:SetPoint("TOPLEFT", 6, -240 - (k - 1) * 16)
+		hit:SetSize(IW + 8, 16)
+		hit:SetScript("OnEnter", function(self) if self.tip and self.tip[1] then CH.Window.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		r.hit = hit
+		det.srows[k] = r
+	end
+	det.note = fs(det, 10, -326, IW, "LEFT", "GameFontDisableSmall")
+	if det.note.SetMaxLines then det.note:SetWordWrap(true); det.note:SetMaxLines(3) end
+	det.said = fs(det, 10, 0, IW, "LEFT", "GameFontHighlightSmall")
+	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
 	det.buttons = {}
 	for k = 1, 3 do
-		local b = CH.Theme.Button(det, "", 196, 20)
-		b:SetPoint("TOPRIGHT", -8, -6 - (k - 1) * 24)
+		local b = CH.Theme.Button(det, "", IW, 22)
+		b:SetPoint("BOTTOMLEFT", 10, 10 + (k - 1) * 26)
 		b:SetScript("OnClick", function(self)
 			if not self.run then return end
 			local ok, msg = self.run()
@@ -643,6 +676,8 @@ function LUI.Refresh()
 	if not p then return {} end
 	local T = CH.Theme
 	local v = VIEWS[view]
+	-- a view with a detail panel gives the table's right side to it
+	TWT = v.detail and (TW - SIDE - 8) or TW
 	for _, b in ipairs(p.nav) do
 		local mine = b.section == section and (not b.group or b.group == v.parent)
 		b:SetShown(mine)
@@ -701,10 +736,10 @@ function LUI.Refresh()
 		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil })
 		sortRows(rows, sortCol or 1, sortDesc)
 	end
-	-- a view with a detail pane gives up the bottom rows to it
-	local SHOWN = v.detail and math.max(5, ROWS - DROWS) or ROWS
+	local SHOWN = ROWS
 	offset = math.max(0, math.min(offset, #rows - SHOWN))
 	if p.bar then
+		if p.bar.SetX then p.bar:SetX(X0 + TWT - 3) end
 		p.bar:Set(offset, SHOWN, #rows)
 		if p.bar.SetLength then p.bar:SetLength(SHOWN * RH) end
 	end
@@ -717,6 +752,7 @@ function LUI.Refresh()
 	for i, r in ipairs(p.rows) do
 		local d = i <= SHOWN and rows[i + offset] or nil
 		r.hit:SetShown(i <= SHOWN)
+		r.hit:SetWidth(TWT)
 		r.hit.id = d and d.id
 		r.hit.tip = d and d.tip
 		r.hit.cellTip = d and d.cellTip
@@ -795,20 +831,42 @@ function LUI.DrawDetail(p, v, sel, shown)
 	local ok, d = pcall(v.detail, sel, { focus = focus })
 	if not ok or not d then det:Hide(); LUI.lastDetail = nil; return nil end
 	det:ClearAllPoints()
-	det:SetPoint("TOPLEFT", X0, -52 - shown * RH - 2)
-	det:SetWidth(TW)
+	det:SetPoint("TOPLEFT", X0 + TW - SIDE, -32)
+	det:SetHeight(ROWS * RH + 20)
+	det.kicker:SetText(d.kicker and CH.Theme.Color("accent", d.kicker) or "")
 	det.title:SetText(d.title or "")
-	for k, f in ipairs(det.lines) do f:SetText(d.lines and d.lines[k] or "") end
+	det.sub:SetText(d.sub or "")
+	for k, f in ipairs(det.figures) do
+		local x = d.figures and d.figures[k]
+		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
+	end
+	for k, r in ipairs(det.rows) do
+		local x = d.rows and d.rows[k]
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+	end
+	local sec = d.section
+	det.head:SetText(sec and CH.Theme.Color("accent", sec.head or "") or "")
+	for k, r in ipairs(det.srows) do
+		local x = sec and sec.rows and sec.rows[k]
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit.tip = x and x.tip
+		r.hit:SetShown(x ~= nil and x.tip ~= nil)
+	end
+	det.note:SetText(d.note or "")
+	local nb = 0
 	for k, b in ipairs(det.buttons) do
 		local a = d.actions and d.actions[k]
 		b.run, b.tipText = a and a.run, a and a.tip
 		if a then
+			nb = k
 			local f = b.text or (b.GetFontString and b:GetFontString())
 			if f then f:SetText(a.label) elseif b.SetText then b:SetText(a.label) end
 			b.label = a.label
 		end
 		b:SetShown(a ~= nil)
 	end
+	det.said:ClearAllPoints()
+	det.said:SetPoint("BOTTOMLEFT", 10, 14 + nb * 26)
 	det.said:SetText(said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
 	det:Show()
 	LUI.lastDetail = d
