@@ -1178,6 +1178,14 @@ hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { held
 ht = [plain(x[1]).strip() for x in CH.Advisor.HeldText(hl).values()]
 check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
       and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
+run("STUB.oldHeld = AuctionIQ.Prices.Held; AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end")
+cres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+cs = CH.Advisor.CraftOrSell(cres, cres.best)
+check("craft or sell: crafting's proceeds against selling the reagents you hold", cs is not None and abs(cs.craft - cs.sell - cres.best.profit) < 1 and cs.sell > 0)
+csl = [plain(l[1]).strip() for l in CH.Advisor.CraftOrSellLines(cres, cres.best).values()]
+check("craft or sell: the profit hover shows both and which earns more", csl[0] == "Craft or sell?" and "Sell your reagents instead" in csl
+      and (csl[-1].startswith("Crafting earns more by") or csl[-1].startswith("Selling the reagents earns more by")))
+run("AuctionIQ.Prices.Held = STUB.oldHeld")
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")

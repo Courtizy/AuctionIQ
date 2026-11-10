@@ -243,6 +243,7 @@ function SUI.OrderCellLines(d, col)
 		table.insert(lines, B.Line("Reagents you supply", -(d.cost or 0), true))
 		if math.abs(procs) >= 100 then table.insert(lines, B.Line("Resourcefulness, on average", procs)) end
 		table.insert(lines, B.Total("Profit", d.profit))
+		for _, l in ipairs(CH.Advisor.CraftOrSellLines(d.result, d.row)) do table.insert(lines, l) end
 		if d.concentration then table.insert(lines, B.Note("Needs " .. math.floor(d.concentration + 0.5) .. " Concentration to reach the quality asked.")) end
 		return lines
 	elseif col == 5 and d.ok then
@@ -904,7 +905,7 @@ function SUI.Refresh()
 			r.cells[1]:SetText(CH.Window.ItemIcon(view == "conc" and (d.concItem or d.item) or (d.item or d.concItem), 15)
 				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			if view == "craft" then
-				r.cells[2]:SetText(money(d.profit))
+				r.cells[2]:SetText(d.sellInstead and T.Color("bad", "sell the reagents") or money(d.profit))
 				r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
 				r.cells[4]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
 				r.cells[5]:SetText(n(d.canMake))

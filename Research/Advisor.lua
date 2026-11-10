@@ -829,6 +829,30 @@ function A.HeldText(l)
 	return out
 end
 
+--- Craft or sell: what crafting brings against selling the reagents you hold instead.
+--- { sell (yours at what they'd sell for after the cut), craft (the craft's proceeds less what you'd
+--- buy), gain (craft less sell: the row's profit) } or nil when you hold none of its reagents.
+function A.CraftOrSell(result, r)
+	if not (result and r and r.profit and r.picks) then return nil end
+	local own = 0
+	for _, l in ipairs(A.CostLines(result, r.picks, r.finishing)) do
+		if l.own and l.own > 0 and l.ownEach then own = own + l.own * l.ownEach end
+	end
+	if own <= 0 then return nil end
+	return { sell = own, craft = r.profit + own, gain = r.profit }
+end
+
+--- The craft-or-sell block for a profit hover, in Book lines (empty when you hold none of the reagents).
+function A.CraftOrSellLines(result, r)
+	local cs = A.CraftOrSell(result, r)
+	if not cs then return {} end
+	local B = CH.Window.Book
+	return { B.Head("Craft or sell?"),
+		B.Line("Craft and sell the item", cs.craft),
+		B.Line("Sell your reagents instead", cs.sell),
+		cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain) }
+end
+
 --- Each reagent in a row: id, name, rank, units, price per unit (chmat: an estimate), line total.
 --- Fixed reagents have no rank.
 function A.CostLines(result, picks, fin)

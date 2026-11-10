@@ -166,6 +166,11 @@ local function summary(result)
 		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
 		perDay = perDay,
+		-- selling the reagents you hold beats crafting: what they'd bring after the cut
+		sellInstead = (function()
+			local ok, cs = pcall(CH.Advisor.CraftOrSell, result, b)
+			return ok and cs and cs.gain < 0 and cs.sell or nil
+		end)(),
 	}
 end
 Sc.Summary = summary

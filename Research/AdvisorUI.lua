@@ -426,6 +426,10 @@ function AUI.SummaryLines(result)
 			table.insert(lines, "  Downside " .. money(down) .. mut(string.format(" per craft if reagents rise %s and the price falls %s", pctText(sc.reagents), pctText(sc.price)))
 				.. mut("; sell rate: " .. basis))
 		end
+		local cs = CH.Advisor.CraftOrSell(result, b)
+		if cs and cs.gain < 0 then
+			table.insert(lines, T.Color("bad", "  Sell the reagents instead: ") .. M(cs.sell) .. mut(" for yours beats crafting by ") .. M(-cs.gain))
+		end
 		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
 	elseif result.order then
 		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
@@ -923,6 +927,7 @@ function AUI.BreakdownLines(result, r, col)
 		end
 		if r.oldValue then put(B.Line("The item you recraft", -r.oldValue, true)) end
 		put(B.Total("Profit", r.profit))
+		for _, l in ipairs(CH.Advisor.CraftOrSellLines(result, r)) do put(l) end
 		if r.profit and r.cost and r.cost > 0 then put(B.Text("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5)))) end
 		-- margin: profit over what the craft brings in (proceeds, Multicraft's extras included)
 		local proceeds = r.value and r.parts and (r.value + (r.parts.mcGold or 0))
