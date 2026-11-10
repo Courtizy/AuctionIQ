@@ -142,7 +142,7 @@ TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) STUB.tooltipFn = f
 
 -- Professions
 STUB.bags = { [201] = 9, [202] = 8, [203] = 20, [204] = 12, [205] = 3, [211] = 30, [212] = 9, [221] = 2 }
-C_Item = { GetItemCount = function(id) return STUB.bags[id] or 0 end }
+C_Item = { GetItemCount = function(id) if id == nil then error("bad argument #1 to GetItemCount") end return STUB.bags[id] or 0 end }
 C_CurrencyInfo = { GetCurrencyInfo = function() return { quantity = 400, maxQuantity = 1000 } end }
 C_TradeSkillUI = {
 	IsTradeSkillReady = function() return true end,

@@ -303,7 +303,7 @@ function D.BatchInputs(result, r)
 	local ev = D.Evidence(item)
 	return { item = item, made = made, mc = mc, maxExtra = math.max(1, maxExtra), res = res, saved = r.parts and r.parts.saved or 0,
 		price = r.price, deposit = deposit, unit = r.unit, reagents = lines, daily = daily,
-		have = function(id) return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end,
+		have = function(id) return id and C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end,
 		evidence = ev, seed = (result.recipeID or 1) * 7 + r.quality * 131 + (r.concentration and 1 or 0) }
 end
 
@@ -317,7 +317,7 @@ function D.BatchCost(inp, n)
 		local d = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, need)
 		local all = d and d.cost or unit * need
 		material = material + all
-		local buy = math.max(0, need - (inp.have and inp.have(c.id) or 0))
+		local buy = math.max(0, need - (c.id and inp.have and inp.have(c.id) or 0))
 		if buy > 0 then
 			local db = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, buy)
 			cash = cash + (db and db.cost or unit * buy)

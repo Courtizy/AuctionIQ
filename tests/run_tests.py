@@ -151,6 +151,8 @@ check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc)
 for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "Recover")):
     tp = list(L.eval("AuctionIQ.AdvisorUI.NextTip('%s')" % w).values())
     check("advisor: the %s hover explains it and shows the breakdown" % head, tp[0][1] == head and len(tp) >= 3)
+bc = L.eval('function() local inp = { reagents = { { n = 1, unit = 100, finishing = true } }, have = function(id) return C_Item.GetItemCount(id, true) end }; return AuctionIQ.Decide.BatchCost(inp, 3) end')()
+check("decide: a reagent with no item id (an older scan's account) doesn't ask the game for its count", bc is not None)
 af = CH.AdvisorUI.Frame()
 check("advisor redesign: Next Move sits on a shaded card with the accent line", af.nextCard is not None and af.accentBar is not None and af.tableCard is not None and af.paneCard is not None)
 check("advisor redesign: the title bar keeps only Queue; the pane has its own tabs", af.notesBtn is not None and af.chartBtn is not None and af.batchBtn is not None
