@@ -1,20 +1,22 @@
 -- Crafting advisor panel: docked to the right of the profession window, or dragged off to stand on
 -- its own. Shows every result quality for the selected recipe, marks CraftSim-style picks.
+-- Click a row to select it; the bar under the rows queues the selected craft, as many as you set.
 local _, CH = ...
 
 local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
-local HEIGHT = 430
+local HEIGHT = 456
 -- Simulation: extra skill, and a knowledge point plan from the Paths window.
 local sim = { skill = 0, plan = nil }
 local order -- the crafting order on screen, if any
 local live -- the result without simulation, to compare against
 local gearPick -- top gear for the recipe on screen
--- name, x, width. Hover breakdowns on cost (3), sell (4), profit (5) and max (7).
-local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, { "Sells for", 206, 86 },
-	{ "Avg profit/craft", 292, 124 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
+local sel, selQty, selRecipe = nil, 1, nil -- the selected row (by quality and Concentration), how many, and for which recipe
+-- name, x, width. Hover breakdowns on cost (3), proceeds (4), profit (5) and max (7).
+local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, { "Expected proceeds", 206, 106 },
+	{ "Avg profit/craft", 312, 104 }, { "Per pt", 416, 70 }, { "Max", 486, 40 } }
 local HOVER = { 3, 4, 5, 7 }
 local WIDTH = 540
 
@@ -92,6 +94,11 @@ local function build()
 		r.bg:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
 		r.bg:SetSize(WIDTH - 12, 20)
 		r.bg:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.12)
+		r.sel = panel:CreateTexture(nil, "BORDER")
+		r.sel:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
+		r.sel:SetSize(3, 20)
+		r.sel:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+		r.sel:Hide()
 		for j, c in ipairs(COLS) do
 			local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 			fs:SetPoint("TOPLEFT", 12 + c[2], y - i * 20)
@@ -118,8 +125,35 @@ local function build()
 		click:SetScript("OnLeave", function(self) self:SetScript("OnUpdate", nil); self.col = nil; GameTooltip:Hide() end)
 		rows[i] = r
 	end
+	-- The selected craft and the button that queues it
+	local ay = y - (ROWS + 1) * 20 - 4
+	local act = CreateFrame("Frame", nil, panel)
+	act:SetPoint("TOPLEFT", 0, ay)
+	act:SetSize(WIDTH, 22)
+	panel.act = act
+	act.label = CH.Window.OneLine(CH.Window.Text(act, 12, -4, 236))
+	local function aButton(label, w, x, fn, tip)
+		local b = T.Button(act, label, w, 18)
+		b:SetPoint("TOPRIGHT", x, -1)
+		b:SetScript("OnClick", fn)
+		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip(self)) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return b
+	end
+	act.queue = aButton("Queue", 128, -10, function(self) if not self.off then AUI.QueueSelected() end end, function(self)
+		return { { self.text and self.text:GetText() or "Queue" }, { T.Color("muted", self.off or self.tip or "") } }
+	end)
+	act.max = aButton("Max", 38, -142, function() AUI.SetQty(AUI.SelectedRow() and AUI.SelectedRow().max or 1) end,
+		function() return { { "As many as you can make now" }, { T.Color("muted", "From bags, banks and the warband bank, and your Concentration.") } } end)
+	act.plus = aButton("+", 20, -184, function() AUI.SetQty(selQty + (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
+		function() return { { "One more" }, { T.Color("muted", "Shift-click for 10.") } } end)
+	act.qty = CH.Window.OneLine(CH.Window.Text(act, WIDTH - 206 - 34, -4, 32, "CENTER", "GameFontHighlight"))
+	act.minus = aButton("-", 20, -242, function() AUI.SetQty(selQty - (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
+		function() return { { "One fewer" }, { T.Color("muted", "Shift-click for 10.") } } end)
+	CH.Window.OneLine(CH.Window.Text(act, WIDTH - 262 - 24, -4, 22, "RIGHT")):SetText("Qty")
+
 	notes = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	notes:SetPoint("TOPLEFT", 12, y - (ROWS + 1) * 20 - 6)
+	notes:SetPoint("TOPLEFT", 12, ay - 28)
 	notes:SetWidth(WIDTH - 24)
 	notes:SetJustifyH("LEFT")
 	notes:SetSpacing(3)
@@ -189,13 +223,22 @@ function AUI.Render(result, reason)
 	local T = CH.Theme
 	for _, r in ipairs(rows) do
 		r.bg:Hide()
+		r.sel:Hide()
 		for _, fs in ipairs(r.cells) do fs:SetText("") end
 	end
 	shown = result
 	if not result then
 		panel.recipe:SetText(T.Color("muted", reason or "Select a recipe."))
 		notes:SetText("")
+		AUI.RenderAction()
 		return {}
+	end
+	-- a new recipe (or order) selects its recommended craft, one of it
+	local rkey = tostring(result.recipeID) .. (result.order and ":order" or "")
+	if rkey ~= selRecipe then
+		selRecipe, selQty = rkey, 1
+		local pick = result.best or result.bestConc
+		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil } or nil
 	end
 	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
 	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
@@ -212,18 +255,21 @@ function AUI.Render(result, reason)
 	for i, r in ipairs(result.rows) do
 		if i > ROWS then break end
 		local row = rows[i]
-		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc")
-			or r.short and T.Color("bad", " low") or "")
+		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.short and T.Color("bad", " low")
+			or r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc") or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
 		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""
 		r.max = CH.Advisor.MaxCraftable(result, r, concNow())
 		row.cells[3]:SetText(CH.FormatMoney(r.cost))
-		row.cells[4]:SetText(r.value and CH.FormatMoney(r.value) or CH.Theme.Color("muted", "no price"))
+		r.post = AUI.PostCheck(result, r)
+		row.cells[4]:SetText(r.value and (r.post and T.Color("bad", CH.FormatMoney(r.value) .. " !") or CH.FormatMoney(r.value))
+			or CH.Theme.Color("muted", "no price"))
 		row.cells[5]:SetText(money(r.profit) .. (pct ~= "" and CH.Theme.Color(r.profit >= 0 and "ok" or "bad", pct) or ""))
 		row.cells[6]:SetText(r.perPoint and money(r.perPoint) or "")
 		row.cells[7]:SetText(r.max > 0 and tostring(r.max) or CH.Theme.Color("muted", "0"))
 		if r.recommended or r.bestConcentration then row.bg:Show() end
+		if AUI.IsSelected(r) then row.sel:Show() end
 		table.insert(out, string.format("Q%d %s cost=%s profit=%s pp=%s%s%s", r.quality, r.concentration and ("conc" .. r.concentration) or "plain",
 			tostring(r.cost and math.floor(r.cost)), tostring(r.profit and math.floor(r.profit)), tostring(r.perPoint and math.floor(r.perPoint)),
 			r.recommended and " BEST" or "", r.bestConcentration and " BESTCONC" or ""))
@@ -248,6 +294,9 @@ function AUI.Render(result, reason)
 		end
 	end
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
+	local src = AUI.SourceLine(result)
+	if src then table.insert(lines, src) end
+	for _, l in ipairs(AUI.PostLines(result)) do table.insert(lines, l) end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
 	local g = gearPick
 	panel.equip:SetShown(g ~= nil and g.set ~= nil and not result.sim)
@@ -258,6 +307,7 @@ function AUI.Render(result, reason)
 		table.insert(lines, T.Color("muted", "Top gear: you're wearing the best set for this."))
 	end
 	notes:SetText(table.concat(lines, "\n"))
+	AUI.RenderAction()
 	-- simulation bar
 	local st = {}
 	if sim.skill > 0 then table.insert(st, "+" .. sim.skill .. " skill") end
@@ -450,7 +500,7 @@ function AUI.BreakdownLines(result, r, col)
 	return lines
 end
 
---- The hover column (cost, sells for, profit, max) under the cursor on a row's frame, or nil.
+--- The hover column (cost, proceeds, profit, max) under the cursor on a row's frame, or nil.
 function AUI.ColumnAt(frame)
 	local left = frame.GetLeft and frame:GetLeft()
 	if not left or not GetCursorPosition then return nil end
@@ -563,14 +613,146 @@ end
 
 function AUI.SetSimSkill(n) sim.skill = n or 0 end
 
---- Click a row to queue one craft of it; shift-click to queue as many as you can make now.
+--- Is this advisor row the selected one?
+function AUI.IsSelected(r)
+	return sel ~= nil and r ~= nil and r.quality == sel.quality and (r.concentration ~= nil) == sel.conc
+end
+
+--- The selected row of the result on screen, or nil.
+function AUI.SelectedRow()
+	for i, r in ipairs(shown and shown.rows or {}) do
+		if i > ROWS then break end
+		if AUI.IsSelected(r) then return r end
+	end
+end
+
+-- The same craft without the simulation: same quality, same Concentration choice.
+local function liveMatch(r)
+	for _, lr in ipairs(live and live.rows or {}) do
+		if lr.quality == r.quality and (lr.concentration ~= nil) == (r.concentration ~= nil) then return lr end
+	end
+end
+
+local function setLabel(b, t)
+	if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end
+end
+
+--- What the queue button would do for the selected row: label, and why it can't (or nil).
+function AUI.QueueAction()
+	local r = AUI.SelectedRow()
+	if not r then return "Queue", "Click a row to pick a craft first." end
+	if shown.sim then
+		local lr = liveMatch(r)
+		if not lr then return "Queue live craft", "This quality is only reachable in the simulation. Press Off on the Simulate bar to see what you can make now." end
+		return "Queue live craft", nil, lr
+	end
+	if r.short then
+		return "Queue", string.format("This quality is below the Q%d the order asks for.", shown.order and shown.order.minQuality or 0)
+	end
+	return "Queue " .. selQty, nil, r
+end
+
+--- Draw the bar under the rows: the selected craft, the quantity, and the queue button.
+function AUI.RenderAction()
+	local act = panel and panel.act
+	if not act then return end
+	local T = CH.Theme
+	act.qty:SetText(tostring(selQty))
+	local r = AUI.SelectedRow()
+	if r then
+		act.label:SetText(T.Color("muted", "Selected ") .. qualityIcon(r.quality, shown.model and shown.model.maxQ)
+			.. (r.concentration and T.Color("accent", " + " .. r.concentration .. " Conc.") or T.Color("muted", " no Conc."))
+			.. "  " .. money(r.profit) .. T.Color("muted", " a craft") .. (shown.sim and T.Color("bad", "  SIM") or ""))
+	else
+		act.label:SetText(T.Color("muted", shown and "Click a row to pick a craft." or ""))
+	end
+	local label, off, target = AUI.QueueAction()
+	setLabel(act.queue, label)
+	act.queue.off = off
+	act.queue.tip = target and (shown.sim
+		and string.format("A simulated row. This queues %d of the same quality as you can make it now: %s a craft.", selQty, CH.FormatMoney(target.profit or 0))
+		or string.format("Adds %d x Q%d%s with the reagents in the notes below.", selQty, target.quality,
+			target.concentration and (", using " .. target.concentration .. " Concentration each") or ", no Concentration")) or nil
+	act.queue:SetAlpha(off and 0.4 or 1)
+	act:SetShown(shown ~= nil)
+end
+
+--- Set how many of the selected craft to queue (1 to 999).
+function AUI.SetQty(n)
+	selQty = math.max(1, math.min(999, math.floor(tonumber(n) or 1)))
+	AUI.RenderAction()
+	return selQty
+end
+
+--- Click a row to select it. Queueing is the button under the rows, so a stray click queues nothing.
 function AUI.RowClick(i)
 	local r = shown and shown.rows[i]
 	if not r then return end
-	local qty = IsShiftKeyDown and IsShiftKeyDown() and math.max(1, r.max or 1) or 1
-	CH.Queue.Add(shown, r, qty)
-	CH.Print(string.format("queued %d x %s (Q%d%s)", qty, shown.name or "?", r.quality, r.concentration and ", Concentration" or ""))
+	if not AUI.IsSelected(r) then selQty = 1 end
+	sel = { quality = r.quality, conc = r.concentration ~= nil }
+	AUI.Render(shown)
+end
+
+--- Queue the selected craft, as many as the quantity says. Returns the queue entry, or nil and why.
+function AUI.QueueSelected()
+	local _, off, target = AUI.QueueAction()
+	if off then CH.Print("can't queue that: " .. off); return nil, off end
+	local from = shown.sim and live or shown
+	local e = CH.Queue.Add(from, target, selQty)
+	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
 	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
+	return e
+end
+
+--- Whether posting would treat a row's item differently from its expected proceeds: below its
+--- operation's min price, or an operation that doesn't post it. nil when it posts normally.
+--- { kind = "min" | "nopost", op, min, reset }.
+function AUI.PostCheck(result, r)
+	if result.order or not r.price or not r.item or not (CH.Groups and CH.Groups.Prices) then return nil end
+	local key = result.model and result.model.outputKeys and result.model.outputKeys[r.quality]
+	local level = key and tonumber(tostring(key):match("::i(%d+)"))
+	local ok, p = pcall(CH.Groups.Prices, r.item, nil, level)
+	if not ok or not p then return nil end
+	if p.post == false then return { kind = "nopost", op = p.op } end
+	if p.min and r.price < p.min then return { kind = "min", op = p.op, min = p.min, reset = p.priceReset } end
+end
+
+--- Where the proceeds come from, in one muted line for the notes.
+function AUI.SourceLine(result)
+	local T = CH.Theme
+	if result.order then return T.Color("muted", "Expected proceeds: what the order pays, commission and rewards.") end
+	local shaded, modeled = {}, false
+	for i, r in ipairs(result.rows) do
+		if i > ROWS then break end
+		if r.shade then table.insert(shaded, string.format("Q%d x%.2f", r.quality, r.shade)) end
+		if r.ev and r.ev.p then modeled = true end
+	end
+	local text = "Expected proceeds: TSM price (chvalue) after the 5% cut" .. (modeled and ", expected deposits and carrying" or "")
+	if #shaded > 0 then text = text .. ". Your sales: " .. table.concat(shaded, ", ") end
+	return T.Color("muted", text .. ". Hover for each step.")
+end
+
+--- Lines for rows whose item posting wouldn't sell at the proceeds shown (marked ! in the table),
+--- one for each quality: a plain and a Concentration row of one quality make the same item.
+function AUI.PostLines(result)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out, seen = {}, {}
+	for i, r in ipairs(result.rows) do
+		if i > ROWS then break end
+		local p = r.post
+		if p and not seen[r.quality] then
+			seen[r.quality] = true
+			local tag = T.Color("bad", string.format("Q%d !", r.quality))
+			if p.kind == "nopost" then
+				table.insert(out, tag .. T.Color("muted", string.format(" Your %s operation doesn't post this item.", p.op or "?")))
+			else
+				local what = (not p.reset or p.reset == "none") and "posting would skip it"
+					or ("posting lists it at your " .. tostring(p.reset):gsub("Price", "") .. " price instead")
+				table.insert(out, tag .. T.Color("muted", string.format(" Below posting minimum (%s min %s): %s.", p.op or "?", M(p.min), what)))
+			end
+		end
+	end
+	return out
 end
 
 function AUI.UpdateQueueButton()
