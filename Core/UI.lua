@@ -246,10 +246,23 @@ end
 
 local function setLabel(b, t) if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end end
 -- A tab or toggle: the active one in the accent with ToxiUI's 2px accent line under it.
+-- white line icons in Media, tinted in the label: theme colour on the active tab, grey otherwise
+local function iconText(name, c, label)
+	local t = ("|TInterface\\AddOns\\AuctionIQ\\Media\\Tab-%s:14:14:0:0:64:64:0:64:0:64:%d:%d:%d|t"):format(
+		name, math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+	return label and (t .. " " .. label) or t
+end
+UI.IconText = iconText
+
 local function colorButton(b, on)
 	local T = CH.Theme
 	local f = b.text or (b.GetFontString and b:GetFontString())
 	local c = on and T.accent or T.fg
+	local icon = rawget(b, "aiqIcon")
+	if icon then
+		c = on and T.accent or T.muted
+		b:SetText(iconText(icon, c, rawget(b, "aiqLabel")))
+	end
 	if f and f.SetTextColor then f:SetTextColor(c[1], c[2], c[3]) end
 	local line = rawget(b, "aiqLine")
 	if not line and b.CreateTexture then
@@ -736,7 +749,8 @@ function build()
 	-- AuctionIQ's pages first, then its Accounting ledger last
 	for _, pg in ipairs(TABS) do
 		-- a small symbol before each name, the same size and style on every tab
-		local b = T.Button(frame.bar, "|TInterface\\AddOns\\AuctionIQ\\Media\\Tab-" .. pg[2] .. ":14:14:0:0|t " .. pg[2], 84, 20)
+		local b = T.Button(frame.bar, iconText(pg[2], T.muted, pg[2]), 84, 20)
+		b.aiqIcon, b.aiqLabel = pg[2], pg[2]
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
@@ -748,7 +762,15 @@ function build()
 		b:Hide()
 		frame.subs[i] = b
 	end
-	local settings = T.Button(frame.bar, "Settings", 70, 20)
+	-- Settings is the gear alone, named in its tooltip
+	local settings = T.Button(frame.bar, iconText("Settings", T.muted), 26, 20)
+	settings.aiqIcon = "Settings"
+	settings:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+		GameTooltip:AddLine("Settings")
+		GameTooltip:Show()
+	end)
+	settings:HookScript("OnLeave", function() GameTooltip:Hide() end)
 	settings:SetPoint("RIGHT", frame.close, "LEFT", -6, 0)
 	settings:SetScript("OnClick", function() UI.Go(page == "settings" and "today" or "settings") end)
 	pageButtons.settings = settings
@@ -1221,6 +1243,7 @@ end
 function UI.SetRange(r) range = r end
 --- The page frames by name (dashboard, ledger, plan...), for tests.
 function UI.Pages() return pages end
+function UI.Buttons() return pageButtons end
 
 function UI.IsShown()
 	return frame ~= nil and frame:IsShown()

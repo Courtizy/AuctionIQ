@@ -73,7 +73,11 @@ local function newFrame(parent, kind, template)
 		table.insert(f.texts, fs)
 		return fs
 	end
-	function f:CreateTexture() return setmetatable({}, { __index = function() return function() end end }) end
+	function f:CreateTexture()
+		local t = {}
+		function t:SetVertexColor(r, g, b) self.vc = { r, g, b } end
+		return setmetatable(t, { __index = function() return function() end end })
+	end
 	f.TitleText = f:CreateFontString()
 	setmetatable(f, { __index = function() return function() end end })
 	return f

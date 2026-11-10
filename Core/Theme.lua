@@ -161,6 +161,7 @@ function T.Follow()
 		local name = rawget(fs, "aiqName")
 		fs:SetText(T.Wordmark() .. (type(name) == "string" and name ~= "" and ("  " .. T.Color("muted", name)) or ""))
 	end
+	if CH.TintMinimapButton then CH.TintMinimapButton() end
 	local f = _G.AuctionIQFrame
 	if f and f.IsShown and f:IsShown() and CH.UI and CH.UI.Refresh then CH.UI.Refresh() end
 	if CH.AdvisorUI and CH.AdvisorUI.Show and _G.AuctionIQAdvisor and _G.AuctionIQAdvisor:IsShown() then CH.AdvisorUI.Show() end
