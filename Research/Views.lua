@@ -662,6 +662,39 @@ AV.VIEWS.scenarios.controls = {
 		click = function(dir) AV.SetScenario(nil, step(AV.Scenario().price, dir)) end },
 }
 
+-- Compare crafts' Scan button: scan every profession of the character you're on, one after another,
+-- and the list fills in as each finishes. Another character's professions are scanned on them.
+local lastRefresh = 0
+AV.VIEWS.scenarios.action = {
+	label = function() return CH.Scan.all and "Stop" or "Scan" end,
+	status = function() return CH.Scan.AllStatus and CH.Scan.AllStatus() end,
+	tip = function()
+		local names = {}
+		for _, p in ipairs(CH.Scan.MyProfessions()) do table.insert(names, p.name) end
+		return { { CH.Scan.all and "Stop scanning" or "Scan my professions" },
+			{ CH.Theme.Color("muted", "Opens and scans each of this character's professions in turn ("
+				.. (#names > 0 and table.concat(names, ", ") or "none found") .. "), then shows them here.") },
+			{ CH.Theme.Color("muted", "The game only lets an addon read the professions of the character you're logged in as, so log in as each crafter once and press Scan.") },
+			{ CH.Theme.Color("muted", "Stand at a crafting table for the best numbers: its bonuses count only while you're at it.") } }
+	end,
+	click = function()
+		if CH.Scan.all then CH.Scan.StopAll(); return true, "Stopping after this profession." end
+		local ok, why = CH.Scan.ScanAll(function()
+			local now = GetTime and GetTime() or 0
+			if now - lastRefresh > 0.5 then lastRefresh = now; if CH.UI.IsShown() then CH.UI.Refresh() end end
+		end, function(results)
+			local parts = {}
+			for _, r in ipairs(results) do
+				table.insert(parts, r.why and (r.name .. " " .. r.why) or string.format("%s %d crafts", r.name, r.rows))
+			end
+			CH.Print("scanned " .. table.concat(parts, ", "))
+			if CH.UI.IsShown() then CH.UI.Refresh() end
+		end)
+		if not ok then return false, "Can't scan: " .. (why or "?") .. "." end
+		return true, "Scanning your professions: the list fills in as each one finishes."
+	end,
+}
+
 -- Gold per hour and Craft results register their own definitions; this sets the order. Performance
 -- explains what happened, so it sits in Accounting. Compare crafts (the downside scenarios beside
 -- break-even) is a craft decision, so it opens Operations, Professions, ahead of the knowledge pages.

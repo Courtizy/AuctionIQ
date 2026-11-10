@@ -552,6 +552,23 @@ function LUI.Build(p, fs, panel)
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
 	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
+	-- a view's own action in Export's place (Compare crafts: scan your professions)
+	p.actionButton = T.Button(body, "", 70, 20)
+	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
+	T.Primary(p.actionButton)
+	p.actionButton:SetScript("OnClick", function()
+		local a = VIEWS[view] and VIEWS[view].action
+		if not a then return end
+		local ok, msg = a.click()
+		said = msg and { ok = ok, msg = msg } or nil
+		CH.UI.Refresh()
+	end)
+	p.actionButton:SetScript("OnEnter", function(self)
+		local a = VIEWS[view] and VIEWS[view].action
+		if a and a.tip then CH.Window.Tooltip(self, a.tip()) end
+	end)
+	p.actionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p.actionButton:Hide()
 
 	-- sortable headers
 	p.heads = {}
@@ -725,6 +742,14 @@ function LUI.Refresh()
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
 	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
 
+	local act = v.action
+	p.actionButton:SetShown(act ~= nil)
+	p.exportButton:SetShown(act == nil)
+	if act then
+		local f = p.actionButton.text or (p.actionButton.GetFontString and p.actionButton:GetFontString())
+		if f then f:SetText(act.label()) end
+		p.actionButton.label = act.label()
+	end
 	for i, b in ipairs(p.controls) do
 		local c = v.controls and v.controls[i]
 		if c then
@@ -887,7 +912,8 @@ function LUI.DrawDetail(p, v, sel, shown)
 	end
 	det.said:ClearAllPoints()
 	det.said:SetPoint("BOTTOMLEFT", 10, 14 + nb * 26)
-	det.said:SetText(said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
+	local busy = v.action and v.action.status and v.action.status()
+	det.said:SetText(busy and CH.Theme.Color("accent", busy) or said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
 	det:Show()
 	LUI.lastDetail = d
 	return d

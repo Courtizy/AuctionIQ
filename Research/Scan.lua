@@ -280,7 +280,93 @@ function Sc.Run(onStep, onDone)
 	return true
 end
 
-function Sc.IsRunning() return running end
+function Sc.IsRunning() return running or Sc.all ~= nil end
+
+--- This character's professions worth scanning: the two primary ones and Cooking, as { name, skillLine }.
+function Sc.MyProfessions()
+	local out = {}
+	if not (GetProfessions and GetProfessionInfo) then return out end
+	local p1, p2, _, _, cook = GetProfessions()
+	for _, idx in ipairs({ p1 or 0, p2 or 0, cook or 0 }) do
+		if idx ~= 0 then
+			local name, _, _, _, _, _, skillLine = GetProfessionInfo(idx)
+			if name and skillLine then table.insert(out, { name = name, skillLine = skillLine }) end
+		end
+	end
+	return out
+end
+
+-- Is the profession window showing this base profession (Alchemy, not someone else's), ready to scan?
+local function showing(skillLine)
+	local ui = C_TradeSkillUI
+	if not (ui.IsTradeSkillReady and ui.IsTradeSkillReady()) or not CH.OpenProfessionID() then return false end
+	local base = ui.GetBaseProfessionInfo and ui.GetBaseProfessionInfo()
+	return not base or not base.professionID or base.professionID == skillLine
+end
+
+--- Scan every profession this character has, one after another: open each, scan it, move on. The
+--- game only shows an addon the professions of the character you're logged in as, so another
+--- character's are scanned on that character. onStep() as it goes (Sc.all says where it is),
+--- onDone(results) at the end, results = { { name, rows, why } }. Returns ok, why not.
+function Sc.ScanAll(onStep, onDone)
+	if Sc.IsRunning() then return false, "a scan is already running" end
+	if InCombatLockdown and InCombatLockdown() then return false, "you're in combat" end
+	if not CH.Prices.Available() then return false, "prices aren't loaded (TSM)" end
+	local list = Sc.MyProfessions()
+	if #list == 0 then return false, "this character has no professions to scan" end
+	local ui = C_TradeSkillUI
+	local wasOpen = CH.OpenProfessionID() ~= nil
+	local all = { list = list, i = 0, results = {} }
+	Sc.all = all
+	local nextOne
+	local function finish()
+		Sc.all = nil
+		if not wasOpen and ui.CloseTradeSkill then ui.CloseTradeSkill() end
+		if onDone then onDone(all.results) end
+	end
+	local function record(prof, rows, why)
+		table.insert(all.results, { name = prof.name, rows = rows and #rows or 0, why = why })
+		nextOne()
+	end
+	nextOne = function()
+		if all.stop then return finish() end
+		all.i = all.i + 1
+		local prof = list[all.i]
+		if not prof then return finish() end
+		all.name, all.done, all.total = prof.name, 0, nil
+		if not showing(prof.skillLine) and ui.OpenTradeSkill then ui.OpenTradeSkill(prof.skillLine) end
+		local tries = 0
+		local function wait()
+			if all.stop then return finish() end
+			if showing(prof.skillLine) then
+				local ok = Sc.Run(function(done, total)
+					all.done, all.total = done, total
+					if onStep then onStep() end
+				end, function(rows, why) record(prof, rows, why) end)
+				if not ok then record(prof, nil, "couldn't start") end
+				return
+			end
+			tries = tries + 1
+			if tries > 40 then return record(prof, nil, "didn't open") end -- about 8 seconds
+			C_Timer.After(0.2, wait)
+		end
+		wait()
+		if onStep then onStep() end
+	end
+	nextOne()
+	return true
+end
+
+--- What the scan of every profession is doing, for a button or status line: nil when it isn't running.
+function Sc.AllStatus()
+	local a = Sc.all
+	if not a then return nil end
+	return string.format("Scanning %s (%d of %d)%s", a.name or "?", a.i, #a.list,
+		a.total and string.format(" %d/%d", a.done or 0, a.total) or "")
+end
+
+--- Stop the scan of every profession after the one it's on.
+function Sc.StopAll() if Sc.all then Sc.all.stop = true; Sc.Stop() end end
 
 --- The saved scan for a profession on this character.
 function Sc.Results(profID)

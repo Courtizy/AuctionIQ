@@ -153,6 +153,15 @@ for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "
     check("advisor: the %s hover explains it and shows the breakdown" % head, tp[0][1] == head and len(tp) >= 3)
 bc = L.eval('function() local inp = { reagents = { { n = 1, unit = 100, finishing = true } }, have = function(id) return C_Item.GetItemCount(id, true) end }; return AuctionIQ.Decide.BatchCost(inp, 3) end')()
 check("decide: a reagent with no item id (an older scan's account) doesn't ask the game for its count", bc is not None)
+run('AuctionIQ.Scan.ScanAll(nil, function(r) STUB.allDone = r end)')
+for _ in range(400):
+    if CH.Scan.all is None: break
+    run('STUB.RunTimers()')
+ad = L.eval('STUB.allDone')
+check("scan all: rolls through each profession and reports each", ad is not None and len(list(ad.values())) == 3 and ad[3].name == "Cooking")
+check("scan all: opens the ones that aren't showing", "333," in (L.eval('STUB.opened') or "") and "185," in (L.eval('STUB.opened') or ""))
+check("scan all: Compare crafts has a Scan button for it", L.eval('AuctionIQ.Research and 1 or 1') and L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()') == "Scan")
+run('STUB.base = 171')
 af = CH.AdvisorUI.Frame()
 check("advisor redesign: Next Move sits on a shaded card with the accent line", af.nextCard is not None and af.accentBar is not None and af.tableCard is not None and af.paneCard is not None)
 check("advisor redesign: the title bar keeps only Queue; the pane has its own tabs", af.notesBtn is not None and af.chartBtn is not None and af.batchBtn is not None
@@ -1426,6 +1435,8 @@ check("Queue: execution plan, production queue, shopping list, to mail", LUI.Gro
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
+check("Compare crafts shows a Scan button in Export's place", L.eval("AuctionIQ.UI.Pages().ledger.actionButton:IsShown()")
+      and not L.eval("AuctionIQ.UI.Pages().ledger.exportButton:IsShown()") and L.eval("AuctionIQ.UI.Pages().ledger.actionButton.label") == "Scan")
 check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
       LUI.View() == "scenarios" and LUI.Group() == "Craft" and LUI.Focus().name == "Test Flask"
       and plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "Test Flask"
