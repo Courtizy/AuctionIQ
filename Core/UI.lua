@@ -337,6 +337,12 @@ function UI.DashboardData(now)
 	for id, v in pairs(spentItems) do if v > bv then bi, bv = id, v end end
 	d.topSale, d.topBuy, d.topSpentItem = topSale, topBuy, bi
 	d.worthChange = L.WorthChange(since)
+	-- What changed explains the gold change with the Cash Flow statement for exactly this range and
+	-- these characters, so the gold series and the ledger lines can't disagree on scope
+	if CH.Statements and CH.Statements.Cash then
+		local ok, c = pcall(CH.Statements.Cash, since, now)
+		if ok and c and c.change then d.cash = c end
+	end
 	d.activity = L.Activity(40)
 	return d
 end
@@ -349,19 +355,25 @@ end
 function UI.WhatChanged(data)
 	if not data or not data.series or not data.series[1] then return nil end
 	local s = data.summary
+	local c = data.cash
 	local first, last = data.series[1].v, data.series[#data.series].v
-	local gold = last - first
+	local gold = c and c.change or (last - first)
 	local function name(id) local n = id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id); return n or (id and ("item " .. id)) end
+	-- the same lines as the Cash Flow statement, over the same range and characters
+	local sales = c and (c.inflows.auction + c.inflows.other) or s.sales
+	local income = c and c.inflows.income or s.income
+	local buys = c and -c.outflows.buys or s.buys
+	local expense = c and -c.outflows.expenses or s.expense
 	local moves = {
-		{ key = "sales", label = "Sales", gold = s.sales, go = { "ledger", "sales" },
+		{ key = "sales", label = "Sales", gold = sales, go = { "ledger", "sales" },
 			tip = s.topItem and ("Top seller: " .. name(s.topItem) .. ", " .. CH.FormatMoney(s.topItemGold or 0)) or nil },
-		{ key = "income", label = "Other income", gold = s.income, go = { "ledger", "income" }, tip = "Quest gold, vendor sales, and other gold TSM logged as income." },
-		{ key = "buys", label = "Purchases", gold = -s.buys, go = { "ledger", "purchases" },
+		{ key = "income", label = "Other income", gold = income, go = { "ledger", "income" }, tip = "Quest gold, vendor sales, and other gold TSM logged as income." },
+		{ key = "buys", label = "Purchases", gold = -buys, go = { "ledger", "purchases" },
 			tip = data.topSpentItem and ("Most spent on: " .. name(data.topSpentItem)) or nil },
-		{ key = "expense", label = "Other expenses", gold = -s.expense, go = { "ledger", "expense" }, tip = "Repairs, deposits, postage, and other gold TSM logged as spent." },
+		{ key = "expense", label = "Other expenses", gold = -expense, go = { "ledger", "expense" }, tip = "Repairs, deposits, postage, and other gold TSM logged as spent." },
 	}
 	-- what the gold log moved that the ledger doesn't explain: transfers and anything TSM didn't log
-	local other = gold - s.cash
+	local other = c and c.unclassified or (gold - s.cash)
 	if math.abs(other) >= 10000 then
 		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "cashflow" },
 			tip = "Gold that moved without a sale, purchase or expense behind it: mail, bank and guild transfers, and anything TSM didn't log." })

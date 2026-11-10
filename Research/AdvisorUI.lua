@@ -347,7 +347,7 @@ function AUI.Render(result, reason)
 		if i > ROWS then break end
 		local row = rows[i]
 		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.short and T.Color("bad", " low")
-			or r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc") or "")
+			or r.recommended and T.Color("accent", " best") or r.bestConcentration and (" " .. CH.Window.ConcIcon(13)) or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
 		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""
@@ -788,6 +788,15 @@ function AUI.BasisLines(result, r)
 		for _, b in ipairs(P.BASES) do
 			local each, from
 			if c.finishing or c.crafted or not c.id then each, from = c.unit, b
+			elseif b == "held" then
+				-- what you hold at what you paid (today's price if you never bought it), the rest at today's
+				local buy = P.ReagentCost(c.id, "replacement")
+				local own = math.min(c.n, P.Held and P.Held(c.id) or 0)
+				local v = own > 0 and P.Get("chvalue", "i:" .. c.id) or nil
+				local sell = v and v * CH.AH_CUT
+				if buy or (own == c.n and sell) then
+					each, from = (own * (sell or buy or 0) + (c.n - own) * (buy or 0)) / c.n, (own > 0 and not sell) and "replacement" or b
+				end
 			else each, from = P.ReagentCost(c.id, b) end
 			if not each then missing[b] = true
 			else
@@ -797,7 +806,7 @@ function AUI.BasisLines(result, r)
 		end
 	end
 	table.insert(out, { T.Color("accent", "Costing basis") .. T.Color("muted", "  /aiq basis to change"), "" })
-	local why = { replacement = "  to buy them again today", tsm = "  as TSM's Crafting settings cost them", paid = "  what your last buys cost" }
+	local why = { held = "  yours at what they'd sell for", replacement = "  to buy them again today", tsm = "  as TSM's Crafting settings cost them", paid = "  what your last buys cost" }
 	for _, b in ipairs(P.BASES) do
 		local label = "   " .. P.BASIS_NAMES[b] .. (b == cur and T.Color("ok", "  in use") or T.Color("muted", why[b]))
 		if fell[b] > 0 then label = label .. T.Color("muted", string.format("  (%d at replacement)", fell[b])) end
@@ -860,6 +869,7 @@ function AUI.BreakdownLines(result, r, col)
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
 			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
+			for _, t in ipairs(CH.Advisor.HeldText(c)) do add(t[1], t[2]) end
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
 			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
 		end
@@ -868,6 +878,7 @@ function AUI.BreakdownLines(result, r, col)
 		for _, l in ipairs(AUI.BasisLines(result, r)) do add(l[1], l[2]) end
 		add(CH.Theme.Color("muted", "Replacement: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
 		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
+		add(CH.Theme.Color("muted", "Opportunity cost: what yours would bring sold at the sell price, after the 5% cut."))
 		-- two questions, two costs: restocking today against what the reagents you hold cost you
 		for _, l in ipairs(AUI.PaidLines(result, r)) do add(l[1], l[2]) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end

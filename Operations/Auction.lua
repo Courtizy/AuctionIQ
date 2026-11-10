@@ -130,30 +130,60 @@ function A.PostPrice(p, results)
 	return { action = "post", price = math.floor(price), why = why }
 end
 
-function A.Decide(id, results, held, level)
+--- The one posting-rule check: what your operation allows for an item against these listings.
+--- Trade's Ready to post and the AH panel both use it, so they can't disagree.
+--- o: results (AH listings), held (how many you can post), listed (already up; default what the
+--- AH panel counts), level (gear item level), note (remember the competition).
+--- { action = "post"|"skip", price, qty, why, duration, kind = nil|"off"|"noprice"|"expired"|"min"|"max"|"full"|"keep"|"none" }
+function A.Evaluate(id, o)
+	o = o or {}
+	local results, held, level = o.results or {}, o.held, o.level
 	local p = CH.Groups.Prices(id, nil, level)
-	note(id, results, p.normal)
-	if not p.post then return { action = "skip", why = (p.op or "its operation") .. " doesn't post it" } end
-	if not p.normal then return { action = "skip", why = "no price" } end
+	if o.note then note(id, results, p.normal) end
+	if not p.post then return { action = "skip", kind = "off", why = (p.op or "its operation") .. " doesn't post it" } end
+	if not p.normal then return { action = "skip", kind = "noprice", why = "no price" } end
 	if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
 		local n = CH.Ledger.NumExpires(id)
 		if n >= p.maxExpires then
-			return { action = "skip", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
+			return { action = "skip", kind = "expired", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
 		end
 	end
 	local pp = A.PostPrice(p, results)
-	if pp.action ~= "post" then return pp end
+	if pp.action ~= "post" then
+		pp.kind = pp.why and pp.why:find("^above max") and "max" or "min"
+		return pp
+	end
 	local price, why = pp.price, pp.why
-	local room = p.cap - A.Listed(id)
-	if room <= 0 then return { action = "skip", why = string.format("Warband already has %d up (cap %d)", A.Listed(id), p.cap) } end
+	local listed = o.listed or A.Listed(id)
+	local room = (p.cap or 0) - listed
+	if room <= 0 then return { action = "skip", kind = "full", price = price, why = string.format("Warband already has %d up (cap %d)", listed, p.cap or 0) } end
 	local qty = math.min(room, held or room)
 	if p.keep and p.keep > 0 and held then
 		qty = math.min(qty, held - p.keep)
-		if qty <= 0 then return { action = "skip", why = string.format("keeping %d in bags", p.keep) } end
+		if qty <= 0 then return { action = "skip", kind = "keep", price = price, why = string.format("keeping %d in bags", p.keep) } end
 	end
-	if qty <= 0 then return { action = "skip", why = "none in bags" } end
+	if qty <= 0 then return { action = "skip", kind = "none", price = price, why = "none in bags" } end
 	if p.learned then why = why .. "; " .. p.learned end
 	return { action = "post", price = math.floor(price), qty = qty, why = why, duration = p.duration }
+end
+
+function A.Decide(id, results, held, level)
+	return A.Evaluate(id, { results = results, held = held, level = level, note = true })
+end
+
+--- The freshest listings there are for an item: your AH search in the last 15 minutes, else your
+--- last AH scan, else none. Returns results ({ { price, qty } }), source ("ah"|"scan"|nil), age.
+function A.Listings(id)
+	local rows, src, a
+	if CH.Depth then rows, src, a = CH.Depth.Book(id) end
+	if rows and src == "ah" then
+		local results = {}
+		for _, r in ipairs(rows) do results[#results + 1] = { price = r[1], qty = r[2] } end
+		return results, "ah", a
+	end
+	local sc = CH.Scans and CH.Scans.Get(id)
+	if sc and sc.min then return { { price = sc.min, qty = 1 } }, "scan", sc.age end
+	return nil
 end
 
 --- What the item's own operation would do right now, apart from any market estimate: its min,
@@ -165,16 +195,7 @@ function A.PostCheck(id, level)
 	if not id then return nil end
 	local p = CH.Groups.Prices(id, nil, level)
 	local out = { op = p.op or "Default", min = p.min, normal = p.normal, max = p.max }
-	local results, source, age
-	local rows, src, a
-	if CH.Depth then rows, src, a = CH.Depth.Book(id) end
-	if rows and src == "ah" then
-		results, source, age = {}, "ah", a
-		for _, r in ipairs(rows) do results[#results + 1] = { price = r[1], qty = r[2] } end
-	else
-		local sc = CH.Scans and CH.Scans.Get(id)
-		if sc and sc.min then results, source, age = { { price = sc.min, qty = 1 } }, "scan", sc.age end
-	end
+	local results, source, age = A.Listings(id)
 	out.source, out.age = source, age
 	out.cheapest = results and results[1] and results[1].price or nil
 	if not p.post then out.action, out.why = "skip", (p.op or "its operation") .. " doesn't post it"; return out end

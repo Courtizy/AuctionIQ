@@ -241,13 +241,124 @@ end
 --- What the queue row's button does next for an order: "Claim", "Craft" or "Turn in". The game's
 --- own claimed order wins over what we remember: crafted when it says the order can be turned in.
 function Q.OrderStep(e)
-	if not e.orderID then return "Craft" end
+	if not e.orderID then return Q.NeedsShatter(e.recipeID) and "Shatter" or "Craft" end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
 		if claimed.isFulfillable then e.stage = "crafted" elseif e.stage ~= "crafted" then e.stage = "claimed" end
 	end
+	if e.stage == "claimed" and Q.NeedsShatter(e.recipeID) then return "Shatter" end
 	return e.stage == "crafted" and "Turn in" or e.stage == "claimed" and "Craft" or "Claim"
+end
+
+--- Work an order's craft out again from the game's claimed order, right before crafting it: the
+--- reagents and whether it takes Concentration (only when no plain craft reaches the rank asked),
+--- as CraftSim does with the live order. A plan queued earlier can be stale or missing.
+function Q.Replan(e)
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if not (claimed and CH.Orders.Same(claimed.orderID, e.orderID)) then return false end
+	local ok, result = pcall(CH.Orders.Analyze, claimed)
+	if not (ok and result) then return false end
+	local r = result.best or result.bestConc
+	if not r then return false end
+	local f = Q.FromRow(result, r)
+	e.reagents, e.given, e.concentration, e.quality = f.reagents, f.given, f.concentration, f.quality
+	return true
+end
+
+-- Shatter -----------------------------------------------------------------------------------------
+-- Midnight enchanting: casting Shatter on a mote gives Shattering Essence (more Resourcefulness,
+-- Multicraft and Ingenuity on the crafts after it). Like CraftSim, an enchanting craft casts it first
+-- whenever the buff is missing.
+Q.SHATTER = { recipe = 1235731, buff = 1235733 }
+
+local function professionOf(recipeID)
+	local ui = C_TradeSkillUI
+	local p = ui and ui.GetProfessionInfoByRecipeID and recipeID and ui.GetProfessionInfoByRecipeID(recipeID)
+	return p and p.professionID
+end
+
+--- Whether Shattering Essence is on you.
+function Q.HasShatterBuff()
+	local ua = C_UnitAuras
+	return ua and ua.GetPlayerAuraBySpellID and ua.GetPlayerAuraBySpellID(Q.SHATTER.buff) ~= nil or false
+end
+
+--- Whether a craft of this recipe should cast Shatter first: a Midnight enchanting recipe (same
+--- skill line as Shatter), Shatter learned, and the buff not on you.
+function Q.NeedsShatter(recipeID)
+	if not recipeID or recipeID == Q.SHATTER.recipe then return false end
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetRecipeInfo and ui.GetRecipeInfo(Q.SHATTER.recipe)
+	if not (info and info.learned) then return false end
+	local line = professionOf(Q.SHATTER.recipe)
+	if not line or professionOf(recipeID) ~= line then return false end
+	return not Q.HasShatterBuff()
+end
+
+-- What Shattering Essence adds, in rating: 5 of each, plus its perks at their spec ranks (CraftSim's
+-- CreateShatteringEssenceBuffMidnight; the game's data doesn't carry the perks).
+local SHATTER_PERKS = {
+	{ node = 107616, stat = "resourcefulness", at = { [5] = 5, [15] = 10, [25] = 20 } }, -- Responsible Resources
+	{ node = 107615, stat = "ingenuity", at = { [5] = 5, [15] = 10, [25] = 20 } },       -- Infinite Ingenuity
+	{ node = 107614, stat = "multicraft", at = { [5] = 5, [15] = 10, [25] = 20 } },      -- Multicrafting Meticulously
+	{ node = 100037, stat = "multicraft", at = { [5] = 30, [15] = 30, [25] = 30 } },     -- Magnificent Multicrafting
+}
+function Q.ShatterStats(professionID)
+	local d = { ingenuity = 5, multicraft = 5, resourcefulness = 5 }
+	local ps, tr = C_ProfSpecs, C_Traits
+	local config = ps and ps.GetConfigIDForSkillLine and professionID and ps.GetConfigIDForSkillLine(professionID)
+	if config and config ~= 0 and tr and tr.GetNodeInfo then
+		for _, p in ipairs(SHATTER_PERKS) do
+			local info = tr.GetNodeInfo(config, p.node)
+			local rank = info and info.activeRank and (info.activeRank - 1) or -1
+			for threshold, n in pairs(p.at) do
+				if rank >= threshold then d[p.stat] = d[p.stat] + n end
+			end
+		end
+	end
+	return d
+end
+
+--- What Shatter would use: the cheapest mote you hold. Returns itemID, bag, slot, or nil.
+function Q.ShatterItem()
+	local ui = C_TradeSkillUI
+	local ids = ui and ui.GetSalvagableItemIDs and ui.GetSalvagableItemIDs(Q.SHATTER.recipe) or {}
+	local best, bestPrice
+	for _, id in ipairs(ids) do
+		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id) or 0
+		if n > 0 then
+			local p = CH.Prices.Get("chmat", "i:" .. id) or math.huge
+			if not best or p < bestPrice then best, bestPrice = id, p end
+		end
+	end
+	if not best then return nil end
+	local C = C_Container
+	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
+		for slot = 1, (C and C.GetContainerNumSlots and C.GetContainerNumSlots(bag) or 0) do
+			if C.GetContainerItemID(bag, slot) == best then return best, bag, slot end
+		end
+	end
+	return best -- in a bank, not your bags
+end
+
+--- Cast Shatter on the cheapest mote in your bags. Must be called from a click. true, or false and why.
+function Q.Shatter()
+	local id, bag, slot = Q.ShatterItem()
+	if not id then return false, "no mote to Shatter in your bags" end
+	if not bag then return false, "your motes for Shatter are in the bank: take one out first" end
+	local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
+	if not loc then return false, "can't find the mote in your bags" end
+	C_TradeSkillUI.CraftSalvage(Q.SHATTER.recipe, 1, loc, {}, false)
+	return true
+end
+
+--- The queue entry for an order, or nil.
+function Q.ForOrder(orderID)
+	for _, e in ipairs(list()) do
+		if e.orderID and CH.Orders.Same(e.orderID, orderID) then return e end
+	end
 end
 
 --- The next thing to do in the queue on this character: the order you have claimed first, then the
@@ -570,6 +681,8 @@ end)
 function Q.Craft(e, amount)
 	local ok, why = Q.CanCraftHere(e)
 	if not ok then return false, why end
+	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
+	if e.orderID and Q.OrderStep(e) == "Craft" then Q.Replan(e) end
 	local reagents = {}
 	for _, r in ipairs(e.reagents) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
@@ -621,9 +734,18 @@ function Q.Craft(e, amount)
 		if need > 1 and ui.GetCraftingOperationInfoForOrder then
 			local all = {}
 			for _, r in ipairs(mine) do table.insert(all, r) end
+			-- only reagents with qualities: a single-quality one makes the game answer nothing
+			local graded = {}
+			local sch = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+			for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
+				if #(sl.reagents or {}) > 1 then
+					for _, x in ipairs(sl.reagents) do graded[x.itemID or (x.reagent and x.reagent.itemID) or 0] = true end
+				end
+			end
 			for _, r in ipairs(claimed.reagents or {}) do
 				local info = r.reagentInfo or r
-				if info.reagent then table.insert(all, info) end
+				local id = info.reagent and info.reagent.itemID
+				if id and (graded[id] or not sch) then table.insert(all, info) end
 			end
 			local function rank(c)
 				local ok, op = pcall(ui.GetCraftingOperationInfoForOrder, e.recipeID, all, claimed.orderID, c)
@@ -647,6 +769,40 @@ function Q.Craft(e, amount)
 		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
 			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, conc)
 		else
+			-- a reagent you don't hold enough of makes the game refuse the craft without a word: leave
+			-- optional ones (finishing) out and say so
+			local held, names = {}, {}
+			for _, r in ipairs(mine) do
+				local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(r.itemID, true, false, true, true) or r.quantity
+				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
+				if have >= r.quantity then
+					table.insert(held, r)
+					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
+				else
+					CH.Print(string.format("left out %s: you have %d of the %d it takes", nm, have, r.quantity))
+				end
+			end
+			mine = held
+			-- a reagent in a slot the game has locked for you (an unopened finishing slot) is dropped
+			local sch2 = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+			local lockedSlot = {}
+			for _, sl in ipairs(sch2 and sch2.reagentSlotSchematics or {}) do
+				if CH.Advisor and CH.Advisor.SlotLocked and CH.Advisor.SlotLocked(e.recipeID, sl) then lockedSlot[sl.dataSlotIndex] = true end
+			end
+			held, names = {}, {}
+			for _, r in ipairs(mine) do
+				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
+				if r.dataSlotIndex and lockedSlot[r.dataSlotIndex] then
+					CH.Print(string.format("left out %s: that slot is locked for you", nm))
+				else
+					-- the game's own shape, as CraftSim passes it
+					table.insert(held, { reagent = { itemID = r.itemID }, quantity = r.quantity, dataSlotIndex = r.dataSlotIndex })
+					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
+				end
+			end
+			mine = held
+			CH.Print(string.format("crafting %s into the order with %s, Concentration %s, rank %s needed",
+				e.name or "?", #names > 0 and table.concat(names, ", ") or "only the customer's reagents", conc and "on" or "off", tostring(need)))
 			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
 		end
 		return true

@@ -272,6 +272,10 @@ fa = {a.itemID: a for a in CH.Advisor.FinishingAdvice(pr).values()}
 check("finishing advice: every option with its gain, what you own and the verdict",
       set(fa) == {221, 222} and fa[221].own == 2 and fa[222].own == 0 and fa[222].picked and fa[222].verdict == "buy" and fa[222].gain > 0
       and "Multicraft" in fa[222].effect and "skill" in fa[221].effect)
+run("STUB.lockedSlot = 77")
+lk = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+check("a finishing slot the game has locked is never filled", len(list(lk.best.finishing.values())) == 0 and len(list(lk.bestConc.finishing.values())) == 0)
+run("STUB.lockedSlot = nil")
 fl = [plain(x) for x in CH.AdvisorUI.FinishingLines(pr).values()]
 check("finishing advice in the advisor notes", any(x.startswith("Finishing: buy item 222") for x in fl) or any("Or buy: buy item 222" in x for x in fl))
 run("STUB.prices['i:221'].formula_value = 10000; AuctionIQ.Prices.ClearCache()")   # you could sell yours for only 1g
@@ -1153,16 +1157,27 @@ run("AuctionIQ.Depth.Forget(205); AuctionIQ.Queue.Clear()")
 
 # Costing basis: replacement, TSM's material cost, what you paid
 run("STUB.prices['i:205'].matprice = 7000; AuctionIQ.Prices.ClearCache()")
-check("basis: replacement by default", CH.Prices.CostBasis() == "replacement" and CH.Prices.ReagentCost(205)[0] == 10000)
+check("basis: what you hold at paid by default, buying at replacement", CH.Prices.CostBasis() == "held" and CH.Prices.ReagentCost(205)[0] == 10000)
 check("basis: TSM's material cost when chosen", L.eval("(AuctionIQ.Prices.ReagentCost(205, 'tsm'))") == 7000
       and L.eval("select(2, AuctionIQ.Prices.ReagentCost(201, 'tsm'))") == "replacement")
 run("AuctionIQ.Prices.CostBasis('tsm')")
 check("basis: the setting prices the advisor's reagents", CH.Scan.ReagentPrice(205) == 7000)
 bres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
 bl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BasisLines(bres, bres.best).values()]
-check("advisor: each costing basis totalled, the one in use marked", len(bl) == 4 and any("TSM material cost" in a and "in use" in a for a, _ in bl)
+check("advisor: each costing basis totalled, the one in use marked", len(bl) == 5 and any("TSM material cost" in a and "in use" in a for a, _ in bl)
       and any("Replacement" in a for a, _ in bl) and any("paid" in a for a, _ in bl))
-run("AuctionIQ.Prices.CostBasis('replacement'); STUB.prices['i:205'].matprice = nil; AuctionIQ.Prices.ClearCache()")
+run("AuctionIQ.Prices.CostBasis('held'); STUB.prices['i:205'].matprice = nil; AuctionIQ.Prices.ClearCache()")
+hc = L.eval("AuctionIQ.Advisor.UnitsCost({ heldCache = { [205] = { n = 5, each = 4000 } } }, 205, 8)")
+check("held basis: the units you hold cost what they'd sell for (opportunity cost), only the rest at today's price", hc == 5 * 4000 + 3 * 10000)
+hg = L.eval("AuctionIQ.Advisor.UnitsCost({ heldCache = { [205] = { n = 5 } } }, 205, 3)")
+check("held basis: no sale price falls back to today's price", hg == 3 * 10000)
+run("AuctionIQ.Prices.CostBasis('replacement')")
+check("replacement basis: every unit at today's price", L.eval("AuctionIQ.Advisor.UnitsCost({ heldCache = { [205] = { n = 5, each = 4000 } } }, 205, 8)") == 80000)
+run("AuctionIQ.Prices.CostBasis('held')")
+hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { heldCache = { [205] = { n = 5, each = 4000 } } })")
+ht = [plain(x[1]).strip() for x in CH.Advisor.HeldText(hl).values()]
+check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
+      and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
@@ -1209,7 +1224,7 @@ a1 = pa("{ id = 1, verdict = 'post', post = 10, up = 0, cap = 20, price = 100 }"
 check("posting advice: post what TSM would when two days of sales cover it", a1.action == "post" and a1.qty == 10 and D.PostLabel(a1) == "Post 10")
 a2 = pa("{ id = 1, verdict = 'post', post = 10, up = 2, cap = 20, price = 100 }", "{ daily = 2 }")
 check("posting advice: post fewer when that much would sit (2 a day, 2 up: 2 more)", a2.action == "fewer" and a2.qty == 2
-      and "TSM would post 10" in a2.reason and D.PostLabel(a2) == "Post 2 (fewer)")
+      and "your rules allow 10" in a2.reason and D.PostLabel(a2) == "Post 2 (fewer)")
 a3 = pa("{ id = 1, verdict = 'post', post = 10, up = 6, cap = 20, price = 100 }", "{ daily = 2 }")
 check("posting advice: wait when what's up already covers it", a3.action == "wait" and a3.qty == 0 and "3 days" in a3.reason)
 a4 = pa("{ id = 1, verdict = 'hold', post = 5, up = 0, cap = 20, price = 100, ah = 50, min = 80 }", "{ daily = 5 }")
@@ -1226,8 +1241,24 @@ log = list(L.eval("AuctionIQ.Decide.AdviceLog()").values())
 check("posting advice: saved once an item a day, with what it assumed", len(log) == 2 and log[0].action == "fewer" and log[0].daily == 2 and log[0].up == 2)
 run("AuctionIQ.db.postAdvice = nil")
 pr2 = list(L.eval("(AuctionIQ.LedgerUI.Rows('post', {}))").values())
-check("Ready to post: each row's advice, with the reason on hover", all(plain(r.cells[8]).startswith(("Post", "Wait")) for r in pr2)
+check("Ready to post: each row's advice, with the reason on hover", all(plain(r.cells[6]).startswith(("Post", "Wait", "Check")) for r in pr2)
       and all(plain(r.tip[2][1]).startswith("Because ") for r in pr2))
+# Trade and the AH panel share one rule check
+r302 = pp[302]
+res302 = L.eval("(function() local r = AuctionIQ.Auction.Listings(302); return r end)()")
+ev302 = CH.Auction.Evaluate(302, L.eval("{}") if res302 is None else L.eval("{ results = AuctionIQ.Auction.Listings(302) }"))
+check("Ready to post prices with the AH panel's own rule check", r302.price == (ev302.price or r302.price) and r302.why is not None)
+ca = pa("{ id = 1, verdict = 'post', post = 3, up = 0, cap = 5, price = 33400000000, check = true }", "{ daily = 0 }")
+check("no scan and no sales: Check live price, not Post 1", ca.action == "check" and ca.qty == 0 and D.PostLabel(ca) == "Check live price")
+sk = pa("{ id = 1, verdict = 'skip', post = 0, up = 0, cap = 5, price = 100, why = 'expired 3 times since it last sold (max 3)' }", "{ daily = 4 }")
+check("a rule that stops posting is the reason given", sk.action == "wait" and "expired 3 times" in sk.reason)
+prow = [r for r in pr2 if r.id == 302]
+if prow:
+    det = CH.TradingUI.PostDetail(prow[0])
+    labels = [plain(x[1]) for x in det.rows.values()]
+    check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
+          "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels
+          and any(plain(a.label) == "Review at Auction House" for a in det.actions.values()))
 wk = list(CH.TradingUI.WorkPlan().values())
 check("execution plan: a mail trip per sender and receiver, and posts from Ready to post", any(w.kind == "mail" and w.char == "Courtizy" and w.task == "Mail to Luxaren" and w.where == "Mailbox" for w in wk)
       and all(w.kind != "post" or w.where == "Auction House" for w in wk))
@@ -1407,6 +1438,8 @@ run("""STUB.oldQueue = AuctionIQ.db.queue
 AuctionIQ.db.queue = { { char = AuctionIQ.CharacterKey(), name = 'A', qty = 3, shop = {} },
   { char = AuctionIQ.CharacterKey(), name = 'B', qty = 2, shop = { { itemID = 987654, n = 5 } } },
   { char = 'Other-Realm', name = 'C', qty = 1, shop = {} } }""")
+nb = [e for e in CH.Next.List().values() if e.title == "Buy reagents"]
+check("do next: the queue's shopping list is a card that opens it", len(nb) == 1 and nb[0].go[2] == "shopping" and "for your queue" in nb[0].detail)
 fig = CH.UI.DashboardFigures()
 check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
 work = list(CH.TradingUI.WorkPlan().values())
@@ -1415,6 +1448,10 @@ check("execution plan: crafts with their status, another character's marked swit
       and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Professions")
 wrows, wfoot = L.eval("AuctionIQ.LedgerUI.Rows('work', {})")
 check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
+rrows, rfoot = L.eval("AuctionIQ.LedgerUI.Rows('ready', {})")
+rr = {plain(r.cells[1]): plain(r.cells[6]) for r in rrows.values()}
+check("Queue opens on Ready on this character: ready first, blocked grouped by what unlocks it",
+      rr.get("A") == "craft" and rr.get("B", "").startswith("buy 10") and rr.get("C") == "log in as Other" and rr.get("C", "").startswith("log in as") and "1 ready on this character" in plain(rfoot))
 run("AuctionIQ.UI.Page('today')")
 qf = L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
@@ -1432,7 +1469,7 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
 run("AuctionIQ.UI.Page('operations', 'mail')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Execution plan", "Production queue", "Shopping list", "To mail"])
+check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "To mail"])
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
@@ -1613,8 +1650,12 @@ data = L.eval("AuctionIQ.UI.DashboardData()")
 w2 = L.eval("AuctionIQ.UI.WhatChanged")(data)
 mv = {m.key: m.gold for m in w2.moves.values()}
 check("What changed: sales and purchases come from the ledger, the rest of the gold change shows as unclassified",
-      all(abs(v) >= 10000 for v in mv.values()) and ("sales" not in mv or mv["sales"] == data.summary.sales)
-      and ("other" not in mv or abs(mv["other"] - (w2.gold - data.summary.cash)) < 1))
+      all(abs(v) >= 10000 for v in mv.values()) and data.cash is not None
+      and ("sales" not in mv or mv["sales"] == data.cash.inflows.auction + data.cash.inflows.other)
+      and ("other" not in mv or abs(mv["other"] - data.cash.unclassified) < 1))
+cf = CH.Statements.Cash(data.since, data.now)
+check("What changed and the Cash Flow statement agree: same range, same characters, same unclassified",
+      w2.gold == cf.change and abs(cf.unclassified - (cf.change - cf.classified)) < 1)
 # Do next cards carry a button that does the job: queue the Concentration craft or the restock
 run("""STUB.oldConcNow = AuctionIQ.ConcentrationNow
 AuctionIQ.ConcentrationNow = function(p) if p.name == 'Test Alchemy' then return 1000, 1000 end return STUB.oldConcNow(p) end
@@ -1759,6 +1800,144 @@ orows = list(CH.ScanUI.Refresh().values())
 check("scan tab: lists orders with 1KP flagged", len(orows) == 3 and "kp=true" in orows[0])
 tip = [plain(l[1]) for l in CH.ScanUI.OrderLines(by[78]).values()]
 check("scan tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
+pl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 4).values()]
+check("orders: hovering Profit breaks it down from the commission", pl[0] == "Profit" and pl[1].startswith("Commission") and "Profit" in pl[-1] or "Profit" in pl)
+cl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
+check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
+rl2 = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
+check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
+tw = L.eval("""(function()
+  local f = CreateFrame('Frame'); STUB.entered = {}
+  local rows = AuctionIQ.Window.Table(f, { { 'A', 12, 50 }, { 'B', 70, 50 } }, 3, 0, 18, nil, function(_, i) table.insert(STUB.entered, i) end, 200)
+  local idle = rows[1].button.scripts.OnUpdate == nil and rows[2].button.scripts.OnUpdate == nil
+  rows[2].button.scripts.OnEnter(rows[2].button)
+  local tracks = rows[2].button.scripts.OnUpdate ~= nil and rows[1].button.scripts.OnUpdate == nil
+  rows[2].button.scripts.OnLeave(rows[2].button)
+  return idle and tracks and rows[2].button.scripts.OnUpdate == nil and #STUB.entered == 1 and STUB.entered[1] == 2
+end)()""")
+check("tables: only the row under the mouse follows it across columns (no other row takes the tooltip)", tw)
+check("orders: a patron order's customer reads NPC", by[78].customer == "NPC" and by[77].customer == "Pat")
+# each order row has its own Claim button: claims that order, then opens it once the game says yes
+run("""STUB.claimed = nil; STUB.claimedOrder = nil; STUB.opened = nil
+C_CraftingOrders.ClaimOrder = function(id)
+  STUB.claimed = id
+  for _, o in ipairs(C_CraftingOrders.GetCrafterOrders()) do if o.orderID == id then STUB.claimedOrder = o end end
+end
+C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
+STUB.oldOpen = AuctionIQ.Orders.Open; AuctionIQ.Orders.Open = function(o) STUB.opened = o and o.orderID end""")
+sk = L.eval("""(function()
+  local old = C_TradeSkillUI.GetCraftingOperationInfoForOrder
+  -- the customer's reagents add skill only when they're passed in
+  C_TradeSkillUI.GetCraftingOperationInfoForOrder = function(id, infos, orderID, conc)
+    return { baseSkill = 100, bonusSkill = #infos > 0 and 180 or 0, baseDifficulty = 455 }
+  end
+  local m = { orderID = 5, recipeID = 10, qual = {}, provided = { { reagent = { itemID = 1 }, itemID = 1, dataSlotIndex = 1, quantity = 5 } } }
+  local info = AuctionIQ.Advisor.Operation(m, {}, false)
+  C_TradeSkillUI.GetCraftingOperationInfoForOrder = old
+  return info.bonusSkill
+end)()""")
+check("orders: the customer's reagents' quality counts toward skill (a claimed Phoenix Oil read 141 instead of 323)", sk == 180)
+# A single-quality reagent in the list makes the game answer nothing (CraftSim leaves them out too)
+nq = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local old = ui.GetCraftingOperationInfoForOrder
+  ui.GetCraftingOperationInfoForOrder = function(id, infos, orderID, conc)
+    local skill = 0
+    for _, r in ipairs(infos) do
+      if r.itemID == 205 then return nil end -- slot 3 has one quality: the game refuses
+      if r.itemID == 202 then skill = skill + 20 * r.quantity end
+    end
+    return { baseSkill = 100, bonusSkill = skill, baseDifficulty = 130 }
+  end
+  local m = AuctionIQ.Advisor.Measure(10, { order = { orderID = 9, minQuality = 1,
+    provided = { { reagent = { itemID = 202 }, itemID = 202, dataSlotIndex = 1, quantity = 4 },
+                 { reagent = { itemID = 205 }, itemID = 205, dataSlotIndex = 3, quantity = 2 } } } })
+  ui.GetCraftingOperationInfoForOrder = old
+  return m and m.skill0
+end)()""")
+check("orders: the customer's quality reagents count even when a single-quality one is in the order", nq == 180)
+
+# Recipe slots can share a data slot number: the customer's reagents go to the slot listing their item
+ds = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local old = ui.GetRecipeSchematic
+  ui.GetRecipeSchematic = function(id, r)
+    local sch = old(id, r)
+    if id == 10 then sch.reagentSlotSchematics[2].dataSlotIndex = 1 end -- both quality slots are data slot 1
+    return sch
+  end
+  local m = AuctionIQ.Advisor.Measure(10, { order = { orderID = 9, minQuality = 1,
+    provided = { { reagent = { itemID = 202 }, itemID = 202, dataSlotIndex = 1, quantity = 4 },
+                 { reagent = { itemID = 204 }, itemID = 204, dataSlotIndex = 1, quantity = 5 } } } })
+  ui.GetRecipeSchematic = old
+  local n = 0
+  for _, r in ipairs(m and m.provided or {}) do n = n + r.quantity end
+  return { n = n, qual = m and #m.qual }
+end)()""")
+check("orders: two recipe slots sharing data slot 1 both take the customer's reagents (none dropped, neither left to you)",
+      ds.n == 9 and ds.qual == 0)
+# Shatter: a Midnight enchanting craft casts Shatter first when Shattering Essence is missing
+sh = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local o = { info = ui.GetRecipeInfo, prof = ui.GetProfessionInfoByRecipeID, salv = ui.GetSalvagableItemIDs, cs = ui.CraftSalvage }
+  local oldUA, oldC, oldIL, oldCount = C_UnitAuras, C_Container, ItemLocation, C_Item.GetItemCount
+  STUB.aura = nil; STUB.salvaged = nil
+  ui.GetRecipeInfo = function(id) if id == 1235731 then return { learned = true, name = 'Shatter' } end return o.info(id) end
+  ui.GetProfessionInfoByRecipeID = function(id) return { professionID = (id == 1235731 or id == 10) and 2909 or 1 } end
+  ui.GetSalvagableItemIDs = function() return { 501, 502 } end
+  ui.CraftSalvage = function(id, n, loc) STUB.salvaged = { id = id, bag = loc.bag, slot = loc.slot } end
+  C_UnitAuras = { GetPlayerAuraBySpellID = function(id) return STUB.aura end }
+  C_Item.GetItemCount = function(id) return (id == 501 or id == 502) and 3 or (oldCount and oldCount(id) or 0) end
+  AuctionIQ.db.prices = AuctionIQ.db.prices or {}
+  local oldGet = AuctionIQ.Prices.Get
+  AuctionIQ.Prices.Get = function(src, key) if key == 'i:501' then return 900 elseif key == 'i:502' then return 300 end return oldGet(src, key) end
+  C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+    GetContainerItemID = function(bag, slot) return slot == 1 and 501 or 502 end }
+  ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+  local e = { recipeID = 10 }
+  local r = {}
+  r.step = AuctionIQ.Queue.OrderStep(e)
+  r.other = AuctionIQ.Queue.OrderStep({ recipeID = 99 })
+  local m1 = AuctionIQ.Advisor.Measure(10)
+  r.shatterModel = m1 and m1.shatter
+  r.ing1 = m1 and m1.stats0.ingenuity
+  r.cast = AuctionIQ.Queue.Shatter()
+  r.salv = STUB.salvaged
+  STUB.aura = { spellId = 1235733 }
+  r.after = AuctionIQ.Queue.OrderStep(e)
+  local m2 = AuctionIQ.Advisor.Measure(10)
+  r.ing2 = m2 and m2.stats0.ingenuity
+  r.shatter2 = m2 and m2.shatter
+  ui.GetRecipeInfo, ui.GetProfessionInfoByRecipeID, ui.GetSalvagableItemIDs, ui.CraftSalvage = o.info, o.prof, o.salv, o.cs
+  C_UnitAuras, C_Container, ItemLocation, C_Item.GetItemCount = oldUA, oldC, oldIL, oldCount
+  AuctionIQ.Prices.Get = oldGet
+  return r
+end)()""")
+check("shatter: a Midnight enchanting craft without Shattering Essence shows Shatter first (others don't)", sh.step == "Shatter" and sh.other == "Craft")
+check("shatter: casts Shatter on the cheapest mote in your bags", sh.cast and sh.salv.id == 1235731 and sh.salv.slot == 2)
+check("shatter: with the buff on, the step is Craft again", sh.after == "Craft")
+check("shatter: the advisor counts Shattering Essence before it's cast (as CraftSim), and not twice once it's on",
+      sh.shatterModel and not sh.shatter2 and sh.ing1 == sh.ing2 + 5)
+check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
+run("AuctionIQ.Queue.Clear()")
+check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77
+      and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
+run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
+check("orders: once claimed, the order opens and its button moves on to Craft",
+      L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "craft" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
+check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
+run("STUB.crafted = nil; STUB.oldCraft = C_TradeSkillUI.CraftRecipe; C_TradeSkillUI.CraftRecipe = function(id, n, r, _, order, conc) STUB.crafted = { id = id, order = order, conc = conc } end")
+rp = L.eval("""(function()
+  local e = { orderID = '77', recipeID = 10, reagents = {}, concentration = 999 }
+  local ok = AuctionIQ.Queue.Replan(e)
+  return { ok = ok, conc = e.concentration, n = #e.reagents }
+end)()""")
+check("orders: Craft works the order out again from the live order (a stale plan's Concentration is dropped)", rp.ok and rp.conc is None and rp.n > 0)
+check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
+run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
+check("orders: when crafted, the button reads Turn in and turns it in", CH.ScanUI.ClaimState(by[77]) == "turnin" and CH.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
+run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
+run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
@@ -1878,7 +2057,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
@@ -2343,6 +2522,14 @@ check("statements: a line opens its transactions", any(r.go is not None and r.go
 check("statements: the period steps from This week", St.SetPeriod("week") == "week" and St.Step(1) == "lastweek" and St.SetPeriod("week") == "week")
 brows = [plain(r.cells[1]) for r in LUI.Rows("balance", L.eval("{}"))[0].values()]
 check("statements: the Balance Sheet carries the market value as a memo", any("Memo: inventory at market value" in x for x in brows) and any("Net worth" in x for x in brows))
+check("Balance Sheet: inventory split by how fast it becomes gold adds up to inventory",
+      abs(bal.liquid.week + bal.liquid.slow + bal.liquid.dead - bal.inventory) < 1)
+check("Balance Sheet: speed buckets from your own sales", St.Speed(5, 30) == "week" and St.Speed(20, 30) == "slow" and St.Speed(50, 30) == "dead" and St.Speed(3, 0) == "dead")
+check("Balance Sheet: free gold is gold less what the queue still has to buy", abs(bal.freeGold - (bal.gold - bal.committed)) < 1
+      and any("Free gold" in x for x in brows) and any("Sells within a week" in x for x in brows))
+br = St.Bridge(0, L.eval("time()") + 1)
+check("Balance Sheet: the net worth bridge adds up, opening to closing",
+      br is None or abs(br.opening + br.netIncome + br.unclassified + br.prices - br.closing) < 1)
 crows = [plain(r.cells[1]) for r in LUI.Rows("cashflow", L.eval("{}"))[0].values()]
 check("statements: the biggest item is named when it carries a quarter or more of inventory", (bal.top is None) or (bal.top.worth / max(bal.inventory, 1) < 0.25) or any("Largest:" in x for x in brows))
 check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
@@ -2354,8 +2541,9 @@ run("AuctionIQ.UI.Page('ledger', 'inventory')")
 check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
 ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
 check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
+run("Enum.CraftingOrderReagentSource = { Any = 0, Customer = 1, Crafter = 2, None = 3 }")
 fo = CH.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
-  { source = 1, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
+  { source = 0, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
   { source = 2, reagentInfo = { reagent = { itemID = 202 }, dataSlotIndex = 2, quantity = 3 } } } }"""))
 check("orders: only reagents the customer gives come off your cost, not ones the crafter must bring",
       fo.providedSlots[1] == 2 and fo.providedSlots[2] is None and len(list(fo.provided.values())) == 1)

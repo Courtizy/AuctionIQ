@@ -110,16 +110,52 @@ function Next.List(now)
 	end
 	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
 	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
+	-- the queue's shopping list: what still has to be bought before queued crafts can start
+	if CH.Queue and CH.Queue.ShoppingList then
+		local ok, list, total = pcall(CH.Queue.ShoppingList)
+		if ok and list then
+			local buys, names, ids = {}, {}, {}
+			for _, r in ipairs(list) do
+				if (r.buy or 0) > 0 then
+					buys[#buys + 1] = r
+					ids[r.itemID] = true
+					if #names < 3 then names[#names + 1] = string.format("%d x %s", r.buy, name(r.itemID)) end
+				end
+			end
+			if #buys > 0 then
+				-- a cost, not a gain: it goes in the text, so the card doesn't read it as expected benefit
+				add({ title = "Buy reagents", detail = string.format("%d reagent%s for your queue, about %s: %s%s", #buys, #buys == 1 and "" or "s",
+					CH.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
+					risk = "listings move: the AH's Shop queue buys at what's up when you get there",
+					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
+			end
+		end
+	end
 
 	if CH.Ledger and CH.Ledger.Available() then
 		local hour = tonumber(date("%H", now))
+		-- the Trade call for an item, so a card hands over the same quantity and reason Trade shows
+		local calls
+		local function postCall(id)
+			if not calls then
+				calls = {}
+				local ok, plan = pcall(function() return CH.TradingUI and CH.TradingUI.PostPlan() or {} end)
+				local ok2, adv = pcall(function() return ok and CH.TradingUI.Advice(plan, now) or {} end)
+				if ok2 then calls = adv end
+			end
+			return calls[id]
+		end
 		for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
 					gold = e.gold, tier = 1, act = postAct("Post"),
 					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
-					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Post now" } } })
+					go = { "operations", "post", (function()
+						local a = postCall(e.id)
+						return { name = name(e.id), id = e.id, title = "Post now", qty = a and a.qty, unit = "items",
+							action = a and a.action, why = a and a.reason }
+					end)() } })
 			end
 		end
 

@@ -15,12 +15,13 @@ function O.FromOrder(order)
 	local provided, slots = {}, {}
 	-- only what the customer gives comes off your cost: an order's list can also name reagents the
 	-- crafter must bring (source Crafter), which you still pay for
+	-- (the game lists what the customer gives; only a source of Crafter means you bring it)
 	local SRC = Enum and Enum.CraftingOrderReagentSource
-	local customer = SRC and SRC.Customer or 1
+	local crafter = SRC and SRC.Crafter
 	for _, r in ipairs(order.reagents or {}) do
 		local info = r.reagentInfo or r
 		local slot = info.dataSlotIndex or r.dataSlotIndex or r.slotIndex
-		local given = r.source == nil or r.source == customer
+		local given = crafter == nil or r.source ~= crafter
 		if info and info.reagent and slot and given then
 			table.insert(provided, { reagent = { itemID = info.reagent.itemID }, itemID = info.reagent.itemID, dataSlotIndex = slot, quantity = info.quantity or 1 })
 			slots[slot] = (slots[slot] or 0) + (info.quantity or 1) -- units the customer gives in this slot
@@ -73,7 +74,29 @@ CH.On("TRADE_SKILL_SHOW", function() O.Hook() end)
 
 --- Open an order the way the game does: the profession's Crafting Orders tab, showing that order.
 --- Falls back to the recipe when the order view isn't there. Returns true when the order opened.
-function O.Open(order, recipeID)
+--- Tick (or untick) Use Concentration on the order's page, as clicking its toggle would.
+--- Returns true when the page took it.
+function O.UseConcentration(on)
+	local pf = ProfessionsFrame
+	local view = pf and pf.OrdersPage and pf.OrdersPage.OrderView
+	local form = view and view.OrderDetails and view.OrderDetails.SchematicForm
+	if not form then return false end
+	local choices = form.Details and form.Details.CraftingChoicesContainer
+	local button = (choices and choices.ConcentrateContainer and choices.ConcentrateContainer.ConcentrateToggleButton)
+		or (form.Concentrate and form.Concentrate.ConcentrateToggleButton)
+	if button and button.GetChecked and button.Click and button.IsShown and button:IsShown() then
+		if button.IsEnabled and not button:IsEnabled() then return false end -- not enough, or already top rank
+		if (button:GetChecked() and true or false) ~= on then button:Click() end
+		return (button:GetChecked() and true or false) == on
+	end
+	local tx = form.GetTransaction and form:GetTransaction() or form.transaction
+	if tx and tx.SetApplyConcentration then tx:SetApplyConcentration(on); return true end
+	return false
+end
+
+--- Show an order on the Crafting Orders tab. conc ticks Use Concentration once the page is up,
+--- when the advisor's craft for it uses Concentration.
+function O.Open(order, recipeID, conc)
 	local pf = ProfessionsFrame
 	local page = pf and pf.OrdersPage
 	if order and page and page.ViewOrder then
@@ -81,7 +104,14 @@ function O.Open(order, recipeID)
 			pf:SetTab(pf.craftingOrdersTabID)
 		end
 		local ok = pcall(page.ViewOrder, page, order)
-		if ok then return true end
+		if ok then
+			if conc then
+				-- the page fills in its reagents a moment later, and that can reset the toggle
+				local function tick() O.UseConcentration(true) end
+				if C_Timer then C_Timer.After(0.2, tick); C_Timer.After(0.8, tick) else tick() end
+			end
+			return true
+		end
 	end
 	if recipeID and C_TradeSkillUI and C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(recipeID) end
 	return false
@@ -248,6 +278,16 @@ function O.Rewards(order)
 	return out, total, kp
 end
 
+--- The reagents you supply for an order's craft, with how many you hold, most expensive first.
+function O.CostLines(result, r)
+	local out = CH.Advisor.CostLines(result, r.picks, r.finishing)
+	for _, l in ipairs(out) do
+		l.have = (C_Item and C_Item.GetItemCount and l.id and C_Item.GetItemCount(l.id, true, false, true, true)) or 0
+	end
+	table.sort(out, function(a, b) return (a.total or 0) > (b.total or 0) end)
+	return out
+end
+
 --- Every order the game has listed for the open profession, worked out like the advisor does:
 --- { order, orderID, recipeID, name, item, from, kind, minQuality, commission, rewards, rewardValue,
 ---   kp, cost, profit, quality, concentration, row, result, ok (some craft meets the minimum) }.
@@ -288,7 +328,11 @@ function O.List()
 			tiers = result and result.model and result.model.maxQ,
 			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
 			line = line, expansion = expansion, current = not line or not current or line == current,
-			have = have, missing = missing })
+			have = have, missing = missing,
+			customer = order.orderType == 3 and "NPC" or order.customerName or TYPES[order.orderType] or "?",
+			costLines = r and result and O.CostLines(result, r) or nil,
+			-- no row because a reagent you'd supply has no price, not because the quality is out of reach
+			unpriced = not r and result and result.model and result.model.unpriced or nil })
 	end
 	table.sort(out, function(a, b)
 		if a.ok ~= b.ok then return a.ok end
@@ -308,6 +352,21 @@ function O.Debug()
 		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
+		-- what the order lists, and who brings it (source 1 customer, 2 crafter)
+		local given = {}
+		for _, r in ipairs(order.reagents or {}) do
+			local i = r.reagentInfo or r
+			given[#given + 1] = string.format("%s:%sx%s@%s", tostring(r.source), tostring(i.reagent and i.reagent.itemID), tostring(i.quantity), tostring(i.dataSlotIndex or r.slotIndex))
+		end
+		CH.Print(string.format("  reagentState %s, listed: %s", tostring(order.reagentState), #given > 0 and table.concat(given, " ") or "none"))
+		-- the recipe's slots: data slot, units, first item, to match against what the order lists
+		local sch = C_TradeSkillUI.GetRecipeSchematic and C_TradeSkillUI.GetRecipeSchematic(order.spellID, false)
+		local slots = {}
+		for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
+			local first = sl.reagents and sl.reagents[1]
+			slots[#slots + 1] = string.format("%s:%sx%s", tostring(sl.dataSlotIndex), tostring(first and (first.itemID or first.reagent and first.reagent.itemID)), tostring(sl.quantityRequired))
+		end
+		CH.Print("  recipe slots: " .. (#slots > 0 and table.concat(slots, " ") or "none"))
 		if not ok then
 			CH.Print(head .. " error " .. tostring(result))
 		elseif not result then
@@ -319,8 +378,8 @@ function O.Debug()
 				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
 					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
 			end
-			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
-				#(result.rows or {}), table.concat(parts, "; ")))
+			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s%s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
+				#(result.rows or {}), table.concat(parts, "; "), m.unpriced and ("; no price for item " .. tostring(m.unpriced)) or ""))
 		end
 	end
 end

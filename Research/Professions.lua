@@ -22,6 +22,7 @@ local function concentration(professionID)
 	if not id or id == 0 then return nil end
 	local c = C_CurrencyInfo.GetCurrencyInfo(id)
 	if not c then return nil end
+	if c.iconFileID and CH.db then CH.db.concIcon = c.iconFileID end -- for the Concentration icon everywhere
 	return c.quantity, c.maxQuantity
 end
 

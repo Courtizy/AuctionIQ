@@ -172,6 +172,7 @@ C_TradeSkillUI = {
 		if id == 2 then return { learned = false, name = "Unlearned", qualityItemIDs = { 100 } } end
 		return { learned = true, name = "No price", qualityItemIDs = { 555 } }
 	end,
+	GetReagentSlotStatus = function(mcr) return STUB.lockedSlot == mcr end,
 	GetRecipeSchematic = function(id)
 		if id == 10 then
 			return { outputItemID = 301, quantityMin = 1, quantityMax = 1, reagentSlotSchematics = {
@@ -182,9 +183,9 @@ C_TradeSkillUI = {
 			} }
 		end
 		if id == 11 then
-			return { outputItemID = 311, quantityMin = 2, quantityMax = 2, reagentSlotSchematics = {
+			return { recipeID = 11, outputItemID = 311, quantityMin = 2, quantityMax = 2, reagentSlotSchematics = {
 				{ reagentType = 1, required = true, dataSlotIndex = 1, quantityRequired = 3, reagents = { { itemID = 211 }, { itemID = 212 } } },
-				{ reagentType = 2, required = false, dataSlotIndex = 5, quantityRequired = 1, reagents = { { itemID = 221 }, { itemID = 222 } } },
+				{ reagentType = 2, required = false, dataSlotIndex = 5, quantityRequired = 1, slotInfo = { mcrSlotID = 77 }, reagents = { { itemID = 221 }, { itemID = 222 } } },
 			} }
 		end
 		if id == 12 then

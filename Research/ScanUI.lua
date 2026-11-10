@@ -34,14 +34,15 @@ local COLS = {
 		{ "Points", 524, 60, "concentration" }, { "Extra/pt", 586, 100, "gainPerPoint" }, { "Can make", 688, 136, "canMakeConc" } },
 	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
 		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
-	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
-		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Order profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
+	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
+	orders = { { "Recipe", 62, 240, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
+		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "", 734, 90, "concentration" } },
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
 local SORT = { craft = { key = "profit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
 local VIEWS = { { "craft", "Craft", 60 }, { "conc", "Concentration", 108 }, { "buy", "Buy vs craft", 96 } }
-local NAMES = { name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
+local NAMES = { concentration = "Concentration needed", name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
 	perPoint = "gold per Concentration point", gainPerPoint = "gold Concentration adds per expected point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
 	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
 	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit",
@@ -199,6 +200,9 @@ function SUI.OrderLines(d)
 			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
 		elseif d.learned == false then
 			table.insert(lines, { T.Color("bad", "You haven't learned this recipe.") })
+		elseif d.unpriced then
+			local n = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(d.unpriced)) or ("item " .. d.unpriced)
+			table.insert(lines, { T.Color("bad", "No price for " .. n .. ": TSM has no value for it, so the cost can't be worked out.") })
 		else
 			table.insert(lines, { T.Color("bad", "No craft reaches the quality this order asks for.") })
 		end
@@ -213,9 +217,48 @@ function SUI.OrderLines(d)
 	return lines
 end
 
-local function hover(owner, i)
+--- A work order cell's own tooltip: rewards (3), profit (4) or crafting costs (5). nil for the rest.
+function SUI.OrderCellLines(d, col)
+	local T, M = CH.Theme, CH.FormatMoney
+	if col == 3 then
+		local lines = { { "Rewards" } }
+		for _, rw in ipairs(d.rewards) do
+			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
+			table.insert(lines, { CH.Window.ItemIcon(rw.id, 14) .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
+				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+		end
+		if not d.rewards[1] then table.insert(lines, { T.Color("muted", "No rewards beyond the commission.") }) end
+		table.insert(lines, { T.Color("muted", "Sellable rewards at what they bring after the AH cut.") })
+		return lines
+	elseif col == 4 and d.ok then
+		local pays = (d.commission or 0) + (d.rewardValue or 0)
+		local procs = (d.profit or 0) - (pays - (d.cost or 0))
+		local lines = { { "Profit" }, { "Commission, after the consortium's cut", M(d.commission) } }
+		if (d.rewardValue or 0) > 0 then table.insert(lines, { "Rewards you can sell", M(d.rewardValue) }) end
+		table.insert(lines, { "Reagents you supply", (d.cost or 0) > 0 and ("-" .. M(d.cost)) or M(0) })
+		if math.abs(procs) >= 100 then table.insert(lines, { "Resourcefulness, on average", money(procs) }) end
+		table.insert(lines, { "Profit", money(d.profit) })
+		if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. CH.Window.ConcIcon(12) .. " " .. math.floor(d.concentration + 0.5) .. " Concentration to reach the quality asked.") }) end
+		return lines
+	elseif col == 5 and d.ok then
+		local lines = { { "Crafting costs" } }
+		for _, l in ipairs(d.costLines or {}) do
+			table.insert(lines, { CH.Window.ItemIcon(l.id, 14) .. l.n .. " x " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or "")
+				.. T.Color(l.have >= l.n and "ok" or "bad", string.format("  (have %d)", l.have)), l.total and M(l.total) or T.Color("bad", "no price") })
+			for _, t in ipairs(CH.Advisor.HeldText(l)) do table.insert(lines, t) end
+		end
+		if not (d.costLines and d.costLines[1]) then table.insert(lines, { T.Color("ok", "The customer provides every reagent.") }) end
+		table.insert(lines, { "Total", M(d.cost or 0) })
+		table.insert(lines, { T.Color("muted", "Only what you supply: the customer's reagents aren't counted.") })
+		return lines
+	end
+	return nil
+end
+
+local function hover(owner, i, col)
 	local r = data[i + offset]
 	if not r then return end
+	if mode == "orders" then CH.Window.Tooltip(owner, SUI.OrderCellLines(r, col) or SUI.OrderLines(r)); return end
 	if mode ~= "recipes" then CH.Window.Tooltip(owner, SUI.OrderLines(r)); return end
 	local T = CH.Theme
 	if r.header then
@@ -342,6 +385,24 @@ local function build()
 		local blank = {}
 		for j, c in ipairs(cols) do blank[j] = { "", c[2], c[3], c[5] } end
 		tables[m] = Wd.Table(frame, blank, N, -54, H, click, hover, W)
+		if m == "orders" then
+			-- a Claim button at the start of each order's row
+			for i, r in ipairs(tables[m]) do
+				local b = T.Button(frame, "Claim", 50, H - 2)
+				b:SetPoint("TOPLEFT", 10, -54 - i * H + 2)
+				local lvl = r.button and r.button.GetFrameLevel and r.button:GetFrameLevel()
+				if lvl and b.SetFrameLevel then b:SetFrameLevel(lvl + 2) end
+				b:SetScript("OnClick", function()
+					-- say what went wrong instead of failing silently (errors are often hidden)
+					local ok, err = xpcall(SUI.Claim, debugstack and function(m) return tostring(m) .. "\n" .. debugstack(2, 3, 0) end or tostring, data[i + offset])
+					if not ok then CH.Print("that step hit an error: " .. tostring(err)) end
+				end)
+				b:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.ClaimLines(data[i + offset])) end)
+				b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				b:Hide()
+				r.claim = b
+			end
+		end
 		heads[m] = {}
 		for j, c in ipairs(cols) do
 			local hb = CreateFrame("Button", nil, frame)
@@ -414,12 +475,14 @@ local function showTable()
 		for _, r in ipairs(rows) do
 			for _, c in ipairs(r.cells) do c:SetText("") end
 			if r.button then r.button:SetShown(on) end
+			if r.claim and not on then r.claim:Hide() end
 			if not on then r.bg:Hide() end
 		end
 		for _, hb in ipairs(heads[m]) do
 			hb:SetShown(on)
 			local sorted = on and SORT[m].key == hb.key
-			hb.text:SetText(not on and "" or sorted and T.Color("accent", hb.label .. (SORT[m].asc and " ^" or " v")) or hb.label)
+			local label = m == "orders" and hb.key == "concentration" and CH.Window.ConcIcon(14) or hb.label
+			hb.text:SetText(not on and "" or sorted and T.Color("accent", label .. (SORT[m].asc and " ^" or " v")) or label)
 		end
 	end
 	if SUI.olderButton then
@@ -460,7 +523,7 @@ function SUI.UpdateNext()
 	local b = SUI.nextButton
 	if not b then return end
 	local _, step = nextOrder()
-	local label = (step == "Turn in" and "Turn in next") or (step == "Craft" and "Craft next") or "Claim next"
+	local label = (step == "Turn in" and "Turn in next") or (step == "Craft" and "Craft next") or (step == "Shatter" and "Shatter next") or "Claim next"
 	if b.text then b.text:SetText(label) elseif b.SetText then b:SetText(label) end
 end
 
@@ -491,18 +554,150 @@ function SUI.Next()
 	if step == "Claim" then
 		-- show the claimed order, as the game does when you claim it yourself
 		local o = CH.Orders.Live(e.orderID)
-		if o then CH.Orders.Open(o) end
+		if o then CH.Orders.Open(o, e.recipeID, e.concentration ~= nil) end
 	elseif step == "Turn in" and C_Timer then
 		-- the list changes once the game takes it: fetch again for the next order
 		C_Timer.After(1, SUI.FetchOrders)
 	end
 	if step then
-		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or "crafting", e.name or "?"))
+		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or step == "Shatter" and "shattering a mote before" or "crafting", e.name or "?"))
 	elseif e then
 		CH.Print(e)
 	end
 	SUI.UpdateNext()
 end
+
+-- Claiming an order from its row ---------------------------------------------------------------
+local claimedID, claimedRow -- the order we asked the game to claim, to show it once the game says yes
+
+local function claimedOrder()
+	local co = C_CraftingOrders
+	return co and co.GetClaimedOrder and co.GetClaimedOrder()
+end
+
+--- What an order row's button does next, as CraftSim's does: "claim", "craft" (it's yours: crafts
+--- it with the advisor's reagents and Concentration), "turnin" (crafted), or "busy" (another order is
+--- claimed: the game allows one at a time).
+function SUI.ClaimState(d)
+	if not (d and d.orderID) then return nil end
+	local c = claimedOrder()
+	if c and CH.Orders.Same(c.orderID, d.orderID) then
+		if c.isFulfillable then return "turnin" end
+		return CH.Queue.NeedsShatter(d.recipeID) and "shatter" or "craft"
+	end
+	return c and "busy" or "claim"
+end
+
+local LABELS = { claim = "Claim", busy = "Claim", shatter = "Shatter", craft = "Craft", turnin = "Turn in" }
+function SUI.ClaimLabel(state) return LABELS[state] end
+
+function SUI.ClaimLines(d)
+	local T, M = CH.Theme, CH.FormatMoney
+	local state = SUI.ClaimState(d)
+	if not state then return { { "Claim" } } end
+	local lines = { { LABELS[state] .. " " .. (d.name or "the order"), d.customer or d.from or "" } }
+	if state == "shatter" then
+		local id = CH.Queue.ShatterItem()
+		local name = id and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+		table.insert(lines, { T.Color("muted", "Casts Shatter on " .. (id and (CH.Window.ItemIcon(id, 12) .. (name or "a mote")) .. " (your cheapest mote)" or "a mote")
+			.. " for Shattering Essence: more Resourcefulness, Multicraft and Ingenuity on the craft. Then the button crafts.") })
+		if not id then table.insert(lines, { T.Color("bad", "You have no mote to Shatter.") }) end
+	elseif state == "craft" then
+		table.insert(lines, { T.Color("muted", "Crafts it into the order with the advisor's reagents"
+			.. (d.concentration and (" and " .. CH.Window.ConcIcon(12) .. " " .. math.floor(d.concentration + 0.5) .. " Concentration") or "") .. ".") })
+	elseif state == "turnin" then
+		table.insert(lines, { T.Color("muted", "Turns the order in for " .. M(d.commission or 0) .. " and its rewards.") })
+	elseif state == "busy" then
+		table.insert(lines, { T.Color("bad", "You already have an order claimed. Turn it in or release it first.") })
+	else
+		table.insert(lines, { T.Color("muted", "Claims the order. The button then crafts it, then turns it in.") })
+		if not d.ok then table.insert(lines, { T.Color("bad", "AuctionIQ couldn't work this one out: craft it from the order's page.") }) end
+	end
+	return lines
+end
+
+-- the order's queue entry, queueing it first if it isn't (so the queue's craft and turn-in do the work)
+local function entryFor(d)
+	local e = CH.Queue.ForOrder(d.orderID)
+	if not e and d.ok and d.row and d.result then
+		e = CH.Queue.Add(d.result, d.row, 1, { orderID = d.orderID, customer = d.from, special = d.kp })
+	end
+	return e
+end
+
+--- One click, one step for this order: claim it, craft it, turn it in. Must be called from a click.
+function SUI.Claim(d)
+	local state = SUI.ClaimState(d)
+	if not state then return false end
+	if state == "busy" then
+		CH.Print("you already have an order claimed: turn it in or release it before claiming another.")
+		return false
+	end
+	if state == "claim" then
+		local o = CH.Orders.Live(d.orderID)
+		if not o then
+			CH.Print("that order isn't listed any more: click Work orders to fetch them again.")
+			return false
+		end
+		entryFor(d)
+		local ui = C_TradeSkillUI
+		local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+		claimedID, claimedRow = o.orderID, d
+		C_CraftingOrders.ClaimOrder(o.orderID, info and info.profession)
+		return true
+	end
+	if state == "shatter" then
+		-- Shatter needs no plan for the order: just the buff
+		local ok, why = CH.Queue.Shatter()
+		if not ok then CH.Print("can't Shatter: " .. tostring(why)) end
+		return ok
+	end
+	local e = entryFor(d)
+	if not e then
+		-- nothing AuctionIQ can craft for it: leave it to the order's page
+		CH.Orders.Open(claimedOrder(), d.recipeID, d.concentration ~= nil)
+		CH.Print("AuctionIQ can't craft " .. (d.name or "that order") .. " for you: use the order's page.")
+		return false
+	end
+	local ok, why = CH.Queue.Craft(e)
+	if not ok then CH.Print("can't " .. LABELS[state]:lower() .. " " .. (d.name or "that order") .. ": " .. tostring(why)); return false end
+	if state == "turnin" then
+		CH.Print("turned in: " .. (d.name or "?"))
+		if C_Timer then C_Timer.After(1, SUI.FetchOrders) end
+	end
+	return true
+end
+
+local function redraw()
+	if frame and frame:IsShown() and mode == "orders" then SUI.Refresh() end
+end
+
+CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
+	if not claimedID or not CH.Orders.Same(claimedID, orderID) then return end
+	claimedID = nil
+	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
+	if result ~= nil and result ~= ok then
+		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it.")
+	else
+		local o = CH.Orders.Live(orderID)
+		if o then CH.Orders.Open(o, nil, claimedRow and claimedRow.concentration ~= nil) end
+	end
+	claimedRow = nil
+	redraw()
+end)
+-- the button moves on (Craft, Turn in) as the game updates the claimed order
+CH.On("CRAFTINGORDERS_CLAIMED_ORDER_UPDATED", function() redraw() end)
+-- and to Craft once Shatter's buff lands
+local hadShatter
+CH.On("UNIT_AURA", function(_, unit)
+	if unit ~= "player" then return end
+	local has = CH.Queue.HasShatterBuff()
+	if has ~= hadShatter then hadShatter = has; redraw() end
+end)
+CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function() redraw() end)
+CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit)
+	if unit == "player" and C_Timer then C_Timer.After(0.8, redraw) end
+end)
 
 -- Work orders and first crafts.
 local function refreshLists()
@@ -530,7 +725,9 @@ local function refreshLists()
 		local fetching = CH.Orders.fetching and T.Color("accent", "  Fetching orders from the game...") or ""
 		local olderNote = older > 0 and T.Color("muted", showOlder and string.format("   %d from older expansions", older)
 			or string.format("   %d older-expansion orders hidden", older)) or ""
-		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp)) .. olderNote .. fetching
+		local total = 0
+		for _, d in ipairs(data) do if d.ok and (d.profit or 0) > 0 then total = total + d.profit end end
+		status:SetText(#data > 0 and string.format("%d Total Work Orders: %s profit, %s KP", #data, T.Color("ok", CH.FormatMoney(total)), T.Color("accent", kp)) .. olderNote .. fetching
 			or fetching ~= "" and fetching
 			or T.Color("muted", "No work orders found" .. (fetchNote and ": " .. fetchNote or " for this profession right now") .. ". Click Work orders twice to fetch again."))
 	else
@@ -543,16 +740,34 @@ local function refreshLists()
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
+		if r.claim then
+			local state = d and mode == "orders" and SUI.ClaimState(d)
+			r.claim:SetShown(state and true or false)
+			if state then
+				r.claim:SetText(SUI.ClaimLabel(state))
+				if r.claim.SetAlpha then r.claim:SetAlpha(state == "busy" and 0.45 or 1) end
+			end
+		end
 		if d and mode == "orders" then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
-			r.cells[2]:SetText(d.from)
-			r.cells[3]:SetText(money(d.commission))
-			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
-			-- what your reagents cost, always (like CraftSim): green when you hold them, red when you'd buy
-			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost or 0)))
-			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or "can't reach"))
-			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
+			r.cells[2]:SetText(d.customer or d.from)
+			-- reward icons (hover for what each is worth)
+			local icons = {}
+			for _, rw in ipairs(d.rewards) do icons[#icons + 1] = CH.Window.ItemIcon(rw.id, 15) .. (rw.count > 1 and rw.count or "") end
+			r.cells[3]:SetText(#icons > 0 and table.concat(icons, " ") or T.Color("muted", "-"))
+			r.cells[4]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
+			-- what the reagents you supply cost: green when you hold them, red when you'd buy
+			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or (d.cost or 0) == 0 and ""
+				or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost)))
+			-- the Concentration the craft needs, as CraftSim: 0 when its reagents (and Shatter) reach the rank
+			r.cells[6]:SetText(d.ok and tostring(math.floor((d.concentration or 0) + 0.5)) or T.Color("muted", "-"))
+			-- already crafted: what's left is handing it in, not whether you can reach it
+			if SUI.ClaimState(d) == "turnin" then
+				r.cells[4]:SetText(T.Color("ok", "crafted"))
+				r.cells[5]:SetText("")
+				r.cells[6]:SetText("")
+			end
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?") .. kpTag(true))

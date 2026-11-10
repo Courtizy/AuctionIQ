@@ -173,7 +173,13 @@ function St.Balance(char, now)
 	local L = CH.Ledger
 	now = now or time()
 	local ctx = context()
-	local b = { holders = {}, gold = 0, held = { book = 0, market = 0, costed = 0, free = 0, writedown = 0 }, listed = { book = 0, market = 0 } }
+	local b = { holders = {}, gold = 0, held = { book = 0, market = 0, costed = 0, free = 0, writedown = 0 }, listed = { book = 0, market = 0 },
+		liquid = { week = 0, slow = 0, dead = 0, n = { week = 0, slow = 0, dead = 0 } } }
+	-- how fast each item turns back into gold: your own sales over 30 days
+	local sold30 = {}
+	for _, r in ipairs(L.Records("Sales")) do
+		if r.id and r.time >= now - 30 * 86400 then sold30[r.id] = (sold30[r.id] or 0) + (r.quantity or 0) end
+	end
 	for _, h in ipairs(L.Holders()) do
 		if h.included ~= false and (not char or h.name == char) then
 			table.insert(b.holders, { name = h.name, money = h.money or 0 })
@@ -196,6 +202,9 @@ function St.Balance(char, now)
 			b.listed.book = b.listed.book + v.book * listed
 			b.listed.market = b.listed.market + v.market * listed
 			local worth = v.book * (e.total or 0)
+			local k = St.Speed(e.total or 0, sold30[e.id] or 0)
+			b.liquid[k] = b.liquid[k] + worth
+			b.liquid.n[k] = b.liquid.n[k] + 1
 			if not b.top or worth > b.top.worth then b.top = { id = e.id, name = e.name, worth = worth, units = e.total, v = v } end
 		end
 	end
@@ -203,7 +212,40 @@ function St.Balance(char, now)
 	b.assets = b.gold + b.inventory
 	b.market = b.held.market + b.listed.market
 	b.unrealized = b.market - b.inventory
+	-- gold already promised: reagents still to buy for the crafts you've queued
+	b.committed = 0
+	if CH.Queue and CH.Queue.ShoppingList then
+		local ok, _, total = pcall(CH.Queue.ShoppingList)
+		if ok then b.committed = total or 0 end
+	end
+	b.freeGold = b.gold - b.committed
 	return b
+end
+
+--- How fast stock turns back into gold, from your own sales: "week" (sells within a week),
+--- "slow" (1 to 4 weeks) or "dead" (none sold in 30 days, or over 4 weeks of stock).
+function St.Speed(held, sold30)
+	if (sold30 or 0) <= 0 then return "dead" end
+	local days = held / (sold30 / 30)
+	if days <= 7 then return "week" end
+	if days <= 28 then return "slow" end
+	return "dead"
+end
+
+--- Why net worth (gold plus inventory at AuctionIQ value, the daily snapshot) moved since `from`:
+--- { opening, netIncome, unclassified, prices (the rest: price changes on stock you hold and stock
+--- you gathered), closing, since (the snapshot day it starts from) } or nil without snapshots.
+function St.Bridge(from, to)
+	local L = CH.Ledger
+	if not L.WorthChange then return nil end
+	local change, first, last, firstK = L.WorthChange(from)
+	if not change then return nil end
+	local opening, closing = first.gold + first.inventory, last.gold + last.inventory
+	local inc = St.Income(from, to)
+	local cash = St.Cash(from, to)
+	local x = { opening = opening, closing = closing, netIncome = inc.netIncome or 0, unclassified = cash.unclassified or 0, since = firstK }
+	x.prices = closing - opening - x.netIncome - x.unclassified
+	return x
 end
 
 -- Cash Flow ------------------------------------------------------------------------------------
@@ -327,13 +369,16 @@ local function balanceRows(ctx)
 		local n = #b.holders - 6
 		if rest > 0 then table.insert(list, { n == 1 and b.holders[7].name or string.format("%d others", n), rest, kind = "sub" }) end
 	end
-	table.insert(list, { "Inventory held", b.held.book, kind = "line", go = { "ledger", "inventory" },
-		tip = "Bags, banks, mail and the warband bank, each item at the lower of what it cost and what it would bring after the AH cut and expected lost deposits." })
-	table.insert(list, { "Bought or crafted (lower of cost or net value)", b.held.costed, kind = "sub", go = { "ledger", "holdings" },
-		tip = b.held.writedown > 0 and ("Written down by " .. money(b.held.writedown) .. " where the market fell below what you paid.") or "Nothing is worth less than you paid for it." })
-	table.insert(list, { "Gathered or looted (net value)", b.held.free, kind = "sub",
-		tip = "Items that cost you nothing you recorded, at what they'd bring after the AH cut and expected lost deposits, the way a farm values its harvest." })
-	table.insert(list, { "Listed on the auction house", b.listed.book, kind = "line", go = { "operations", "post" }, tip = "Items on the AH now, valued the same way." })
+	table.insert(list, { "Inventory, by how fast it becomes gold", b.inventory, kind = "line", go = { "ledger", "inventory" },
+		tip = string.format("Bags, banks, mail, the warband bank and the AH, each item at the lower of what it cost and what it would bring after the AH cut and expected lost deposits. Bought or crafted %s%s; gathered or looted %s.",
+			money(b.held.costed + 0), b.held.writedown > 0 and (" (written down " .. money(b.held.writedown) .. ")") or "", money(b.held.free)) })
+	table.insert(list, { string.format("Sells within a week (%d items)", b.liquid.n.week), b.liquid.week, kind = "sub", go = { "ledger", "inventory" },
+		tip = "At your own sales rate over the last 30 days, what you hold sells in 7 days or less." })
+	table.insert(list, { string.format("Slow: 1 to 4 weeks (%d items)", b.liquid.n.slow), b.liquid.slow, kind = "sub", go = { "ledger", "inventory" },
+		tip = "At your sales rate, these take 1 to 4 weeks to sell." })
+	table.insert(list, { string.format("Dead or unsellable (%d items)", b.liquid.n.dead), b.liquid.dead, kind = "sub", go = { "operations", "dead" },
+		tip = "None sold in 30 days, or over 4 weeks of stock at your sales rate. Gold you can't count on soon." })
+	table.insert(list, { "Of which listed on the auction house", b.listed.book, kind = "memo", go = { "operations", "post" }, tip = "Items on the AH now, valued the same way." })
 	-- one item can carry most of the value: say so, with what its value rests on
 	if b.top and b.inventory > 0 and b.top.worth / b.inventory >= 0.25 then
 		local t = b.top
@@ -344,9 +389,26 @@ local function balanceRows(ctx)
 				money(t.v.market), money(t.v.nrv)) })
 	end
 	table.insert(list, { "Total assets", b.assets, kind = "total" })
-	table.insert(list, { "Liabilities", kind = "head" })
-	table.insert(list, { "None (nothing in WoW is owed)", 0, kind = "line" })
-	table.insert(list, { "Net worth", b.assets, kind = "total", tip = "What you own: gold plus inventory at book value." })
+	table.insert(list, { "Commitments", kind = "head" })
+	table.insert(list, { "Reagents to buy for your queue", b.committed > 0 and -b.committed or 0, kind = "line", go = { "operations", "shopping" },
+		tip = "Gold you've already promised: the reagents your queued crafts still need, at today's prices. Nothing in WoW is owed, so this is the only claim on your gold." })
+	table.insert(list, { "Free gold", b.freeGold, kind = "total", tip = "Gold less what your queue still has to buy: what you can spend without dropping a planned craft." })
+	table.insert(list, { "Net worth", b.assets, kind = "total", tip = "What you own: gold plus inventory at book value. Buying the queue's reagents swaps gold for stock, so it doesn't change this." })
+	-- how net worth moved over the period, tying the three statements together
+	if not ctx.opts.char then
+		local from, to = St.Range(nil, ctx.now)
+		local x = St.Bridge(from, to)
+		if x then
+			table.insert(list, { "", nil, kind = "gap" })
+			table.insert(list, { "Net worth over the period", kind = "head" })
+			table.insert(list, { "Opening net worth", x.opening, kind = "total", tip = "Gold plus inventory at AuctionIQ value, from the first daily snapshot in the period." })
+			table.insert(list, { "Net income", x.netIncome, kind = "line", go = { "ledger", "statement" }, tip = "From the Income Statement for the same period." })
+			table.insert(list, { "Unclassified gold movement", x.unclassified, kind = "line", go = { "ledger", "cashflow" }, tip = "From the Cash Flow statement for the same period." })
+			table.insert(list, { "Price changes on stock you hold, and other", x.prices, kind = "line", go = { "ledger", "inventory" },
+				tip = "The rest of the change: market prices moving on what you hold, and stock gathered or looted. Snapshots value stock at market, so this also carries the gap between market and book value." })
+			table.insert(list, { "Closing net worth", x.closing, kind = "total", tip = "Today's snapshot." })
+		end
+	end
 	table.insert(list, { "", nil, kind = "gap" })
 	table.insert(list, { "Memo: inventory at market value", b.market, kind = "memo", tip = "Every item at its AuctionIQ market price, before the AH cut. The Dashboard's figure." })
 	table.insert(list, { "Memo: profit not yet made", b.unrealized, kind = "memo", tip = "Market value less book value: what selling everything at market would add, before the cut. Not counted until it sells." })

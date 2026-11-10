@@ -691,7 +691,7 @@ local function batchRows(ctx)
 		if x and ctx.keepName(d.name or "") then
 			n, fc, act = n + 1, fc + x.forecast, act + x.actual
 			local word = x.main and ({ price = "Sale price", sell = "Sell-through", reagents = "Reagent cost", yield = "Craft yield" })[x.main] or "On forecast"
-			table.insert(out, { id = d.item, cells = { (d.name or "?") .. (d.conc and T.Color("muted", " (C)") or ""), d.char or "?",
+			table.insert(out, { id = d.item, cells = { (d.name or "?") .. (d.conc and (" " .. CH.Window.ConcIcon(13)) or ""), d.char or "?",
 				string.format("%d/%d", d.crafts, d.n), string.format("%d/%d", x.sold, x.made), money(x.forecast), money(x.actual), signed(x.miss),
 				T.Color(x.main and (x.causes[x.main] >= 0 and "ok" or "bad") or "muted", word) },
 				sort = { d.name or "", d.char or "", d.crafts, x.sold, x.forecast, x.actual, x.miss, x.main or "" },
@@ -815,5 +815,5 @@ LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")
 -- Plan payoff by recipe opens from Specialization, so it sits in Craft without its own nav line
 if LUI.ViewDef("plans") then LUI.ViewDef("plans").parent = "Craft" end
 LUI.Register("operations", {}, { "post", "market", "compare", "when", "rivals", "par", "dead", "rules" }, "Trade")
-LUI.Register("operations", {}, { "work", "queue", "shopping", "mail" }, "Queue")
+LUI.Register("operations", {}, { "ready", "work", "queue", "shopping", "mail" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })
