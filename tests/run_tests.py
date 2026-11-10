@@ -1637,8 +1637,12 @@ data = L.eval("AuctionIQ.UI.DashboardData()")
 w2 = L.eval("AuctionIQ.UI.WhatChanged")(data)
 mv = {m.key: m.gold for m in w2.moves.values()}
 check("What changed: sales and purchases come from the ledger, the rest of the gold change shows as unclassified",
-      all(abs(v) >= 10000 for v in mv.values()) and ("sales" not in mv or mv["sales"] == data.summary.sales)
-      and ("other" not in mv or abs(mv["other"] - (w2.gold - data.summary.cash)) < 1))
+      all(abs(v) >= 10000 for v in mv.values()) and data.cash is not None
+      and ("sales" not in mv or mv["sales"] == data.cash.inflows.auction + data.cash.inflows.other)
+      and ("other" not in mv or abs(mv["other"] - data.cash.unclassified) < 1))
+cf = CH.Statements.Cash(data.since, data.now)
+check("What changed and the Cash Flow statement agree: same range, same characters, same unclassified",
+      w2.gold == cf.change and abs(cf.unclassified - (cf.change - cf.classified)) < 1)
 # Do next cards carry a button that does the job: queue the Concentration craft or the restock
 run("""STUB.oldConcNow = AuctionIQ.ConcentrationNow
 AuctionIQ.ConcentrationNow = function(p) if p.name == 'Test Alchemy' then return 1000, 1000 end return STUB.oldConcNow(p) end
