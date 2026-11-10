@@ -598,7 +598,7 @@ local function refreshLists()
 			r.cells[3]:SetText(#icons > 0 and table.concat(icons, " ") or T.Color("muted", "-"))
 			r.cells[4]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
 			-- what the reagents you supply cost: green when you hold them, red when you'd buy
-			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or (d.cost or 0) == 0 and T.Color("ok", "provided")
+			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or (d.cost or 0) == 0 and ""
 				or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost)))
 			r.cells[6]:SetText(d.ok and d.concentration and (CH.Window.ConcIcon(14) .. " " .. math.floor(d.concentration + 0.5)) or T.Color("muted", "-"))
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
