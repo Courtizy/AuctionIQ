@@ -614,7 +614,26 @@ function LUI.Build(p, fs, panel)
 	det:SetSize(SIDE, ROWS * RH + 20)
 	local dbg = det:CreateTexture(nil, "BACKGROUND")
 	dbg:SetAllPoints()
-	dbg:SetColorTexture(1, 1, 1, 0.04)
+	dbg:SetColorTexture(1, 1, 1, 0.03)
+	-- the Next Move block and the price scenarios each sit on a darker card, so they read apart
+	-- from each other and from the table
+	local function card(top, bottom, accent)
+		local t = det:CreateTexture(nil, "BORDER")
+		t:SetPoint("TOPLEFT", 4, top)
+		t:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, bottom)
+		t:SetColorTexture(0, 0, 0, 0.45)
+		if accent then
+			local a = det:CreateTexture(nil, "ARTWORK")
+			a:SetPoint("TOPLEFT", 4, top)
+			a:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, top - 2)
+			local c = CH.Theme.accent
+			a:SetColorTexture(c[1], c[2], c[3], 1)
+			det.accentBar = a
+		end
+		return t
+	end
+	det.cardTop = card(-4, -114, true)
+	det.cardPrices = card(-220, -324)
 	local IW = SIDE - 20
 	det.kicker = fs(det, 10, -8, IW, "LEFT", "GameFontNormalSmall")
 	det.title = fs(det, 10, -24, IW, "LEFT", "GameFontNormalLarge")

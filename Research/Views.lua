@@ -331,7 +331,7 @@ function AV.Scenarios(ctx, r, p)
 	r, p = r or sc.reagents, p or sc.price
 	local out = {}
 	for key, c in pairs(CH.db.characters or {}) do
-		for _, prof in pairs(c.professions or {}) do
+		for pid, prof in pairs(c.professions or {}) do
 			for _, row in ipairs(prof.scan and prof.scan.rows or {}) do
 				-- each character's own scan: their stats make each craft's numbers
 				if row.profit and row.cost and row.cost > 0 and row.profit > 0 and ctx.keepName(row.name) then
@@ -340,11 +340,11 @@ function AV.Scenarios(ctx, r, p)
 					local net = parts.consumed - parts.returned
 					local be = CH.Decide.BreakEvenParts(parts, parts.price)
 					table.insert(out, { id = row.item, name = row.name, char = c.name or key, charKey = key, c = c, row = row,
-						prof = prof.name, scanAt = prof.scan.at, profit = now,
+						prof = prof.name, profID = pid, scanAt = prof.scan.at, profit = now,
 						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
 						breakEven = net > 0 and now / net or math.huge,
 						-- the sale price per item where the craft makes nothing, and how far the estimate can fall
-						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion,
+						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion, priceFrom = parts.priceFrom,
 						-- how many to make (Decide.Suggest), from this scan
 						suggest = CH.Decide.Suggest(CH.Decide.ScanInputs(row), { fall = p }) })
 				end
@@ -407,6 +407,10 @@ function AV.ScenarioTip(x, j)
 			add(out, "Revenue at the estimate, before deposits", parts.revenue + parts.deposits)
 			table.insert(out, { "Break-even = estimate x costs / revenue", M(x.salePrice) })
 			table.insert(out, { "The estimate can fall", pct(x.cushion) })
+			if x.priceFrom ~= "scan" then
+				table.insert(out, { T.Color("muted", "This scan didn't save its sale price, so this uses " .. (x.priceFrom == "market" and "today's market price" or "the price worked back from what an item keeps")
+					.. ". Rescan the profession for the exact figure.") })
+			end
 		else
 			table.insert(out, { T.Color("muted", "This scan is older and didn't save a sale price. Scan the profession again.") })
 		end
@@ -496,6 +500,17 @@ function AV.PlanText(plan)
 	return string.format("%s takes it from %s to %s a craft.", name, M(plan.from or 0), M(plan.to or 0))
 end
 
+--- Rescan the profession a Compare crafts row came from. Returns ok, what happened.
+function AV.Rescan(x)
+	local open = CH.OpenProfessionID and CH.OpenProfessionID()
+	local me = CH.CharacterKey and CH.CharacterKey()
+	if x.charKey ~= me then return false, "That scan is " .. (x.char or "?") .. "'s: log in as them, open " .. (x.prof or "the profession") .. ", then rescan." end
+	if not open or (x.profID and open ~= x.profID) then return false, "Open " .. (x.prof or "the profession") .. " first (a crafting table for the best numbers), then rescan." end
+	if not (CH.ScanUI and CH.ScanUI.Start) then return false, "The scanner isn't loaded." end
+	CH.ScanUI.Start()
+	return true, "Scanning " .. (x.prof or "the profession") .. ": this list updates when it finishes."
+end
+
 --- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
 function AV.QueueScan(x, n, conc, inp)
 	local e = CH.Queue and CH.Queue.FromScan(x.charKey, x.c, x.row, conc)
@@ -534,8 +549,8 @@ function AV.CraftDetail(d, ctx)
 	local row = x.row
 	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
 	local figures = { { "PROFIT", T.Color(profit >= 0 and "ok" or "bad", gold(profit)) },
-		{ "AT RISK", sc and T.Color("accent", gold(sc.slow.atRisk)) or "-" },
-		{ "BREAK-EVEN", x.salePrice and gold(x.salePrice) or "-" } }
+		{ "AT RISK", sc and T.Color("bad", gold(sc.slow.atRisk)) or T.Color("muted", "-") },
+		{ "BREAK-EVEN", x.salePrice and T.Color("gold", gold(x.salePrice)) or T.Color("muted", "-") } }
 	local rows = {}
 	rows[#rows + 1] = { "Make", sc and tostring(sug.n) or T.Color("muted", sug and sug.n == 0 and "0" or "-") }
 	if sc then rows[#rows + 1] = { "Left after a week", string.format("%d · %d · %d", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)) } end
@@ -555,12 +570,16 @@ function AV.CraftDetail(d, ctx)
 	local plan = AV.PlanFor(x.id)
 	local why = sc and (sug.why and (sug.why .. " ") or "") or (sug and sug.why) or "No sale price in this scan, so no batch size."
 	local note = (plan and (AV.PlanText(plan) .. " ") or "") .. why
-	local actions = { { label = "Queue " .. n .. " crafts", tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
+	local actions = { { label = "Queue " .. n .. (n == 1 and " craft" or " crafts"), tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
 		run = function() return AV.QueueScan(x, n, false, inp) end } }
 	if row.concProfit and row.concProfit > (row.profit or 0) and row.concAccounts then
 		actions[2] = { label = "Queue with Concentration", tip = "Spend Concentration on these " .. n .. " crafts.",
 			run = function() return AV.QueueScan(x, n, true, inp) end }
 	end
+	-- a fresh scan: only this character can rescan its own profession, at the profession window
+	actions[#actions + 1] = { label = "Rescan " .. (x.prof or "profession"), tip = "Scan every recipe of " .. (x.prof or "this profession") .. " again with today's prices. "
+		.. "Log in as " .. (x.char or "?") .. ", open the profession at a crafting table, then press this (or Scan in the profession window's AuctionIQ bar).",
+		run = function() return AV.Rescan(x) end }
 	return { kicker = live and "NEXT MOVE  ·  LIVE" or "NEXT MOVE", title = string.format("Craft %d x %s", n, x.name or "?"),
 		sub = (live and T.Color("ok", "Live from the profession") or (T.Color("muted", string.format("%s, scanned %s ago", x.char or "?", age))))
 			.. T.Color("muted", string.format("  ·  ~%d items", whole(n * made))),

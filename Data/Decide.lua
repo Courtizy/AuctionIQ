@@ -41,8 +41,16 @@ function D.AccountParts(row, acc)
 	if a and a.sales and a.cost then
 		local revenue = a.sales + (a.mcGold or 0)
 		local units = (a.unit and a.unit > 0) and revenue / a.unit or 0
+		-- scans before the sale price was saved: today's market price for the item, else the price
+		-- worked back from what an item kept after the cut
+		local price, from = a.price, "scan"
+		if not price then
+			price = row and row.item and CH.Prices and CH.Prices.Get and CH.Prices.Get("chvalue", "i:" .. row.item)
+			from = price and "market" or nil
+			if not price and a.unit and a.unit > 0 then price, from = a.unit / (CH.AH_CUT or 0.95), "kept" end
+		end
 		return { revenue = revenue, consumed = a.cost, returned = a.resGold or 0, deposits = (a.deposit or 0) * units,
-			fixed = 0, items = units, price = a.price }
+			fixed = 0, items = units, price = price, priceFrom = from }
 	end
 	return { revenue = (row.profit or 0) + (row.cost or 0), consumed = row.cost or 0, returned = 0, deposits = 0, fixed = 0 }
 end

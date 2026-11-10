@@ -1443,6 +1443,16 @@ check("Craft pane: profit, gold at risk and break-even up top; make, stock left 
 check("Craft pane: if prices move, each scenario explaining itself on hover",
       plain(det.section.head) == "IF PRICES MOVE" and [plain(r[1]) for r in srows] == ["Profit now", "Reagents +10%", "Price -10%", "Both", "Room to rise"]
       and all(r.tip is not None and plain(r.tip[1][1]) != "" for r in srows))
+acts = [plain(a.label) for a in det.actions.values()]
+check("Craft pane: a Rescan button for the scan's profession", acts[-1].startswith("Rescan "))
+rs = L.eval("(function() local x = AuctionIQ.LedgerUI.Selected and nil; return { AuctionIQ.AnalyticsViews.Rescan({ charKey = 'Someone-Else', char = 'Someone', prof = 'Alchemy' }) } end)()")
+check("Craft pane: Rescan says whose scan it is when another character made it", not rs[1] and "log in as them" in rs[2] and "Someone" in rs[2])
+figc = [f[2] for f in det.figures.values()]
+check("Craft pane: the figures are coloured (profit green or red, gold at risk red, break-even gold)",
+      all("|c" in f for f in figc))
+# an older scan without a saved sale price still gets a break-even, from today's market price
+pa_old = L.eval("AuctionIQ.Decide.AccountParts({ item = 100, accounts = { sales = 120, cost = 100, unit = 12 } })")
+check("older scans: break-even falls back to today's market price", pa_old.price is not None and pa_old.priceFrom == "market")
 run("AuctionIQ.db.queue = {}; AuctionIQ.db.decisions = {}")
 run("local b = AuctionIQ.UI.Pages().ledger.detail.buttons[1]; b.scripts.OnClick(b)")
 q = list(L.eval("AuctionIQ.db.queue").values())
