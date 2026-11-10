@@ -23,7 +23,7 @@ ElvUI's value colour, ToxiUI's font for text and Montserrat Black for titles.
   Break-even prices are gold (`#e0a83a`).
 - Profit is green, loss and warnings are red. Numbers in tables are right-aligned.
 - The advisor opens with a Next Move block: the craft and how many, expected output if Multicraft
-  applies, then profit per craft, break-even per item and the chance to recover the spend in 7 days.
+  applies, then Profit, Break-even and Recover (the chance to recover the spend in 7 days); each one's hover explains it and shows the breakdown.
 
 ## Two palettes, one window
 

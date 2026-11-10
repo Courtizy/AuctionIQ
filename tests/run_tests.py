@@ -137,6 +137,9 @@ nm20 = CH.AdvisorUI.RenderNext()
 check("advisor: Next Move and the queue button follow the quantity", nm20.head.startswith("Craft 20 ") and CH.AdvisorUI.QueueAction()[0] == "Queue 20 crafts"
       and abs(nm20["items"] - 20 * nm["items"]) < 1e-6)
 check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc) or ("Multicraft" in nm20.sub))
+for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "Recover")):
+    tp = list(L.eval("AuctionIQ.AdvisorUI.NextTip('%s')" % w).values())
+    check("advisor: the %s hover explains it and shows the breakdown" % head, tp[0][1] == head and len(tp) >= 3)
 run("AuctionIQ.AdvisorUI.SetQty(1)")
 g = L.eval("{ AuctionIQ.Theme.GradientColors('MAGE') }")
 check("theme: ToxiUI's class gradient for bars", abs(g[1][1] - 0) < 1e-6 and abs(g[1][3] - 0xd7 / 255) < 1e-6 and abs(g[2][3] - 1) < 1e-6)

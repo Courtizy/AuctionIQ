@@ -98,12 +98,23 @@ local function build()
 	nx.head = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 8, -17, 330, "LEFT", "GameFontHighlight")), 14)
 	nx.sub = CH.Window.OneLine(CH.Window.Text(nx, WIDTH - 12 - 8 - 180, -20, 180, "RIGHT", "GameFontDisableSmall"))
 	nx.stats = {}
-	for i, lab in ipairs({ "PROFIT / CRAFT", "BREAK-EVEN / ITEM", "RECOVER IN 7 DAYS" }) do
+	-- short labels; each figure's hover says what it means and how it was reached
+	local hit = CreateFrame("Button", nil, nx)
+	hit:SetPoint("TOPLEFT", 0, 0)
+	hit:SetSize(WIDTH - 12, 32)
+	hit:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip()) end)
+	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	for i, f in ipairs({ { "PROFIT", "profit" }, { "BREAK-EVEN", "breakEven" }, { "RECOVER", "recover" } }) do
 		local x = 8 + (i - 1) * 132
-		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -36, 128, "LEFT", "GameFontDisableSmall")), 8, "bold")
-		l:SetText(T.Color("muted", lab))
+		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -36, 128, "LEFT", "GameFontDisableSmall")), 9, "bold")
+		l:SetText(T.Color("muted", f[1]))
 		local v = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -46, 128, "LEFT", "GameFontHighlight")), 13)
 		nx.stats[i] = v
+		local h = CreateFrame("Button", nil, nx)
+		h:SetPoint("TOPLEFT", x - 4, -32)
+		h:SetSize(i == 3 and (WIDTH - 12 - x) or 132, 30) -- Recover takes in the bar beside it
+		h:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip(f[2])) end)
+		h:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	end
 	nx.back = nx:CreateTexture(nil, "ARTWORK")
 	nx.back:SetPoint("TOPLEFT", 8 + 3 * 132, -50)
@@ -114,10 +125,6 @@ local function build()
 	nx.fill:SetPoint("TOPLEFT", nx.back, "TOPLEFT", 0, 0)
 	nx.fill:SetSize(1, 6)
 	T.Gradient(nx.fill)
-	local hit = CreateFrame("Button", nil, nx)
-	hit:SetAllPoints(nx)
-	hit:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip()) end)
-	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 	panel.recipe = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	panel.recipe:SetPoint("TOPLEFT", 12, -34 - TOP)
@@ -1101,23 +1108,63 @@ function AUI.RenderNext()
 	return m
 end
 
---- The Next Move hover: what each figure means and what the chance rests on.
-function AUI.NextTip()
+--- The Next Move hovers. which: nil for the craft line, "profit", "breakEven" or "recover" for a
+--- figure: what it means, then the breakdown that reaches it.
+function AUI.NextTip(which)
 	local T, M = CH.Theme, CH.FormatMoney
+	local mut = function(t) return T.Color("muted", t) end
 	local m = (panel and panel.next and panel.next.lastMove) or AUI.NextMove()
-	local tip = { { "Next move" } }
-	if not m then
-		table.insert(tip, { T.Color("muted", "Click a row in the table to pick a craft, and set how many under it.") })
+	if not m then return { { "Next move" }, { mut("Click a row in the table to pick a craft, and set how many under it.") } } end
+	local r = m.row
+	local pp = r.parts
+	if which == "profit" then
+		local tip = { { "Profit" }, { mut("Expected profit for one craft, on average: what it sells for after the AH cut and deposits, less the reagents.") } }
+		table.insert(tip, { shown.order and "Commission and rewards" or "Expected sale value", M(r.value or 0) })
+		table.insert(tip, { "Less reagents", M(-(r.cost or 0)) })
+		if pp and (pp.mc or 0) > 0 and not shown.order then
+			table.insert(tip, { string.format("Multicraft  %s x %.1f more", pctText(pp.mc), pp.extraItems or 0), "+" .. M(pp.mcGold or 0) })
+		end
+		if pp and (pp.res or 0) > 0 then table.insert(tip, { string.format("Resourcefulness  %s", pctText(pp.res)), "+" .. M(pp.resGold or 0) }) end
+		if r.oldValue then table.insert(tip, { "Less the item you recraft", M(-r.oldValue) }) end
+		table.insert(tip, { T.Color("accent", "Profit per craft"), money(r.profit) })
+		if r.profit and r.cost and r.cost > 0 then table.insert(tip, { "Return on cost" .. mut("  profit / reagents"), pctText(r.profit / r.cost) }) end
+		local proceeds = r.value and pp and (r.value + (pp.mcGold or 0))
+		if r.profit and proceeds and proceeds > 0 and not shown.order then table.insert(tip, { "Margin" .. mut("  profit / proceeds"), pctText(r.profit / proceeds) }) end
+		if m.qty > 1 and r.profit then table.insert(tip, { string.format("For %d crafts", m.qty), money(r.profit * m.qty) }) end
+		return tip
+	elseif which == "breakEven" then
+		local be = r.breakEven
+		local tip = { { "Break-even" }, { mut("The sale price per item where this craft stops making money: below it, each craft loses gold.") } }
+		if not be then
+			table.insert(tip, { mut(shown.order and "An order pays a fixed commission, so it has no break-even price." or "No price to compare against yet.") })
+			return tip
+		end
+		table.insert(tip, { "Break-even per item", T.Color("gold", M(be.price)) })
+		table.insert(tip, { "Estimated sale price", M(be.estimate) })
+		table.insert(tip, { "Room before a loss", be.cushion >= 0 and T.Color("ok", pctText(be.cushion)) or T.Color("bad", "already below") })
+		table.insert(tip, { mut(string.format("Reagents %s%s, spread over about %.1f items a craft%s.", M(r.cost or 0),
+			pp and (pp.resGold or 0) > 0 and (" less " .. M(pp.resGold) .. " Resourcefulness saves") or "", m.items / m.qty,
+			r.oldValue and ", plus the item you recraft" or "")) })
+		table.insert(tip, { mut("The AH cut and deposits are counted on every sale.") })
+		return tip
+	elseif which == "recover" then
+		local tip = { { "Recover" }, { mut(string.format("The chance that a week's sales pay back what %d %s cost in reagents.", m.qty, m.qty == 1 and "craft" or "crafts")) } }
+		local b = m.batch
+		if not b then
+			table.insert(tip, { mut(shown.order and "An order pays on delivery, so there's nothing to recover." or "Needs a price and a sales rate for this item.") })
+			return tip
+		end
+		table.insert(tip, { "Chance to recover", pctText(b.recover) })
+		table.insert(tip, { "Reagents spent", M(b.spend or 0) })
+		table.insert(tip, { "Cash back by day " .. CH.Decide.HORIZON, M(b.cashBack.p50 or 0) .. mut("  median") })
+		table.insert(tip, { mut("  middle 80%"), M(b.cashBack.p10 or 0) .. " to " .. M(b.cashBack.p90 or 0) })
+		table.insert(tip, { "Items made", string.format("%d", math.floor((b.items or 0) + 0.5)) .. mut(string.format(", about %d unsold", math.floor((b.left or 0) + 0.5))) })
+		table.insert(tip, { mut(string.format("From %d simulated weeks: your Multicraft and Resourcefulness, the item's sales rate and price swings (Scenarios).", CH.Decide.RUNS)) })
 		return tip
 	end
-	table.insert(tip, { T.Color("muted", string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) })
-	if m.mc then table.insert(tip, { T.Color("muted", string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
-	table.insert(tip, { "Profit / craft", money(m.profit) })
-	if m.breakEven then table.insert(tip, { "Break-even / item", M(m.breakEven) .. T.Color("muted", "  (estimate " .. M(m.estimate or 0) .. ")") }) end
-	if m.batch then
-		table.insert(tip, { "Recover in 7 days", pctText(m.recover) })
-		table.insert(tip, { T.Color("muted", string.format("The chance a week's sales pay back the %s of reagents, from %d simulated weeks.", M(m.batch.spend or 0), CH.Decide.RUNS)) })
-	end
+	local tip = { { "Next move" }, { mut(string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) } }
+	if m.mc then table.insert(tip, { mut(string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
+	table.insert(tip, { mut("Hover Profit, Break-even or Recover for how each was reached.") })
 	return tip
 end
 
