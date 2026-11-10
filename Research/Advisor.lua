@@ -121,14 +121,14 @@ local function cost(model, picks)
 			local n = picks[i][q] or 0
 			if n > 0 then
 				local p = reagentPrice(model, id)
-				if not p then return nil end
+				if not p then model.unpriced = id; return nil end
 				total = total + n * p
 			end
 		end
 	end
 	for _, slot in ipairs(model.fixed) do
 		local p = reagentPrice(model, slot.items[1])
-		if not p then return nil end
+		if not p then model.unpriced = slot.items[1]; return nil end
 		total = total + slot.qty * p
 	end
 	return total

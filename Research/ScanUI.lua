@@ -199,6 +199,9 @@ function SUI.OrderLines(d)
 			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
 		elseif d.learned == false then
 			table.insert(lines, { T.Color("bad", "You haven't learned this recipe.") })
+		elseif d.unpriced then
+			local n = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(d.unpriced)) or ("item " .. d.unpriced)
+			table.insert(lines, { T.Color("bad", "No price for " .. n .. ": TSM has no value for it, so the cost can't be worked out.") })
 		else
 			table.insert(lines, { T.Color("bad", "No craft reaches the quality this order asks for.") })
 		end
@@ -551,7 +554,7 @@ local function refreshLists()
 			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
 			-- what your reagents cost, always (like CraftSim): green when you hold them, red when you'd buy
 			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost or 0)))
-			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or "can't reach"))
+			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
 			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then

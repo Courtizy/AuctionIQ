@@ -288,7 +288,9 @@ function O.List()
 			tiers = result and result.model and result.model.maxQ,
 			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
 			line = line, expansion = expansion, current = not line or not current or line == current,
-			have = have, missing = missing })
+			have = have, missing = missing,
+			-- no row because a reagent you'd supply has no price, not because the quality is out of reach
+			unpriced = not r and result and result.model and result.model.unpriced or nil })
 	end
 	table.sort(out, function(a, b)
 		if a.ok ~= b.ok then return a.ok end
@@ -308,6 +310,13 @@ function O.Debug()
 		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
+		-- what the order lists, and who brings it (source 1 customer, 2 crafter)
+		local given = {}
+		for _, r in ipairs(order.reagents or {}) do
+			local i = r.reagentInfo or r
+			given[#given + 1] = string.format("%s:%sx%s@%s", tostring(r.source), tostring(i.reagent and i.reagent.itemID), tostring(i.quantity), tostring(i.dataSlotIndex or r.slotIndex))
+		end
+		CH.Print(string.format("  reagentState %s, listed: %s", tostring(order.reagentState), #given > 0 and table.concat(given, " ") or "none"))
 		if not ok then
 			CH.Print(head .. " error " .. tostring(result))
 		elseif not result then
@@ -319,8 +328,8 @@ function O.Debug()
 				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
 					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
 			end
-			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
-				#(result.rows or {}), table.concat(parts, "; ")))
+			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s%s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
+				#(result.rows or {}), table.concat(parts, "; "), m.unpriced and ("; no price for item " .. tostring(m.unpriced)) or ""))
 		end
 	end
 end
