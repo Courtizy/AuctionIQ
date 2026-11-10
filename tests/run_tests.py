@@ -1,3 +1,4 @@
+import math
 """Loads the addon in a stubbed WoW environment (lupa) and checks its behaviour.
 Run: python3 tests/run_tests.py   (needs `pip install lupa`)"""
 import re
@@ -1454,7 +1455,7 @@ check("hand-off: Craft opens on the recommended recipe, filtered to it, saying w
 # Craft detail pane: the handed-over recipe is selected, sized to the Dashboard's quantity, and queues
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
 check("Craft pane: the selected recipe, live while the profession window has it, sized to the hand-off",
-      det is not None and plain(det.title) == "Craft 20 x Test Flask" and "LIVE" in plain(det.kicker) and "Live from the profession" in plain(det.sub)
+      det is not None and plain(det.title) == "Craft 20 x Test Flask" and "LIVE" in plain(det.kicker) and plain(det.sub).startswith("Live")
       and det.n == 20 and plain(det.actions[1].label) == "Queue 20 crafts" and L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
 pane = L.eval("AuctionIQ.UI.Pages().ledger.detail")
 tbl = L.eval("AuctionIQ.UI.Pages().ledger.rows[1].hit")
@@ -1480,6 +1481,38 @@ check("Craft pane: Rescan says whose scan it is when another character made it",
 figc = [f[2] for f in det.figures.values()]
 check("Craft pane: the figures are coloured (profit green or red, gold at risk red, break-even gold)",
       all("|c" in f for f in figc))
+# one selection: the preview, the Queue button and the saved forecast are the same craft
+sel = det.selection
+check("one selection: the pane's figures, title and Queue button share one batch size",
+      sel.n == det.n and plain(det.actions[1].label).startswith("Queue %d " % sel.n))
+x = sel.x
+nq = L.eval("AuctionIQ.Queue.Count()")
+okq = L.eval("function(s) return AuctionIQ.AnalyticsViews.QueueSelection(s) end")(sel)
+check("one selection: queueing while live goes through the advisor's own queueing", okq and L.eval("AuctionIQ.Queue.Count()") > nq)
+if sel.canConc:
+    run("AuctionIQ.AnalyticsViews.SetConc(AuctionIQ.LedgerUI.lastDetail.selection.x, true); AuctionIQ.UI.Refresh()")
+    det_c = L.eval("AuctionIQ.LedgerUI.lastDetail")
+    check("one selection: Use Concentration switches the whole pane to the Concentration craft",
+          det_c.selection.conc and "with Concentration" in plain(det_c.actions[1].label) and plain(det_c.actions[2].label) == "Plain instead")
+    run("AuctionIQ.AnalyticsViews.SetConc(AuctionIQ.LedgerUI.lastDetail.selection.x, false); AuctionIQ.UI.Refresh()")
+# a hand-off in items becomes crafts by what one craft makes
+si = L.eval("function(x) return AuctionIQ.AnalyticsViews.Selection(x, { name = x.name, qty = 9, unit = 'items', title = 'Restock' }) end")(x)
+check("hand-off units: 9 items become crafts by what a craft makes", si.n == max(1, math.ceil(9 / si.made - 1e-9)) and "9 items" in si["from"])
+sc_ = L.eval("function(x) return AuctionIQ.AnalyticsViews.Selection(x, { name = x.name, qty = 3, unit = 'crafts', conc = true }) end")(x)
+check("hand-off: a Concentration recommendation arrives with Concentration chosen", sc_.n == 3 and (sc_.conc or not sc_.canConc))
+# Dashboard hand-offs carry their intent: Concentration, the unit of the quantity, the exact items
+nl = list(L.eval("AuctionIQ.Next.List()").values())
+gos = [e.go[3] for e in nl if e.go is not None and e.go[3] is not None]
+check("hand-off payloads: Restock and stock targets say their quantity is in items",
+      all(g.unit == "items" for e in nl if e.title in ("Restock", "Below stock target") for g in [e.go[3]]))
+check("hand-off payloads: Spend Concentration says crafts, and Concentration when it picked a Concentration craft",
+      all(e.go[3].unit == "crafts" for e in nl if e.title == "Spend Concentration" and e.go[2] == "scenarios"))
+rk = L.eval("function(ids) return AuctionIQ.LedgerUI.Rows('scenarios', { focus = { ids = ids } }) end")
+some = list(LUI.Rows("scenarios", L.eval("{}"))[0].values())
+if some:
+    one = some[0].id
+    kept = list(rk(L.eval("{ [%d] = true }" % one))[0].values())
+    check("grouped cards: the view opens on exactly the items the card was about", len(kept) >= 1 and all(r.id == one for r in kept))
 # an older scan without a saved sale price still gets a break-even, from today's market price
 pa_old = L.eval("AuctionIQ.Decide.AccountParts({ item = 100, accounts = { sales = 120, cost = 100, unit = 12 } })")
 check("older scans: break-even falls back to today's market price", pa_old.price is not None and pa_old.priceFrom == "market")

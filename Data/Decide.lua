@@ -416,15 +416,16 @@ end
 --- Batch inputs from a saved scan row (Operations, Professions, Compare crafts): what one craft
 --- makes on average (Multicraft included) and its reagents net of Resourcefulness as one cost. nil for
 --- an older scan without the breakdown or a sale price.
-function D.ScanInputs(row)
-	if not (row and row.item and row.accounts) then return nil end
-	local parts = D.AccountParts(row)
-	local a = row.accounts
+function D.ScanInputs(row, conc)
+	local a = row and (conc and row.concAccounts or row.accounts)
+	local item = row and (conc and row.concItem or row.item)
+	if not (item and a) then return nil end
+	local parts = D.AccountParts({ item = item, profit = row.profit, cost = row.cost }, a)
 	if not (parts.price and parts.price > 0 and parts.items and parts.items > 0) then return nil end
-	return { item = row.item, made = parts.items, mc = 0, maxExtra = 1, res = 0, saved = 0, price = parts.price,
-		deposit = a.deposit or 0, unit = a.unit, daily = CH.Scan and CH.Scan.DailyUnits(row.item) or 0,
+	return { item = item, conc = conc or nil, made = parts.items, mc = 0, maxExtra = 1, res = 0, saved = 0, price = parts.price,
+		deposit = a.deposit or 0, unit = a.unit, daily = CH.Scan and CH.Scan.DailyUnits(item) or 0,
 		reagents = { { n = 1, unit = parts.consumed - parts.returned, finishing = true } },
-		have = function(id) return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end }
+		have = function(id) return id and C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end }
 end
 
 --- How many to make: { n (0 = don't), why, scenarios (for n, or for 1 craft when n is 0), limit

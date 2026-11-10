@@ -525,41 +525,98 @@ function AV.QueueScan(x, n, conc, inp)
 	return true, string.format("Queued %d x %s%s for %s", n, x.name or "?", conc and " with Concentration" or "", x.char or "?")
 end
 
+-- Concentration picked in the Craft pane, by row: it outlasts a redraw, not a reload.
+local concChoice = {}
+local function rowKey(x) return (x.charKey or "") .. ":" .. tostring(x.row and x.row.recipeID) .. ":" .. tostring(x.id) end
+
+--- The one craft the Craft pane shows, queues and forecasts, so the three never disagree: the live
+--- advisor result while the profession window has the recipe open, else the last scan. Carries the
+--- character, quality, Concentration choice, batch size (crafts), its inputs and the data's age.
+--- focus is a Dashboard handoff: { name, qty, unit = "crafts" | "items", conc }.
+function AV.Selection(x, focus)
+	local row = x.row
+	local canConc = (row.concProfit and row.concAccounts and row.concentration and row.concentration > 0) and true or false
+	local f = focus and focus.name == x.name and focus or nil
+	local key = rowKey(x)
+	-- a choice made in the pane holds until a new hand-off arrives with its own
+	local ch = concChoice[key]
+	local conc
+	if ch and ch.focus == focus then conc = ch.on else conc = (f and f.conc) and true or false end
+	conc = conc and canConc
+	local live, lr = AV.LiveFor(row.recipeID)
+	if live then
+		-- the live row for the same choice: the advisor's pick when it matches, else its best of that kind
+		if conc then lr = (lr and lr.concentration) and lr or live.bestConc
+		else lr = (lr and not lr.concentration) and lr or live.best end
+		if not lr then live = nil end
+	end
+	local inp, sug
+	if live then
+		local b = CH.AdvisorUI.BatchFor(live, lr)
+		inp, sug = b and b.inputs, b and b.suggest
+	end
+	inp = inp or CH.Decide.ScanInputs(row, conc) or (conc and nil) or CH.Decide.ScanInputs(row)
+	sug = sug or (inp and CH.Decide.Suggest(inp, {}))
+	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
+	-- how many crafts: the Dashboard's number (in items or crafts, as it said), else the suggestion
+	local n, from
+	if f and f.qty and f.qty > 0 then
+		n = f.unit == "items" and math.max(1, math.ceil(f.qty / math.max(made, 0.01) - 1e-9)) or math.floor(f.qty)
+		from = f.unit == "items" and string.format("%d items from %s", f.qty, f.title or "Dashboard") or (f.title or "Dashboard")
+	else
+		n = sug and sug.n > 0 and sug.n or 1
+	end
+	local profit = live and lr.profit or (conc and row.concProfit or row.profit)
+	return { x = x, key = key, live = live, row = lr, conc = conc, canConc = canConc, n = n, from = from, made = made,
+		inputs = inp, suggest = sug, profit = profit, quality = live and lr.quality or (conc and row.concQuality or row.quality),
+		char = x.char, scanAt = x.scanAt, source = live and "live" or "scan" }
+end
+
+--- Use Concentration (or not) for a Compare crafts row. Returns the choice.
+function AV.SetConc(x, on)
+	local f = CH.LedgerUI and CH.LedgerUI.Focus and CH.LedgerUI.Focus()
+	concChoice[rowKey(x)] = { on = on and true or false, focus = f }
+	return on and true or false
+end
+
+--- Queue exactly what the pane shows and save the decision behind it. Returns ok, what happened.
+function AV.QueueSelection(sel)
+	local x, n = sel.x, sel.n
+	if sel.live and sel.row and CH.AdvisorUI.QueueFrom then
+		local e = CH.AdvisorUI.QueueFrom(sel.live, sel.row, n, "craft")
+		if not e then return false, "The profession window didn't take that craft." end
+		return true, string.format("Queued %d x %s (Q%d%s) for %s", n, x.name or "?", sel.row.quality or 0, sel.conc and ", Concentration" or "", x.char or "?")
+	end
+	return AV.QueueScan(x, n, sel.conc, sel.inputs)
+end
+
 function AV.CraftDetail(d, ctx)
 	local x = d.x
 	if not x then return nil end
 	local T, M = CH.Theme, CH.FormatMoney
-	local live, lr = AV.LiveFor(x.row.recipeID)
-	local inp, sug
-	if live and lr then
-		local b = CH.AdvisorUI.BatchFor(live, lr)
-		inp, sug = b and b.inputs, b and b.suggest
-	end
-	inp = inp or CH.Decide.ScanInputs(x.row)
-	sug = sug or (inp and CH.Decide.Suggest(inp, {}))
+	local sel = AV.Selection(x, ctx and ctx.focus)
+	local live, inp, sug, n, row = sel.live, sel.inputs, sel.suggest, sel.n, x.row
 	local age = x.scanAt and CH.Scans and CH.Scans.Age(time() - x.scanAt) or "?"
-	local src = live and T.Color("ok", "Live from the profession window") or T.Color("muted", string.format("Last scan on %s, %s old", x.char or "?", age))
-	-- how many: the Dashboard's quantity when it handed this over, else the suggestion
-	local f = ctx and ctx.focus
-	local n = (f and f.name == x.name and f.qty and f.qty > 0) and f.qty or (sug and sug.n > 0 and sug.n) or 1
-	local profit = live and lr and lr.profit or x.profit
+	local profit = sel.profit or 0
 	local function gold(v) return v and M(math.floor(v / 10000 + 0.5) * 10000) or "-" end
 	local function whole(v) return math.floor(v + 0.5) end
-	local sc = sug and sug.n > 0 and sug.scenarios
-	local row = x.row
-	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
+	-- every figure is for the n crafts shown, the same n the Queue button adds
+	local sc = inp and CH.Decide.Scenarios(inp, n)
+	local made = sel.made
 	local figures = { { "PROFIT", T.Color(profit >= 0 and "ok" or "bad", gold(profit)) },
 		{ "AT RISK", sc and T.Color("bad", gold(sc.slow.atRisk)) or T.Color("muted", "-") },
 		{ "BREAK-EVEN", x.salePrice and T.Color("gold", gold(x.salePrice)) or T.Color("muted", "-") } }
 	local rows = {}
-	rows[#rows + 1] = { "Make", sc and tostring(sug.n) or T.Color("muted", sug and sug.n == 0 and "0" or "-") }
+	local suggested = sug and sug.n or nil
+	rows[#rows + 1] = { "Make", tostring(n) .. (suggested and suggested ~= n and T.Color("muted", string.format("  (suggested %d)", suggested)) or "") }
 	if sc then rows[#rows + 1] = { "Left after a week", string.format("%d · %d · %d", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)) } end
 	if x.cushion then rows[#rows + 1] = { "Estimate can fall", pct(x.cushion) } end
-	if row.concProfit and row.concentration and row.concentration > 0 then
-		local gain = row.concProfit - (row.profit or 0)
-		rows[#rows + 1] = { "Concentration", gain > 0 and string.format("+%s a craft", M(gain)) or T.Color("muted", "doesn't pay") }
+	if sel.canConc then
+		local gain = (row.concProfit or 0) - (row.profit or 0)
+		rows[#rows + 1] = { sel.conc and T.Color("accent", "Concentration on") or "Concentration off",
+			gain > 0 and string.format("+%s a craft", M(gain)) or T.Color("muted", "doesn't pay") }
 	end
-	rows[#rows + 1] = { "Reagents for " .. n, M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (row.cost or 0) * n) }
+	rows[#rows + 1] = { "Reagents for " .. n, M(sc and sc.expected.cost or (row.cost or 0) * n) }
 	-- the price scenarios for this craft, each explaining itself on hover
 	local s = AV.Scenario()
 	local srows = { { "Profit now", signed(x.profit), tip = AV.ScenarioTip(x, 3) },
@@ -568,23 +625,28 @@ function AV.CraftDetail(d, ctx)
 		{ "Both", signed(x.both), tip = AV.ScenarioTip(x, "both") },
 		{ "Room to rise", x.breakEven == math.huge and "any" or ("+" .. pct(x.breakEven)), tip = AV.ScenarioTip(x, "room") } }
 	local plan = AV.PlanFor(x.id)
-	local why = sc and (sug.why and (sug.why .. " ") or "") or (sug and sug.why) or "No sale price in this scan, so no batch size."
+	local why = sc and (sug and sug.why and (sug.why .. " ") or "") or (sug and sug.why) or "No sale price in this scan, so no batch size."
+	if sel.from then why = "From " .. sel.from .. ". " .. why end
 	local note = (plan and (AV.PlanText(plan) .. " ") or "") .. why
-	local actions = { { label = "Queue " .. n .. (n == 1 and " craft" or " crafts"), tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
-		run = function() return AV.QueueScan(x, n, false, inp) end } }
-	if row.concProfit and row.concProfit > (row.profit or 0) and row.concAccounts then
-		actions[2] = { label = "Queue with Concentration", tip = "Spend Concentration on these " .. n .. " crafts.",
-			run = function() return AV.QueueScan(x, n, true, inp) end }
+	local what = string.format("%d %s%s", n, n == 1 and "craft" or "crafts", sel.conc and " with Concentration" or "")
+	local actions = { { label = "Queue " .. what,
+		tip = "Add exactly this: " .. what .. " of " .. (x.name or "?") .. (live and ", the reagents and quality the profession window shows" or ", from " .. (x.char or "?") .. "'s scan")
+			.. ". The forecast saved with it uses the same numbers as this panel.",
+		run = function() return AV.QueueSelection(sel) end } }
+	if sel.canConc then
+		actions[2] = { label = sel.conc and "Plain instead" or "Use Concentration",
+			tip = sel.conc and "Show and queue the plain craft instead." or "Show and queue the Concentration craft instead: the figures above change to it.",
+			run = function() AV.SetConc(x, not sel.conc); return true, sel.conc and "Showing the plain craft." or "Showing the Concentration craft." end }
 	end
 	-- a fresh scan: only this character can rescan its own profession, at the profession window
 	actions[#actions + 1] = { label = "Rescan " .. (x.prof or "profession"), tip = "Scan every recipe of " .. (x.prof or "this profession") .. " again with today's prices. "
 		.. "Log in as " .. (x.char or "?") .. ", open the profession at a crafting table, then press this (or Scan in the profession window's AuctionIQ bar).",
 		run = function() return AV.Rescan(x) end }
 	return { kicker = live and "NEXT MOVE  ·  LIVE" or "NEXT MOVE", title = string.format("Craft %d x %s", n, x.name or "?"),
-		sub = (live and T.Color("ok", "Live from the profession") or (T.Color("muted", string.format("%s, scanned %s ago", x.char or "?", age))))
-			.. T.Color("muted", string.format("  ·  ~%d items", whole(n * made))),
+		sub = (live and T.Color("ok", "Live") or (T.Color("muted", string.format("%s, scanned %s ago", x.char or "?", age))))
+			.. T.Color("muted", string.format("  ·  Q%s%s  ·  ~%d items", tostring(sel.quality or "?"), sel.conc and " Conc." or "", whole(n * made))),
 		figures = figures, rows = rows, section = { head = "IF PRICES MOVE", rows = srows }, note = T.Color("muted", note),
-		actions = actions, n = n, live = live ~= nil }
+		actions = actions, n = n, live = live ~= nil, selection = sel }
 end
 
 -- Batch results ------------------------------------------------------------------------------

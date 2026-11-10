@@ -205,7 +205,15 @@ function LUI.Rows(v, opts)
 	local def = VIEWS[v]
 	if def and def.rows then
 		local rows, footer = def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
-		return LUI.KeepChar(def, rows, opts.char), footer
+		rows = LUI.KeepChar(def, rows, opts.char)
+		-- a grouped Dashboard card hands over its exact items: show that shortlist only
+		local ids = opts.focus and opts.focus.ids
+		if ids and type(rows) == "table" then
+			local keep = {}
+			for _, r in ipairs(rows) do if r.id and ids[r.id] then table.insert(keep, r) end end
+			rows = keep
+		end
+		return rows, footer
 	end
 
 	if v == "inventory" then
@@ -631,7 +639,7 @@ function LUI.Build(p, fs, panel)
 			if self.tip then
 				local lines = type(self.tip) == "function" and self.tip() or self.tip
 				if lines and lines[1] then CH.Window.Tooltip(self, lines) end
-			elseif self.id and GameTooltip.SetItemByID then
+			elseif self.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				GameTooltip:SetItemByID(self.id)
 				GameTooltip:Show()
@@ -809,7 +817,7 @@ function LUI.Refresh()
 
 	local rows, footer = {}, ""
 	if CH.Ledger.Available() then
-		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil })
+		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil, focus = focus })
 		if not v.fixed then sortRows(rows, sortCol or 1, sortDesc) end -- a statement keeps its own order
 	end
 	local SHOWN = ROWS
@@ -881,7 +889,7 @@ function LUI.ShowCellTip(hit, j)
 	local lines = j > 1 and hit.cellTip and hit.cellTip(j)
 	if lines and lines[1] then
 		CH.Window.Tooltip(hit, lines)
-	elseif j == 1 and hit.id and GameTooltip.SetItemByID then
+	elseif j == 1 and hit.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 		GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
 		GameTooltip:SetItemByID(hit.id)
 		GameTooltip:Show()
@@ -1013,6 +1021,8 @@ function LUI.Set(opts)
 	if opts.view and opts.view ~= view then focus = nil; selected = nil; said = nil end
 	if opts.focus then
 		focus = opts.focus
+		-- the page opens under the cursor: hold the item tooltip a moment so it doesn't cover the pane
+		LUI.quietUntil = (GetTime and GetTime() or 0) + 1.5
 		if opts.filter == nil then opts.filter = focus.name or "" end
 	end
 	if opts.view then

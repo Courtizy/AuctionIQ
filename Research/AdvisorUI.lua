@@ -1276,7 +1276,14 @@ end
 function AUI.QueueSelected()
 	local _, off, target = AUI.QueueAction()
 	if off then CH.Print("can't queue that: " .. off); return nil, off end
-	local from = shown.sim and live or shown
+	local e = AUI.QueueFrom(shown.sim and live or shown, target, selQty)
+	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
+	return e
+end
+
+--- Queue qty of a live result's row and save the forecast and decision behind it: what the advisor's
+--- Queue button and the Craft pane (while the profession window is open) both do. Returns the entry.
+function AUI.QueueFrom(from, target, selQty, via)
 	local e = CH.Queue.Add(from, target, selQty)
 	-- what the simulation says about this batch, kept to check against what it really brings in
 	if CH.Decide and not from.order then
@@ -1290,11 +1297,10 @@ function AUI.QueueSelected()
 			CH.Forecast.SaveDecision({ item = target.item, recipe = from.recipeID, name = from.name, quality = target.quality,
 				conc = target.concentration and true or nil, n = selQty, itemsEach = CH.Decide.ItemsPerCraft(inp),
 				costEach = sc.cost / selQty, priceEach = inp.price, netEach = sc.each, daily = inp.daily, leftWeek = sc.left,
-				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis })
+				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis, from = via })
 		end
 	end
 	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
-	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
 	return e
 end
 

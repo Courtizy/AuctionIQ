@@ -74,7 +74,7 @@ function Next.List(now)
 					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
 					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1,
 					risk = pick and "the top-quality price holding while you sell " .. (conc and n or 1) or "which craft pays: scan the profession first",
-					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, title = "Spend Concentration" } }
+					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, unit = "crafts", conc = conc and true or nil, title = "Spend Concentration" } }
 						or { "operations", "professions", { char = c.name, title = "Spend Concentration" } },
 					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
@@ -129,7 +129,7 @@ function Next.List(now)
 			for _, e in ipairs(r.restock or {}) do
 				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2,
 					risk = "whether this week's demand repeats", act = makeAct(e.id, e.sold),
-					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, title = "Restock" } } })
+					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, unit = "items", title = "Restock" } } })
 			end
 			for _, e in ipairs(r.expired or {}) do
 				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
@@ -147,7 +147,7 @@ function Next.List(now)
 			if e.short > 0 then
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
 					gold = e.value, tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
-					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, title = "Below stock target" } } })
+					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, unit = "items", title = "Below stock target" } } })
 			end
 		end
 	end
@@ -185,9 +185,11 @@ function Next.Ranked(now, max)
 			table.insert(out, g[1])
 		else
 			local first = g[1]
-			local gold, names = 0, {}
+			local gold, names, ids = 0, {}, {}
 			for i, e in ipairs(g) do
 				gold = gold + (e.gold or 0)
+				local f = e.go and e.go[3]
+				if f and f.id then ids[f.id] = true end
 				local n = e.go and e.go[3] and e.go[3].name
 				if n and i <= 3 then table.insert(names, n) end
 			end
@@ -196,7 +198,8 @@ function Next.Ranked(now, max)
 				detail = (#names > 0 and table.concat(names, ", ") .. more or (#g .. " items")) .. ". Biggest: " .. first.detail,
 				gold = gold > 0 and gold or nil, tier = first.tier, risk = first.risk, rows = g,
 				-- one item's button can't do them all: the card opens its view on the whole list
-				go = first.go and { first.go[1], first.go[2], { title = first.title .. ", " .. #g .. " items" } } })
+				-- the exact items behind the card, so the view opens on that shortlist and nothing else
+				go = first.go and { first.go[1], first.go[2], { title = first.title .. ", " .. #g .. " items", ids = next(ids) and ids or nil } } })
 		end
 	end
 	table.sort(out, function(a, b)
