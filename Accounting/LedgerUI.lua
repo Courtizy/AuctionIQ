@@ -262,7 +262,7 @@ function LUI.Rows(v, opts)
 			table.insert(out, { id = e.id, cells = { text, e.total, each and money(each) or T.Color("muted", "-"),
 				e.bound and T.Color("muted", "bound") or money(e.unit), e.bound and T.Color("muted", "-") or money(e.value),
 				un and signed(un) or T.Color("muted", "-"), agoText,
-				days and (days > 365 and T.Color("bad", "1 yr+") or string.format("%.0f", days)) or T.Color("muted", "no sales") },
+				days and (days > 365 and T.Color("bad", "1 yr+") or string.format("%.0f", days)) or T.Color("muted", "no history") },
 				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, ago or math.huge, days or math.huge },
 				cellTip = function(j)
 					if j == 2 then
@@ -296,6 +296,9 @@ function LUI.Rows(v, opts)
 						table.insert(lines, { T.Color("muted", "Your own sales, from TSM. The region figures are TSM's market data for every seller.") })
 						return lines
 					elseif j == 8 then
+						if not days then
+							return { { "Days of stock" }, { "Sold in 30 days", "0" }, { T.Color("muted", "Insufficient sales history: nothing sold in 30 days, so how long this lasts can't be estimated.") } }
+						end
 						return { { "Days of stock" }, { "Sold in 30 days", tostring(sold30[e.id] or 0) }, { T.Color("muted", "How long what you hold lasts at that rate.") } }
 					end
 					return { { ({ "", "", "", "Worth each", "Value" })[j] or "" }, { T.Color("muted", "AuctionIQ value (market) per item, and for all you hold.") } }

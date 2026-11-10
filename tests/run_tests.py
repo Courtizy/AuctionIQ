@@ -2382,6 +2382,21 @@ if big is not None:
           and len(dr) == 1 and dr[0].id == big.id and abs(dr[0].sort[4] - big.change) < 1)
 else:
     check("Performance: the stub sold something in the last 60 days", False)
+cap = PF.Capital(None, L.eval("STUB.now"))
+check("Performance: capital tied up is the slow stock's share of all stock", cap.total > 0 and 0 <= cap.slow <= cap.total and abs(cap.share - cap.slow / cap.total) < 1e-9)
+fl = list(PF.Forecasts(L.eval("STUB.now")).values())
+check("Performance: only batches a week old (or sold out) are checked, each in or out of range", all(f.inRange in (True, False) for f in fl))
+check("Performance: the forecast line says how many were checked", plain(PF.ForecastText(PF.Forecasts(L.eval("STUB.now")))).startswith("Forecasts: "))
+PF.ToggleScatter()
+pr2 = PF.Refresh(L.eval("STUB.now"))
+check("Performance: the forecast chart takes chart 2's place, one dot per checked batch",
+      L.eval("AuctionIQ.UI.Pages().perf.sTitle").shown is not False and len([d for d in L.eval("AuctionIQ.UI.Pages().perf.dots").values() if d.shown]) == len(fl))
+_before = len(audit_all)
+audit("performance forecast chart")
+# only this page's problems: other windows the earlier tests left open are audited on their own
+audit_all[_before:] = [a for a in audit_all[_before:] if "This week so far" in a or "Forecast" in a]
+PF.ToggleScatter()
+PF.Refresh(L.eval("STUB.now"))
 PF.OpenWeek(wk[-2])
 check("Performance: a week's bar opens that week's Income Statement", LUI.View() == "statement" and CH.Statements.Period() == "custom"
       and abs(CH.Statements.Income(wk[-2]["from"], wk[-2].to - 1).netIncome - wk[-2].profit) < 1)

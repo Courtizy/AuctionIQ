@@ -203,11 +203,98 @@ function P.Headline(r)
 	return first, second, third
 end
 
+-- Forecast vs actual ------------------------------------------------------------------------------
+P.CHECK_AFTER = 7 * DAY -- a batch's forecast can be checked a week after its first craft, or once it sold out
+P.BAND = 0.2            -- in range: actual within 20% of the forecast (at least 5% of what the reagents cost)
+
+--- The batch forecasts that can be checked now: { { d, x (Fc.Explain), forecast, actual, inRange,
+--- shared } }. shared: another batch of the same item was made around the same time, so sales can't
+--- be told apart by batch, and actual is item sales during the forecast window.
+function P.Forecasts(now, char)
+	now = now or time()
+	local F, out = CH.Forecast, {}
+	if not (F and F.Decisions and F.Explain) then return out end
+	for _, d in ipairs(F.Decisions()) do
+		if (not char or d.char == char) and (d.crafts or 0) > 0 then
+			local x = F.Explain(d, now)
+			local first = d.first or d.at
+			if x and (now - first >= P.CHECK_AFTER or (x.made > 0 and x.left <= 0)) then
+				local shared = false
+				for _, b in ipairs(F.Batches(d.item)) do
+					if b.decision ~= d.key and b.at > first - F.LINK and b.at < first + P.CHECK_AFTER then shared = true end
+				end
+				local band = math.max(math.abs(x.forecast) * P.BAND, (x.paid or 0) * 0.05, 10000)
+				table.insert(out, { d = d, x = x, forecast = x.forecast, actual = x.actual, inRange = math.abs(x.actual - x.forecast) <= band,
+					shared = shared, band = band })
+			end
+		end
+	end
+	return out
+end
+
+--- The forecast line: how many could be checked and how many landed in range.
+function P.ForecastText(list)
+	local T = CH.Theme
+	if #list == 0 then
+		return "Forecasts: " .. T.Color("muted", "none to check yet (a batch is checked a week after its first craft).")
+	end
+	local hit, shared = 0, 0
+	for _, f in ipairs(list) do
+		if f.inRange then hit = hit + 1 end
+		if f.shared then shared = shared + 1 end
+	end
+	local pct = math.floor(hit / #list * 100 + 0.5)
+	return string.format("Forecasts: %s of %d checked batches within %d%% of forecast (%d%%)%s", T.Color(pct >= 60 and "ok" or "bad", tostring(hit)),
+		#list, math.floor(P.BAND * 100), pct, shared > 0 and T.Color("muted", string.format(", %d share sales", shared)) or "")
+end
+
+local scatter = false
+function P.ToggleScatter() scatter = not scatter; return scatter end
+function P.Scatter() return scatter end
+
+-- Capital tied up --------------------------------------------------------------------------------
+P.SLOW = 30 -- stock that takes longer than this many days to sell, at the last 30 days' rate
+
+--- Gold in stock that won't sell within P.SLOW days: { total, slow, none (no sales in 30 days),
+--- share, material, top = { id, name, value } }. Material when it's a quarter of stock and 1,000g+.
+function P.Capital(char, now)
+	now = now or time()
+	local L = CH.Ledger
+	local sold = {}
+	for _, s in ipairs(L.Records("Sales")) do
+		if s.id and s.time >= now - 30 * DAY then sold[s.id] = (sold[s.id] or 0) + (s.quantity or 0) end
+	end
+	local c = { total = 0, slow = 0, none = 0 }
+	for _, e in ipairs(L.Inventory(nil, char)) do
+		if not e.bound and (e.value or 0) > 0 then
+			c.total = c.total + e.value
+			local perDay = (sold[e.id] or 0) / 30
+			local days = perDay > 0 and (e.total or 0) / perDay or nil
+			if not days or days > P.SLOW then
+				c.slow = c.slow + e.value
+				if not days then c.none = c.none + e.value end
+				if not c.top or e.value > c.top.value then c.top = { id = e.id, name = e.name, value = e.value } end
+			end
+		end
+	end
+	c.share = c.total > 0 and c.slow / c.total or 0
+	c.material = c.share >= 0.25 and c.slow >= 1000 * 10000
+	return c
+end
+
+--- Open Inventory, slowest stock first.
+function P.OpenCapital()
+	CH.UI.Go("ledger", "inventory")
+	LUI.Set({ sort = 8, desc = true })
+	CH.UI.Refresh()
+end
+
 -- Page ------------------------------------------------------------------------------------------
 local page, cache
-local CW, CH1 = 350, 250 -- each chart's width and body height
+local CW, CH1 = 350, 208 -- each chart's width and body height
+local Y0 = -126 -- the charts' top, under the headline and the forecast and capital strip
 -- the weekly chart's plot: room above for the tallest bar's label, below for a loss's label, then dates
-local PTOP, PH = -84 - 44, 210
+local PTOP, PH = Y0 - 44, 168
 
 local function tip(owner, lines)
 	if not GameTooltip then return end
@@ -272,7 +359,20 @@ function P.Build(p, fs)
 	p.char:SetPoint("TOPRIGHT", p.period, "TOPLEFT", -4, 0)
 
 	-- chart 1: weekly profit
-	local y = -84
+	-- forecasts and capital, one line each, under the headline
+	T.Card(p, 0, -80, RW, 40)
+	p.fcText = fs(p, 12, -86, RW - 140, "LEFT", "GameFontHighlightSmall")
+	p.capHit = CreateFrame("Button", nil, p)
+	p.capHit:SetPoint("TOPLEFT", 8, -100)
+	p.capHit:SetSize(RW - 140, 16)
+	p.capText = fs(p, 12, -102, RW - 140, "LEFT", "GameFontHighlightSmall")
+	p.capHit:SetScript("OnClick", function() P.OpenCapital() end)
+	p.capHit:SetScript("OnEnter", function(self) if self.tip then tip(self, self.tip) end end)
+	p.capHit:SetScript("OnLeave", untip)
+	p.fcButton = button(p, 120, "Forecast chart", function() P.ToggleScatter(); CH.UI.Refresh() end)
+	p.fcButton:SetPoint("TOPRIGHT", p, "TOPLEFT", RW - 8, -90)
+
+	local y = Y0
 	T.Card(p, 0, y, CW, CH1 + 66)
 	p.wTitle = fs(p, 10, y - 8, CW - 130, "LEFT", "GameFontNormal")
 	p.wTitle:SetText("Weekly profit")
@@ -311,10 +411,10 @@ function P.Build(p, fs)
 	p.mid = p:CreateTexture(nil, "ARTWORK")
 	p.mid:SetColorTexture(1, 1, 1, 0.25)
 	p.mid:SetPoint("TOPLEFT", x0 + 10 + 130 + 75, y - 32)
-	p.mid:SetSize(1, 6 * 34 + 8)
+	p.mid:SetSize(1, 6 * 30 + 8)
 	p.drivers = {}
 	for i = 1, 6 do
-		local ry = y - 32 - (i - 1) * 34 - (i > 3 and 8 or 0)
+		local ry = y - 32 - (i - 1) * 30 - (i > 3 and 8 or 0)
 		local hit = CreateFrame("Button", nil, p)
 		hit:SetSize(CW - 20, 20)
 		hit:SetPoint("TOPLEFT", x0 + 10, ry)
@@ -327,6 +427,33 @@ function P.Build(p, fs)
 		p.drivers[i] = hit
 	end
 	p.dNote = fs(p, x0 + 10, PTOP - PH - 36, CW - 20, "LEFT", "GameFontDisableSmall")
+
+	-- forecast vs actual, in chart 2's place when asked for: one dot per checked batch
+	p.sTitle = fs(p, x0 + 10, y - 8, CW - 20, "LEFT", "GameFontNormal")
+	p.sTitle:SetText("Forecast vs actual")
+	p.sAxis = fs(p, x0 + 10, PTOP - PH - 18, CW - 20, "LEFT", "GameFontDisableSmall")
+	p.sNote = fs(p, x0 + 10, PTOP - PH - 36, CW - 20, "LEFT", "GameFontDisableSmall")
+	p.sDiag = {}
+	for i = 1, 24 do
+		local t = p:CreateTexture(nil, "ARTWORK")
+		t:SetColorTexture(1, 1, 1, 0.3)
+		t:SetSize(2, 2)
+		p.sDiag[i] = t
+	end
+	p.dots = {}
+	for i = 1, 40 do
+		local d = CreateFrame("Button", nil, p)
+		d:SetSize(8, 8)
+		d.t = d:CreateTexture(nil, "OVERLAY")
+		d.t:SetAllPoints()
+		d:SetScript("OnEnter", function(self) if self.tip then tip(self, self.tip) end end)
+		d:SetScript("OnLeave", untip)
+		d:SetScript("OnClick", function(self)
+			if self.f then CH.UI.Go("ledger", "batches", { id = self.f.d.item, name = self.f.d.name, ids = { [self.f.d.item] = true }, title = "Forecast vs actual" }) end
+		end)
+		d:Hide()
+		p.dots[i] = d
+	end
 
 	-- the detail views, one click away
 	local ly = y - CH1 - 76
@@ -440,7 +567,65 @@ function P.Refresh(now)
 		end
 	end
 	p.dNote:SetText(#r.list == 0 and "Nothing sold in either window yet." or ("Against " .. r.w.prior .. "."))
-	return { compare = r, weekly = weeks }
+
+	-- forecasts and capital
+	local fl = P.Forecasts(now, char)
+	p.fcText:SetText(P.ForecastText(fl))
+	local cap = P.Capital(char, now)
+	if cap.material then
+		p.capText:SetText(string.format("Capital tied up: %s, %d%% of stock, won't sell within %d days%s  %s", money(cap.slow), math.floor(cap.share * 100 + 0.5), P.SLOW,
+			cap.top and (". Largest: " .. short(cap.top.name or "?", 22)) or "", T.Color("accent", "Show")))
+		p.capHit.tip = { { "Capital tied up" }, { "Stock that won't sell within " .. P.SLOW .. " days", money(cap.slow) },
+			{ "Of that, no sales in 30 days", money(cap.none) }, { "All stock at market value", money(cap.total) },
+			{ T.Color("muted", "Days to sell: what you hold over what sold a day in the last 30 days.") },
+			{ T.Color("accent", "Click for Inventory, slowest first.") } }
+	else
+		p.capText:SetText(T.Color("muted", string.format("Capital tied up: %s in slow stock, %d%% of it. Fine.", money(cap.slow), math.floor(cap.share * 100 + 0.5))))
+		p.capHit.tip = nil
+	end
+	setText(p.fcButton, scatter and "Drivers chart" or "Forecast chart")
+
+	-- chart 2's place: the drivers, or forecast vs actual
+	p.dTitle:SetShown(not scatter); p.mid:SetShown(not scatter); p.dNote:SetShown(not scatter)
+	for _, hit in ipairs(p.drivers) do
+		if scatter then hit:Hide(); hit.label:Hide(); hit.value:Hide() end
+	end
+	p.sTitle:SetShown(scatter); p.sAxis:SetShown(scatter); p.sNote:SetShown(scatter)
+	for _, t in ipairs(p.sDiag) do t:SetShown(scatter) end
+	local lo, hi = 0, 1
+	for _, f in ipairs(fl) do lo, hi = math.min(lo, f.forecast, f.actual), math.max(hi, f.forecast, f.actual) end
+	local span = hi - lo
+	local x0, side = CW + 16 + 10 + 40, PH -- a square plot: forecast across, actual up
+	local function at(fv, av)
+		return x0 + math.floor((fv - lo) / span * (side - 8) + 0.5), PTOP - (side - 8) + math.floor((av - lo) / span * (side - 8) + 0.5)
+	end
+	for i, t in ipairs(p.sDiag) do
+		local v = lo + span * (i - 1) / (#p.sDiag - 1)
+		local px, py = at(v, v)
+		t:ClearAllPoints()
+		t:SetPoint("TOPLEFT", p, "TOPLEFT", px + 3, py - 3)
+	end
+	for i, d in ipairs(p.dots) do
+		local f = scatter and fl[i]
+		d:SetShown(f and true or false)
+		d.f, d.tip = f or nil, nil
+		if f then
+			local px, py = at(f.forecast, f.actual)
+			d:ClearAllPoints()
+			d:SetPoint("TOPLEFT", p, "TOPLEFT", px, py)
+			local col = f.inRange and T.ok or T.bad
+			d.t:SetColorTexture(col[1], col[2], col[3], f.shared and 0.4 or 1)
+			d.tip = { { (f.d.name or "?") .. (f.d.char and (" - " .. f.d.char) or "") },
+				{ "Forecast by now", (f.forecast < 0 and "-" or "") .. money(f.forecast) },
+				{ f.shared and "Item sales during the forecast window" or "Batch result", (f.actual < 0 and "-" or "") .. money(f.actual) },
+				{ T.Color(f.inRange and "ok" or "bad", f.inRange and "In range" or ("Missed by " .. money(f.actual - f.forecast))) },
+				{ T.Color("muted", f.shared and "Another batch of this item overlapped, so its sales can't be split by batch." or (f.x.takeaway or "")) },
+				{ T.Color("accent", "Click for Batch results.") } }
+		end
+	end
+	p.sAxis:SetText(string.format("Across: forecast. Up: actual. %s to %s.", P.Compact(lo), P.Compact(hi)))
+	p.sNote:SetText(#fl == 0 and "No batch can be checked yet." or "Green: within range. Faded: shares sales.")
+	return { compare = r, weekly = weeks, forecasts = fl, capital = cap }
 end
 
 -- The detail views live under Reports now, opened from this page rather than a sub-tab of their own.
