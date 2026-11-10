@@ -661,7 +661,7 @@ end
 -- Accounting. A view named with it opens wherever it lives now.)
 local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "operations", "professions" }, paths = { "operations", "paths" },
 	crafting = { "operations", "scenarios" }, professions = { "operations", "scenarios" }, markets = { "operations", "compare" },
-	analytics = { "ledger", "performance" }, performance = { "ledger", "performance" }, research = { "operations" },
+	analytics = { "ledger", "overview" }, performance = { "ledger", "overview" }, research = { "operations" },
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
 UI.TABS, UI.OLD = TABS, OLD
 
@@ -859,13 +859,14 @@ function build()
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
 	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
 	local function buildPaths(p) pages.paths = p; CH.PathsUI.Build(p) end
+	local function buildPerf(p) pages.perf = p; if CH.Performance then CH.Performance.Build(p, fs) end end
 	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildBriefing, buildSettings }) do
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildBriefing, buildPerf, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
 		-- the Report, Knowledge and Paths sit in a tab's table page, right of its nav
-		if b == buildBriefing or b == buildPlan or b == buildPaths then
+		if b == buildBriefing or b == buildPlan or b == buildPaths or b == buildPerf then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", 12 + 172, -36)
 			p:SetSize(W - 24 - 172, H - 48)
@@ -1261,6 +1262,7 @@ function UI.Refresh()
 	if page == "today" then return refreshDashboard()
 	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
 	elseif beside == "paths" then refreshLedger(); return CH.PathsUI.Refresh()
+	elseif beside == "perf" then refreshLedger(); return CH.Performance.Refresh()
 	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
 	elseif report then
 		refreshLedger()
@@ -1293,7 +1295,7 @@ function UI.LayoutSubTabs()
 		end
 		b:SetShown(g ~= nil)
 	end
-	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, briefing = 12 + 172 }) do
+	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, briefing = 12 + 172, perf = 12 + 172 }) do
 		local p = pages[k]
 		if p then
 			p:ClearAllPoints()

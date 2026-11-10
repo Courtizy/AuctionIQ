@@ -70,6 +70,7 @@ local function category(id, crafted)
 	local path = CH.Groups and CH.Groups.Path(id)
 	return path and path:match("^([^/]+)") or "Other"
 end
+AV.Category = category
 
 local function needLedger(out)
 	if CH.Ledger.Available() then return nil end
@@ -131,8 +132,16 @@ end
 --- -(c1 - c0) x q1. They add up to the change. Costs come from what you paid for the reagents, so
 --- the cost effect is usually small; quality and procs show in Crafting efficiency.
 function AV.Drivers(ctx)
-	local start, before = periods(ctx)
-	local now, prev = plSince(start), plBetween(before, start)
+	local now, prev
+	-- opened from Performance's chart: its exact windows, on the Income Statement's basis
+	local range = ctx.opts and ctx.opts.focus and ctx.opts.focus.range
+	if range and CH.Statements and CH.Statements.Items then
+		now = CH.Statements.Items(range.from, range.to - 1, ctx.opts.char)
+		prev = CH.Statements.Items(range.pfrom, range.pto - 1, ctx.opts.char)
+	else
+		local start, before = periods(ctx)
+		now, prev = plSince(start), plBetween(before, start)
+	end
 	local ids = {}
 	for id in pairs(now) do ids[id] = true end
 	for id in pairs(prev) do ids[id] = true end
@@ -178,7 +187,9 @@ local function driverRows(ctx)
 		end
 	end
 	if not out[1] then return out, T.Color("muted", "No crafted sales in either period to compare.") end
-	return out, string.format("Against the period before: price %s, volume %s, cost %s.", signed(sums.price), signed(sums.volume), signed(sums.cost))
+	local range = ctx.opts.focus and ctx.opts.focus.range
+	return out, string.format("%s: price %s, volume %s, cost %s.", range and (range.label .. " against " .. range.prior) or "Against the period before",
+		signed(sums.price), signed(sums.volume), signed(sums.cost))
 		.. T.Color("muted", "  Estimated: each split holds the other two still.")
 end
 
@@ -795,7 +806,9 @@ AV.VIEWS.scenarios.action = {
 -- Gold per hour and Craft results register their own definitions; this sets the order. Performance
 -- explains what happened, so it sits in Accounting. Compare crafts (the downside scenarios beside
 -- break-even) is a craft decision, so it opens Operations, Professions, ahead of the knowledge pages.
-LUI.Register("ledger", AV.VIEWS, { "performance", "batches", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
+-- They have no sub-tab of their own: Reports > Performance (Accounting/Performance.lua) sums them up
+-- and opens each one from its charts and links.
+LUI.Register("ledger", AV.VIEWS, {})
 -- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
 -- the market) and Queue (the work planned: crafts, shopping, mail and what's blocking it).
 LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")

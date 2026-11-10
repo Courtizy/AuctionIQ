@@ -118,6 +118,21 @@ function LUI.Register(sec, views, nav, group)
 	lastView[sec] = lastView[sec] or nav[1]
 end
 
+--- Add a view to an existing sub-tab's nav, after its other views.
+function LUI.AddNav(sec, group, k)
+	local list = SECTIONS[sec]
+	if not list then return end
+	local at
+	for i, n in ipairs(list) do
+		if not n.sub and n[1] == group then at = i
+		elseif at and not n.sub then break
+		elseif at then at = i end
+	end
+	if not at then return end
+	table.insert(list, at + 1, { k, sub = true })
+	if VIEWS[k] then VIEWS[k].parent = group end
+end
+
 --- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Craft", "Trade", "Queue" }).
 --- The tab opens on the first one. Sub-tabs not listed follow, in the order they registered.
 function LUI.Order(sec, labels)
@@ -1060,6 +1075,8 @@ function LUI.SetSection(sec)
 end
 function LUI.Section() return section end
 function LUI.View() return view end
+--- The Character picker's choice (nil for all characters).
+function LUI.Char() return char end
 --- The tab a view lives in.
 function LUI.SectionOf(v)
 	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
