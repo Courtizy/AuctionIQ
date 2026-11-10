@@ -18,7 +18,7 @@ function O.FromOrder(order)
 		local slot = info.dataSlotIndex or r.dataSlotIndex or r.slotIndex
 		if info and info.reagent and slot then
 			table.insert(provided, { reagent = { itemID = info.reagent.itemID }, itemID = info.reagent.itemID, dataSlotIndex = slot, quantity = info.quantity or 1 })
-			slots[slot] = true
+			slots[slot] = (slots[slot] or 0) + (info.quantity or 1) -- units the customer gives in this slot
 		end
 	end
 	local rewards = 0
