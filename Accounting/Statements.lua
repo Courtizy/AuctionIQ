@@ -22,6 +22,7 @@ local WEEK = 7 * DAY
 St.PERIODS = { "week", "lastweek", "30", "all" }
 local LABEL = { week = "This week", lastweek = "Last week", ["30"] = "Last 30 days", all = "All time" }
 local period = "week"
+local custom -- { from, to, label }: a week opened from Performance's chart
 
 --- When this week began: the last weekly reset (seven days ago without the game's clock).
 function St.WeekStart(now)
@@ -34,6 +35,7 @@ end
 --- The open period's range: from, to, label.
 function St.Range(p, now)
 	p, now = p or period, now or time()
+	if p == "custom" and custom then return custom.from, custom.to, custom.label end
 	local wk = St.WeekStart(now)
 	if p == "lastweek" then return wk - WEEK, wk, LABEL[p] end
 	if p == "30" then return now - 30 * DAY, now, LABEL[p] end
@@ -43,8 +45,15 @@ end
 
 function St.Period() return period end
 function St.SetPeriod(p) if LABEL[p] then period = p end return period end
+--- Open the statements on any range (a week picked on Performance's chart). The period button
+--- steps back to the usual periods from it.
+function St.SetRange(from, to, label)
+	custom = { from = from, to = to, label = label or "Custom" }
+	period = "custom"
+	return period
+end
 function St.Step(dir)
-	local i = 1
+	local i = dir and dir < 0 and 2 or #St.PERIODS
 	for k, p in ipairs(St.PERIODS) do if p == period then i = k end end
 	period = St.PERIODS[(i - 1 + (dir or 1)) % #St.PERIODS + 1]
 	return period
@@ -121,6 +130,29 @@ function St.Income(from, to, char)
 	end
 	s.netIncome = s.gross - s.deposits - s.expenseTotal + s.income
 	return s
+end
+
+--- Each item's profit from `from` to `to` on the Income Statement's basis (sales after the AH cut,
+--- less what the units cost you): { [id] = { id, sold, revenue, cost, profit, each } }. Their profits
+--- add up to the statement's gross profit, less sales TSM logged without an item.
+function St.Items(from, to, char)
+	local L = CH.Ledger
+	local ctx, out = context(), {}
+	for _, r in ipairs(L.Records("Sales")) do
+		if r.id and within(r, from, to, char) then
+			local x = out[r.id] or { id = r.id, sold = 0, revenue = 0, cost = 0 }
+			out[r.id] = x
+			x.sold = x.sold + (r.quantity or 0)
+			x.revenue = x.revenue + (isAuction(r) and (r.amount or 0) * CH.AH_CUT or (r.amount or 0))
+			local each = costEach(r.id, r.time, ctx)
+			x.cost = x.cost + (each or 0) * (r.quantity or 0)
+		end
+	end
+	for _, x in pairs(out) do
+		x.profit = x.revenue - x.cost
+		x.each = x.sold > 0 and x.cost / x.sold or 0
+	end
+	return out
 end
 
 -- Balance Sheet --------------------------------------------------------------------------------
@@ -292,7 +324,8 @@ local function balanceRows(ctx)
 	if #b.holders > 6 then
 		local rest = 0
 		for i = 7, #b.holders do rest = rest + b.holders[i].money end
-		table.insert(list, { string.format("%d others", #b.holders - 6), rest, kind = "sub" })
+		local n = #b.holders - 6
+		if rest > 0 then table.insert(list, { n == 1 and b.holders[7].name or string.format("%d others", n), rest, kind = "sub" }) end
 	end
 	table.insert(list, { "Inventory held", b.held.book, kind = "line", go = { "ledger", "inventory" },
 		tip = "Bags, banks, mail and the warband bank, each item at the lower of what it cost and what it would bring after the AH cut and expected lost deposits." })
@@ -353,6 +386,6 @@ St.VIEWS = {
 }
 
 if LUI and LUI.Register then
-	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow" }, "Statements")
-	LUI.Order("ledger", { "Statements", "Overview", "Revenue", "Expenses", "Profit", "Performance" })
+	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow" }, "Reports")
+	LUI.Order("ledger", { "Reports", "Revenue", "Expenses", "Inventory", "Profit" })
 end

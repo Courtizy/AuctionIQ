@@ -39,8 +39,9 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 	{ "Total", 530, 96 }, { "Time frame", 630, 94 } }
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
-	inventory = { label = "Inventory", parent = "Overview", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
-		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Market value", 596, 128 } } },
+	-- what you hold and what it's worth against what it cost; hover Held for where it is
+	inventory = { label = "Inventory", parent = "Inventory", sort = 5, cols = { { "Item", 0, 166 }, { "Held", 170, 46 }, { "Paid each", 220, 78 },
+		{ "Worth each", 302, 78 }, { "Value", 384, 90 }, { "Unrealized", 478, 84 }, { "Last sold", 566, 70 }, { "Days of stock", 640, 84 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
 	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
@@ -57,13 +58,14 @@ local VIEWS = {
 		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
 	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
-	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
+	holdings = { label = "Holdings", parent = "Inventory", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
 	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	report = { label = "Report", parent = "Overview", page = "briefing", cols = {} },
+	-- the old weekly briefing: off the nav (the statements replace it), still opened by /aiq report
+	report = { label = "Report", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Two tabs share this table page, each with sub-tabs across the top and their views in the left
@@ -71,11 +73,12 @@ local VIEWS = {
 -- (Overview, Revenue, Expenses, Profit, Performance: what happened and what to learn from it).
 -- Other modules fill theirs in with LUI.Register; LUI.Order sets the sub-tabs' order.
 local SECTIONS = {
-	ledger = { tabbed = true, { "Overview", "report" }, { "report", sub = true }, { "inventory", sub = true },
+	ledger = { tabbed = true,
 		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "expired", sub = true }, { "cancelled", sub = true },
-		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
+		{ "Inventory", "inventory" }, { "inventory", sub = true },
+		{ "Profit", "pl" }, { "pl", sub = true }, { "overhead", sub = true } },
 	operations = {},
 }
 local section = "ledger"
@@ -113,6 +116,21 @@ function LUI.Register(sec, views, nav, group)
 		for _, k in ipairs(nav) do table.insert(SECTIONS[sec], { k }) end
 	end
 	lastView[sec] = lastView[sec] or nav[1]
+end
+
+--- Add a view to an existing sub-tab's nav, after its other views.
+function LUI.AddNav(sec, group, k)
+	local list = SECTIONS[sec]
+	if not list then return end
+	local at
+	for i, n in ipairs(list) do
+		if not n.sub and n[1] == group then at = i
+		elseif at and not n.sub then break
+		elseif at then at = i end
+	end
+	if not at then return end
+	table.insert(list, at + 1, { k, sub = true })
+	if VIEWS[k] then VIEWS[k].parent = group end
 end
 
 --- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Craft", "Trade", "Queue" }).
@@ -205,19 +223,89 @@ function LUI.Rows(v, opts)
 	local def = VIEWS[v]
 	if def and def.rows then
 		local rows, footer = def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
-		return LUI.KeepChar(def, rows, opts.char), footer
+		rows = LUI.KeepChar(def, rows, opts.char)
+		-- a grouped Dashboard card hands over its exact items: show that shortlist only
+		local ids = opts.focus and opts.focus.ids
+		if ids and type(rows) == "table" then
+			local keep = {}
+			for _, r in ipairs(rows) do if r.id and ids[r.id] then table.insert(keep, r) end end
+			rows = keep
+		end
+		return rows, footer
 	end
 
 	if v == "inventory" then
-		local total = 0
+		local T = CH.Theme
+		local total, gain = 0, 0
+		-- what each cost: what you paid in the last 30 days of buying it, else what it costs to make
+		local paid, crafted, index = L.Paid(), L.Crafted(), L.PaidIndex()
+		local sold30, sold7, last = {}, {}, {}
+		for _, s in ipairs(L.Records("Sales")) do
+			if s.id and s.time >= now - 30 * 86400 then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
+			if s.id and s.time >= now - 7 * 86400 then sold7[s.id] = (sold7[s.id] or 0) + s.quantity end
+			if s.id and (not last[s.id] or s.time > last[s.id].time) then last[s.id] = s end
+		end
 		for _, e in ipairs(L.Inventory(opts.filter, opts.char)) do
 			local text, name = LUI.ItemText(e.id)
 			total = total + e.value
-			table.insert(out, { id = e.id, cells = { text, e.total, e.bags, e.bank, e.mail, e.warband, e.ah,
-				e.bound and CH.Theme.Color("muted", "bound") or money(e.value) },
-				sort = { name, e.total, e.bags, e.bank, e.mail, e.warband, e.ah, e.value } })
+			local each, how = paid[e.id] and paid[e.id].each, "bought"
+			if not each and crafted[e.id] then each, how = (L.CostAt(crafted[e.id].acc, index, now)), "crafted" end
+			local un = each and e.unit and (e.unit - each) * e.total or nil
+			if un then gain = gain + un end
+			local perDay = (sold30[e.id] or 0) / 30
+			local days = perDay > 0 and e.total / perDay or nil
+			-- when you last sold one, in days (TSM keeps your sales, not the market's)
+			local ls = last[e.id]
+			local ago = ls and math.max(0, math.floor((now - ls.time) / 86400))
+			local agoText = not ls and T.Color("muted", "never") or ago == 0 and T.Color("ok", "today")
+				or T.Color(ago <= 7 and "ok" or ago <= 30 and "fg" or "bad", ago .. (ago == 1 and " day" or " days"))
+			table.insert(out, { id = e.id, cells = { text, e.total, each and money(each) or T.Color("muted", "-"),
+				e.bound and T.Color("muted", "bound") or money(e.unit), e.bound and T.Color("muted", "-") or money(e.value),
+				un and signed(un) or T.Color("muted", "-"), agoText,
+				days and (days > 365 and T.Color("bad", "1 yr+") or string.format("%.0f", days)) or T.Color("muted", "no history") },
+				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, ago or math.huge, days or math.huge },
+				cellTip = function(j)
+					if j == 2 then
+						local lines = { { "Where it is" } }
+						for _, w in ipairs({ { "Bags", e.bags }, { "Bank", e.bank }, { "Mail", e.mail }, { "Warband bank", e.warband }, { "On the AH", e.ah } }) do
+							if (w[2] or 0) > 0 then table.insert(lines, { w[1], tostring(w[2]) }) end
+						end
+						return lines
+					elseif j == 3 then
+						return { { "Paid each" }, { T.Color("muted", each and (how == "bought" and "Average of what you paid in your last 30 days of buying it."
+							or "What it costs to make, at the reagent prices you paid (today's for any you didn't buy).") or "No purchase or craft on record: gathered, looted or a reward.") } }
+					elseif j == 6 and un and each > 0 then
+						return { { "Unrealized" }, { "Worth against paid", string.format("%+d%%", math.floor((e.unit - each) / each * 100 + 0.5)) },
+							{ T.Color("muted", "Not profit until it sells. The Balance Sheet carries the lower of the two, after the AH cut.") } }
+					elseif j == 7 then
+						local lines = { { "Last sold" } }
+						if ls then
+							table.insert(lines, { "Last sale", string.format("%s x%d at %s", LUI.Ago(ls.time, now), ls.quantity or 1, money(ls.price)) })
+						else table.insert(lines, { "Last sale", T.Color("muted", "none on record") }) end
+						table.insert(lines, { "Sold in 7 days", tostring(sold7[e.id] or 0) })
+						table.insert(lines, { "Sold in 30 days", string.format("%d (%.1f a day)", sold30[e.id] or 0, perDay) })
+						local sold, expired = 0, 0
+						if L.SellThrough then sold, expired = L.SellThrough(e.id) end
+						if (sold or 0) + (expired or 0) > 0 then
+							table.insert(lines, { "Sell-through, 30 days", string.format("%d%% (%d sold, %d expired)", math.floor(sold / (sold + expired) * 100 + 0.5), sold, expired) })
+						end
+						local rate = CH.Expect and CH.Expect.RegionRate and CH.Expect.RegionRate(e.id)
+						local perDayRegion = CH.Advisor and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(e.id)
+						if perDayRegion then table.insert(lines, { "Region sold a day", string.format("%.1f", perDayRegion) }) end
+						if rate then table.insert(lines, { "Region sale rate", string.format("%d%%", math.floor(rate * 100 + 0.5)) }) end
+						table.insert(lines, { T.Color("muted", "Your own sales, from TSM. The region figures are TSM's market data for every seller.") })
+						return lines
+					elseif j == 8 then
+						if not days then
+							return { { "Days of stock" }, { "Sold in 30 days", "0" }, { T.Color("muted", "Insufficient sales history: nothing sold in 30 days, so how long this lasts can't be estimated.") } }
+						end
+						return { { "Days of stock" }, { "Sold in 30 days", tostring(sold30[e.id] or 0) }, { T.Color("muted", "How long what you hold lasts at that rate.") } }
+					end
+					return { { ({ "", "", "", "Worth each", "Value" })[j] or "" }, { T.Color("muted", "AuctionIQ value (market) per item, and for all you hold.") } }
+				end })
 		end
-		return out, "Total value: " .. money(total)
+		return out, "Total value: " .. money(total) .. "   Unrealized on what has a cost: " .. signed(gain)
+			.. CH.Theme.Color("muted", "   Hover Held for where it is.")
 	end
 
 	if v == "sales" or v == "purchases" then
@@ -631,7 +719,7 @@ function LUI.Build(p, fs, panel)
 			if self.tip then
 				local lines = type(self.tip) == "function" and self.tip() or self.tip
 				if lines and lines[1] then CH.Window.Tooltip(self, lines) end
-			elseif self.id and GameTooltip.SetItemByID then
+			elseif self.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				GameTooltip:SetItemByID(self.id)
 				GameTooltip:Show()
@@ -809,7 +897,7 @@ function LUI.Refresh()
 
 	local rows, footer = {}, ""
 	if CH.Ledger.Available() then
-		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil })
+		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil, focus = focus })
 		if not v.fixed then sortRows(rows, sortCol or 1, sortDesc) end -- a statement keeps its own order
 	end
 	local SHOWN = ROWS
@@ -881,7 +969,7 @@ function LUI.ShowCellTip(hit, j)
 	local lines = j > 1 and hit.cellTip and hit.cellTip(j)
 	if lines and lines[1] then
 		CH.Window.Tooltip(hit, lines)
-	elseif j == 1 and hit.id and GameTooltip.SetItemByID then
+	elseif j == 1 and hit.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 		GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
 		GameTooltip:SetItemByID(hit.id)
 		GameTooltip:Show()
@@ -991,6 +1079,8 @@ function LUI.SetSection(sec)
 end
 function LUI.Section() return section end
 function LUI.View() return view end
+--- The Character picker's choice (nil for all characters).
+function LUI.Char() return char end
 --- The tab a view lives in.
 function LUI.SectionOf(v)
 	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
@@ -1013,6 +1103,8 @@ function LUI.Set(opts)
 	if opts.view and opts.view ~= view then focus = nil; selected = nil; said = nil end
 	if opts.focus then
 		focus = opts.focus
+		-- the page opens under the cursor: hold the item tooltip a moment so it doesn't cover the pane
+		LUI.quietUntil = (GetTime and GetTime() or 0) + 1.5
 		if opts.filter == nil then opts.filter = focus.name or "" end
 	end
 	if opts.view then

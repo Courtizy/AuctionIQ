@@ -13,10 +13,15 @@ local function price(id) return id and CH.Prices.Get("chvalue", "i:" .. id) end
 function O.FromOrder(order)
 	if not order then return nil end
 	local provided, slots = {}, {}
+	-- only what the customer gives comes off your cost: an order's list can also name reagents the
+	-- crafter must bring (source Crafter), which you still pay for
+	local SRC = Enum and Enum.CraftingOrderReagentSource
+	local customer = SRC and SRC.Customer or 1
 	for _, r in ipairs(order.reagents or {}) do
 		local info = r.reagentInfo or r
 		local slot = info.dataSlotIndex or r.dataSlotIndex or r.slotIndex
-		if info and info.reagent and slot then
+		local given = r.source == nil or r.source == customer
+		if info and info.reagent and slot and given then
 			table.insert(provided, { reagent = { itemID = info.reagent.itemID }, itemID = info.reagent.itemID, dataSlotIndex = slot, quantity = info.quantity or 1 })
 			slots[slot] = (slots[slot] or 0) + (info.quantity or 1) -- units the customer gives in this slot
 		end
@@ -300,13 +305,13 @@ function O.Debug()
 	local orders = O.All()
 	CH.Print(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
 	for _, order in ipairs(orders) do
-		local ok, result = pcall(O.Analyze, order)
+		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
 		if not ok then
 			CH.Print(head .. " error " .. tostring(result))
 		elseif not result then
-			CH.Print(head .. " no result")
+			CH.Print(head .. " no result" .. (why and (": " .. tostring(why)) or ""))
 		else
 			local m = result.model or {}
 			local parts = {}

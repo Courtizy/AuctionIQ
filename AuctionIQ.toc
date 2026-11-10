@@ -71,3 +71,4 @@ Research\TreeView.lua
 Research\PathsUI.lua
 Research\SpecOverlay.lua
 Accounting\Statements.lua
+Accounting\Performance.lua

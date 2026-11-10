@@ -1,6 +1,6 @@
 -- AuctionIQ look, after ToxiUI's Dark style: graphite panels with black 1px borders and a soft
 -- shadow, the player's class colour as the accent, ToxiUI's class gradients on progress bars and
--- Montserrat titles. The Accounting tab keeps its plum, parchment and gold. With ElvUI (and ToxiUI on
+-- Montserrat titles. Every tab uses the AuctionIQ palette (the old plum Accounting palette is kept but unused). With ElvUI (and ToxiUI on
 -- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
 -- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
 local _, CH = ...
@@ -13,7 +13,7 @@ local PALETTES = {
 	-- ToxiUI's ElvUI colours: backdrop #1a1a1a, see-through backdrop #292929 at 80%, black borders.
 	-- The accent follows the theme colour (ElvUI's value colour, which ToxiUI sets to the class
 	-- colour), else stays AuctionIQ blue.
-	auctioniq = { bg = "292929", panel = "1a1a1a", line = "000000", fg = "f2f2f2", muted = "a3a3ab", accent = "3fc7eb", iq = "34c77b", ok = "34c77b", bad = "ef7d72", gold = "e0a83a", bgAlpha = 0.8, themeAccent = true },
+	auctioniq = { bg = "292929", panel = "1a1a1a", line = "000000", fg = "f2f2f2", muted = "a3a3ab", accent = "3fc7eb", iq = "34c77b", ok = "34c77b", bad = "ef7d72", gold = "e0a83a", bgAlpha = 0.96, themeAccent = true },
 	-- the earlier navy look
 	navy = { bg = "0e1729", panel = "15213b", line = "263a63", fg = "e6e8ee", muted = "9aa6bd", accent = "e0a83a", iq = "34c77b", ok = "6cc58f", bad = "ef7d72", gold = "e0a83a" },
 	accounting = { bg = "1c1222", panel = "281a30", line = "45304f", fg = "efe4c8", muted = "b8a69a", accent = "e0a83a", iq = "d8c39a", ok = "6cc58f", bad = "ef7d72", gold = "e0a83a" },
@@ -233,7 +233,9 @@ end
 function T.Panel(frame, bg, alpha)
 	frame.aiqBg, frame.aiqAlpha = bg or "bg", alpha
 	if T.Elv() and frame.SetTemplate then
-		frame:SetTemplate(bg == "panel" and "Default" or "Transparent")
+		-- Default, not Transparent: ElvUI repaints Transparent frames with its own (see-through)
+		-- fade colour whenever its media updates, which undoes the tint below
+		frame:SetTemplate("Default")
 		T.Tint(frame)
 		return frame
 	end
@@ -243,15 +245,18 @@ function T.Panel(frame, bg, alpha)
 	return frame
 end
 
+T.OPAQUE = 0.94 -- the least a window's background may show through
+
 --- Colour a panel from the current palette. With ElvUI the template's border, shadow and alpha stay.
 function T.Tint(frame)
 	if not frame.SetBackdropColor or not frame.aiqBg then return end
 	local c = T[frame.aiqBg] or T.bg
 	local E = T.Elv()
 	if E then
-		if elvColours() then return end
+		-- near-opaque graphite even under ElvUI's Transparent template: the game world behind a
+		-- table costs contrast (its own colours still apply when /aiq theme elvui is on)
 		local fade = E.media.backdropfadecolor
-		local a = frame.aiqBg == "panel" and 1 or (fade and fade[4]) or 0.8
+		local a = frame.aiqBg == "panel" and 1 or math.max((fade and fade[4]) or 0.8, T.OPAQUE)
 		frame:SetBackdropColor(c[1], c[2], c[3], a)
 		return
 	end

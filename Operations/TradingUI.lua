@@ -241,7 +241,7 @@ function TUI.WorkPlan()
 		local status = x.status
 		if e.char ~= (CH.CharacterKey and CH.CharacterKey()) and status ~= "buy reagents" then status = "switch character" end
 		table.insert(out, { kind = "craft", task = "Craft " .. (e.name or "?") .. (e.quality and (" Q" .. e.quality) or ""), id = e.item,
-			char = e.charName or "?", qty = e.qty, worth = (e.profit or 0) * e.qty, status = status, where = "Profession window",
+			char = e.charName or "?", qty = e.qty, worth = (e.profit or 0) * e.qty, status = status, where = "Professions",
 			tone = STATUS[status] or "fg" })
 	end
 	-- posts follow the posting advice: how many it says, not just what TSM would put up

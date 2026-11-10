@@ -363,7 +363,7 @@ function UI.WhatChanged(data)
 	-- what the gold log moved that the ledger doesn't explain: transfers and anything TSM didn't log
 	local other = gold - s.cash
 	if math.abs(other) >= 10000 then
-		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "report" },
+		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "cashflow" },
 			tip = "Gold that moved without a sale, purchase or expense behind it: mail, bank and guild transfers, and anything TSM didn't log." })
 	end
 	if data.worthChange then
@@ -661,7 +661,7 @@ end
 -- Accounting. A view named with it opens wherever it lives now.)
 local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "operations", "professions" }, paths = { "operations", "paths" },
 	crafting = { "operations", "scenarios" }, professions = { "operations", "scenarios" }, markets = { "operations", "compare" },
-	analytics = { "ledger", "performance" }, performance = { "ledger", "performance" }, research = { "operations" },
+	analytics = { "ledger", "overview" }, performance = { "ledger", "overview" }, research = { "operations" },
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
 UI.TABS, UI.OLD = TABS, OLD
 
@@ -676,7 +676,7 @@ function UI.PlaceName(go)
 	return (tabName or "AuctionIQ") .. (group and (" > " .. group) or "")
 end
 
---- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
+--- The window title: AuctionIQ, on every tab.
 local function titleText()
 	return CH.Theme.Wordmark() -- the icon is the title bar's badge, beside it
 end
@@ -859,13 +859,14 @@ function build()
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
 	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
 	local function buildPaths(p) pages.paths = p; CH.PathsUI.Build(p) end
+	local function buildPerf(p) pages.perf = p; if CH.Performance then CH.Performance.Build(p, fs) end end
 	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildBriefing, buildSettings }) do
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildBriefing, buildPerf, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
 		-- the Report, Knowledge and Paths sit in a tab's table page, right of its nav
-		if b == buildBriefing or b == buildPlan or b == buildPaths then
+		if b == buildBriefing or b == buildPlan or b == buildPaths or b == buildPerf then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", 12 + 172, -36)
 			p:SetSize(W - 24 - 172, H - 48)
@@ -1203,7 +1204,7 @@ local function refreshDashboard()
 				if c.l1.SetMaxLines then c.l1:SetMaxLines(2) end
 				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg)
 					or (e.risk and T.Color("muted", "Risk: " .. e.risk)) or "")
-				c.l3:SetText((not e.act and e.go) and T.Color("muted", "click to open") or "")
+				c.l3:SetText((not e.act and e.go) and T.Color("accent", "Review") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")
 				c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
@@ -1238,8 +1239,8 @@ local function refreshLedger() return CH.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end
-	-- the Accounting tab is the ledger: plum and parchment; every other page is AuctionIQ navy
-	local want = page == "ledger" and "accounting" or "auctioniq"
+	-- one palette on every tab (Accounting used to switch to plum)
+	local want = "auctioniq"
 	if CH.Theme.palette ~= want or frame.palette ~= want then
 		CH.Theme.Use(want)
 		CH.Theme.Repaint(frame)
@@ -1261,6 +1262,7 @@ function UI.Refresh()
 	if page == "today" then return refreshDashboard()
 	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
 	elseif beside == "paths" then refreshLedger(); return CH.PathsUI.Refresh()
+	elseif beside == "perf" then refreshLedger(); return CH.Performance.Refresh()
 	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
 	elseif report then
 		refreshLedger()
@@ -1293,7 +1295,7 @@ function UI.LayoutSubTabs()
 		end
 		b:SetShown(g ~= nil)
 	end
-	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, briefing = 12 + 172 }) do
+	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, briefing = 12 + 172, perf = 12 + 172 }) do
 		local p = pages[k]
 		if p then
 			p:ClearAllPoints()

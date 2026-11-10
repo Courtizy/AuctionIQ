@@ -1,3 +1,4 @@
+import math
 """Loads the addon in a stubbed WoW environment (lupa) and checks its behaviour.
 Run: python3 tests/run_tests.py   (needs `pip install lupa`)"""
 import re
@@ -238,7 +239,7 @@ check("ElvUI: a theme colour change re-colours the brand", "336699" in L.eval("A
 run("AuctionIQ.db.settings.theme = 'elvui'; AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: /aiq theme takes its value colour as the accent", T.hex.accent == "336699")
 run("AuctionIQ.db.settings.theme = nil; AuctionIQ.Theme.Use('auctioniq')")
-check("ElvUI: panels use its Transparent template", L.eval("STUB.p.template") == "Transparent")
+check("ElvUI: panels use its opaque Default template", L.eval("STUB.p.template") == "Default")
 check("ElvUI: buttons use its skins", L.eval("STUB.b.skinned") == "button" and L.eval("STUB.x.skinned") == "close")
 run("ElvUI = nil; AuctionIQ.Theme.Use('auctioniq')")
 check("no ElvUI again: back to AuctionIQ blue and its gradient", T.hex.accent == "3fc7eb"
@@ -1320,7 +1321,7 @@ csvtext, nrows = CH.ReportUI.CSV("sales", L.eval("{ }"))
 run("AuctionIQ.ReportUI.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
 run("AuctionIQ.UI.Page('ledger')")
-check("theme: the Accounting tab is plum", L.eval("AuctionIQ.Theme.palette == 'accounting' and AuctionIQ.Theme.hex.bg == '1c1222'"))
+check("theme: the Accounting tab uses the same palette as the rest", L.eval("AuctionIQ.Theme.palette == 'auctioniq'"))
 run("AuctionIQ.UI.Page('markets')")
 check("theme: other pages are ToxiUI graphite with the class accent", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '292929' and AuctionIQ.Theme.hex.panel == '1a1a1a' and AuctionIQ.Theme.hex.accent == '3fc7eb'"))
 # AH scans: any search answered in the AH window is saved (Data/Scans.lua)
@@ -1384,15 +1385,15 @@ check("ledger and briefing pages draw", CH.UI.IsShown())
 # Three tabs, old names still work, shared table page sections
 LUI = CH.LedgerUI
 run("AuctionIQ.UI.Page('briefing')")
-check("report opens inside the Accounting tab", LUI.Section() == "ledger" and LUI.View() == "report" and CH.Theme.palette == "accounting")
+check("report opens inside the Accounting tab", LUI.Section() == "ledger" and LUI.View() == "report" and CH.Theme.palette == "auctioniq")
 run("AuctionIQ.UI.Page('analytics', 'perf')")
-check("analytics opens Accounting, Performance", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Performance")
+check("analytics opens Accounting, Reports", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Reports")
 run("AuctionIQ.UI.Page('analytics', 'dead')")
 check("a view that moved opens on its new tab: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Trade")
 run("AuctionIQ.UI.Page('markets')")
 check("markets opens Operations on compare prices", LUI.Section() == "operations" and LUI.View() == "compare" and LUI.Group() == "Trade")
 # old Research links: each view opens wherever it lives now
-for (tab, view), (sec, group) in {("research", "perf"): ("ledger", "Performance"), ("research", "results"): ("ledger", "Performance"),
+for (tab, view), (sec, group) in {("research", "perf"): ("ledger", "Reports"), ("research", "results"): ("ledger", "Reports"),
         ("research", "scenarios"): ("operations", "Craft"), ("research", "paths"): ("operations", "Craft"),
         ("research", "compare"): ("operations", "Trade"), ("research", "professions"): ("operations", "Craft")}.items():
     run(f"AuctionIQ.UI.Page('{tab}', '{view}')")
@@ -1411,7 +1412,7 @@ check("dashboard figures: queued crafts, ready, short, on other characters", fig
 work = list(CH.TradingUI.WorkPlan().values())
 crafts = {w.task: w for w in work if w.kind == "craft"}
 check("execution plan: crafts with their status, another character's marked switch", crafts["Craft A"].status == "ready to craft"
-      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Profession window")
+      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Professions")
 wrows, wfoot = L.eval("AuctionIQ.LedgerUI.Rows('work', {})")
 check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
 run("AuctionIQ.UI.Page('today')")
@@ -1454,7 +1455,7 @@ check("hand-off: Craft opens on the recommended recipe, filtered to it, saying w
 # Craft detail pane: the handed-over recipe is selected, sized to the Dashboard's quantity, and queues
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
 check("Craft pane: the selected recipe, live while the profession window has it, sized to the hand-off",
-      det is not None and plain(det.title) == "Craft 20 x Test Flask" and "LIVE" in plain(det.kicker) and "Live from the profession" in plain(det.sub)
+      det is not None and plain(det.title) == "Craft 20 x Test Flask" and "LIVE" in plain(det.kicker) and plain(det.sub).startswith("Live")
       and det.n == 20 and plain(det.actions[1].label) == "Queue 20 crafts" and L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
 pane = L.eval("AuctionIQ.UI.Pages().ledger.detail")
 tbl = L.eval("AuctionIQ.UI.Pages().ledger.rows[1].hit")
@@ -1480,6 +1481,38 @@ check("Craft pane: Rescan says whose scan it is when another character made it",
 figc = [f[2] for f in det.figures.values()]
 check("Craft pane: the figures are coloured (profit green or red, gold at risk red, break-even gold)",
       all("|c" in f for f in figc))
+# one selection: the preview, the Queue button and the saved forecast are the same craft
+sel = det.selection
+check("one selection: the pane's figures, title and Queue button share one batch size",
+      sel.n == det.n and plain(det.actions[1].label).startswith("Queue %d " % sel.n))
+x = sel.x
+nq = L.eval("AuctionIQ.Queue.Count()")
+okq = L.eval("function(s) return AuctionIQ.AnalyticsViews.QueueSelection(s) end")(sel)
+check("one selection: queueing while live goes through the advisor's own queueing", okq and L.eval("AuctionIQ.Queue.Count()") > nq)
+if sel.canConc:
+    run("AuctionIQ.AnalyticsViews.SetConc(AuctionIQ.LedgerUI.lastDetail.selection.x, true); AuctionIQ.UI.Refresh()")
+    det_c = L.eval("AuctionIQ.LedgerUI.lastDetail")
+    check("one selection: Use Concentration switches the whole pane to the Concentration craft",
+          det_c.selection.conc and "with Concentration" in plain(det_c.actions[1].label) and plain(det_c.actions[2].label) == "Plain instead")
+    run("AuctionIQ.AnalyticsViews.SetConc(AuctionIQ.LedgerUI.lastDetail.selection.x, false); AuctionIQ.UI.Refresh()")
+# a hand-off in items becomes crafts by what one craft makes
+si = L.eval("function(x) return AuctionIQ.AnalyticsViews.Selection(x, { name = x.name, qty = 9, unit = 'items', title = 'Restock' }) end")(x)
+check("hand-off units: 9 items become crafts by what a craft makes", si.n == max(1, math.ceil(9 / si.made - 1e-9)) and "9 items" in si["from"])
+sc_ = L.eval("function(x) return AuctionIQ.AnalyticsViews.Selection(x, { name = x.name, qty = 3, unit = 'crafts', conc = true }) end")(x)
+check("hand-off: a Concentration recommendation arrives with Concentration chosen", sc_.n == 3 and (sc_.conc or not sc_.canConc))
+# Dashboard hand-offs carry their intent: Concentration, the unit of the quantity, the exact items
+nl = list(L.eval("AuctionIQ.Next.List()").values())
+gos = [e.go[3] for e in nl if e.go is not None and e.go[3] is not None]
+check("hand-off payloads: Restock and stock targets say their quantity is in items",
+      all(g.unit == "items" for e in nl if e.title in ("Restock", "Below stock target") for g in [e.go[3]]))
+check("hand-off payloads: Spend Concentration says crafts, and Concentration when it picked a Concentration craft",
+      all(e.go[3].unit == "crafts" for e in nl if e.title == "Spend Concentration" and e.go[2] == "scenarios"))
+rk = L.eval("function(ids) return AuctionIQ.LedgerUI.Rows('scenarios', { focus = { ids = ids } }) end")
+some = list(LUI.Rows("scenarios", L.eval("{}"))[0].values())
+if some:
+    one = some[0].id
+    kept = list(rk(L.eval("{ [%d] = true }" % one))[0].values())
+    check("grouped cards: the view opens on exactly the items the card was about", len(kept) >= 1 and all(r.id == one for r in kept))
 # an older scan without a saved sale price still gets a break-even, from today's market price
 pa_old = L.eval("AuctionIQ.Decide.AccountParts({ item = 100, accounts = { sales = 120, cost = 100, unit = 12 } })")
 check("older scans: break-even falls back to today's market price", pa_old.price is not None and pa_old.priceFrom == "market")
@@ -1499,15 +1532,15 @@ check("hand-off: clearing the filter shows everything again", plain(L.eval("Auct
 run("AuctionIQ.UI.Page('groups')")
 check("Groups and rules lives in Settings", L.eval("AuctionIQ.UI.Pages().groups:IsShown()") is True)
 run("AuctionIQ.UI.Page('ledger', 'sales')")
-check("Accounting sub-tabs: Statements first, then Overview, Revenue, Expenses, Profit, Performance",
-      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Statements", "Overview", "Revenue", "Expenses", "Profit", "Performance"])
+check("Accounting sub-tabs: Reports, Revenue, Expenses, Inventory, Profit",
+      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Reports", "Revenue", "Expenses", "Inventory", "Profit"])
 run("AuctionIQ.UI.Page('ledger', 'expired')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Expenses: purchases, other, expired, cancelled", LUI.Group() == "Expenses" and navshown == ["Purchases", "Other", "Expired", "Cancelled"])
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Performance: batch results, forecast accuracy and craft results near the top, no scenarios",
-      navshown[:4] == ["Performance", "Batch results", "Forecast accuracy", "Craft results"] and "Compare crafts" not in navshown and len(navshown) == 8)
+check("Reports nav: the three statements, then Performance; the detail views open from it",
+      navshown == ["Income Statement", "Balance Sheet", "Cash Flow", "Performance"] and LUI.Group() == "Reports")
 run("AuctionIQ.UI.Page('crafting')")
 check("old crafting tab opens Operations, Professions on Compare crafts", LUI.Section() == "operations" and LUI.View() == "scenarios")
 run("AuctionIQ.UI.Page('operations', 'professions')")
@@ -1845,7 +1878,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
@@ -2067,9 +2100,9 @@ check("analytics scenarios: reagents +10% and price -10% from the scan", abs(sc.
 run("AuctionIQ.UI.Page('analytics', 'performance')")
 check("analytics: Performance view opens", LUI.View() == "performance" and LUI.Section() == "ledger")
 nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("AuctionIQ.LedgerUI.SECTIONS.ledger").items() if isinstance(k, int))]
-perfnav = nav[nav.index("Performance") + 1:]
-check("performance nav: performance first, batch results, forecast accuracy and craft results next, no stock targets",
-      perfnav[:4] == ["performance", "batches", "perf", "results"] and "par" not in perfnav and "scenarios" not in perfnav)
+rep = nav[nav.index("Reports") + 1:]
+check("Reports nav: Performance after the statements; the old Performance sub-tab is gone",
+      rep[:4] == ["statement", "balance", "cashflow", "overview"] and "Performance" not in nav and "batches" not in nav)
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[6]) != "-"}
 check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[6]) == "50"
@@ -2314,6 +2347,70 @@ crows = [plain(r.cells[1]) for r in LUI.Rows("cashflow", L.eval("{}"))[0].values
 check("statements: the biggest item is named when it carries a quarter or more of inventory", (bal.top is None) or (bal.top.worth / max(bal.inventory, 1) < 0.25) or any("Largest:" in x for x in brows))
 check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
 
+run("AuctionIQ.UI.Page('ledger', 'statement')")
+check("Reports: Income Statement, Balance Sheet, Cash Flow, Performance", [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Income Statement", "Balance Sheet", "Cash Flow", "Performance"])
+run("AuctionIQ.UI.Page('ledger', 'holdings')")
+run("AuctionIQ.UI.Page('ledger', 'inventory')")
+check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
+ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
+check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
+fo = CH.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
+  { source = 1, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
+  { source = 2, reagentInfo = { reagent = { itemID = 202 }, dataSlotIndex = 2, quantity = 3 } } } }"""))
+check("orders: only reagents the customer gives come off your cost, not ones the crafter must bring",
+      fo.providedSlots[1] == 2 and fo.providedSlots[2] is None and len(list(fo.provided.values())) == 1)
+# Reports > Performance: the headline, eight weeks of profit and what drove the change
+PF = CH.Performance
+run("AuctionIQ.UI.Page('ledger', 'overview')")
+check("Performance: a page under Reports, beside the nav", LUI.Group() == "Reports" and L.eval("AuctionIQ.UI.Pages().perf:IsShown()") is True
+      and L.eval("AuctionIQ.UI.Pages().ledger.body:IsShown()") is False)
+pr = PF.Refresh(L.eval("STUB.now"))
+wk = list(pr.weekly.values())
+check("Performance: eight weekly bars, only the current week partial", len(wk) == 8 and wk[-1].partial and not any(w.partial for w in wk[:-1]))
+cmp = pr.compare
+tot = sum(x.change for x in cmp.list.values())
+check("Performance: the contributors add up to the change in net income", abs(tot - cmp.change) < 1)
+for p_ in ["week", "lastweek", "30"]:
+    c_ = PF.Compare(None, p_, L.eval("STUB.now"))
+    check(f"Performance ({p_}): every item's price, volume and cost add up to its change",
+          all(abs(x.price + x.volume + x.cost - x.change) < 1 for x in c_.list.values() if x.kind == "item"))
+w = PF.Windows("week", L.eval("STUB.now"))
+check("Performance: this week so far is compared with the same point last week", (w["to"] - w["from"]) == (w.pto - w.pfrom) and w.pto <= w["from"])
+a_, b_, c3 = PF.Headline(cmp)
+check("Performance: the headline says the period, the change and what drove it", "so far" in plain(a_) and "against the same point last week" in plain(b_) and len(plain(c3)) > 10)
+c30 = PF.Compare(None, "30", L.eval("STUB.now"))
+big = next((x for x in c30.list.values() if x.kind == "item"), None)
+if big is not None:
+    PF.Open(big, c30)
+    dr = list(LUI.Rows("drivers", L.eval("{ focus = AuctionIQ.LedgerUI.Focus() }"))[0].values())
+    check("Performance: a driver bar opens that item's Profit drivers on the same windows", LUI.View() == "drivers" and LUI.Group() == "Reports"
+          and len(dr) == 1 and dr[0].id == big.id and abs(dr[0].sort[4] - big.change) < 1)
+else:
+    check("Performance: the stub sold something in the last 60 days", False)
+cap = PF.Capital(None, L.eval("STUB.now"))
+check("Performance: capital tied up is the slow stock's share of all stock", cap.total > 0 and 0 <= cap.slow <= cap.total and abs(cap.share - cap.slow / cap.total) < 1e-9)
+fl = list(PF.Forecasts(L.eval("STUB.now")).values())
+check("Performance: only batches a week old (or sold out) are checked, each in or out of range", all(f.inRange in (True, False) for f in fl))
+check("Performance: the forecast line says how many were checked", plain(PF.ForecastText(PF.Forecasts(L.eval("STUB.now")))).startswith("Forecasts: "))
+PF.ToggleScatter()
+pr2 = PF.Refresh(L.eval("STUB.now"))
+check("Performance: the forecast chart takes chart 2's place, one dot per checked batch",
+      L.eval("AuctionIQ.UI.Pages().perf.sTitle").shown is not False and len([d for d in L.eval("AuctionIQ.UI.Pages().perf.dots").values() if d.shown]) == len(fl))
+_before = len(audit_all)
+audit("performance forecast chart")
+# only this page's problems: other windows the earlier tests left open are audited on their own
+audit_all[_before:] = [a for a in audit_all[_before:] if "This week so far" in a or "Forecast" in a]
+PF.ToggleScatter()
+PF.Refresh(L.eval("STUB.now"))
+PF.OpenWeek(wk[-2])
+check("Performance: a week's bar opens that week's Income Statement", LUI.View() == "statement" and CH.Statements.Period() == "custom"
+      and abs(CH.Statements.Income(wk[-2]["from"], wk[-2].to - 1).netIncome - wk[-2].profit) < 1)
+CH.Statements.SetPeriod("week")
+run("AuctionIQ.UI.Page('ledger', 'overview')")
+lt = ir[0].cellTip(7)
+check("Inventory: Last sold sits before Days of stock, with the sales rate on hover",
+      [c[1] for c in L.eval("AuctionIQ.LedgerUI.ViewDef('inventory').cols").values()][-2:] == ["Last sold", "Days of stock"]
+      and plain(lt[1][1]) == "Last sold" and any(plain(x[1]) == "Sold in 30 days" for x in lt.values() if x[1]))
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)

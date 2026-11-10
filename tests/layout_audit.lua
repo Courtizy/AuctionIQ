@@ -85,7 +85,7 @@ function STUB.Audit(roots)
 					end
 					local l, t = rect(fs, f, w, 14)
 					if l and (l < -SLACK or l + math.min(w, est) > pw + SLACK or t < -SLACK or t > ph - 8) then
-						add(string.format("text outside its panel (x %d..%d of %d, y %d of %d): %s", l, l + math.min(w, est), pw, t, ph, name(fs)))
+						add(string.format("text outside its panel (x %.0f..%.0f of %.0f, y %.0f of %.0f): %s", l, l + math.min(w, est), pw, t, ph, name(fs)))
 					end
 				end
 			end
