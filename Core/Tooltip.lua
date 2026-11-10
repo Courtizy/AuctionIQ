@@ -74,6 +74,41 @@ local function craftLines(lines, row, acc, at)
 	end
 end
 
+--- Craft or sell, live: crafting and selling the item (buying only the reagents you're short of)
+--- against selling the reagents you hold instead, at what they'd bring after the cut.
+--- { craft, sell, gain } or nil when you hold none of the craft's reagents.
+function CH.CraftOrSell(acc)
+	if not (acc and acc.reagents) then return nil end
+	local P = CH.Prices
+	local sell, buy = 0, 0
+	for _, rg in ipairs(acc.reagents) do
+		local n = rg.n or 0
+		local unit = n > 0 and rg.cost and rg.cost / n or 0
+		local own = math.min(n, P.Held and P.Held(rg.itemID) or 0)
+		local v = own > 0 and P.Get("chvalue", "i:" .. rg.itemID)
+		-- a reagent you hold with no sale price is only worth buying again: today's price
+		sell = sell + own * (v and v * CH.AH_CUT or unit)
+		buy = buy + (n - own) * unit
+	end
+	if sell <= 0 then return nil end
+	local craft = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - buy
+	return { craft = craft, sell = sell, gain = craft - sell }
+end
+
+local function craftOrSellLines(lines, acc)
+	local cs = CH.CraftOrSell(acc)
+	if not cs then return end
+	local m = CH.FormatMoney
+	table.insert(lines, { "Craft or sell?", CH.Theme.Color("muted", "with the reagents you hold") })
+	table.insert(lines, { "  Craft and sell the item", m(cs.craft), cs.craft >= 0 and "fg" or "bad" })
+	table.insert(lines, { "  Sell your reagents instead", m(cs.sell) })
+	if cs.gain >= 0 then
+		table.insert(lines, { "Crafting earns more by", m(cs.gain), "ok" })
+	else
+		table.insert(lines, { "Selling the reagents earns more by", m(-cs.gain), "bad" })
+	end
+end
+
 function CH.TooltipLines(link)
 	local lines = {}
 	local m = CH.FormatMoney
@@ -138,6 +173,7 @@ function CH.TooltipLines(link)
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
 		craftLines(lines, row, acc, at)
+		craftOrSellLines(lines, acc)
 	else
 		local profit = CH.Prices.CraftProfit(link)
 		if profit then

@@ -1186,6 +1186,14 @@ csl = [plain(l[1]).strip() for l in CH.Advisor.CraftOrSellLines(cres, cres.best)
 check("craft or sell: the profit hover shows both and which earns more", csl[0] == "Craft or sell?" and "Sell your reagents instead" in csl
       and (csl[-1].startswith("Crafting earns more by") or csl[-1].startswith("Selling the reagents earns more by")))
 run("AuctionIQ.Prices.Held = STUB.oldHeld")
+tcs = L.eval("""(function()
+  local old = AuctionIQ.Prices.Held
+  AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end
+  local cs = AuctionIQ.CraftOrSell({ sales = 50000, mcGold = 0, resGold = 0, reagents = { { itemID = 205, n = 2, cost = 20000 }, { itemID = 201, n = 3, cost = 30000 } } })
+  AuctionIQ.Prices.Held = old
+  return cs end)()""")
+check("item tooltip craft or sell: crafting buys only what you're short of, against selling yours",
+      tcs is not None and tcs.craft == 50000 - 30000 and tcs.sell > 0 and abs(tcs.gain - (tcs.craft - tcs.sell)) < 1)
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
