@@ -1796,6 +1796,25 @@ sk = L.eval("""(function()
   return info.bonusSkill
 end)()""")
 check("orders: the customer's reagents' quality counts toward skill (a claimed Phoenix Oil read 141 instead of 323)", sk == 180)
+# Recipe slots can share a data slot number: the customer's reagents go to the slot listing their item
+ds = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local old = ui.GetRecipeSchematic
+  ui.GetRecipeSchematic = function(id, r)
+    local sch = old(id, r)
+    if id == 10 then sch.reagentSlotSchematics[2].dataSlotIndex = 1 end -- both quality slots are data slot 1
+    return sch
+  end
+  local m = AuctionIQ.Advisor.Measure(10, { order = { orderID = 9, minQuality = 1,
+    provided = { { reagent = { itemID = 202 }, itemID = 202, dataSlotIndex = 1, quantity = 4 },
+                 { reagent = { itemID = 204 }, itemID = 204, dataSlotIndex = 1, quantity = 5 } } } })
+  ui.GetRecipeSchematic = old
+  local n = 0
+  for _, r in ipairs(m and m.provided or {}) do n = n + r.quantity end
+  return { n = n, qual = m and #m.qual }
+end)()""")
+check("orders: two recipe slots sharing data slot 1 both take the customer's reagents (none dropped, neither left to you)",
+      ds.n == 9 and ds.qual == 0)
 # Shatter: a Midnight enchanting craft casts Shatter first when Shattering Essence is missing
 sh = L.eval("""(function()
   local ui = C_TradeSkillUI
@@ -1818,10 +1837,16 @@ sh = L.eval("""(function()
   local r = {}
   r.step = AuctionIQ.Queue.OrderStep(e)
   r.other = AuctionIQ.Queue.OrderStep({ recipeID = 99 })
+  local m1 = AuctionIQ.Advisor.Measure(10)
+  r.shatterModel = m1 and m1.shatter
+  r.ing1 = m1 and m1.stats0.ingenuity
   r.cast = AuctionIQ.Queue.Shatter()
   r.salv = STUB.salvaged
   STUB.aura = { spellId = 1235733 }
   r.after = AuctionIQ.Queue.OrderStep(e)
+  local m2 = AuctionIQ.Advisor.Measure(10)
+  r.ing2 = m2 and m2.stats0.ingenuity
+  r.shatter2 = m2 and m2.shatter
   ui.GetRecipeInfo, ui.GetProfessionInfoByRecipeID, ui.GetSalvagableItemIDs, ui.CraftSalvage = o.info, o.prof, o.salv, o.cs
   C_UnitAuras, C_Container, ItemLocation, C_Item.GetItemCount = oldUA, oldC, oldIL, oldCount
   AuctionIQ.Prices.Get = oldGet
@@ -1830,6 +1855,8 @@ end)()""")
 check("shatter: a Midnight enchanting craft without Shattering Essence shows Shatter first (others don't)", sh.step == "Shatter" and sh.other == "Craft")
 check("shatter: casts Shatter on the cheapest mote in your bags", sh.cast and sh.salv.id == 1235731 and sh.salv.slot == 2)
 check("shatter: with the buff on, the step is Craft again", sh.after == "Craft")
+check("shatter: the advisor counts Shattering Essence before it's cast (as CraftSim), and not twice once it's on",
+      sh.shatterModel and not sh.shatter2 and sh.ing1 == sh.ing2 + 5)
 check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
 run("AuctionIQ.Queue.Clear()")
 check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77

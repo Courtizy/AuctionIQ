@@ -49,7 +49,7 @@ function A.Slots(schematic, provided)
 			if id then table.insert(items, id) end
 		end
 		-- the customer may give all of a slot (left out) or part of it (we supply the rest)
-		local given = provided and provided[s.dataSlotIndex]
+		local given = provided and (provided[s] or provided[s.dataSlotIndex])
 		local need = s.quantityRequired or 1
 		if given == true then given = need end
 		need = need - (given or 0)
@@ -173,35 +173,37 @@ function A.Measure(recipeID, opts)
 	local schematic = ui.GetRecipeSchematic(recipeID, opts.allocationGUID ~= nil)
 	if not info or not schematic then return nil, "No recipe data." end
 	local order = opts.order
-	-- The slot a customer's reagent fills is the recipe slot that lists its item: the order's own
-	-- slot numbers needn't match the recipe's (a Phoenix Oil order listed two reagents in slot 1).
+	-- The slot a customer's reagent fills is the recipe slot that lists its item. Recipe slots can
+	-- share a data slot number (Midnight's Phoenix Oil has Mote of Light and Eversinging Dust both in
+	-- data slot 1), so slots are told apart by the item, never by the number alone.
 	local slotOf, givenSlots = {}, order and order.providedSlots
 	for _, s in ipairs(schematic.reagentSlotSchematics or {}) do
 		for _, r in ipairs(s.reagents or {}) do
 			local id = r.itemID or (r.reagent and r.reagent.itemID)
-			if id then slotOf[id] = s.dataSlotIndex end
+			if id then slotOf[id] = s end
 		end
 	end
 	if order and order.provided then
 		givenSlots = {}
 		for _, r in ipairs(order.provided) do
-			local slot = slotOf[r.itemID] or r.dataSlotIndex
-			if slot then givenSlots[slot] = (givenSlots[slot] or 0) + (r.quantity or 1) end
+			local key = slotOf[r.itemID] or r.dataSlotIndex
+			if key then givenSlots[key] = (givenSlots[key] or 0) + (r.quantity or 1) end
 		end
 	end
 	local qual, fixed, finishing = A.Slots(schematic, givenSlots)
 	-- what the customer gives, no more units per slot than the slot takes (a list can name more)
 	local provided
 	if order and order.provided then
-		local need, used = {}, {}
-		for _, s in ipairs(schematic.reagentSlotSchematics or {}) do need[s.dataSlotIndex] = s.quantityRequired or 1 end
+		local used = {}
 		provided = {}
 		for _, r in ipairs(order.provided) do
-			local slot = slotOf[r.itemID] or r.dataSlotIndex
-			local room = need[slot] and (need[slot] - (used[slot] or 0)) or r.quantity
+			local s = slotOf[r.itemID]
+			local key = s or r.dataSlotIndex
+			local slot = s and s.dataSlotIndex or r.dataSlotIndex
+			local room = s and ((s.quantityRequired or 1) - (used[key] or 0)) or r.quantity
 			local n = math.min(r.quantity or 1, room or 0)
-			if n > 0 then
-				used[slot] = (used[slot] or 0) + n
+			if n > 0 and key then
+				used[key] = (used[key] or 0) + n
 				table.insert(provided, { reagent = r.reagent, itemID = r.itemID, dataSlotIndex = slot, quantity = n })
 			end
 		end
@@ -253,6 +255,14 @@ function A.Measure(recipeID, opts)
 		model.stats0.refundExtra, model.stats0.concReduce = s.refundExtra, s.concReduce
 	end
 
+	-- Midnight enchanting crafts cast Shatter first (the Craft button does it), so count Shattering
+	-- Essence even before it's on you, as CraftSim does.
+	if CH.Queue and CH.Queue.NeedsShatter and CH.Queue.NeedsShatter(recipeID) then
+		model.raw0 = St().Copy(model.stats0) -- what the game reports, to measure finishing reagents against
+		St().Add(model.stats0, CH.Queue.ShatterStats(profID))
+		model.shatter = true
+	end
+
 	-- Skill each unit adds at each reagent quality, measured like CraftSim.
 	model.perUnit, model.moves = {}, {}
 	for i, slot in ipairs(qual) do
@@ -281,7 +291,7 @@ function A.Measure(recipeID, opts)
 			if p or own > 0 then
 				local op = operation(model, base, false, { { itemID = id, slot = slot.index } })
 				if op then
-					local d = St().Diff(St().FromOperation(op), model.stats0)
+					local d = St().Diff(St().FromOperation(op), model.raw0 or model.stats0)
 					local s = St().FromOperation(op)
 					d.supports = s.supports
 					d.mcExtra, d.resExtra, d.refundExtra, d.concReduce = 0, 0, 0, 0

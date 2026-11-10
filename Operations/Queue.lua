@@ -281,6 +281,30 @@ function Q.NeedsShatter(recipeID)
 	return not Q.HasShatterBuff()
 end
 
+-- What Shattering Essence adds, in rating: 5 of each, plus its perks at their spec ranks (CraftSim's
+-- CreateShatteringEssenceBuffMidnight; the game's data doesn't carry the perks).
+local SHATTER_PERKS = {
+	{ node = 107616, stat = "resourcefulness", at = { [5] = 5, [15] = 10, [25] = 20 } }, -- Responsible Resources
+	{ node = 107615, stat = "ingenuity", at = { [5] = 5, [15] = 10, [25] = 20 } },       -- Infinite Ingenuity
+	{ node = 107614, stat = "multicraft", at = { [5] = 5, [15] = 10, [25] = 20 } },      -- Multicrafting Meticulously
+	{ node = 100037, stat = "multicraft", at = { [5] = 30, [15] = 30, [25] = 30 } },     -- Magnificent Multicrafting
+}
+function Q.ShatterStats(professionID)
+	local d = { ingenuity = 5, multicraft = 5, resourcefulness = 5 }
+	local ps, tr = C_ProfSpecs, C_Traits
+	local config = ps and ps.GetConfigIDForSkillLine and professionID and ps.GetConfigIDForSkillLine(professionID)
+	if config and config ~= 0 and tr and tr.GetNodeInfo then
+		for _, p in ipairs(SHATTER_PERKS) do
+			local info = tr.GetNodeInfo(config, p.node)
+			local rank = info and info.activeRank and (info.activeRank - 1) or -1
+			for threshold, n in pairs(p.at) do
+				if rank >= threshold then d[p.stat] = d[p.stat] + n end
+			end
+		end
+	end
+	return d
+end
+
 --- What Shatter would use: the cheapest mote you hold. Returns itemID, bag, slot, or nil.
 function Q.ShatterItem()
 	local ui = C_TradeSkillUI
