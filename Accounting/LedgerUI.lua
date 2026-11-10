@@ -1,5 +1,6 @@
--- Ledger page of the main window, like TSM's: Inventory; Revenue (Sales, Other, Resale);
--- Expenses (Purchases, Other); Failed Auctions (Expired, Cancelled). Filter by name, character and
+-- Ledger page of the main window, like TSM's, with sub-tabs: Overview (Report, Inventory); Revenue
+-- (Sales, Other, Resale); Expenses (Purchases, Other, Expired, Cancelled); Profit (Product P&L,
+-- Holdings, Overhead); Performance (Research/Views.lua: where forecasts missed). Filter by name, character and
 -- time frame, sort by any column, hover an item for its tooltip. Data comes from CH.Ledger, which
 -- reads TSM's saved accounting and never writes to it.
 local _, CH = ...
@@ -28,7 +29,7 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 	{ "Total", 530, 96 }, { "Time frame", 630, 94 } }
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
-	inventory = { label = "Inventory", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
+	inventory = { label = "Inventory", parent = "Overview", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
 		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Market value", 596, 128 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
@@ -36,9 +37,9 @@ local VIEWS = {
 		{ "Sold", 358, 56 }, { "Avg sell", 418, 90 }, { "Avg profit", 512, 100 }, { "Total profit", 616, 108 } } },
 	purchases = { label = "Purchases", parent = "Expenses", sort = 7, asc = true, cols = ITEM_TIME },
 	expense = { label = "Other", parent = "Expenses", sort = 5, asc = true, cols = OTHER },
-	expired = { label = "Expired", parent = "Failed Auctions", sort = 5, asc = true,
+	expired = { label = "Expired", parent = "Expenses", sort = 5, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
-	cancelled = { label = "Cancelled", parent = "Failed Auctions", sort = 5, asc = true,
+	cancelled = { label = "Cancelled", parent = "Expenses", sort = 5, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
 	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Realized profit", 542, 100 }, { "Margin", 646, 78 } } },
@@ -52,18 +53,19 @@ local VIEWS = {
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	report = { label = "Report", page = "briefing", cols = {} },
+	report = { label = "Report", parent = "Overview", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
--- Three tabs share this table page, each with its own left nav: Accounting (the books),
--- Research (Markets, Professions, Performance: what to do and why) and Operations (Work queue,
--- Inventory, Rules & routes: the work planned or underway). The other two fill theirs in with LUI.Register.
+-- Two tabs share this table page, each with sub-tabs across the top and their views in the left
+-- nav: Operations (Professions, Markets, Queue, Stock: what to craft, buy or post) and Accounting
+-- (Overview, Revenue, Expenses, Profit, Performance: what happened and what to learn from it).
+-- Other modules fill theirs in with LUI.Register; LUI.Order sets the sub-tabs' order.
 local SECTIONS = {
-	ledger = { { "report" }, { "inventory" }, { "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
+	ledger = { tabbed = true, { "Overview", "report" }, { "report", sub = true }, { "inventory", sub = true },
+		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
-		{ "Failed Auctions", "expired" }, { "expired", sub = true }, { "cancelled", sub = true },
+		{ "expired", sub = true }, { "cancelled", sub = true },
 		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
-	research = {},
 	operations = {},
 }
 local section = "ledger"
@@ -82,7 +84,7 @@ end
 local function signed(c) return CH.Theme.Color(c >= 0 and "ok" or "bad", money(c)) end
 LUI.Money, LUI.Signed = money, signed
 
---- Another tab adds its views to this page: section is "research" or "operations", views maps a
+--- Another tab adds its views to this page: section is "operations" or "ledger", views maps a
 --- view key to { label, sort, cols, rows = function(ctx) return rows, footer end, noTime = true },
 --- nav lists the keys in the order the left nav shows them, and group, if given, files them under
 --- a heading ("Markets"). ctx carries now, since, opts, keepName, keepRec. A view with page = "plan"
@@ -103,16 +105,29 @@ function LUI.Register(sec, views, nav, group)
 	lastView[sec] = lastView[sec] or nav[1]
 end
 
+--- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Professions", "Markets", ... }).
+--- The tab opens on the first one. Sub-tabs not listed follow, in the order they registered.
+function LUI.Order(sec, labels)
+	local list = SECTIONS[sec]
+	if not list then return end
+	list.order = {}
+	for i, g in ipairs(labels) do list.order[g] = i end
+	for _, n in ipairs(list) do
+		if not n.sub and n[1] == labels[1] then lastView[sec] = n[2]; break end
+	end
+end
+
 --- A tab's sub-tabs: { { label, view } } with the view each one opens (the last one open in it),
---- or nil for a tab without them (Accounting).
+--- or nil for a tab without them.
 local lastIn = {}
 function LUI.Groups(sec)
 	local list = SECTIONS[sec]
 	if not (list and list.tabbed) then return nil end
 	local out = {}
-	for _, n in ipairs(list) do
-		if not n.sub then table.insert(out, { n[1], lastIn[n[1]] or n[2] }) end
+	for i, n in ipairs(list) do
+		if not n.sub then table.insert(out, { n[1], lastIn[n[1]] or n[2], at = list.order and list.order[n[1]] or 100 + i }) end
 	end
+	table.sort(out, function(a, b) return a.at < b.at end)
 	return out
 end
 --- The sub-tab the open view is in, or nil.
@@ -412,7 +427,7 @@ function LUI.Build(p, fs, panel)
 	local y = -8
 	local group
 	for _, n in ipairs(list) do
-	-- a tab with sub-tabs (Research, Operations): its group headings are the sub-tabs across the
+	-- a tab with sub-tabs (Operations, Accounting): its group headings are the sub-tabs across the
 	-- top, and the nav lists only the open sub-tab's views, each flush left from the top
 	if list.tabbed and not n.sub then group, y = n[1], -8 else
 			local sub = n.sub and not list.tabbed
@@ -686,7 +701,7 @@ function LUI.ParClick(id, mod)
 	return CH.Par.Target(id)
 end
 
---- Which tab's views the page shows: "ledger" (Accounting), "research" or "operations".
+--- Which tab's views the page shows: "ledger" (Accounting) or "operations".
 function LUI.SetSection(sec)
 	if not SECTIONS[sec] then return end
 	if section ~= sec then

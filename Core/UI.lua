@@ -355,7 +355,7 @@ local function buildDashboard(p)
 	d.figures = {}
 	local FW = math.floor((PW - 3 * 8) / 4)
 	for i, f in ipairs({ { "gold", "Available gold", { "ledger", "inventory" } }, { "stock", "Inventory value", { "ledger", "inventory" } },
-		{ "queued", "Queued crafts", { "operations", "queue" } }, { "conc", "Full Concentration", { "research", "professions" } } }) do
+		{ "queued", "Queued crafts", { "operations", "queue" } }, { "conc", "Full Concentration", { "operations", "professions" } } }) do
 		local x = (i - 1) * (FW + 8)
 		local box = panel(p, x, 0, FW, 46)
 		local lab = fs(box, 10, -6, FW - 20, "LEFT", "GameFontNormalSmall")
@@ -561,12 +561,13 @@ local function buildBriefing(p)
 	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
 end
 
--- Dashboard: what needs attention. Research: what to do and why (Markets, Professions, Performance).
--- Operations: the work planned or underway (Work queue, Inventory, Rules & routes). Accounting: what
--- happened. The AH, profession and mailbox windows carry out what Operations plans.
-local TABS = { { "today", "Dashboard" }, { "research", "Research" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
--- which page frame each tab shows; Research, Operations and Accounting share the table page
-local FRAME = { today = "dashboard", research = "ledger", operations = "ledger", ledger = "ledger", settings = "settings" }
+-- Three tabs, each answering one question. Dashboard: what should I do next? Operations: what should
+-- I craft, buy or post (Professions, Markets, Queue, Stock)? Accounting: what happened, and what should
+-- I learn from it (Overview, Revenue, Expenses, Profit, Performance)? The AH, profession and mailbox
+-- windows carry out what Operations plans.
+local TABS = { { "today", "Dashboard" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
+-- which page frame each tab shows; Operations and Accounting share the table page
+local FRAME = { today = "dashboard", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
 local settingsView = "main"
 local function frameOf(pg)
@@ -574,9 +575,12 @@ local function frameOf(pg)
 	return FRAME[pg]
 end
 -- old tab names (commands, other modules, saved links) and where they live now
-local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "research", "professions" }, paths = { "research", "paths" },
-	crafting = { "research", "professions" }, markets = { "research", "compare" }, analytics = { "research", "performance" },
-	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" } }
+-- (Research was a tab until its views moved: Markets and Professions to Operations, Performance to
+-- Accounting. A view named with it opens wherever it lives now.)
+local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "operations", "professions" }, paths = { "operations", "paths" },
+	crafting = { "operations", "scenarios" }, professions = { "operations", "scenarios" }, markets = { "operations", "compare" },
+	analytics = { "ledger", "performance" }, performance = { "ledger", "performance" }, research = { "operations" },
+	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
 UI.TABS, UI.OLD = TABS, OLD
 
 --- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
@@ -736,9 +740,9 @@ function build()
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
-	-- sub-tabs under the tabs, for a tab that has them (Research: Markets, Professions, Performance)
+	-- sub-tabs under the tabs (Operations: Professions, Markets, Queue, Stock; Accounting: five)
 	frame.subs = {}
-	for i = 1, 4 do
+	for i = 1, 6 do
 		local b = T.Button(frame, "", 90, 20)
 		b:SetScript("OnClick", function(self) if self.view then UI.Go(page, self.view) end end)
 		b:Hide()
@@ -788,7 +792,7 @@ function build()
 		s.value = CH.Window.OneLine(fs(s, 140, -1, 30, "LEFT", "GameFontDisableSmall"))
 		local hit = CreateFrame("Button", nil, s)
 		hit:SetAllPoints(s)
-		hit:SetScript("OnClick", function() UI.Go("research", "professions") end)
+		hit:SetScript("OnClick", function() UI.Go("operations", "professions") end)
 		hit:SetScript("OnEnter", function(self) if s.tip then CH.Window.Tooltip(self, s.tip) end end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		s:Hide()
@@ -1205,7 +1209,7 @@ function UI.Go(tab, view)
 	if choose(tab, view) and frame then UI.Refresh() end
 end
 
---- Show a tab: "today" (the Dashboard), "research", "operations" or "ledger" (Accounting),
+--- Show a tab: "today" (the Dashboard), "operations" or "ledger" (Accounting),
 --- and optionally a view. The old names (markets, crafting, trading, analytics, plan, report...) still work.
 function UI.Page(name, view)
 	if not frame then build() end

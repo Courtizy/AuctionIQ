@@ -70,7 +70,7 @@ function Next.List(now)
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
 					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
-					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "research", "professions" },
+					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "operations", "professions" },
 					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
 		end
@@ -95,10 +95,10 @@ function Next.List(now)
 			names[#names + 1] = string.format("%s %s < %s", x.name or "?", CH.FormatMoney(x.now), CH.FormatMoney(x.be))
 		end
 		add({ title = "Below break-even", detail = string.format("%d %s now sell under break-even: %s%s", #below, #below == 1 and "craft" or "crafts",
-			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, go = { "research", "scenarios" }, rows = below })
+			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, go = { "operations", "scenarios" }, rows = below })
 	end
 	for _, cd in ipairs(CH.Cooldowns and CH.Cooldowns.All(now) or {}) do
-		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "research", "professions" } }) end
+		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "operations", "professions" } }) end
 	end
 	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
 	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
@@ -109,7 +109,7 @@ function Next.List(now)
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
-					gold = e.gold, tier = 1, go = { "research", "when" }, act = postAct("Post") })
+					gold = e.gold, tier = 1, go = { "operations", "when" }, act = postAct("Post") })
 			end
 		end
 
@@ -142,7 +142,7 @@ function Next.List(now)
 	if CH.Planner then
 		local left = 0
 		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
-		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3, go = { "research", "professions" } }) end
+		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3, go = { "operations", "professions" } }) end
 	end
 
 	table.sort(out, function(a, b)

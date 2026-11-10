@@ -376,7 +376,7 @@ AV.VIEWS = {
 	crafting = { label = "Crafting efficiency", sort = 3, noTime = true, rows = craftingRows, cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 },
 		{ "Crafts", 258, 44 }, { "Per craft", 306, 80 }, { "Per Conc. pt", 390, 80 }, { "Multicraft", 474, 80 }, { "Resourceful", 558, 84 },
 		{ "Ingenuity", 646, 78 } } },
-	scenarios = { label = "Scenarios", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
+	scenarios = { label = "Compare crafts", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
 		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
 		{ "Reagent room", 628, 96 } } },
 }
@@ -397,5 +397,9 @@ AV.VIEWS.scenarios.controls = {
 		click = function(dir) AV.SetScenario(nil, step(AV.Scenario().price, dir)) end },
 }
 
--- Gold per hour and Craft results register their own definitions; this sets the order.
-LUI.Register("research", AV.VIEWS, { "performance", "drivers", "perf", "capital", "crafting", "scenarios", "time", "results" }, "Performance")
+-- Gold per hour and Craft results register their own definitions; this sets the order. Performance
+-- explains what happened, so it sits in Accounting. Compare crafts (the downside scenarios beside
+-- break-even) is a craft decision, so it opens Operations, Professions, ahead of the knowledge pages.
+LUI.Register("ledger", AV.VIEWS, { "performance", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
+LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Professions")
+LUI.Order("operations", { "Professions", "Markets", "Queue", "Stock" })

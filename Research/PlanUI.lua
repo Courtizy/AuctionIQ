@@ -63,7 +63,7 @@ function PUI.Build(p, fs, panel)
 	-- the crafting windows
 	local x = 0
 	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
-		{ "Paths", function() CH.UI.Go("research", "paths") end, "Plan knowledge points for what you want to sell" },
+		{ "Paths", function() CH.UI.Go("operations", "paths") end, "Plan knowledge points for what you want to sell" },
 		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
 		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Performance" },
 		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
@@ -143,11 +143,12 @@ local function planRows(ctx)
 	return out, table.concat(notes, "   ") .. T.Color("muted", "   Estimated from your scans. Spend points in the game's Specializations panel.")
 end
 
--- Research, Professions: Knowledge and Paths beside the nav, and each plan's payoff
-CH.LedgerUI.Register("research", {
+-- Operations, Professions: Knowledge and Paths beside the nav, and each plan's payoff (Research/Views.lua
+-- puts them in the nav, after Compare crafts)
+CH.LedgerUI.Register("operations", {
 	professions = { label = "Knowledge", page = "plan", noTime = true, cols = {} },
 	paths = { label = "Paths", page = "paths", noTime = true, cols = {} },
 	plans = { label = "Plan payoff", sort = 8, noTime = true, rows = planRows, cols = { { "Recipe", 0, 196 }, { "Profession", 200, 84 },
 		{ "Quality", 288, 64 }, { "Profit now", 356, 80 }, { "Planned", 440, 80 }, { "A day now", 524, 64 }, { "Planned", 592, 64 },
 		{ "Change", 660, 64 } } },
-}, { "professions", "paths", "plans" }, "Professions")
+}, {})
