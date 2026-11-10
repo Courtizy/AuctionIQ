@@ -292,8 +292,9 @@ TUI.MOVING = {
 	rules = { label = "Groups and rules", noTime = true, cols = {}, go = function() CH.UI.Go("settings", "groups") end },
 }
 
--- Operations: Queue (what to make and buy), then Stock (post, hold or move what you have). Groups and
--- rules live in Settings; its view stays defined so old links open it there.
-LUI.Register("operations", TUI.PRODUCTION, { "work", "queue", "shopping" }, "Queue")
-LUI.Register("operations", TUI.VIEWS, { "post", "par", "dead", "mail" }, "Stock")
+-- (Research/Views.lua files these under Operations: Trade for what you hold, Queue for the work.)
+-- Manage rules opens Settings' groups and posting rules, from Trade.
+TUI.MOVING.rules.label = "Manage rules"
+LUI.Register("operations", TUI.PRODUCTION, {})
+LUI.Register("operations", TUI.VIEWS, {})
 LUI.Register("operations", TUI.MOVING, {})

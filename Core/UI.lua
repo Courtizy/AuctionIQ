@@ -412,14 +412,18 @@ local function buildDashboard(p)
 		c.hit = CreateFrame("Button", nil, top)
 		c.hit:SetPoint("TOPLEFT", x, y)
 		c.hit:SetSize(CW - 96, 52)
-		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
+		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2], self.go[3]) end end)
 		c.hit:SetScript("OnEnter", function(self)
 			local lines = {}
 			for _, f in ipairs({ c.who, c.l1, c.l2 }) do
 				local s = f:GetText()
 				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
 			end
-			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to see the details.") }) end
+			-- why, what it's worth, and what could make it wrong
+			local e = self.entry
+			if e and e.gold and e.gold > 0 then table.insert(lines, { "Expected benefit", CH.FormatMoney(e.gold) }) end
+			if e and e.risk then table.insert(lines, { CH.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
+			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
 			if #lines > 0 then CH.Window.Tooltip(self, lines) end
 		end)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -575,7 +579,7 @@ local function buildBriefing(p)
 end
 
 -- Three tabs, each answering one question. Dashboard: what should I do next? Operations: what should
--- I craft, buy or post (Professions, Markets, Queue, Stock)? Accounting: what happened, and what should
+-- I craft, buy or post (Craft, Trade, Queue)? Accounting: what happened, and what should
 -- I learn from it (Overview, Revenue, Expenses, Profit, Performance)? The AH, profession and mailbox
 -- windows carry out what Operations plans.
 local TABS = { { "today", "Dashboard" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
@@ -595,6 +599,17 @@ local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan =
 	analytics = { "ledger", "performance" }, performance = { "ledger", "performance" }, research = { "operations" },
 	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
 UI.TABS, UI.OLD = TABS, OLD
+
+--- Where a { tab, view } opens, in words: "Operations > Craft".
+function UI.PlaceName(go)
+	local tabName
+	for _, t in ipairs(TABS) do if t[1] == go[1] then tabName = t[2] end end
+	local def = go[2] and CH.LedgerUI and CH.LedgerUI.ViewDef(go[2])
+	local sec = go[2] and CH.LedgerUI and CH.LedgerUI.SectionOf(go[2])
+	if sec == "operations" then tabName = "Operations" elseif sec == "ledger" then tabName = "Accounting" end
+	local group = def and def.parent
+	return (tabName or "AuctionIQ") .. (group and (" > " .. group) or "")
+end
 
 --- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
 local function titleText()
@@ -754,7 +769,7 @@ function build()
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
-	-- sub-tabs under the tabs (Operations: Professions, Markets, Queue, Stock; Accounting: five)
+	-- sub-tabs under the tabs (Operations: Craft, Trade, Queue; Accounting: five)
 	frame.subs = {}
 	for i = 1, 6 do
 		local b = T.Button(frame, "", 90, 20)
@@ -1099,6 +1114,7 @@ local function refreshDashboard()
 		for i, c in ipairs(d.cards) do
 			local e = list[i + d.logOffset]
 			c.hit.go = e and e.go
+			c.hit.entry = e
 			c.act.run = e and e.act and e.act.run
 			c.act.key = e and e.title
 			if e and e.act then setLabel(c.act, e.act.label); c.act:Show() else c.act:Hide() end
@@ -1120,6 +1136,7 @@ local function refreshDashboard()
 	d.heading:SetText("Activity" .. T.Color("muted", "  what sold, bought and expired, newest first"))
 	for i, c in ipairs(d.cards) do
 		c.hit.go = nil
+		c.hit.entry = nil
 		c.act.run = nil
 		c.act:Hide()
 		local a = data.activity[i + d.logOffset]
@@ -1215,7 +1232,7 @@ function UI.LayoutSubTabs()
 end
 
 --- Open a tab, and optionally one of its views: UI.Go("operations", "par").
-local function choose(tab, view)
+local function choose(tab, view, focus)
 	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return false end
 	-- a view that moved tabs (stock targets and dead stock to Trading, say) opens where it lives now
@@ -1223,19 +1240,21 @@ local function choose(tab, view)
 	if home and home ~= tab and FRAME[home] then tab = home end
 	page = tab
 	if tab == "settings" then settingsView = view == "groups" and "groups" or "main" end
-	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view }) end
+	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view, focus = focus }) end
 	return true
 end
 
-function UI.Go(tab, view)
-	if choose(tab, view) and frame then UI.Refresh() end
+--- Open a tab and view; focus (optional) hands over what a recommendation is about: { name, id, char,
+--- qty, title }, so the view opens on it.
+function UI.Go(tab, view, focus)
+	if choose(tab, view, focus) and frame then UI.Refresh() end
 end
 
 --- Show a tab: "today" (the Dashboard), "operations" or "ledger" (Accounting),
 --- and optionally a view. The old names (markets, crafting, trading, analytics, plan, report...) still work.
-function UI.Page(name, view)
+function UI.Page(name, view, focus)
 	if not frame then build() end
-	if name then choose(name, view) end
+	if name then choose(name, view, focus) end
 	-- one refresh: showing the frame refreshes it (OnShow), else refresh it here
 	if not frame:IsShown() then frame:Show() else UI.Refresh() end
 end

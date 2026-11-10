@@ -37,7 +37,7 @@ makes you a better goblin.
 | | The question it answers | Inside |
 |---|---|---|
 | <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What should I do next? | Next Move, Concentration, stock and work that needs you |
-| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Professions, Markets, Queue, Stock |
+| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Craft, Trade, Queue |
 | <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Overview, Revenue, Expenses, Profit, Performance |
 
 ## Look and branding

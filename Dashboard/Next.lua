@@ -39,7 +39,9 @@ local function makeAct(id, n)
 	return queueAct("Queue " .. crafts, k, c, r, false, crafts)
 end
 
---- { { title, detail, gold, tier, go = { tab, view }, act = { label, run } } }, best first.
+--- { { title, detail, gold, tier, risk, go = { tab, view, focus }, act = { label, run } } }, best first.
+--- detail is the reason, gold the expected benefit and risk the biggest uncertainty behind it. focus
+--- hands the item, character and quantity to the view go opens ({ name, id, char, qty, title }).
 --- act.run() returns ok and a line saying what happened (or why it couldn't), shown on the card.
 function Next.List(now)
 	now = now or time()
@@ -70,7 +72,10 @@ function Next.List(now)
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
 					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
-					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1, go = { "operations", "professions" },
+					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1,
+					risk = pick and "the top-quality price holding while you sell " .. (conc and n or 1) or "which craft pays: scan the profession first",
+					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, title = "Spend Concentration" } }
+						or { "operations", "professions", { char = c.name, title = "Spend Concentration" } },
 					act = conc and queueAct("Queue " .. n, key, c, conc, true, n) or nil })
 			end
 		end
@@ -95,10 +100,13 @@ function Next.List(now)
 			names[#names + 1] = string.format("%s %s < %s", x.name or "?", CH.FormatMoney(x.now), CH.FormatMoney(x.be))
 		end
 		add({ title = "Below break-even", detail = string.format("%d %s now sell under break-even: %s%s", #below, #below == 1 and "craft" or "crafts",
-			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, go = { "operations", "scenarios" }, rows = below })
+			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, rows = below,
+			risk = "today's price: one low listing can drag it under for a day",
+			go = { "operations", "scenarios", { name = below[1].name, char = below[1].char, title = "Below break-even" } } })
 	end
 	for _, cd in ipairs(CH.Cooldowns and CH.Cooldowns.All(now) or {}) do
-		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1, go = { "operations", "professions" } }) end
+		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1,
+			go = { "operations", "professions", { char = cd.char, title = "Cooldown ready" } } }) end
 	end
 	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
 	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
@@ -109,7 +117,9 @@ function Next.List(now)
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
-					gold = e.gold, tier = 1, go = { "operations", "when" }, act = postAct("Post") })
+					gold = e.gold, tier = 1, act = postAct("Post"),
+					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
+					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Post now" } } })
 			end
 		end
 
@@ -117,23 +127,27 @@ function Next.List(now)
 		local ok, r = pcall(CH.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
-				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2, go = { "operations", "queue" },
-					act = makeAct(e.id, e.sold) })
+				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2,
+					risk = "whether this week's demand repeats", act = makeAct(e.id, e.sold),
+					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, title = "Restock" } } })
 			end
 			for _, e in ipairs(r.expired or {}) do
 				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
 				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n), gold = unit and unit * CH.AH_CUT * e.n, tier = 2,
-					go = { "ledger", "expired" }, act = postAct("Repost") })
+					risk = "it already expired once at this price", act = postAct("Repost"),
+					go = { "operations", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
 			end
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
-					go = { "operations", "dead" } })
+					risk = "a cut may not sell it either: check who's undercutting",
+					go = { "operations", "dead", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
-					gold = e.value, tier = 2, go = { "operations", "par" }, act = makeAct(e.id, e.short) })
+					gold = e.value, tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
+					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, title = "Below stock target" } } })
 			end
 		end
 	end
@@ -142,7 +156,8 @@ function Next.List(now)
 	if CH.Planner then
 		local left = 0
 		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
-		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3, go = { "operations", "professions" } }) end
+		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3,
+			go = { "operations", "professions", { title = "Weekly knowledge" } } }) end
 	end
 
 	table.sort(out, function(a, b)

@@ -456,5 +456,9 @@ AV.VIEWS.scenarios.controls = {
 -- explains what happened, so it sits in Accounting. Compare crafts (the downside scenarios beside
 -- break-even) is a craft decision, so it opens Operations, Professions, ahead of the knowledge pages.
 LUI.Register("ledger", AV.VIEWS, { "performance", "batches", "perf", "results", "drivers", "capital", "crafting", "time" }, "Performance")
-LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Professions")
-LUI.Order("operations", { "Professions", "Markets", "Queue", "Stock" })
+-- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
+-- the market) and Queue (the work planned: crafts, shopping, mail and what's blocking it).
+LUI.Register("operations", {}, { "scenarios", "professions", "paths", "plans" }, "Craft")
+LUI.Register("operations", {}, { "post", "market", "compare", "when", "rivals", "par", "dead", "rules" }, "Trade")
+LUI.Register("operations", {}, { "work", "queue", "shopping", "mail" }, "Queue")
+LUI.Order("operations", { "Craft", "Trade", "Queue" })

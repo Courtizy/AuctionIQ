@@ -51,7 +51,8 @@ local function newFrame(parent, kind, template)
 	function f:SetShown(v) if v then self:Show() else self:Hide() end end
 	function f:HookScript(k, fn) local old = self.scripts[k]; self.scripts[k] = function(...) if old then old(...) end fn(...) end end
 	function f:IsShown() return self.shown end
-	function f:SetText(t) self.label = t end
+	function f:SetText(t) self.label = t; if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self) end end
+	function f:GetText() return self.label end
 	function f:GetFontString() return nil end
 	function f:CreateFontString(_, _, font)
 		local fs = { t = "", font = font, w = 0, wrap = true, hidden = false, owner = f, points = {} }

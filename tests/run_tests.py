@@ -315,8 +315,8 @@ prow = list(prow.values())
 check("plan comparison: each recipe now against planned, and the plan's gold a day", len(prow) >= 1 and ">" in plain(prow[0].cells[3]) and "a day" in plain(pfoot))
 run('AuctionIQ.PathsUI.Open()')
 drawn = list(CH.PathsUI.DrawTree().values())
-check("paths: opens in the main window, Operations > Professions > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths"
-      and CH.LedgerUI.Section() == "operations" and CH.LedgerUI.Group() == "Professions")
+check("paths: opens in the main window, Operations > Craft > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths"
+      and CH.LedgerUI.Section() == "operations" and CH.LedgerUI.Group() == "Craft")
 check("paths: Professions lists Knowledge, Paths, Plan payoff",
       [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Knowledge", "Paths", "Plan payoff"])
 check("paths tab draws the tree with the plan on it",
@@ -705,6 +705,11 @@ run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [1] 
 nx = [x for x in L.eval("AuctionIQ.Next.List()").values() if x.title == "Below break-even"]
 check("dashboard: a craft now under its break-even price gets a card that opens Scenarios",
       len(nx) == 1 and "Cheap Flask" in plain(nx[0].detail) and nx[0].go[2] == "scenarios")
+check("dashboard: the card hands Craft the recipe and character, and names its biggest uncertainty",
+      nx[0].go[3].name == "Cheap Flask" and nx[0].go[3].char == "Be" and nx[0].risk is not None)
+allnx = list(L.eval("AuctionIQ.Next.List()").values())
+check("dashboard: every card that opens a view hands over what it's about", all(x.go[3] is not None for x in allnx if x.go))
+check("dashboard: where a card opens, in words", CH.UI.PlaceName(nx[0].go) == "Operations > Craft")
 cb = [x for x in L.eval("AuctionIQ.UI.ConcentrationBars()").values() if x.char == "Be"]
 check("dashboard: Concentration by character, with time to full and the best extra per point",
       len(cb) == 1 and cb[0].cur == 500 and cb[0].hours == 48 and abs(cb[0].best.gain - 890 / 30) < 1e-9)
@@ -1324,13 +1329,13 @@ check("report opens inside the Accounting tab", LUI.Section() == "ledger" and LU
 run("AuctionIQ.UI.Page('analytics', 'perf')")
 check("analytics opens Accounting, Performance", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Performance")
 run("AuctionIQ.UI.Page('analytics', 'dead')")
-check("a view that moved opens on its new tab: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Stock")
+check("a view that moved opens on its new tab: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Trade")
 run("AuctionIQ.UI.Page('markets')")
-check("markets opens Operations on compare prices", LUI.Section() == "operations" and LUI.View() == "compare" and LUI.Group() == "Markets")
+check("markets opens Operations on compare prices", LUI.Section() == "operations" and LUI.View() == "compare" and LUI.Group() == "Trade")
 # old Research links: each view opens wherever it lives now
 for (tab, view), (sec, group) in {("research", "perf"): ("ledger", "Performance"), ("research", "results"): ("ledger", "Performance"),
-        ("research", "scenarios"): ("operations", "Professions"), ("research", "paths"): ("operations", "Professions"),
-        ("research", "compare"): ("operations", "Markets"), ("research", "professions"): ("operations", "Professions")}.items():
+        ("research", "scenarios"): ("operations", "Craft"), ("research", "paths"): ("operations", "Craft"),
+        ("research", "compare"): ("operations", "Trade"), ("research", "professions"): ("operations", "Craft")}.items():
     run(f"AuctionIQ.UI.Page('{tab}', '{view}')")
     check(f"old link {tab}/{view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and CH.UI.IsShown())
 run("AuctionIQ.UI.Page('research')")
@@ -1358,15 +1363,27 @@ check("dashboard: clicking it opens Operations, Work queue", CH.LedgerUI.View() 
 run("AuctionIQ.db.queue = STUB.oldQueue; AuctionIQ.UI.Page('markets')")
 check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionIQ.UI.TABS").values()] == ["Dashboard", "Operations", "Accounting"])
 run("AuctionIQ.UI.Page('operations', 'compare')")
-check("operations sub-tabs: Professions, Markets, Queue, Stock", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Professions", "Markets", "Queue", "Stock"])
+check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("the nav lists only the open sub-tab's views", LUI.Group() == "Markets" and navshown == ["Compare prices", "Market prices", "Competition", "When it sells"])
+check("Trade: what you hold, the market and the rules, in one sub-tab", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market prices",
+      "Compare prices", "When it sells", "Competition", "Stock targets", "Dead stock", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Professions: Compare crafts first, then the knowledge pages", navshown == ["Compare crafts", "Knowledge", "Paths", "Plan payoff"])
 run("AuctionIQ.UI.Page('operations', 'mail')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Stock: ready to post, stock targets, dead stock, to mail", LUI.Group() == "Stock" and navshown == ["Ready to post", "Stock targets", "Dead stock", "To mail"])
+check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Execution plan", "Production queue", "Shopping list", "To mail"])
+# Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
+run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
+foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
+check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
+      LUI.View() == "scenarios" and LUI.Group() == "Craft" and LUI.Focus().name == "Test Flask"
+      and plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "Test Flask"
+      and foot.startswith("From Dashboard: Restock, 20 x Test Flask on Alt"))
+run("AuctionIQ.UI.Go('operations', 'post')")
+check("hand-off: moving to another view lets it go", LUI.Focus() is None)
+run("AuctionIQ.UI.Pages().ledger.search:SetText('')")
+check("hand-off: clearing the filter shows everything again", plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "")
 run("AuctionIQ.UI.Page('groups')")
 check("Groups and rules lives in Settings", L.eval("AuctionIQ.UI.Pages().groups:IsShown()") is True)
 run("AuctionIQ.UI.Page('ledger', 'sales')")

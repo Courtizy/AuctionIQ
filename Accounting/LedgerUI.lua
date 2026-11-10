@@ -18,6 +18,9 @@ local MAX_ROWS = 60
 
 local view = "inventory"
 local filter, char, days = "", nil, 30
+-- what a Dashboard recommendation handed over: { name, id, char, qty, title, why }; cleared when you
+-- change view or clear the name filter
+local focus
 local sortCol, sortDesc = nil, true
 local offset = 0
 local page
@@ -105,7 +108,7 @@ function LUI.Register(sec, views, nav, group)
 	lastView[sec] = lastView[sec] or nav[1]
 end
 
---- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Professions", "Markets", ... }).
+--- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Craft", "Trade", "Queue" }).
 --- The tab opens on the first one. Sub-tabs not listed follow, in the order they registered.
 function LUI.Order(sec, labels)
 	local list = SECTIONS[sec]
@@ -392,6 +395,7 @@ end
 -- Building ------------------------------------------------------------------------------------
 local function setView(v)
 	if VIEWS[v] and VIEWS[v].go then return VIEWS[v].go() end
+	if v ~= view then focus = nil end
 	view, offset = v, 0
 	lastView[section] = v
 	if VIEWS[v].parent then lastIn[VIEWS[v].parent] = v end
@@ -489,7 +493,14 @@ function LUI.Build(p, fs, panel)
 	search:SetSize(250, 20)
 	search:SetPoint("TOPLEFT", X0 + 6, -4)
 	search:SetAutoFocus(false)
-	search:SetScript("OnTextChanged", function(self) filter = self:GetText() or ""; offset = 0; CH.UI.Refresh() end)
+	search:SetScript("OnTextChanged", function(self)
+		local t = self:GetText() or ""
+		if t == filter then return end
+		filter = t; offset = 0
+		if focus and t ~= (focus.name or "") then focus = nil end
+		CH.UI.Refresh()
+	end)
+	p.search = search
 	search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 	p.hint = fs(body, X0 + 10, -8, 200, "LEFT", "GameFontDisableSmall")
 	search:SetScript("OnEditFocusGained", function() p.hint:SetText("") end)
@@ -668,6 +679,11 @@ function LUI.Refresh()
 		end
 	end
 	local more = #rows > ROWS and T.Color("muted", string.format("   rows %d-%d of %d, scroll for more", offset + 1, math.min(#rows, offset + ROWS), #rows)) or ""
+	if p.search and (p.search:GetText() or "") ~= filter then
+		p.search:SetText(filter)
+		p.hint:SetText(filter == "" and "Filter by name" or "")
+	end
+	if focus and CH.Ledger.Available() then footer = LUI.FocusText(focus) .. "   " .. footer end
 	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
 end
@@ -717,8 +733,24 @@ function LUI.SectionOf(v)
 	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
 end
 
---- Switch the view, filters and sort from code (tests, slash commands).
+--- The line a handed-over recommendation puts over a view's footer.
+function LUI.FocusText(f)
+	local T = CH.Theme
+	local what = (f.qty and f.qty > 0 and (f.qty .. " x ") or "") .. (f.name or "")
+	return T.Color("accent", "From Dashboard: " .. (f.title or "") .. (what ~= "" and (", " .. what) or ""))
+		.. (f.char and T.Color("muted", " on " .. f.char) or "")
+end
+--- What the open view was handed (nil when nothing was, or you've moved on).
+function LUI.Focus() return focus end
+
+--- Switch the view, filters and sort from code (tests, slash commands). opts.focus hands over a
+--- recommendation: { name, id, char, qty, title }; the view opens filtered to its name.
 function LUI.Set(opts)
+	if opts.view and opts.view ~= view then focus = nil end
+	if opts.focus then
+		focus = opts.focus
+		if opts.filter == nil then opts.filter = focus.name or "" end
+	end
 	if opts.view then
 		section = LUI.SectionOf(opts.view) or section
 		view = opts.view; lastView[section] = view
