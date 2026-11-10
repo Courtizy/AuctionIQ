@@ -353,6 +353,7 @@ St.VIEWS = {
 }
 
 if LUI and LUI.Register then
-	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow" }, "Statements")
-	LUI.Order("ledger", { "Statements", "Overview", "Revenue", "Expenses", "Profit", "Performance" })
+	-- Report (the weekly briefing) sits with the statements it summarises
+	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow", "report" }, "Statements")
+	LUI.Order("ledger", { "Statements", "Revenue", "Expenses", "Inventory", "Profit", "Performance" })
 end

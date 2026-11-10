@@ -39,7 +39,7 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 	{ "Total", 530, 96 }, { "Time frame", 630, 94 } }
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
-	inventory = { label = "Inventory", parent = "Overview", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
+	inventory = { label = "Inventory", parent = "Inventory", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
 		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Market value", 596, 128 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
@@ -57,13 +57,13 @@ local VIEWS = {
 		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
 	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
 		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
-	holdings = { label = "Holdings", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
+	holdings = { label = "Holdings", parent = "Inventory", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
 	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	report = { label = "Report", parent = "Overview", page = "briefing", cols = {} },
+	report = { label = "Report", parent = "Statements", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Two tabs share this table page, each with sub-tabs across the top and their views in the left
@@ -71,11 +71,12 @@ local VIEWS = {
 -- (Overview, Revenue, Expenses, Profit, Performance: what happened and what to learn from it).
 -- Other modules fill theirs in with LUI.Register; LUI.Order sets the sub-tabs' order.
 local SECTIONS = {
-	ledger = { tabbed = true, { "Overview", "report" }, { "report", sub = true }, { "inventory", sub = true },
+	ledger = { tabbed = true,
 		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "expired", sub = true }, { "cancelled", sub = true },
-		{ "Profit", "pl" }, { "pl", sub = true }, { "holdings", sub = true }, { "overhead", sub = true } },
+		{ "Inventory", "inventory" }, { "inventory", sub = true }, { "holdings", sub = true },
+		{ "Profit", "pl" }, { "pl", sub = true }, { "overhead", sub = true } },
 	operations = {},
 }
 local section = "ledger"
