@@ -1435,6 +1435,16 @@ check("Queue: execution plan, production queue, shopping list, to mail", LUI.Gro
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
+chars = [plain(r.cells[2]) for r in LUI.Rows("scenarios", L.eval("{ char = 'Seyko' }"))[0].values()]
+allc = [plain(r.cells[2]) for r in LUI.Rows("scenarios", L.eval("{}"))[0].values()]
+check("Compare crafts: the Character picker keeps only that character's crafts", len(chars) > 0 and set(chars) == {"Seyko"} and len(allc) >= len(chars))
+ch = list(L.eval("AuctionIQ.LedgerUI.ViewDef('scenarios').charChoices()").values())
+check("Compare crafts: the picker lists each character, then their scanned professions", len(ch) >= 2 and ch[0][1] == "Seyko" and "#" in ch[1][2] and "Seyko - " in ch[1][1])
+pc = [r for r in LUI.Rows("scenarios", L.eval("{ char = '%s' }" % ch[1][2]))[0].values()]
+check("Compare crafts: picking a profession keeps only its crafts", len(pc) > 0 and all(str(r.x.profID) == ch[1][2].split("#")[1] for r in pc))
+check("Compare crafts: the button names the character and profession", L.eval("AuctionIQ.LedgerUI.ViewDef('scenarios').charLabel('%s')" % ch[1][2]) == ch[1][1].strip())
+none = list(LUI.Rows("scenarios", L.eval("{ char = 'Nobody' }"))[0].values())
+check("Compare crafts: a character with no scans shows none", len(none) == 0)
 check("Compare crafts shows a Scan button in Export's place", L.eval("AuctionIQ.UI.Pages().ledger.actionButton:IsShown()")
       and not L.eval("AuctionIQ.UI.Pages().ledger.exportButton:IsShown()") and L.eval("AuctionIQ.UI.Pages().ledger.actionButton.label") == "Scan")
 check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
