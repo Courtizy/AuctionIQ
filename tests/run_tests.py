@@ -363,6 +363,23 @@ conc1 = [r for r in cm.rows.values() if r.concentration and r["from"] == 1][0]
 check("concentration: picks a mix with more skill when it pays more per point", conc1.skill > plain1.skill and conc1.cost > plain1.cost)
 run("AuctionIQ.ConcCurves[9902] = nil; STUB.craftingDataID = nil")
 
+# Subrecipes: a reagent an alt crafts for less than buying it is priced at the craft
+base10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost
+run("""AuctionIQ.db.characters['Sub-Realm'] = { name = 'Sub', professions = { [77] = { name = 'Test Smithing', scan = { at = STUB.now, rows = {
+  { recipeID = 50, name = 'Make 205', item = 205, craftEach = 4000 } } } } } }; AuctionIQ.Scan.ClearCrafted()""")
+sub10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+check("subrecipe: a reagent you craft for less is priced at the craft", sub10.best.cost == base10 - 2 * (10000 - 4000))
+cl = [x for x in CH.Advisor.CostLines(sub10, sub10.best.picks).values() if x.name == "item 205"]
+check("subrecipe: the reagent line says who crafts it", len(cl) == 1 and cl[0].crafted and cl[0].crafted.char == "Sub")
+run("AuctionIQ.db.settings.subrecipes = false")
+check("subrecipe: off in Settings, reagents are bought", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.settings.subrecipes = nil")
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now - 30 * 86400; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: a stale scan isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now; AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.rows[1].viaCraft = true; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: one level deep, a craft priced by crafted reagents isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'] = nil; AuctionIQ.Scan.ClearCrafted()")
+
 # Recraft
 rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
 check("recraft: profit is the better item less the one you have", rc.best.quality == 2 and rc.best.profit == 2850000 - 2120000 - 950000)

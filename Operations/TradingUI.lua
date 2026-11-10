@@ -270,7 +270,8 @@ local function shoppingRows(ctx)
 			if r.buy > 0 then buys = buys + 1 end
 			table.insert(out, { id = r.itemID, cells = { text, r.need, r.have, r.buy > 0 and r.buy or T.Color("ok", "have all"),
 				r.unit and money(r.unit) or T.Color("muted", "no price"), r.buy > 0 and money(r.cost) or "-",
-				r.short and r.short > 0 and T.Color("bad", r.short .. " short on the AH") or T.Color("muted", r.source or "") },
+				r.craft and T.Color("ok", "cheaper to craft: " .. (r.craft.char or "?") .. ", " .. money(r.craft.each) .. " each")
+				or r.short and r.short > 0 and T.Color("bad", r.short .. " short on the AH") or T.Color("muted", r.source or "") },
 				sort = { name, r.need, r.have, r.buy, r.unit or 0, r.cost or 0, r.short or 0 } })
 		end
 	end

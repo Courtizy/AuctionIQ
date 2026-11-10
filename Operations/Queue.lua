@@ -372,7 +372,11 @@ function Q.ShoppingList()
 		local unit = d and d.unit or CH.Prices.Get("chmat", "i:" .. id)
 		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
-		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
+		-- someone on the warband makes it for less than buying it: say who, and what it would cost them
+		local made = CH.Scan and CH.Scan.SubrecipesOn and CH.Scan.SubrecipesOn() and CH.Scan.Crafted(id)
+		local craft = made and buy > 0 and (not unit or made.each < unit) and
+			{ char = made.char, key = made.key, recipeID = made.recipeID, name = made.name, each = made.each, cost = made.each * buy } or nil
+		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost, craft = craft,
 			source = d and d.source, short = d and d.short or 0, first = d and d.first, age = d and d.age,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end

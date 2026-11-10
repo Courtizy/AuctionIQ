@@ -25,6 +25,8 @@ S.GENERAL = {
 				if not v then CH.AdvisorUI.Hide() elseif ProfessionsFrame and ProfessionsFrame:IsShown() then CH.AdvisorUI.Show() end
 			end
 		end },
+	{ "subrecipes", "Reagents you craft at cost", function() return CH.db.settings.subrecipes ~= false end,
+		function(v) CH.db.settings.subrecipes = v end },
 	{ "popQueue", "Queue in its own window", function() return CH.db.settings.window.popQueue == true end,
 		function(v) if (CH.db.settings.window.popQueue == true) ~= v then CH.Window.ToggleQueuePop() end end },
 }

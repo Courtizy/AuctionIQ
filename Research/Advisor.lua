@@ -23,6 +23,16 @@ local function price(kind, itemID)
 	return itemID and CH.Prices.Get(kind, "i:" .. itemID)
 end
 
+-- A reagent's price in a recipe: buying it, or making it when someone on the warband crafts it for
+-- less (Scan.ReagentPrice). Marks the model when a crafted price was used.
+local function reagentPrice(model, itemID)
+	if not (CH.Scan and CH.Scan.ReagentPrice) then return price("chmat", itemID) end
+	local p, via = CH.Scan.ReagentPrice(itemID, model and model.recipeID)
+	if via and model then model.viaCraft = true end
+	return p
+end
+A.ReagentPrice = reagentPrice
+
 local function reagentType(name, fallback)
 	return Enum and Enum.CraftingReagentType and Enum.CraftingReagentType[name] or fallback
 end
@@ -110,14 +120,14 @@ local function cost(model, picks)
 		for q, id in ipairs(slot.items) do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local p = price("chmat", id)
+				local p = reagentPrice(model, id)
 				if not p then return nil end
 				total = total + n * p
 			end
 		end
 	end
 	for _, slot in ipairs(model.fixed) do
-		local p = price("chmat", slot.items[1])
+		local p = reagentPrice(model, slot.items[1])
 		if not p then return nil end
 		total = total + slot.qty * p
 	end
@@ -211,7 +221,7 @@ function A.Measure(recipeID, opts)
 			local op = operation(model, p)
 			local perUnit = op and (skillOf(op) - model.skill0) / slot.qty or 0
 			model.perUnit[i][q] = perUnit
-			local extra = (price("chmat", slot.items[q]) or math.huge) - (price("chmat", slot.items[1]) or 0)
+			local extra = (reagentPrice(model, slot.items[q]) or math.huge) - (reagentPrice(model, slot.items[1]) or 0)
 			if perUnit > 0 and extra < math.huge then
 				table.insert(model.moves, { slot = i, q = q, skill = perUnit, extra = math.max(0, extra) })
 			end
@@ -464,7 +474,7 @@ end
 local function slotMixes(model, i)
 	local slot, out = model.qual[i], {}
 	local prices = {}
-	for q, id in ipairs(slot.items) do prices[q] = price("chmat", id) end
+	for q, id in ipairs(slot.items) do prices[q] = reagentPrice(model, id) end
 	local nq = #slot.items
 	local function walk(q, left, row, sk, c)
 		if q == nq then
@@ -495,7 +505,7 @@ end
 local function priceKey(model)
 	local parts = {}
 	for _, slot in ipairs(model.qual) do
-		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(price("chmat", id) or "-") end
+		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(reagentPrice(model, id) or "-") end
 	end
 	return table.concat(parts, ",")
 end
@@ -676,14 +686,14 @@ function A.CostLines(result, picks, fin)
 		for q = #slot.items, 1, -1 do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local unit = price("chmat", slot.items[q])
-				table.insert(out, { name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n })
+				local unit, via = reagentPrice(result.model, slot.items[q]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[q], result.recipeID))
+				table.insert(out, { name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n, crafted = via })
 			end
 		end
 	end
 	for _, slot in ipairs(result.fixed) do
-		local unit = price("chmat", slot.items[1])
-		table.insert(out, { name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty })
+		local unit, via = reagentPrice(result.model, slot.items[1]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[1], result.recipeID))
+		table.insert(out, { name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty, crafted = via })
 	end
 	for _, f in ipairs(fin or {}) do
 		table.insert(out, { name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })

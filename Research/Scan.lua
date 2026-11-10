@@ -32,8 +32,9 @@ local function accounts(result, r)
 	local reagents = {}
 	local ok, e = pcall(CH.Queue.FromRow, result, r)
 	for _, s in ipairs(ok and e and e.shop or {}) do
-		local unit = CH.Prices.Get("chmat", "i:" .. s.itemID)
-		table.insert(reagents, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers, cost = unit and unit * s.n })
+		local unit, via = Sc.ReagentPrice(s.itemID, result.recipeID)
+		table.insert(reagents, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers, cost = unit and unit * s.n,
+			crafted = via and via.char or nil })
 	end
 	local p = r.parts or {}
 	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
@@ -51,6 +52,50 @@ function Sc.CraftEach(b, made)
 	local p = b.parts or {}
 	local items = (made or 1) + (p.mc or 0) * (p.extraItems or 0)
 	return (b.cost - (p.resGold or 0)) / math.max(items, 0.01)
+end
+
+-- Subrecipes --------------------------------------------------------------------------------
+-- A reagent someone on the warband crafts is worth what making it costs, when that's less than
+-- buying it. The cost per item comes from each character's last scan (the best plain craft, with
+-- Multicraft and Resourcefulness). Only crafts priced at bought reagents count, one level deep, so
+-- two recipes that make each other's reagents can't drive each other's cost down.
+Sc.CRAFTED_MAX_AGE = 14 * 86400 -- an older scan's cost is too stale to price by
+local craftedIndex
+function Sc.ClearCrafted() craftedIndex = nil end
+local function crafted()
+	if craftedIndex then return craftedIndex end
+	craftedIndex = {}
+	local now = time()
+	for key, c in pairs(CH.db and CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			local sc = p.scan
+			if sc and sc.at and now - sc.at <= Sc.CRAFTED_MAX_AGE then
+				for _, r in ipairs(sc.rows or {}) do
+					local e = r.item and r.craftEach and not r.viaCraft and r.craftEach > 0 and craftedIndex[r.item]
+					if r.item and r.craftEach and not r.viaCraft and r.craftEach > 0 and (not e or r.craftEach < e.each) then
+						craftedIndex[r.item] = { each = r.craftEach, recipeID = r.recipeID, name = r.name, char = c.name or key, key = key, at = sc.at }
+					end
+				end
+			end
+		end
+	end
+	return craftedIndex
+end
+
+--- What making one of an item costs on your warband: { each, recipeID, name, char, key, at } or nil.
+function Sc.Crafted(itemID) return itemID and crafted()[itemID] or nil end
+
+--- Whether reagents you can craft are priced at what making them costs (Settings, on by default).
+function Sc.SubrecipesOn() return not (CH.db and CH.db.settings.subrecipes == false) end
+
+--- A reagent's price for a craft: buying it (chmat), or making it when that's cheaper. Returns the
+--- price and the craft it came from (nil when buying wins). notRecipe skips the recipe being priced.
+function Sc.ReagentPrice(itemID, notRecipe)
+	local buy = itemID and CH.Prices.Get("chmat", "i:" .. itemID)
+	if not Sc.SubrecipesOn() then return buy end
+	local c = Sc.Crafted(itemID)
+	if c and c.recipeID ~= notRecipe and (not buy or c.each < buy) then return c.each, c end
+	return buy
 end
 
 --- Buy or craft: the cheapest listing of a scanned row's item against making it. Returns
@@ -103,6 +148,8 @@ local function summary(result)
 		avgConcentration = avg, concItem = c and c.item,
 		accounts = accounts(result, b), concAccounts = accounts(result, c),
 		craftEach = Sc.CraftEach(b, made),
+		-- priced with a reagent you craft: not used to price other crafts, so costs never loop
+		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
 		perDay = perDay,
 	}
@@ -176,6 +223,7 @@ function Sc.Run(onStep, onDone)
 			table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
 			local p = CH.Me().professions[profID]
 			if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows) } end
+			Sc.ClearCrafted()
 		end
 		if onDone then onDone(rows, why) end
 	end
