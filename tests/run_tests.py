@@ -1213,7 +1213,7 @@ a1 = pa("{ id = 1, verdict = 'post', post = 10, up = 0, cap = 20, price = 100 }"
 check("posting advice: post what TSM would when two days of sales cover it", a1.action == "post" and a1.qty == 10 and D.PostLabel(a1) == "Post 10")
 a2 = pa("{ id = 1, verdict = 'post', post = 10, up = 2, cap = 20, price = 100 }", "{ daily = 2 }")
 check("posting advice: post fewer when that much would sit (2 a day, 2 up: 2 more)", a2.action == "fewer" and a2.qty == 2
-      and "TSM would post 10" in a2.reason and D.PostLabel(a2) == "Post 2 (fewer)")
+      and "your rules allow 10" in a2.reason and D.PostLabel(a2) == "Post 2 (fewer)")
 a3 = pa("{ id = 1, verdict = 'post', post = 10, up = 6, cap = 20, price = 100 }", "{ daily = 2 }")
 check("posting advice: wait when what's up already covers it", a3.action == "wait" and a3.qty == 0 and "3 days" in a3.reason)
 a4 = pa("{ id = 1, verdict = 'hold', post = 5, up = 0, cap = 20, price = 100, ah = 50, min = 80 }", "{ daily = 5 }")
@@ -1230,8 +1230,24 @@ log = list(L.eval("AuctionIQ.Decide.AdviceLog()").values())
 check("posting advice: saved once an item a day, with what it assumed", len(log) == 2 and log[0].action == "fewer" and log[0].daily == 2 and log[0].up == 2)
 run("AuctionIQ.db.postAdvice = nil")
 pr2 = list(L.eval("(AuctionIQ.LedgerUI.Rows('post', {}))").values())
-check("Ready to post: each row's advice, with the reason on hover", all(plain(r.cells[8]).startswith(("Post", "Wait")) for r in pr2)
+check("Ready to post: each row's advice, with the reason on hover", all(plain(r.cells[6]).startswith(("Post", "Wait", "Check")) for r in pr2)
       and all(plain(r.tip[2][1]).startswith("Because ") for r in pr2))
+# Trade and the AH panel share one rule check
+r302 = pp[302]
+res302 = L.eval("(function() local r = AuctionIQ.Auction.Listings(302); return r end)()")
+ev302 = CH.Auction.Evaluate(302, L.eval("{}") if res302 is None else L.eval("{ results = AuctionIQ.Auction.Listings(302) }"))
+check("Ready to post prices with the AH panel's own rule check", r302.price == (ev302.price or r302.price) and r302.why is not None)
+ca = pa("{ id = 1, verdict = 'post', post = 3, up = 0, cap = 5, price = 33400000000, check = true }", "{ daily = 0 }")
+check("no scan and no sales: Check live price, not Post 1", ca.action == "check" and ca.qty == 0 and D.PostLabel(ca) == "Check live price")
+sk = pa("{ id = 1, verdict = 'skip', post = 0, up = 0, cap = 5, price = 100, why = 'expired 3 times since it last sold (max 3)' }", "{ daily = 4 }")
+check("a rule that stops posting is the reason given", sk.action == "wait" and "expired 3 times" in sk.reason)
+prow = [r for r in pr2 if r.id == 302]
+if prow:
+    det = CH.TradingUI.PostDetail(prow[0])
+    labels = [plain(x[1]) for x in det.rows.values()]
+    check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
+          "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels
+          and any(plain(a.label) == "Review at Auction House" for a in det.actions.values()))
 wk = list(CH.TradingUI.WorkPlan().values())
 check("execution plan: a mail trip per sender and receiver, and posts from Ready to post", any(w.kind == "mail" and w.char == "Courtizy" and w.task == "Mail to Luxaren" and w.where == "Mailbox" for w in wk)
       and all(w.kind != "post" or w.where == "Auction House" for w in wk))

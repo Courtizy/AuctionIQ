@@ -24,7 +24,9 @@ local function ahNow(id)
 	return s and s.min, s and "scan"
 end
 
---- The post plan for every grouped item you hold: { id, held, up, cap, post, price, ah, value, verdict }.
+--- The post plan for every grouped item you hold, from the same rule check the AH panel posts with
+--- (Auction.Evaluate): { id, held, up, cap, post (what your rules allow), price, ah, source, age,
+--- why, check (no scan and no sales: check the live price first), value, verdict }.
 function TUI.PostPlan()
 	local out = {}
 	if not (CH.Ledger and CH.Ledger.Available()) then return out end
@@ -35,20 +37,16 @@ function TUI.PostPlan()
 			local held = e.bags + e.bank + e.warband
 			if p.post and held > (p.keep or 0) then
 				local up = math.max(e.ah or 0, CH.Auction.Listed(e.id))
-				local post = math.max(0, math.min((p.cap or 0) - up, held - (p.keep or 0)))
-				local ah = ahNow(e.id)
-				local verdict
-				if post == 0 then verdict = "full"
-				elseif ah and p.min and ah < p.min then verdict = "hold"
-				else verdict = "post" end
-				-- priced the way posting prices it: undercut the cheapest, kept between your min and max
-				local price = p.normal
-				if ah and price then
-					price = ah - (p.undercut or 1)
-					if p.max and price > p.max then price = p.max end
-					if p.min and price < p.min then price = p.min end
-				end
-				table.insert(out, { id = e.id, path = path, held = held, up = up, cap = p.cap, post = post, price = price, ah = ah,
+				local results, source, age = CH.Auction.Listings(e.id)
+				local ev = CH.Auction.Evaluate(e.id, { results = results, held = held, listed = up })
+				local verdict = ev.action == "post" and "post" or ev.kind == "full" and "full" or ev.kind == "min" and "hold" or "skip"
+				local ah = results and results[1] and results[1].price or nil
+				local vals = CH.Prices.Values and CH.Prices.Values(e.id) or {}
+				local price = ev.price or p.normal
+				local post = ev.action == "post" and ev.qty or 0
+				table.insert(out, { id = e.id, path = path, held = held, up = up, cap = p.cap, post = post, price = price,
+					ah = ah or ahNow(e.id), source = source, age = age, why = ev.why, op = p.op,
+					check = source == nil and not vals.realized or nil,
 					min = p.min, value = verdict == "post" and price and price * post * CH.AH_CUT or 0, verdict = verdict, mail = e.mail })
 			end
 		end
@@ -91,7 +89,6 @@ function TUI.MailPlan()
 	return out
 end
 
-local VERDICT = { post = { "ok", "post" }, hold = { "bad", "hold: AH under your min" }, full = { "muted", "full" } }
 
 --- Posting advice for every Ready to post row, saved once an item a day: { [id] = advice }.
 function TUI.Advice(plan, now)
@@ -111,11 +108,72 @@ function TUI.Advice(plan, now)
 end
 
 local function D_LABEL(a) return CH.Decide.PostLabel(a) end
-local ACTION = { post = "ok", fewer = "accent", wait = "muted" }
+local ACTION = { post = "ok", fewer = "accent", wait = "muted", check = "bad" }
+
+local SOURCE = { ah = "your AH search", scan = "your last AH scan" }
+
+--- One item's posting call, as lines: the recommendation, why, and what your rules allow apart from it.
+function TUI.PostLines(r, a)
+	local T, M = CH.Theme, CH.FormatMoney
+	local lines = {
+		{ D_LABEL(a) .. ((a.action == "post" or a.action == "fewer") and r.price and ("  at " .. M(r.price)) or "") },
+		{ T.Color("muted", "Because " .. a.reason .. ".") },
+		{ "Recommended quantity", tostring(a.qty or 0) },
+		{ "Allowed by your rules", (r.post or 0) .. T.Color("muted", string.format("  (%d up of a %d cap)", r.up or 0, r.cap or 0)) },
+	}
+	if r.why then table.insert(lines, { "Rule check", T.Color("muted", r.why) }) end
+	table.insert(lines, { "Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
+		or T.Color("bad", "no AH scan: your operation's normal price") })
+	if r.min then table.insert(lines, { "Your min", M(r.min) }) end
+	return lines
+end
+
+--- The selected Ready to post row, in the panel beside the table: the same call the AH will make.
+function TUI.PostDetail(d)
+	local x = d and d.x
+	if not (x and x.plan) then return nil end
+	local r, a = x.plan, x.advice
+	local T, M = CH.Theme, CH.FormatMoney
+	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.id) or ("item " .. r.id)
+	local label = a and D_LABEL(a) or "-"
+	local rows = {
+		{ "Recommended", a and T.Color(ACTION[a.action] or "fg", label) or "-" },
+		{ "Allowed by your rules", tostring(r.post or 0) },
+		{ "Held / up / cap", string.format("%d / %d / %d", r.held or 0, r.up or 0, r.cap or 0) },
+		{ "Operation", r.op or "Default" },
+		{ "Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
+			or T.Color("bad", "no scan") },
+	}
+	if r.why then rows[#rows + 1] = { "Rule check", r.why } end
+	rows[#rows + 1] = { "Worth to you (EV)", x.ev and M(x.ev) or T.Color("muted", "-") }
+	rows[#rows + 1] = { "You've sold for (RZ)", x.realized and M(x.realized) or T.Color("muted", "none sold") }
+	local note = a and ("Because " .. a.reason .. ".") or ""
+	local actions = {}
+	local function ahOpen() return AuctionHouseFrame and AuctionHouseFrame.IsShown and AuctionHouseFrame:IsShown() end
+	if (a and a.action == "check") or not r.source then
+		actions[#actions + 1] = { label = "Check live price", tip = "At the auction house: search this item. AuctionIQ reads the listings and this call updates.",
+			run = function()
+				if not ahOpen() then return false, "Open the auction house first, then press this." end
+				CH.Auction.Search(r.id, function() CH.UI.Refresh() end)
+				return true, "Searching the AH for " .. name .. "..."
+			end }
+	end
+	actions[#actions + 1] = { label = "Review at Auction House", tip = "Build the AH panel's post list: it posts with the same rule check as this table, one press each.",
+		run = function()
+			if not ahOpen() then return false, "Open the auction house: AuctionIQ's panel beside it posts with these rules." end
+			if CH.AuctionUI and CH.AuctionUI.PostScan then CH.AuctionUI.PostScan() end
+			return true, "Building your post list at the AH."
+		end }
+	return { kicker = "NEXT MOVE", title = name, sub = T.Color("muted", r.path or ""),
+		figures = { { "PRICE", r.price and T.Color("gold", M(r.price)) or T.Color("muted", "-") },
+			{ "AH NOW", r.ah and M(r.ah) or T.Color("muted", "no scan") },
+			{ "WORTH", T.Color("gold", M((r.price or 0) * (a and a.qty or 0) * CH.AH_CUT)) } },
+		rows = rows, note = T.Color("muted", note), actions = actions }
+end
 
 local function postRows(ctx)
 	local T = CH.Theme
-	local out, n, worth, held, full, fewer, wait = {}, 0, 0, 0, 0, 0, 0
+	local out, n, worth, held, full, fewer, wait, checks = {}, 0, 0, 0, 0, 0, 0, 0
 	local plan = TUI.PostPlan()
 	local advice = TUI.Advice(plan, ctx.now)
 	for _, r in ipairs(plan) do
@@ -123,23 +181,19 @@ local function postRows(ctx)
 		if ctx.keepName(name) then
 			local a = advice[r.id]
 			if r.verdict == "hold" then held = held + 1 elseif r.verdict == "full" then full = full + 1 end
-			if a and a.action ~= "wait" then n, worth = n + a.qty, worth + (r.price or 0) * a.qty * CH.AH_CUT end
+			if a and (a.action == "post" or a.action == "fewer") then n, worth = n + a.qty, worth + (r.price or 0) * a.qty * CH.AH_CUT end
 			if a and a.action == "fewer" then fewer = fewer + 1 elseif a and a.action == "wait" then wait = wait + 1 end
+			if a and a.action == "check" then checks = checks + 1 end
 			-- EV: what one is worth to you at this price; RZ: what you've really sold it for
 			local vals = CH.Prices.Values(r.id)
 			local ev = r.price and CH.Expect and CH.Expect.Value(r.id, r.price)
-			local tip = a and {
-				{ D_LABEL(a) .. (a.action ~= "wait" and r.price and ("  at " .. CH.FormatMoney(r.price)) or "") },
-				{ T.Color("muted", "Because " .. a.reason .. ".") },
-				{ "TSM would post", (r.verdict == "post" and r.post or 0) .. T.Color("muted", string.format("  (%d up of a %d cap)", r.up, r.cap or 0)) },
-				r.min and { "Your min", CH.FormatMoney(r.min) } or nil,
-			}
-			table.insert(out, { id = r.id, tip = tip, cells = { text, r.held, string.format("%d / %d", r.up, r.cap or 0),
-				money(r.price), r.ah and money(r.ah) or T.Color("muted", "no scan"), ev and money(ev) or T.Color("muted", "-"),
-				vals.realized and money(vals.realized) or T.Color("muted", "none sold"),
+			local tip = a and TUI.PostLines(r, a)
+			table.insert(out, { id = r.id, key = r.id, x = { plan = r, advice = a, ev = ev, realized = vals.realized }, tip = tip,
+				cells = { text, r.held, string.format("%d / %d", r.up, r.cap or 0),
+				money(r.price), r.ah and money(r.ah) or T.Color("muted", "no scan"),
 				a and T.Color(ACTION[a.action], D_LABEL(a)) or "" },
-				sort = { name, r.held, r.up, r.price or 0, r.ah or 0, ev or 0, vals.realized or 0,
-					(a and (a.action == "post" and 0 or a.action == "fewer" and 1 or 2) or 3) * 1e15 - r.value } })
+				sort = { name, r.held, r.up, r.price or 0, r.ah or 0,
+					(a and (a.action == "post" and 0 or a.action == "fewer" and 1 or a.action == "check" and 2 or 3) or 4) * 1e15 - r.value } })
 		end
 	end
 	if not CH.Ledger.Available() then
@@ -149,10 +203,11 @@ local function postRows(ctx)
 		return out, T.Color("muted", "Nothing to post: no items you hold are in a posting group. Set groups up in Settings, Edit groups.")
 	end
 	return out, string.format("%s to post, worth %s after the cut", T.Color("ok", n), money(worth))
-		.. (fewer > 0 and T.Color("accent", string.format("   %d fewer than TSM would", fewer)) or "")
+		.. (fewer > 0 and T.Color("accent", string.format("   %d fewer than your rules allow", fewer)) or "")
+		.. (checks > 0 and T.Color("bad", string.format("   %d to check the live price on", checks)) or "")
 		.. (wait > 0 and T.Color("muted", string.format("   %d to wait on", wait)) or "")
 		.. (held > 0 and T.Color("bad", string.format(" (%d under your min)", held)) or "")
-		.. T.Color("muted", string.format("   Enough up is %d days of sales; hover a row for why. Post at the AH: Auctioning opens beside it.", CH.Decide.POST_DAYS))
+		.. T.Color("muted", string.format("   Enough up is %d days of sales. Select a row for why; the AH panel posts with the same rules.", CH.Decide.POST_DAYS))
 end
 
 local function mailRows(ctx)
@@ -178,9 +233,9 @@ local function mailRows(ctx)
 end
 
 TUI.VIEWS = {
-	post = { label = "Ready to post", sort = 8, asc = true, noTime = true, rows = postRows, cols = { { "Item", 0, 170 },
-		{ "Held", 174, 40 }, { "Up / cap", 218, 56 }, { "Price", 278, 76 }, { "AH now", 358, 76 }, { "EV", 438, 76 }, { "RZ", 518, 76 },
-		{ "Advice", 598, 126 } } },
+	post = { label = "Ready to post", detail = function(d) return TUI.PostDetail(d) end, sort = 6, asc = true, noTime = true, rows = postRows,
+		cols = { { "Item", 0, 220 }, { "Held", 224, 44 }, { "Up / cap", 272, 74 }, { "Price", 350, 110 }, { "AH now", 464, 110 },
+		{ "Advice", 578, 146 } } },
 	mail = { label = "To mail", sort = 5, noTime = true, rows = mailRows, cols = { { "Item", 0, 200 }, { "From", 204, 100 }, { "To", 308, 100 },
 		{ "Qty", 412, 50 }, { "Worth", 466, 100 }, { "", 570, 154 } } },
 }

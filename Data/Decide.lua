@@ -511,12 +511,21 @@ function D.PostAdvice(r, opts)
 	if daily == nil then daily = CH.Scan and CH.Scan.DailyUnits(r.id) or 0 end
 	local out = { price = r.price, daily = daily, qty = 0, up = r.up, cap = r.cap }
 	if r.verdict == "full" then
-		out.action, out.reason = "wait", string.format("%d up already, your TSM cap", r.up)
+		out.action, out.reason = "wait", string.format("%d up already, your rules' cap", r.up)
+		return out
+	end
+	if r.verdict == "skip" then
+		out.action, out.reason = "wait", r.why or "your rules don't post it now"
+		return out
+	end
+	if r.check then
+		out.action = "check"
+		out.reason = "there's no AH scan of it and you've never sold one, so the price is a guess"
 		return out
 	end
 	if r.verdict == "hold" then
 		out.action = "wait"
-		out.reason = string.format("the AH's lowest (%s) is under your min (%s): TSM won't post below it", M(r.ah or 0), M(r.min or 0))
+		out.reason = string.format("the AH's lowest (%s) is under your min (%s): your rules won't post below it", M(r.ah or 0), M(r.min or 0))
 		return out
 	end
 	-- a selling window that hasn't opened yet
@@ -531,7 +540,7 @@ function D.PostAdvice(r, opts)
 	end
 	if not daily or daily <= 0 then
 		out.action, out.qty = "post", r.post
-		out.reason = "no sale rate yet, so TSM's limits decide how many"
+		out.reason = "no sale rate yet, so your rules decide how many"
 		out.basis = "none"
 		return out
 	end
@@ -543,7 +552,7 @@ function D.PostAdvice(r, opts)
 		out.reason = string.format("%d up already covers about %s of sales (%s a day)", r.up, D.DaysText(r.up / daily), D.RateText(daily))
 	elseif want < r.post then
 		out.action, out.qty = "fewer", want
-		out.reason = string.format("selling about %s a day: %d up is %d days' worth; TSM would post %d", D.RateText(daily), enough, D.POST_DAYS, r.post)
+		out.reason = string.format("selling about %s a day: %d up is %d days' worth; your rules allow %d", D.RateText(daily), enough, D.POST_DAYS, r.post)
 	else
 		out.action, out.qty = "post", r.post
 		out.reason = string.format("selling about %s a day; %d up lasts about %s", D.RateText(daily), (r.up or 0) + r.post, D.DaysText(((r.up or 0) + r.post) / daily))
@@ -563,6 +572,7 @@ function D.PostLabel(a)
 	if not a then return "" end
 	if a.action == "post" then return "Post " .. a.qty end
 	if a.action == "fewer" then return "Post " .. a.qty .. " (fewer)" end
+	if a.action == "check" then return "Check live price" end
 	return "Wait"
 end
 
