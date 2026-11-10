@@ -2,8 +2,7 @@
   <img src="Media/Logo-Branded.png" width="560" alt="AUCTIONIQ: economic intelligence for the Auction House">
 </p>
 
-<p align="center"><b>Economic intelligence for the Auction House.</b><br>
-AuctionIQ helps you decide what to do, then keeps the books on what actually happened.</p>
+<p align="center">AuctionIQ helps you decide what to do, then keeps the books on what actually happened.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Status-In%20development-3fc7eb?style=for-the-badge" alt="Status: in development">
