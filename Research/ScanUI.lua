@@ -262,12 +262,39 @@ function SUI.OrderCellLines(d, col)
 	return nil
 end
 
+--- A Recipes cell's own hover, in Book lines: the reagents column shows each reagent at what it
+--- costs you (the opportunity cost of yours), the profit columns the craft's statement and craft or
+--- sell. nil for the other cells (the recipe's general hover).
+function SUI.RecipeCellLines(r, col, v)
+	v = v or view
+	if not r or r.header then return nil end
+	local acc, title
+	if v == "craft" and (col == 2 or col == 4) or v == "conc" and col == 2 then acc, title = r.accounts, "Without Concentration"
+	elseif v == "conc" and col == 3 then acc, title = r.concAccounts, "With Concentration" end
+	if not acc then return nil end
+	local B, T = CH.Window.Book, CH.Theme
+	local lines = { { T.Color("accent", r.name or "?"), T.Color("muted", title) } }
+	if v == "craft" and col == 4 then
+		for _, l in ipairs((CH.ReagentBook(acc))) do lines[#lines + 1] = l end
+		if CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" then
+			lines[#lines + 1] = B.Note("Reagents you hold cost what they'd sell for after the cut: selling them is what crafting gives up. The rest cost the buy price.")
+		end
+		for _, l in ipairs(CH.CraftOrSellBook(acc)) do lines[#lines + 1] = l end
+	else
+		for _, l in ipairs((CH.CraftBook(acc))) do lines[#lines + 1] = l end
+		lines[#lines + 1] = B.Note("Hover the Reagents column for each reagent's opportunity cost.")
+	end
+	return lines
+end
+
 local function hover(owner, i, col)
 	local r = data[i + offset]
 	if not r then return end
 	if mode == "orders" then CH.Window.Tooltip(owner, SUI.OrderCellLines(r, col) or SUI.OrderLines(r)); return end
 	if mode ~= "recipes" then CH.Window.Tooltip(owner, SUI.OrderLines(r)); return end
 	local T = CH.Theme
+	local cell = SUI.RecipeCellLines(r, col)
+	if cell then CH.Window.Tooltip(owner, cell); return end
 	if r.header then
 		CH.Window.Tooltip(owner, { { T.Color("accent", r.expansion) }, { T.Color("muted", r.current
 			and "Recipes from the current expansion." or "Older expansion recipes: usually fewer buyers, so check Sold/day. Click to hide them.") } })

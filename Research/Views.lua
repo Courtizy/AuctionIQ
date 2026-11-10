@@ -392,6 +392,8 @@ function AV.ScenarioTip(x, j)
 		out = head("Profit now", "Profit a craft at today's prices, from the last scan.")
 		now(out)
 		add(out, "Profit a craft", x.profit, true)
+		-- the reagents you hold: what crafting gives up by not selling them
+		for _, l in ipairs(CH.CraftOrSellBook(x.row and (x.row.item ~= x.id and x.row.concAccounts or x.row.accounts))) do table.insert(out, l) end
 	elseif j == "up" then
 		out = head(string.format("Reagents +%d%%", pctR), "Profit a craft if reagent prices rise this much. Resourcefulness gives back more too. Change it with the button above.")
 		add(out, "Profit now", x.profit, true)

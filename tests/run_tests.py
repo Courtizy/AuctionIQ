@@ -1194,6 +1194,29 @@ tcs = L.eval("""(function()
   return cs end)()""")
 check("item tooltip craft or sell: crafting buys only what you're short of, against selling yours",
       tcs is not None and tcs.craft == 50000 - 30000 and tcs.sell > 0 and abs(tcs.gain - (tcs.craft - tcs.sell)) < 1)
+rb = L.eval("""(function()
+  local old = AuctionIQ.Prices.Held
+  AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end
+  local acc = { sales = 50000, mcGold = 0, resGold = 0, profit = 0, reagents = { { itemID = 205, n = 2, cost = 20000 }, { itemID = 201, n = 3, cost = 30000 } } }
+  local lines, total = AuctionIQ.ReagentBook(acc)
+  local short = AuctionIQ.ReagentBook(acc, { short = true })
+  local book, profit = AuctionIQ.CraftBook(acc)
+  AuctionIQ.Prices.Held = old
+  return { lines = lines, total = total, short = short, book = book, profit = profit } end)()""")
+rbl = [plain(l[1]).strip() for l in rb.lines.values()]
+v205 = CH.Prices.Get("chvalue", "i:205")
+check("reagent breakdown: yours at what they'd sell for after the cut, the rest at the buy price, under one total",
+      rbl[0] == "Reagents" and rbl[-1] == "Total reagents" and "Opportunity cost (2 yours)" in rbl and "Stock" in rbl
+      and abs(rb.total - (2 * (v205 * CH.AH_CUT if v205 else 10000) + 30000)) < 1)
+rbs = [plain(l[1]).strip() for l in rb.short.values()]
+check("reagent breakdown, short: one row for yours under the reagent", "2 yours, at sell price" in rbs and "Opportunity cost (2 yours)" not in rbs)
+cbl = [plain(l[1]).strip() for l in rb.book.values()]
+check("scan profit hover: revenue, costs, profit, then craft or sell", cbl[0] == "Revenue" and "Costs" in cbl and "Profit" in cbl
+      and cbl.index("Profit") < cbl.index("Craft or sell?") and abs(rb.profit - (50000 - rb.total)) < 1)
+run("AuctionIQ.Prices.CostBasis('held')")
+rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
+check("scan: the Reagents column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
+      and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
@@ -2313,6 +2336,7 @@ heads = [plain(ft.cellTip(j)[1][1]) for j in range(2, 7)] + [plain(ft.cellTip(k)
 check("Compare crafts: each column after the craft, and each price scenario, explains itself on hover",
       heads == ["Character", "Profit now", "Break-even per item", "Cushion", "Make", "Reagents +10%", "Price -10%", "Both", "Room"])
 pn = [l for l in ft.cellTip(3).values()][2:]
+pn = pn[:[plain(l[1]) for l in pn].index("Profit a craft") + 1] # craft or sell follows, when you hold its reagents
 check("Compare crafts: Profit now's breakdown adds up to the profit shown",
       abs(sum(money_of(l[2]) for l in pn[:-1]) - money_of(pn[-1][2])) <= len(pn) and plain(pn[-1][1]) == "Profit a craft")
 ru = [l for l in ft.cellTip("up").values()][2:]
