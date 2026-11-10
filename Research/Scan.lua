@@ -69,17 +69,31 @@ end
 local function summary(result)
 	local b, c = result.best, result.bestConc
 	local item = b and b.item or (c and c.item)
-	local units = Sc.DailyUnits(item)
 	local made = result.made or 1
-	local perDay = b and b.profit and b.profit > 0 and b.profit * units / made or 0
-	-- With Concentration: as many crafts a day as sell, up to what a day's refill pays for.
+	-- items a craft makes on average, Multicraft included, as the profit per craft counts them
+	local function yield(r)
+		local p = r and r.parts or {}
+		return math.max(0.01, made + (p.mc or 0) * (p.extraItems or 0))
+	end
+	local units = Sc.DailyUnits(item)
+	local plainCrafts = b and units / yield(b) or 0
+	local perDay = b and b.profit and b.profit > 0 and b.profit * plainCrafts or 0
+	-- With Concentration: as many crafts a day as its own item sells, up to what a day's refill pays for.
 	local avg = c and (c.avgConcentration or c.concentration)
 	if c and c.profit and c.profit > 0 and avg and avg > 0 then
-		local crafts = math.min(units / made, CH.CONC_PER_HOUR * 24 / avg)
+		local same = not b or c.item == b.item
+		local cUnits = same and units or Sc.DailyUnits(c.item)
+		local crafts = math.min(cUnits / yield(c), CH.CONC_PER_HOUR * 24 / avg)
 		local plain = math.max(0, b and b.profit or 0)
-		-- the Concentration crafts replace plain ones; any left sell without it
-		local conc = crafts * c.profit + math.max(0, units / made - crafts) * plain
-		if conc > perDay then perDay = conc end
+		local conc
+		if same then
+			-- the same item: Concentration crafts take sales from plain ones; any left sell without it
+			conc = crafts * c.profit + math.max(0, plainCrafts - crafts * yield(c) / yield(b or c)) * plain
+			if conc > perDay then perDay = conc end
+		else
+			-- a better item sells to its own buyers, on top of the plain crafts
+			perDay = perDay + crafts * c.profit
+		end
 	end
 	return {
 		recipeID = result.recipeID, name = result.name, made = made, tiers = result.model and result.model.maxQ,

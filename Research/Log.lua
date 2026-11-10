@@ -21,22 +21,31 @@ local function price(kind, id) return id and CH.Prices.Get(kind, "i:" .. id) end
 -- filled (provided) cost you nothing and are left out. nil when a reagent has no price.
 local function usedCost(r, reagents, provided)
 	if type(reagents) ~= "table" or not r then return nil end
-	provided = provided or {}
+	-- units the customer gives in each slot (true: all of it); those come off what's charged
+	local left = {}
+	for slot, n in pairs(provided or {}) do left[slot] = n == true and math.huge or n end
 	local total = 0
 	for _, x in ipairs(reagents) do
 		local id = x.itemID or (x.reagent and x.reagent.itemID)
 		local slot = x.dataSlotIndex or (x.reagentInfo and x.reagentInfo.dataSlotIndex)
-		if not (slot and provided[slot]) then
+		local n = x.quantity or 0
+		local off = slot and math.min(n, left[slot] or 0) or 0
+		if off > 0 then left[slot] = left[slot] - off end
+		if n - off > 0 then
 			local p = price("chmat", id)
 			if id and not p then return nil end
-			total = total + (p or 0) * (x.quantity or 0)
+			total = total + (p or 0) * (n - off)
 		end
 	end
+	-- fixed slots: an advisor result for this order already took the customer's units off
 	for _, slot in ipairs(r.fixed or {}) do
-		if not provided[slot.index] then
+		local n = slot.qty or 0
+		local g = not r.order and (provided or {})[slot.index]
+		if g then n = g == true and 0 or math.max(0, n - g) end
+		if n > 0 then
 			local p = price("chmat", slot.items and slot.items[1])
 			if not p then return nil end
-			total = total + p * (slot.qty or 0)
+			total = total + p * n
 		end
 	end
 	return total

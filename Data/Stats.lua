@@ -133,12 +133,8 @@ function St.ConcentrationCost(craftingDataID, difficulty, skill, reduce)
 	if not curve or not difficulty or difficulty <= 0 then return nil end
 	skill = math.min(skill, difficulty)
 	local factor = skill / difficulty
-	-- the constant follows the recipe's difficulty (clamped to the curve's ends); the value follows skill
-	local cs = sorted(curve.c)
-	local cc, ccNext = bracket(difficulty, cs)
-	if not cc and cs[1] then
-		if difficulty < cs[1][1] then cc = cs[1] else cc = cs[#cs] end
-	end
+	-- as CraftSim does: the constant's bracket is found by skill, then read at the recipe's difficulty
+	local cc, ccNext = bracket(skill, sorted(curve.c))
 	local constant = cc and cc[2] or 0
 	if cc and ccNext and ccNext[1] ~= cc[1] then
 		constant = cc[2] + (difficulty - cc[1]) * (ccNext[2] - cc[2]) / (ccNext[1] - cc[1])
