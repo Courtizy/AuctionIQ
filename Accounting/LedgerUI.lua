@@ -261,7 +261,8 @@ function LUI.Rows(v, opts)
 				or T.Color(ago <= 7 and "ok" or ago <= 30 and "fg" or "bad", ago .. (ago == 1 and " day" or " days"))
 			table.insert(out, { id = e.id, cells = { text, e.total, each and money(each) or T.Color("muted", "-"),
 				e.bound and T.Color("muted", "bound") or money(e.unit), e.bound and T.Color("muted", "-") or money(e.value),
-				un and signed(un) or T.Color("muted", "-"), agoText, days and string.format("%.0f", days) or T.Color("muted", "no sales") },
+				un and signed(un) or T.Color("muted", "-"), agoText,
+				days and (days > 365 and T.Color("bad", "1 yr+") or string.format("%.0f", days)) or T.Color("muted", "no sales") },
 				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, ago or math.huge, days or math.huge },
 				cellTip = function(j)
 					if j == 2 then

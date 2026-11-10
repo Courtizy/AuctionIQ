@@ -1412,7 +1412,7 @@ check("dashboard figures: queued crafts, ready, short, on other characters", fig
 work = list(CH.TradingUI.WorkPlan().values())
 crafts = {w.task: w for w in work if w.kind == "craft"}
 check("execution plan: crafts with their status, another character's marked switch", crafts["Craft A"].status == "ready to craft"
-      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Profession window")
+      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Professions")
 wrows, wfoot = L.eval("AuctionIQ.LedgerUI.Rows('work', {})")
 check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
 run("AuctionIQ.UI.Page('today')")

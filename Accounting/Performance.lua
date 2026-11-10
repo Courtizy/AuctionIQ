@@ -205,9 +205,9 @@ end
 
 -- Page ------------------------------------------------------------------------------------------
 local page, cache
-local CW, CH1 = 350, 150 -- each chart's width and body height
+local CW, CH1 = 350, 250 -- each chart's width and body height
 -- the weekly chart's plot: room above for the tallest bar's label, below for a loss's label, then dates
-local PTOP, PH = -84 - 44, 110
+local PTOP, PH = -84 - 44, 210
 
 local function tip(owner, lines)
 	if not GameTooltip then return end
@@ -311,10 +311,10 @@ function P.Build(p, fs)
 	p.mid = p:CreateTexture(nil, "ARTWORK")
 	p.mid:SetColorTexture(1, 1, 1, 0.25)
 	p.mid:SetPoint("TOPLEFT", x0 + 10 + 130 + 75, y - 32)
-	p.mid:SetSize(1, 6 * 24)
+	p.mid:SetSize(1, 6 * 34 + 8)
 	p.drivers = {}
 	for i = 1, 6 do
-		local ry = y - 32 - (i - 1) * 24 - (i > 3 and 4 or 0)
+		local ry = y - 32 - (i - 1) * 34 - (i > 3 and 8 or 0)
 		local hit = CreateFrame("Button", nil, p)
 		hit:SetSize(CW - 20, 20)
 		hit:SetPoint("TOPLEFT", x0 + 10, ry)

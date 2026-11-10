@@ -324,7 +324,8 @@ local function balanceRows(ctx)
 	if #b.holders > 6 then
 		local rest = 0
 		for i = 7, #b.holders do rest = rest + b.holders[i].money end
-		table.insert(list, { string.format("%d others", #b.holders - 6), rest, kind = "sub" })
+		local n = #b.holders - 6
+		if rest > 0 then table.insert(list, { n == 1 and b.holders[7].name or string.format("%d others", n), rest, kind = "sub" }) end
 	end
 	table.insert(list, { "Inventory held", b.held.book, kind = "line", go = { "ledger", "inventory" },
 		tip = "Bags, banks, mail and the warband bank, each item at the lower of what it cost and what it would bring after the AH cut and expected lost deposits." })

@@ -1204,7 +1204,7 @@ local function refreshDashboard()
 				if c.l1.SetMaxLines then c.l1:SetMaxLines(2) end
 				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg)
 					or (e.risk and T.Color("muted", "Risk: " .. e.risk)) or "")
-				c.l3:SetText((not e.act and e.go) and T.Color("muted", "click to open") or "")
+				c.l3:SetText((not e.act and e.go) and T.Color("accent", "Review") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")
 				c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
