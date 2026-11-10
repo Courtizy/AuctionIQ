@@ -36,13 +36,13 @@ local COLS = {
 		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
 	orders = { { "Recipe", 62, 240, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
-		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "Conc.", 734, 90, "concentration" } },
+		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "", 734, 90, "concentration" } },
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
 local SORT = { craft = { key = "profit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
 local VIEWS = { { "craft", "Craft", 60 }, { "conc", "Concentration", 108 }, { "buy", "Buy vs craft", 96 } }
-local NAMES = { name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
+local NAMES = { concentration = "Concentration needed", name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
 	perPoint = "gold per Concentration point", gainPerPoint = "gold Concentration adds per expected point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
 	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
 	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit",
@@ -476,7 +476,7 @@ local function showTable()
 		for _, hb in ipairs(heads[m]) do
 			hb:SetShown(on)
 			local sorted = on and SORT[m].key == hb.key
-			local label = hb.key == "concentration" and (CH.Window.ConcIcon(12) .. " " .. hb.label) or hb.label
+			local label = m == "orders" and hb.key == "concentration" and CH.Window.ConcIcon(14) or hb.label
 			hb.text:SetText(not on and "" or sorted and T.Color("accent", label .. (SORT[m].asc and " ^" or " v")) or label)
 		end
 	end
@@ -755,7 +755,8 @@ local function refreshLists()
 			-- what the reagents you supply cost: green when you hold them, red when you'd buy
 			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or (d.cost or 0) == 0 and ""
 				or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost)))
-			r.cells[6]:SetText(d.ok and d.concentration and (CH.Window.ConcIcon(14) .. " " .. math.floor(d.concentration + 0.5)) or T.Color("muted", "-"))
+			-- the Concentration the craft needs, as CraftSim: 0 when its reagents (and Shatter) reach the rank
+			r.cells[6]:SetText(d.ok and tostring(math.floor((d.concentration or 0) + 0.5)) or T.Color("muted", "-"))
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?") .. kpTag(true))
