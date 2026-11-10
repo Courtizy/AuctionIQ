@@ -761,6 +761,12 @@ local function refreshLists()
 				or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost)))
 			-- the Concentration the craft needs, as CraftSim: 0 when its reagents (and Shatter) reach the rank
 			r.cells[6]:SetText(d.ok and tostring(math.floor((d.concentration or 0) + 0.5)) or T.Color("muted", "-"))
+			-- already crafted: what's left is handing it in, not whether you can reach it
+			if SUI.ClaimState(d) == "turnin" then
+				r.cells[4]:SetText(T.Color("ok", "crafted"))
+				r.cells[5]:SetText("")
+				r.cells[6]:SetText("")
+			end
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?") .. kpTag(true))
