@@ -118,8 +118,19 @@ function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
 			if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
 			if onClick then b:SetScript("OnClick", function(_, button) onClick(i, button) end) end
 			if onEnter then
-				b:SetScript("OnEnter", function(self) onEnter(self, i) end)
-				b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				-- which column the cursor is over, so a cell can have its own tooltip
+				local function column(self)
+					if not (GetCursorPosition and parent.GetLeft and parent:GetLeft()) then return nil end
+					local x = GetCursorPosition() / (self.GetEffectiveScale and self:GetEffectiveScale() or 1) - parent:GetLeft()
+					for j, c in ipairs(cols) do if x >= c[2] and x < c[2] + c[3] + 4 then return j end end
+					return nil
+				end
+				b:SetScript("OnEnter", function(self) self.col = column(self); onEnter(self, i, self.col) end)
+				b:SetScript("OnUpdate", function(self)
+					local j = column(self)
+					if j ~= self.col then self.col = j; onEnter(self, i, j) end
+				end)
+				b:SetScript("OnLeave", function(self) self.col = nil; GameTooltip:Hide() end)
 			end
 			r.button = b
 		end
@@ -203,6 +214,14 @@ function W.ItemIcon(itemID, size)
 	if not icon then return "" end
 	size = size or 16
 	return "|T" .. icon .. ":" .. size .. ":" .. size .. ":0:0:64:64:5:59:5:59|t "
+end
+
+--- The Concentration icon, inline in text (the currency's own icon once a profession has shown it).
+function W.ConcIcon(size)
+	size = size or 14
+	local icon = CH.db and CH.db.concIcon
+	if not icon then return CH.Theme.Color("accent", "C") end
+	return "|T" .. icon .. ":" .. size .. ":" .. size .. ":0:0:64:64:5:59:5:59|t"
 end
 
 --- Quality icon. tiers is how many qualities the item has: Midnight's two-quality items and

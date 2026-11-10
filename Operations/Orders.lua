@@ -15,12 +15,13 @@ function O.FromOrder(order)
 	local provided, slots = {}, {}
 	-- only what the customer gives comes off your cost: an order's list can also name reagents the
 	-- crafter must bring (source Crafter), which you still pay for
+	-- (the game lists what the customer gives; only a source of Crafter means you bring it)
 	local SRC = Enum and Enum.CraftingOrderReagentSource
-	local customer = SRC and SRC.Customer or 1
+	local crafter = SRC and SRC.Crafter
 	for _, r in ipairs(order.reagents or {}) do
 		local info = r.reagentInfo or r
 		local slot = info.dataSlotIndex or r.dataSlotIndex or r.slotIndex
-		local given = r.source == nil or r.source == customer
+		local given = crafter == nil or r.source ~= crafter
 		if info and info.reagent and slot and given then
 			table.insert(provided, { reagent = { itemID = info.reagent.itemID }, itemID = info.reagent.itemID, dataSlotIndex = slot, quantity = info.quantity or 1 })
 			slots[slot] = (slots[slot] or 0) + (info.quantity or 1) -- units the customer gives in this slot
@@ -248,6 +249,16 @@ function O.Rewards(order)
 	return out, total, kp
 end
 
+--- The reagents you supply for an order's craft, with how many you hold, most expensive first.
+function O.CostLines(result, r)
+	local out = CH.Advisor.CostLines(result, r.picks, r.finishing)
+	for _, l in ipairs(out) do
+		l.have = (C_Item and C_Item.GetItemCount and l.id and C_Item.GetItemCount(l.id, true, false, true, true)) or 0
+	end
+	table.sort(out, function(a, b) return (a.total or 0) > (b.total or 0) end)
+	return out
+end
+
 --- Every order the game has listed for the open profession, worked out like the advisor does:
 --- { order, orderID, recipeID, name, item, from, kind, minQuality, commission, rewards, rewardValue,
 ---   kp, cost, profit, quality, concentration, row, result, ok (some craft meets the minimum) }.
@@ -289,6 +300,8 @@ function O.List()
 			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
 			line = line, expansion = expansion, current = not line or not current or line == current,
 			have = have, missing = missing,
+			customer = order.orderType == 3 and "NPC" or order.customerName or TYPES[order.orderType] or "?",
+			costLines = r and result and O.CostLines(result, r) or nil,
 			-- no row because a reagent you'd supply has no price, not because the quality is out of reach
 			unpriced = not r and result and result.model and result.model.unpriced or nil })
 	end

@@ -66,7 +66,7 @@ function A.Slots(schematic, provided)
 end
 
 -- picks[i][q] = units of quality q in quality slot i
-local function reagentInfos(model, picks, fin)
+local function reagentInfos(model, picks, fin, ownOnly)
 	local t = {}
 	for i, slot in ipairs(model.qual) do
 		for q, id in ipairs(slot.items) do
@@ -79,7 +79,7 @@ local function reagentInfos(model, picks, fin)
 	for _, f in ipairs(fin or {}) do
 		table.insert(t, { reagent = { itemID = f.itemID }, itemID = f.itemID, dataSlotIndex = f.slot, quantity = 1 })
 	end
-	for _, r in ipairs(model.provided or {}) do table.insert(t, r) end
+	if not ownOnly then for _, r in ipairs(model.provided or {}) do table.insert(t, r) end end
 	return t
 end
 
@@ -88,7 +88,11 @@ local function operation(model, picks, concentrate, fin)
 	local infos = reagentInfos(model, picks, fin)
 	local ok, info
 	if model.orderID and ui.GetCraftingOperationInfoForOrder then
-		ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
+		-- the game knows what the customer gives: first ask with only your own reagents, then with theirs
+		ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, reagentInfos(model, picks, fin, true), model.orderID, concentrate or false)
+		if not (ok and info) then
+			ok, info = pcall(ui.GetCraftingOperationInfoForOrder, model.recipeID, infos, model.orderID, concentrate or false)
+		end
 		if not (ok and info) then -- the game may not answer for an order you haven't claimed
 			ok, info = pcall(ui.GetCraftingOperationInfo, model.recipeID, infos, nil, concentrate or false)
 		end
@@ -165,6 +169,22 @@ function A.Measure(recipeID, opts)
 	if not info or not schematic then return nil, "No recipe data." end
 	local order = opts.order
 	local qual, fixed, finishing = A.Slots(schematic, order and order.providedSlots)
+	-- what the customer gives, no more units per slot than the slot takes (a list can name more)
+	local provided
+	if order and order.provided then
+		local need, used = {}, {}
+		for _, s in ipairs(schematic.reagentSlotSchematics or {}) do need[s.dataSlotIndex] = s.quantityRequired or 1 end
+		provided = {}
+		for _, r in ipairs(order.provided) do
+			local slot = r.dataSlotIndex
+			local room = need[slot] and (need[slot] - (used[slot] or 0)) or r.quantity
+			local n = math.min(r.quantity or 1, room or 0)
+			if n > 0 then
+				used[slot] = (used[slot] or 0) + n
+				table.insert(provided, { reagent = r.reagent, itemID = r.itemID, dataSlotIndex = slot, quantity = n })
+			end
+		end
+	end
 	local outputs = info.qualityItemIDs or {}
 	-- Gear (rods, tools, armour) keeps one item ID for every quality: the quality is its item level,
 	-- so each quality is priced by the item at that level (TSM's "i:ID::iLEVEL").
@@ -184,7 +204,7 @@ function A.Measure(recipeID, opts)
 		outputs = outputs, outputKeys = keys, output = schematic.outputItemID, maxQ = maxQ,
 		made = ((schematic.quantityMin or 1) + (schematic.quantityMax or schematic.quantityMin or 1)) / 2,
 		allocationGUID = opts.allocationGUID, order = order, orderID = order and order.orderID,
-		provided = order and order.provided, professionID = opts.professionID, thresholds = {},
+		provided = provided, professionID = opts.professionID, thresholds = {},
 		supportsQualities = info.supportsQualities ~= false and maxQ > 1,
 	}
 	if opts.allocationGUID then

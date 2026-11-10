@@ -1759,6 +1759,13 @@ orows = list(CH.ScanUI.Refresh().values())
 check("scan tab: lists orders with 1KP flagged", len(orows) == 3 and "kp=true" in orows[0])
 tip = [plain(l[1]) for l in CH.ScanUI.OrderLines(by[78]).values()]
 check("scan tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
+pl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 4).values()]
+check("orders: hovering Profit breaks it down from the commission", pl[0] == "Profit" and pl[1].startswith("Commission") and "Profit" in pl[-1] or "Profit" in pl)
+cl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
+check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
+rl2 = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
+check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
+check("orders: a patron order's customer reads NPC", by[78].customer == "NPC" and by[77].customer == "Pat")
 run("AuctionIQ.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
@@ -2354,8 +2361,9 @@ run("AuctionIQ.UI.Page('ledger', 'inventory')")
 check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
 ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
 check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
+run("Enum.CraftingOrderReagentSource = { Any = 0, Customer = 1, Crafter = 2, None = 3 }")
 fo = CH.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
-  { source = 1, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
+  { source = 0, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
   { source = 2, reagentInfo = { reagent = { itemID = 202 }, dataSlotIndex = 2, quantity = 3 } } } }"""))
 check("orders: only reagents the customer gives come off your cost, not ones the crafter must bring",
       fo.providedSlots[1] == 2 and fo.providedSlots[2] is None and len(list(fo.provided.values())) == 1)

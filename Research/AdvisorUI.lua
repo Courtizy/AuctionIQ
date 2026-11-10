@@ -347,7 +347,7 @@ function AUI.Render(result, reason)
 		if i > ROWS then break end
 		local row = rows[i]
 		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.short and T.Color("bad", " low")
-			or r.recommended and T.Color("accent", " best") or r.bestConcentration and T.Color("accent", " conc") or "")
+			or r.recommended and T.Color("accent", " best") or r.bestConcentration and (" " .. CH.Window.ConcIcon(13)) or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
 		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""

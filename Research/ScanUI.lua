@@ -34,8 +34,9 @@ local COLS = {
 		{ "Points", 524, 60, "concentration" }, { "Extra/pt", 586, 100, "gainPerPoint" }, { "Can make", 688, 136, "canMakeConc" } },
 	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
 		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
-	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
-		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Order profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
+	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
+	orders = { { "Recipe", 12, 290, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
+		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "Conc.", 734, 90, "concentration" } },
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
@@ -216,9 +217,47 @@ function SUI.OrderLines(d)
 	return lines
 end
 
-local function hover(owner, i)
+--- A work order cell's own tooltip: rewards (3), profit (4) or crafting costs (5). nil for the rest.
+function SUI.OrderCellLines(d, col)
+	local T, M = CH.Theme, CH.FormatMoney
+	if col == 3 then
+		local lines = { { "Rewards" } }
+		for _, rw in ipairs(d.rewards) do
+			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
+			table.insert(lines, { CH.Window.ItemIcon(rw.id, 14) .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
+				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+		end
+		if not d.rewards[1] then table.insert(lines, { T.Color("muted", "No rewards beyond the commission.") }) end
+		table.insert(lines, { T.Color("muted", "Sellable rewards at what they bring after the AH cut.") })
+		return lines
+	elseif col == 4 and d.ok then
+		local pays = (d.commission or 0) + (d.rewardValue or 0)
+		local procs = (d.profit or 0) - (pays - (d.cost or 0))
+		local lines = { { "Profit" }, { "Commission, after the consortium's cut", M(d.commission) } }
+		if (d.rewardValue or 0) > 0 then table.insert(lines, { "Rewards you can sell", M(d.rewardValue) }) end
+		table.insert(lines, { "Reagents you supply", (d.cost or 0) > 0 and ("-" .. M(d.cost)) or M(0) })
+		if math.abs(procs) >= 100 then table.insert(lines, { "Resourcefulness, on average", money(procs) }) end
+		table.insert(lines, { "Profit", money(d.profit) })
+		if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. CH.Window.ConcIcon(12) .. " " .. math.floor(d.concentration + 0.5) .. " Concentration to reach the quality asked.") }) end
+		return lines
+	elseif col == 5 and d.ok then
+		local lines = { { "Crafting costs" } }
+		for _, l in ipairs(d.costLines or {}) do
+			table.insert(lines, { CH.Window.ItemIcon(l.id, 14) .. l.n .. " x " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or "")
+				.. T.Color(l.have >= l.n and "ok" or "bad", string.format("  (have %d)", l.have)), l.total and M(l.total) or T.Color("bad", "no price") })
+		end
+		if not (d.costLines and d.costLines[1]) then table.insert(lines, { T.Color("ok", "The customer provides every reagent.") }) end
+		table.insert(lines, { "Total", M(d.cost or 0) })
+		table.insert(lines, { T.Color("muted", "Only what you supply: the customer's reagents aren't counted.") })
+		return lines
+	end
+	return nil
+end
+
+local function hover(owner, i, col)
 	local r = data[i + offset]
 	if not r then return end
+	if mode == "orders" then CH.Window.Tooltip(owner, SUI.OrderCellLines(r, col) or SUI.OrderLines(r)); return end
 	if mode ~= "recipes" then CH.Window.Tooltip(owner, SUI.OrderLines(r)); return end
 	local T = CH.Theme
 	if r.header then
@@ -422,7 +461,8 @@ local function showTable()
 		for _, hb in ipairs(heads[m]) do
 			hb:SetShown(on)
 			local sorted = on and SORT[m].key == hb.key
-			hb.text:SetText(not on and "" or sorted and T.Color("accent", hb.label .. (SORT[m].asc and " ^" or " v")) or hb.label)
+			local label = hb.key == "concentration" and (CH.Window.ConcIcon(12) .. " " .. hb.label) or hb.label
+			hb.text:SetText(not on and "" or sorted and T.Color("accent", label .. (SORT[m].asc and " ^" or " v")) or label)
 		end
 	end
 	if SUI.olderButton then
@@ -533,7 +573,9 @@ local function refreshLists()
 		local fetching = CH.Orders.fetching and T.Color("accent", "  Fetching orders from the game...") or ""
 		local olderNote = older > 0 and T.Color("muted", showOlder and string.format("   %d from older expansions", older)
 			or string.format("   %d older-expansion orders hidden", older)) or ""
-		status:SetText(#data > 0 and string.format("%d work orders: %s pay, %s give a knowledge point (1KP)", #data, T.Color("ok", pays), T.Color("accent", kp)) .. olderNote .. fetching
+		local total = 0
+		for _, d in ipairs(data) do if d.ok and (d.profit or 0) > 0 then total = total + d.profit end end
+		status:SetText(#data > 0 and string.format("%d Total Work Orders: %s profit, %s KP", #data, T.Color("ok", CH.FormatMoney(total)), T.Color("accent", kp)) .. olderNote .. fetching
 			or fetching ~= "" and fetching
 			or T.Color("muted", "No work orders found" .. (fetchNote and ": " .. fetchNote or " for this profession right now") .. ". Click Work orders twice to fetch again."))
 	else
@@ -549,13 +591,16 @@ local function refreshLists()
 		if d and mode == "orders" then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
-			r.cells[2]:SetText(d.from)
-			r.cells[3]:SetText(money(d.commission))
-			r.cells[4]:SetText(d.rewardValue > 0 and money(d.rewardValue) or (d.rewards[1] and T.Color("muted", "unsellable") or T.Color("muted", "-")))
-			-- what your reagents cost, always (like CraftSim): green when you hold them, red when you'd buy
-			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost or 0)))
-			r.cells[6]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
-			r.cells[7]:SetText(d.ok and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. (d.concentration and T.Color("accent", " conc") or "")) or "")
+			r.cells[2]:SetText(d.customer or d.from)
+			-- reward icons (hover for what each is worth)
+			local icons = {}
+			for _, rw in ipairs(d.rewards) do icons[#icons + 1] = CH.Window.ItemIcon(rw.id, 15) .. (rw.count > 1 and rw.count or "") end
+			r.cells[3]:SetText(#icons > 0 and table.concat(icons, " ") or T.Color("muted", "-"))
+			r.cells[4]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
+			-- what the reagents you supply cost: green when you hold them, red when you'd buy
+			r.cells[5]:SetText(not d.ok and T.Color("muted", "-") or (d.cost or 0) == 0 and T.Color("ok", "provided")
+				or T.Color(d.have and "ok" or "bad", CH.FormatMoney(d.cost)))
+			r.cells[6]:SetText(d.ok and d.concentration and (CH.Window.ConcIcon(14) .. " " .. math.floor(d.concentration + 0.5)) or T.Color("muted", "-"))
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.name or "?") .. kpTag(true))

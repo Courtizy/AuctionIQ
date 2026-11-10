@@ -265,7 +265,7 @@ function QUI.Refresh()
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
 		if show then
-			local tag = (e.concentration and T.Color("accent", " conc") or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
+			local tag = (e.concentration and (" " .. CH.Window.ConcIcon(13)) or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
 				.. (e.orderID and T.Color("accent", " order") or "") .. (e.special and T.Color("accent", " reward") or "")
 			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, tag))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
