@@ -1424,17 +1424,25 @@ check("hand-off: Craft opens on the recommended recipe, filtered to it, saying w
 # Craft detail pane: the handed-over recipe is selected, sized to the Dashboard's quantity, and queues
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
 check("Craft pane: the selected recipe, live while the profession window has it, sized to the hand-off",
-      det is not None and plain(det.title).startswith("Test Flask") and "Live from the profession window" in plain(det.title)
-      and det.n == 20 and plain(det.actions[1].label) == "Queue 20" and L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
+      det is not None and plain(det.title) == "Craft 20 x Test Flask" and "LIVE" in plain(det.kicker) and "Live from the profession" in plain(det.sub)
+      and det.n == 20 and plain(det.actions[1].label) == "Queue 20 crafts" and L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
+pane = L.eval("AuctionIQ.UI.Pages().ledger.detail")
+tbl = L.eval("AuctionIQ.UI.Pages().ledger.rows[1].hit")
+check("Craft pane: a panel right of the table, which narrows to make room",
+      pane.point[2] > 172 + 400 and pane.point[3] == -32 and tbl.w < 724 - 250)
 run("AuctionIQ.AnalyticsViews._LiveFor = AuctionIQ.AnalyticsViews.LiveFor; AuctionIQ.AnalyticsViews.LiveFor = function() return nil end; AuctionIQ.UI.Refresh()")
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
-check("Craft pane: otherwise the last scan, labelled with its character and age", re.search(r"Last scan on \w+, .+ old$", plain(det.title)) is not None and det.live is False)
+check("Craft pane: otherwise the last scan, labelled with its character and age", re.search(r"^\w+, scanned .+ ago", plain(det.sub)) is not None and det.live is False)
 run("AuctionIQ.AnalyticsViews.LiveFor = AuctionIQ.AnalyticsViews._LiveFor; AuctionIQ.UI.Refresh()")
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
-lines = [plain(x) for x in det.lines.values()]
-check("Craft pane: profit and break-even, the batch's risk, stock left and reagent cost",
-      lines[0].startswith("Profit ") and any(l.startswith("Make ") for l in lines) and any(l.startswith("Left after a week") for l in lines)
-      and lines[-1].startswith("Reagents for 20: about "))
+figs = [plain(f[1]) for f in det.figures.values()]
+rows = {plain(r[1]): plain(r[2]) for r in det.rows.values()}
+srows = [r for r in det.section.rows.values()]
+check("Craft pane: profit, gold at risk and break-even up top; make, stock left and reagent cost below",
+      figs == ["PROFIT", "AT RISK", "BREAK-EVEN"] and "Make" in rows and "Left after a week" in rows and "Reagents for 20" in rows)
+check("Craft pane: if prices move, each scenario explaining itself on hover",
+      plain(det.section.head) == "IF PRICES MOVE" and [plain(r[1]) for r in srows] == ["Profit now", "Reagents +10%", "Price -10%", "Both", "Room to rise"]
+      and all(r.tip is not None and plain(r.tip[1][1]) != "" for r in srows))
 run("AuctionIQ.db.queue = {}; AuctionIQ.db.decisions = {}")
 run("local b = AuctionIQ.UI.Pages().ledger.detail.buttons[1]; b.scripts.OnClick(b)")
 q = list(L.eval("AuctionIQ.db.queue").values())
@@ -1993,9 +2001,9 @@ perfnav = nav[nav.index("Performance") + 1:]
 check("performance nav: performance first, batch results, forecast accuracy and craft results next, no stock targets",
       perfnav[:4] == ["performance", "batches", "perf", "results"] and "par" not in perfnav and "scenarios" not in perfnav)
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
-made = {plain(r.cells[1]): r for r in srows if plain(r.cells[9]) != "-"}
-check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[9]) == "50"
-      and any(plain(l[1]).startswith("Make 50: ") for l in made["Test Flask"].cellTip(9).values()))
+made = {plain(r.cells[1]): r for r in srows if plain(r.cells[6]) != "-"}
+check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[6]) == "50"
+      and any(plain(l[1]).startswith("Make 50: ") for l in made["Test Flask"].cellTip(6).values()))
 # Compare crafts hover: the craft's name shows the item, every other column what it is and how it was worked out
 ft = made["Test Flask"]
 def money_of(t):
@@ -2003,13 +2011,13 @@ def money_of(t):
     sign = -1 if t.startswith("-") else 1
     g = re.search(r"(\d+)g", t); sv = re.search(r"(\d+)s", t); c = re.search(r"(\d+)c", t)
     return sign * ((int(g.group(1)) * 10000 if g else 0) + (int(sv.group(1)) * 100 if sv else 0) + (int(c.group(1)) if c else 0))
-heads = [plain(ft.cellTip(j)[1][1]) for j in range(2, 10)]
-check("Compare crafts: each column after the craft explains itself on hover",
-      heads == ["Character", "Profit now", "Reagents +10%", "Price -10%", "Both", "Break-even per item", "Room", "Make"])
+heads = [plain(ft.cellTip(j)[1][1]) for j in range(2, 7)] + [plain(ft.cellTip(k)[1][1]) for k in ["up", "down", "both", "room"]]
+check("Compare crafts: each column after the craft, and each price scenario, explains itself on hover",
+      heads == ["Character", "Profit now", "Break-even per item", "Cushion", "Make", "Reagents +10%", "Price -10%", "Both", "Room"])
 pn = [l for l in ft.cellTip(3).values()][2:]
 check("Compare crafts: Profit now's breakdown adds up to the profit shown",
       abs(sum(money_of(l[2]) for l in pn[:-1]) - money_of(pn[-1][2])) <= len(pn) and plain(pn[-1][1]) == "Profit a craft")
-ru = [l for l in ft.cellTip(4).values()][2:]
+ru = [l for l in ft.cellTip("up").values()][2:]
 check("Compare crafts: Reagents +10% starts from profit now and ends at the column's number",
       plain(ru[0][1]) == "Profit now" and abs(sum(money_of(l[2]) for l in ru[:-1]) - money_of(ru[-1][2])) <= len(ru))
 run("STUB.hit = { id = 12345, cellTip = function(j) return AuctionIQ.AnalyticsViews.ScenarioTip(STUB.lastX, j) end }")
@@ -2036,7 +2044,7 @@ check("scenarios: two setting buttons show", ctl[1].shown and ctl[2].shown and p
 run("AuctionIQ.UI.Pages().ledger.controls[1].scripts.OnClick(AuctionIQ.UI.Pages().ledger.controls[1], 'LeftButton')")
 sc2 = [x for x in L.eval(f"AuctionIQ.AnalyticsViews.Scenarios({ctx})").values() if x.name == "Test Flask" and x.char == "Alt"][0]
 check("scenarios: left-click raises reagents to +15% and the numbers follow", abs(sc2.reagentsUp - 250) < 1e-6
-      and L.eval("AuctionIQ.db.scenario.reagents") == 0.15 and plain(L.eval("AuctionIQ.AnalyticsViews.VIEWS.scenarios.cols[4][1]")) == "Reagents +15%")
+      and L.eval("AuctionIQ.db.scenario.reagents") == 0.15 and plain(ctl[1].label) == "Reagents +15%")
 run("AuctionIQ.UI.Pages().ledger.controls[2].scripts.OnClick(AuctionIQ.UI.Pages().ledger.controls[2], 'RightButton')")
 check("scenarios: right-click lowers prices to -5%", L.eval("AuctionIQ.AnalyticsViews.Scenario().price") == 0.05)
 run("SlashCmdList.AUCTIONIQ('scenario 10 10')")

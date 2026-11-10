@@ -157,6 +157,13 @@ function W.ScrollBar(parent, x, y, h, noCount)
 	thumb:SetSize(4, h)
 	local count = noCount and { SetText = function() end } or W.OneLine(W.Text(parent, x - 116, y - h - 2, 120, "RIGHT", "GameFontDisableSmall"))
 	bar.track, bar.thumb, bar.count = track, thumb, count
+	--- Move the bar across (the table it scrolls got narrower or wider).
+	function bar:SetX(nx)
+		if nx == x then return end
+		x = nx
+		track:ClearAllPoints(); track:SetPoint("TOPLEFT", x, y)
+		if count.ClearAllPoints then count:ClearAllPoints(); count:SetPoint("TOPLEFT", x - 116, y - h - 2) end
+	end
 	--- A new length for the bar (the table it scrolls got more or fewer rows).
 	function bar:SetLength(nh)
 		h = nh

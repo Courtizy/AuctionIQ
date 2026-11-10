@@ -381,25 +381,25 @@ function AV.ScenarioTip(x, j)
 		out = head("Profit now", "Profit a craft at today's prices, from the last scan.")
 		now(out)
 		add(out, "Profit a craft", x.profit, true)
-	elseif j == 4 then
+	elseif j == "up" then
 		out = head(string.format("Reagents +%d%%", pctR), "Profit a craft if reagent prices rise this much. Resourcefulness gives back more too. Change it with the button above.")
 		add(out, "Profit now", x.profit, true)
 		add(out, string.format("Reagents used, +%d%%", pctR), -parts.consumed * r)
 		if parts.returned >= 1 then add(out, string.format("Resourcefulness back, +%d%%", pctR), parts.returned * r, true) end
 		add(out, "Profit a craft", x.reagentsUp, true)
-	elseif j == 5 then
+	elseif j == "down" then
 		out = head(string.format("Price -%d%%", pctP), "Profit a craft if your selling price falls this much. Deposits stay the same. Change it with the button above.")
 		add(out, "Profit now", x.profit, true)
 		add(out, string.format("Revenue, -%d%%", pctP), -p * (parts.revenue + parts.deposits))
 		add(out, "Profit a craft", x.priceDown, true)
-	elseif j == 6 then
+	elseif j == "both" then
 		out = head("Both", string.format("Reagents +%d%% and price -%d%% together: the downside case.", pctR, pctP))
 		add(out, "Profit now", x.profit, true)
 		add(out, string.format("Reagents used, +%d%%", pctR), -parts.consumed * r)
 		if parts.returned >= 1 then add(out, string.format("Resourcefulness back, +%d%%", pctR), parts.returned * r, true) end
 		add(out, string.format("Revenue, -%d%%", pctP), -p * (parts.revenue + parts.deposits))
 		add(out, "Profit a craft", x.both, true)
-	elseif j == 7 then
+	elseif j == 4 then
 		out = head("Break-even per item", "The sale price per item where this craft makes nothing, and how far today's estimate can fall before it does.")
 		if x.salePrice then
 			add(out, "Estimated sale price", x.estimate or 0)
@@ -410,12 +410,21 @@ function AV.ScenarioTip(x, j)
 		else
 			table.insert(out, { T.Color("muted", "This scan is older and didn't save a sale price. Scan the profession again.") })
 		end
-	elseif j == 8 then
+	elseif j == 5 then
+		out = head("Cushion", "How far today's estimated sale price can fall before this craft stops paying.")
+		if x.salePrice and x.estimate then
+			add(out, "Estimated sale price", x.estimate)
+			add(out, "Break-even per item", x.salePrice)
+			table.insert(out, { "Cushion = 1 - break-even / estimate", pct(x.cushion) })
+		else
+			table.insert(out, { T.Color("muted", "This scan is older and didn't save a sale price. Scan the profession again.") })
+		end
+	elseif j == "room" then
 		out = head("Room", "How far reagent prices can rise before this craft stops paying.")
 		add(out, "Profit now", x.profit, true)
 		add(out, "Reagents, less what Resourcefulness gives back", net)
 		table.insert(out, { "Room = profit / reagents", x.breakEven == math.huge and "any" or ("+" .. pct(x.breakEven)) })
-	elseif j == 9 then
+	elseif j == 6 then
 		local sg = x.suggest
 		out = head("Make", "How many to craft: the biggest batch that still pays back if it sells slowly, without piling up stock.")
 		if sg then
@@ -433,20 +442,19 @@ local function scenarioRows(ctx)
 	local out, fragile = {}, 0
 	for _, x in ipairs(AV.Scenarios(ctx)) do
 		if x.both < 0 then fragile = fragile + 1 end
-		local be = x.salePrice and (money(x.salePrice) .. T.Color(x.cushion < 0.1 and "bad" or "muted", " " .. pct(x.cushion))) or T.Color("muted", "older scan")
 		local sg = x.suggest
 		local make = not sg and T.Color("muted", "-") or sg.n == 0 and T.Color(sg.limit == "rate" and "muted" or "bad", sg.limit == "rate" and "-" or "0") or tostring(sg.n)
 		table.insert(out, { id = x.id, key = (x.charKey or "") .. ":" .. tostring(x.row and x.row.recipeID) .. ":" .. tostring(x.id), x = x,
-			cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
-			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)), make },
-			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven, sg and sg.n or -1 },
+			cells = { x.name, x.char, signed(x.profit), x.salePrice and money(x.salePrice) or T.Color("muted", "older scan"),
+				x.cushion and T.Color(x.cushion < 0.1 and "bad" or "fg", pct(x.cushion)) or T.Color("muted", "-"), make },
+			sort = { x.name, x.char, x.profit, x.salePrice or math.huge, x.cushion or -math.huge, sg and sg.n or -1 },
 			cellTip = function(j) return AV.ScenarioTip(x, j) end })
 	end
 	if not out[1] then return out, T.Color("muted", "Scan a profession first: scenarios use your saved scans' profitable crafts.") end
 	local sc = AV.Scenario()
 	return out, string.format("Reagents +%d%%, selling price -%d%%. %d of %d crafts lose money if both happen.",
 		math.floor(sc.reagents * 100 + 0.5), math.floor(sc.price * 100 + 0.5), fragile, #out)
-		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Room: how far reagents can rise before it stops paying. Make: how many to craft (hover for the scenarios).")
+		.. T.Color("muted", "  Hover a number for how it was worked out. The panel shows the selected craft's scenarios.")
 end
 
 -- Craft detail -------------------------------------------------------------------------------
@@ -519,34 +527,45 @@ function AV.CraftDetail(d, ctx)
 	-- how many: the Dashboard's quantity when it handed this over, else the suggestion
 	local f = ctx and ctx.focus
 	local n = (f and f.name == x.name and f.qty and f.qty > 0) and f.qty or (sug and sug.n > 0 and sug.n) or 1
-	local lines = {}
 	local profit = live and lr and lr.profit or x.profit
-	lines[1] = string.format("Profit %s a craft.", M(profit))
-		.. (x.salePrice and string.format(" Breaks even at %s an item, %s under the estimate.", M(x.salePrice), pct(x.cushion)) or "")
-	local sc = sug and sug.n > 0 and sug.scenarios
+	local function gold(v) return v and M(math.floor(v / 10000 + 0.5) * 10000) or "-" end
 	local function whole(v) return math.floor(v + 0.5) end
-	if sc then
-		lines[2] = string.format("Make %d: %s at risk if it sells slowly.", sug.n, M(sc.slow.atRisk))
-		lines[3] = T.Color("muted", string.format("Left after a week: %d slow, %d expected, %d fast.", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)))
-	else
-		lines[2] = sug and sug.why or T.Color("muted", "No sale price in this scan, so no batch size.")
-	end
+	local sc = sug and sug.n > 0 and sug.scenarios
 	local row = x.row
+	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
+	local figures = { { "PROFIT", T.Color(profit >= 0 and "ok" or "bad", gold(profit)) },
+		{ "AT RISK", sc and T.Color("accent", gold(sc.slow.atRisk)) or "-" },
+		{ "BREAK-EVEN", x.salePrice and gold(x.salePrice) or "-" } }
+	local rows = {}
+	rows[#rows + 1] = { "Make", sc and tostring(sug.n) or T.Color("muted", sug and sug.n == 0 and "0" or "-") }
+	if sc then rows[#rows + 1] = { "Left after a week", string.format("%d · %d · %d", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)) } end
+	if x.cushion then rows[#rows + 1] = { "Estimate can fall", pct(x.cushion) } end
 	if row.concProfit and row.concentration and row.concentration > 0 then
 		local gain = row.concProfit - (row.profit or 0)
-		lines[#lines + 1] = gain > 0 and string.format("Concentration adds %s a craft for %d points (%s a point).", M(gain), row.concentration, M(gain / row.concentration))
-			or T.Color("muted", "Concentration doesn't pay on this craft.")
+		rows[#rows + 1] = { "Concentration", gain > 0 and string.format("+%s a craft", M(gain)) or T.Color("muted", "doesn't pay") }
 	end
+	rows[#rows + 1] = { "Reagents for " .. n, M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (row.cost or 0) * n) }
+	-- the price scenarios for this craft, each explaining itself on hover
+	local s = AV.Scenario()
+	local srows = { { "Profit now", signed(x.profit), tip = AV.ScenarioTip(x, 3) },
+		{ string.format("Reagents +%d%%", math.floor(s.reagents * 100 + 0.5)), signed(x.reagentsUp), tip = AV.ScenarioTip(x, "up") },
+		{ string.format("Price -%d%%", math.floor(s.price * 100 + 0.5)), signed(x.priceDown), tip = AV.ScenarioTip(x, "down") },
+		{ "Both", signed(x.both), tip = AV.ScenarioTip(x, "both") },
+		{ "Room to rise", x.breakEven == math.huge and "any" or ("+" .. pct(x.breakEven)), tip = AV.ScenarioTip(x, "room") } }
 	local plan = AV.PlanFor(x.id)
-	if plan then lines[#lines + 1] = AV.PlanText(plan) end
-	lines[#lines + 1] = T.Color("muted", "Reagents for " .. n .. ": about " .. M(inp and CH.Decide.Scenarios(inp, n).expected.cost or (x.row.cost or 0) * n) .. ".")
-	local actions = { { label = "Queue " .. n, tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
+	local why = sc and (sug.why and (sug.why .. " ") or "") or (sug and sug.why) or "No sale price in this scan, so no batch size."
+	local note = (plan and (AV.PlanText(plan) .. " ") or "") .. why
+	local actions = { { label = "Queue " .. n .. " crafts", tip = "Add " .. n .. " to the queue, plain, and save this forecast to check later. The Crafting Advisor at the profession window picks the reagent mix.",
 		run = function() return AV.QueueScan(x, n, false, inp) end } }
 	if row.concProfit and row.concProfit > (row.profit or 0) and row.concAccounts then
-		actions[2] = { label = "Queue " .. n .. " with Concentration", tip = "Spend Concentration on these crafts.",
+		actions[2] = { label = "Queue with Concentration", tip = "Spend Concentration on these " .. n .. " crafts.",
 			run = function() return AV.QueueScan(x, n, true, inp) end }
 	end
-	return { title = (x.name or "?") .. "  " .. src, lines = lines, actions = actions, n = n, live = live ~= nil }
+	return { kicker = live and "NEXT MOVE  ·  LIVE" or "NEXT MOVE", title = string.format("Craft %d x %s", n, x.name or "?"),
+		sub = (live and T.Color("ok", "Live from the profession") or (T.Color("muted", string.format("%s, scanned %s ago", x.char or "?", age))))
+			.. T.Color("muted", string.format("  ·  ~%d items", whole(n * made))),
+		figures = figures, rows = rows, section = { head = "IF PRICES MOVE", rows = srows }, note = T.Color("muted", note),
+		actions = actions, n = n, live = live ~= nil }
 end
 
 -- Batch results ------------------------------------------------------------------------------
@@ -607,18 +626,14 @@ AV.VIEWS = {
 	batches = { label = "Batch results", sort = 7, asc = true, noTime = true, rows = batchRows, cols = { { "Batch", 0, 172 },
 		{ "Character", 176, 74 }, { "Crafts", 254, 46 }, { "Sold", 304, 54 }, { "Forecast", 362, 86 }, { "Actual", 452, 86 },
 		{ "Miss", 542, 80 }, { "Why", 626, 98 } } },
-	scenarios = { label = "Compare crafts", detail = function(d, ctx) return AV.CraftDetail(d, ctx) end, sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
-		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
-		{ "Room", 628, 50 }, { "Make", 682, 42 } } },
+	scenarios = { label = "Compare crafts", detail = function(d, ctx) return AV.CraftDetail(d, ctx) end, sort = 5, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 206 }, { "Character", 210, 100 },
+		{ "Profit", 314, 108 }, { "Break-even", 426, 108 }, { "Cushion", 538, 96 }, { "Make", 638, 82 } } },
 }
 
 -- Scenarios' two settings, as buttons over the table; the column headings follow them
 local function pctOf(x) return math.floor(x * 100 + 0.5) end
 local function label(kind)
 	local sc = AV.Scenario()
-	local cols = AV.VIEWS.scenarios.cols
-	cols[4][1] = string.format("Reagents +%d%%", pctOf(sc.reagents))
-	cols[5][1] = string.format("Price -%d%%", pctOf(sc.price))
 	return kind == "reagents" and string.format("Reagents +%d%%", pctOf(sc.reagents)) or string.format("Price -%d%%", pctOf(sc.price))
 end
 AV.VIEWS.scenarios.controls = {
