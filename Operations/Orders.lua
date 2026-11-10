@@ -305,13 +305,13 @@ function O.Debug()
 	local orders = O.All()
 	CH.Print(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
 	for _, order in ipairs(orders) do
-		local ok, result = pcall(O.Analyze, order)
+		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
 		if not ok then
 			CH.Print(head .. " error " .. tostring(result))
 		elseif not result then
-			CH.Print(head .. " no result")
+			CH.Print(head .. " no result" .. (why and (": " .. tostring(why)) or ""))
 		else
 			local m = result.model or {}
 			local parts = {}
