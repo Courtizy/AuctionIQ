@@ -421,6 +421,12 @@ local function buildDashboard(p)
 	-- Do next, the page's main block: what to do now, each card with a button that does it
 	local top = panel(p, 0, -54, PW, 172)
 	d.top = top
+	-- Do next is the page's main block: the accent line along its top, like the Next Move cards
+	d.topAccent = top:CreateTexture(nil, "OVERLAY")
+	d.topAccent:SetPoint("TOPLEFT", 1, -1)
+	d.topAccent:SetPoint("TOPRIGHT", -1, -1)
+	d.topAccent:SetHeight(2)
+	T.AccentTexture(d.topAccent)
 	d.heading = fs(top, 10, -8, 400, "LEFT", "GameFontNormal")
 	d.mode = "next"
 	d.modeButtons = {}
@@ -463,7 +469,7 @@ local function buildDashboard(p)
 			if #lines > 0 then CH.Window.Tooltip(self, lines) end
 		end)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		c.act = T.Button(top, "", 84, 22)
+		c.act = T.Primary(T.Button(top, "", 84, 22))
 		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 21)
 		c.act:SetScript("OnClick", function(self)
 			if not self.run then return end

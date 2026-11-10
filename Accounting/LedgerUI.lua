@@ -170,6 +170,27 @@ end
 -- Data ----------------------------------------------------------------------------------------
 --- Rows for a view: { cells = { text... }, sort = { value... }, id = itemID }, then the footer
 --- text. opts: filter (name keyword), char (character name), days (nil = all time), now.
+--- The Character picker for a view with its own rows: keep the rows whose Character column is that
+--- character (by name, with or without the realm). Views that filter their own records pass through.
+function LUI.KeepChar(def, rows, char)
+	if not char or type(rows) ~= "table" or not def.cols then return rows end
+	-- "Name#professionID" (Compare crafts' picker) also keeps only that profession's crafts
+	local name, prof = char:match("^([^#]+)#?(.*)$")
+	local col
+	for j, c in ipairs(def.cols) do if c[1] == "Character" then col = j; break end end
+	if not col then return rows end
+	local function plain(t)
+		local x = tostring(t or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+		return ((x:match("^%s*([^%-]*)") or ""):gsub("%s+$", ""))
+	end
+	local out = {}
+	for _, r in ipairs(rows) do
+		local pid = r.profID or (r.x and r.x.profID)
+		if r.cells and plain(r.cells[col]) == name and (prof == "" or tostring(pid) == prof) then table.insert(out, r) end
+	end
+	return out
+end
+
 function LUI.Rows(v, opts)
 	opts = opts or {}
 	local L = CH.Ledger
@@ -183,7 +204,8 @@ function LUI.Rows(v, opts)
 	local function keepRec(r) return r.time >= since and (not opts.char or r.player == opts.char) end
 	local def = VIEWS[v]
 	if def and def.rows then
-		return def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
+		local rows, footer = def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
+		return LUI.KeepChar(def, rows, opts.char), footer
 	end
 
 	if v == "inventory" then
@@ -403,6 +425,8 @@ end
 local function setView(v)
 	if VIEWS[v] and VIEWS[v].go then return VIEWS[v].go() end
 	if v ~= view then focus = nil; selected = nil; said = nil end
+	-- a profession picked in Compare crafts means nothing to other views: keep just the character
+	if char and char:find("#", 1, true) and not (VIEWS[v] and VIEWS[v].charChoices) then char = char:match("^[^#]+") end
 	view, offset = v, 0
 	lastView[section] = v
 	if VIEWS[v].parent then lastIn[VIEWS[v].parent] = v end
@@ -519,8 +543,13 @@ function LUI.Build(p, fs, panel)
 	p.charButton:SetPoint("TOPLEFT", X0 + 268, -4)
 	p.charButton:SetScript("OnClick", function(self)
 		local list = { { "All characters", false, selected = char == nil } }
-		for _, c in ipairs(CH.Ledger.Characters()) do table.insert(list, { c.name, c.name, selected = char == c.name }) end
-		pick(self, "Character", list, function(v) char = v or nil; offset = 0; CH.UI.Refresh() end)
+		local own = VIEWS[view] and VIEWS[view].charChoices
+		if own then
+			for _, e in ipairs(own()) do table.insert(list, { e[1], e[2], selected = char == e[2] }) end
+		else
+			for _, c in ipairs(CH.Ledger.Characters()) do table.insert(list, { c.name, c.name, selected = char == c.name }) end
+		end
+		pick(self, own and "Character and profession" or "Character", list, function(v) char = v or nil; offset = 0; CH.UI.Refresh() end)
 	end)
 	p.timeButton = T.Button(body, "Last 30 Days", 110, 20)
 	p.timeButton:SetPoint("TOPLEFT", X0 + 424, -4)
@@ -737,7 +766,7 @@ function LUI.Refresh()
 		if p.detail then p.detail:Hide(); LUI.lastDetail = nil end
 		return {}, ""
 	end
-	local charLabel = char or "All characters"
+	local charLabel = char and (v.charLabel and v.charLabel(char) or char:match("^[^#]+")) or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
 	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))

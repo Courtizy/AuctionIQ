@@ -1435,6 +1435,16 @@ check("Queue: execution plan, production queue, shopping list, to mail", LUI.Gro
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
+chars = [plain(r.cells[2]) for r in LUI.Rows("scenarios", L.eval("{ char = 'Seyko' }"))[0].values()]
+allc = [plain(r.cells[2]) for r in LUI.Rows("scenarios", L.eval("{}"))[0].values()]
+check("Compare crafts: the Character picker keeps only that character's crafts", len(chars) > 0 and set(chars) == {"Seyko"} and len(allc) >= len(chars))
+ch = list(L.eval("AuctionIQ.LedgerUI.ViewDef('scenarios').charChoices()").values())
+check("Compare crafts: the picker lists each character, then their scanned professions", len(ch) >= 2 and ch[0][1] == "Seyko" and "#" in ch[1][2] and "Seyko - " in ch[1][1])
+pc = [r for r in LUI.Rows("scenarios", L.eval("{ char = '%s' }" % ch[1][2]))[0].values()]
+check("Compare crafts: picking a profession keeps only its crafts", len(pc) > 0 and all(str(r.x.profID) == ch[1][2].split("#")[1] for r in pc))
+check("Compare crafts: the button names the character and profession", L.eval("AuctionIQ.LedgerUI.ViewDef('scenarios').charLabel('%s')" % ch[1][2]) == ch[1][1].strip())
+none = list(LUI.Rows("scenarios", L.eval("{ char = 'Nobody' }"))[0].values())
+check("Compare crafts: a character with no scans shows none", len(none) == 0)
 check("Compare crafts shows a Scan button in Export's place", L.eval("AuctionIQ.UI.Pages().ledger.actionButton:IsShown()")
       and not L.eval("AuctionIQ.UI.Pages().ledger.exportButton:IsShown()") and L.eval("AuctionIQ.UI.Pages().ledger.actionButton.label") == "Scan")
 check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
@@ -2270,6 +2280,13 @@ lines = [plain(l[1]) for l in CH.AdvisorUI.ExpectLines(d).values()]
 check("expect: the advisor hover shows each step", any("Deposits lost" in x for x in lines) and any("Gold tied up" in x for x in lines) and lines[-1] == "Expected each")
 check("failed auctions: deposits lost", CH.Expect.LostDeposit(905, 3) == 360000)
 run("STUB.sellThrough = nil")
+
+# One theme across the addon: every window's main action is the filled button, and the main blocks
+# carry the accent line or a shaded card
+run('AuctionIQ.AuctionUI.Build(); AuctionIQ.MailUI.Build()')
+check("theme: Auction and Mail windows build with their main buttons filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil and AuctionIQ.MailUI.Build() ~= nil"))
+check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2, AuctionIQ.Theme.Card(CreateFrame('Frame'), 0, 0, 10, 10, true)) ~= nil"))
+check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
 
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)

@@ -214,7 +214,7 @@ function PUI.Build(p)
 	input:SetAutoFocus(false)
 	input:SetText("")
 	input:SetScript("OnEnterPressed", function(self) self:ClearFocus(); PUI.DefaultPoints(); PUI.Run() end)
-	local go = T.Button(frame, "Plan", 70, 20)
+	local go = T.Primary(T.Button(frame, "Plan", 70, 20))
 	go:SetPoint("TOPLEFT", 434, INPUT_Y)
 	go:SetScript("OnClick", function() PUI.DefaultPoints(); PUI.Run() end)
 

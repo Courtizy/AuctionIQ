@@ -662,6 +662,41 @@ AV.VIEWS.scenarios.controls = {
 		click = function(dir) AV.SetScenario(nil, step(AV.Scenario().price, dir)) end },
 }
 
+-- Compare crafts' Character picker: each character, then each of their professions under them
+local function profName(p) return p and (p.parent or p.name) or "?" end
+AV.VIEWS.scenarios.charChoices = function()
+	local list = {}
+	for key, c in pairs(CH.db.characters or {}) do
+		local profs = {}
+		for pid, p in pairs(c.professions or {}) do
+			if p.scan then table.insert(profs, { profName(p), pid }) end
+		end
+		if #profs > 0 then
+			local name = c.name or key:match("^[^%-]+")
+			table.sort(profs, function(a, b) return a[1] < b[1] end)
+			table.insert(list, { name = name, profs = profs })
+		end
+	end
+	table.sort(list, function(a, b) return a.name < b.name end)
+	local out = {}
+	for _, e in ipairs(list) do
+		table.insert(out, { e.name, e.name })
+		for _, p in ipairs(e.profs) do table.insert(out, { "   " .. e.name .. " - " .. p[1], e.name .. "#" .. tostring(p[2]) }) end
+	end
+	return out
+end
+AV.VIEWS.scenarios.charLabel = function(v)
+	local name, pid = v:match("^([^#]+)#?(.*)$")
+	if pid == "" then return name end
+	for key, c in pairs(CH.db.characters or {}) do
+		if (c.name or key:match("^[^%-]+")) == name then
+			local p = (c.professions or {})[tonumber(pid) or pid]
+			if p then return name .. " - " .. profName(p) end
+		end
+	end
+	return name
+end
+
 -- Compare crafts' Scan button: scan every profession of the character you're on, one after another,
 -- and the list fills in as each finishes. Another character's professions are scanned on them.
 local lastRefresh = 0
