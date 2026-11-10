@@ -538,9 +538,21 @@ function AUI.BatchFor(result, r)
 	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0) }, ":")
 	local hit = batchCache[key]
 	if hit then return hit end
-	local inp = CH.Decide.BatchInputs(result, r)
+	local Dc = CH.Decide
+	local inp = Dc.BatchInputs(result, r)
 	if not inp then return nil end
-	local out = { inputs = inp, sizes = CH.Decide.Batch(inp) }
+	-- how many to make, then the simulation for half that, that and double it (10, 30 and 100 without one)
+	local cf = r.concentration and Dc.ConcForecastFor(r, concNow())
+	local sug = Dc.Suggest(inp, { gain = r.concentration and r.gain or nil, concCrafts = cf and cf.now or nil })
+	local sizes
+	if sug and sug.n > 0 then
+		sizes = {}
+		local seen = {}
+		for _, n in ipairs({ math.max(1, math.floor(sug.n / 2 + 0.5)), sug.n, sug.n * 2 }) do
+			if not seen[n] then seen[n] = true; sizes[#sizes + 1] = n end
+		end
+	end
+	local out = { inputs = inp, suggest = sug, sizes = Dc.Batch(inp, sizes and { sizes = sizes } or nil) }
 	batchCache[key] = out
 	return out
 end
@@ -550,6 +562,11 @@ function AUI.BatchLines(b)
 	local T, M = CH.Theme, CH.FormatMoney
 	local out = {}
 	if not b then return out end
+	local st = CH.Decide.SuggestText(b.suggest)
+	if st then
+		table.insert(out, st)
+		if b.suggest.n > 0 then table.insert(out, b.suggest.why) end
+	end
 	for _, s in ipairs(b.sizes or {}) do
 		table.insert(out, string.format("%d crafts: %s chance the week's sales pay back %s of reagents; median cash back %s, net %s; about %d left unsold (%s)",
 			s.n, pctText(s.recover), M(s.spend), M(s.cashBack.p50 or 0), M(s.net.p50 or 0), math.floor((s.left or 0) + 0.5), M(s.leftValue or 0)))
@@ -589,7 +606,8 @@ local function drawBatch(chart, b)
 		bar(X(s.net.p50) - 1, y - 1, 3, 14, "fg")
 		local l = L[i * 2 - 1]
 		l:ClearAllPoints(); l:SetPoint("TOPLEFT", chart, "TOPLEFT", 12, y); l:SetWidth(184); l:SetJustifyH("LEFT")
-		l:SetText(string.format("%d crafts  ", s.n) .. T.Color(s.recover >= 0.8 and "ok" or s.recover >= 0.5 and "fg" or "bad", pctText(s.recover)) .. T.Color("muted", " pay back"))
+		local mark = b.suggest and b.suggest.n == s.n and T.Color("accent", "> ") or ""
+		l:SetText(mark .. string.format("%d crafts  ", s.n) .. T.Color(s.recover >= 0.8 and "ok" or s.recover >= 0.5 and "fg" or "bad", pctText(s.recover)) .. T.Color("muted", " pay back"))
 		l:Show()
 		local r = L[i * 2]
 		r:ClearAllPoints(); r:SetPoint("TOPLEFT", chart, "TOPLEFT", WIDTH - 146, y); r:SetWidth(134); r:SetJustifyH("RIGHT")
@@ -609,6 +627,8 @@ function AUI.SetPane(p)
 end
 
 function AUI.Pane() return pane end
+--- The pane's title as shown, for the tests.
+function AUI.PaneTitle() return panel and panel.chart and panel.chart.title:GetText() or "" end
 
 --- Draw the area under the rows for the pane that's on. Returns its text lines, for the tests.
 function AUI.RenderPane()
@@ -643,10 +663,13 @@ function AUI.RenderPane()
 			drawBatch(chart, nil)
 			return lines
 		end
-		chart.title:SetText(T.Color("accent", "Batch, " .. CH.Decide.HORIZON .. " days") .. T.Color("muted", "  bars: net cash, middle 80% of runs; tick: median; line: break-even"))
+		local sg = b.suggest
+		chart.title:SetText(sg and sg.n > 0 and (T.Color("accent", "Make " .. sg.n) .. T.Color("muted", string.format(": %s at risk if slow; %d / %d / %d left in a week (slow / expected / fast)",
+			CH.FormatMoney(sg.scenarios.slow.atRisk), math.floor(sg.scenarios.slow.left + 0.5), math.floor(sg.scenarios.expected.left + 0.5), math.floor(sg.scenarios.fast.left + 0.5))))
+			or sg and T.Color("bad", sg.why) or (T.Color("accent", "Batch, " .. CH.Decide.HORIZON .. " days") .. T.Color("muted", "  bars: net cash, middle 80% of runs")))
 		lines = AUI.BatchLines(b)
 		local inp = b.inputs
-		chart.foot:SetText(T.Color("muted", string.format("Sales %s a day (region), price -%s in 1 run of 10, procs from your stats",
+		chart.foot:SetText(T.Color("muted", string.format("Bars: net cash, middle 80%% of runs. Sales %s a day, price -%s in 1 of 10.",
 			inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), pctText(CH.Decide.Scenario().price))))
 		drawBatch(chart, b)
 	end

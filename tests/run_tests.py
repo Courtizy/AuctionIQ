@@ -629,8 +629,27 @@ CH.AdvisorUI.Render(res)
 check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
       and any("Plain Q2: breaks even at 223g per item, 26% under the estimate of 300g" in plain(x) for x in CH.AdvisorUI.RenderPane().values()))
 bl = [plain(x) for x in CH.AdvisorUI.SetPane("batch") and CH.AdvisorUI.RenderPane().values()]
-check("advisor: Analyze batch shows 10, 30 and 100 crafts and its inputs", len(bl) == 5 and bl[0].startswith("10 crafts: ") and bl[2].startswith("100 crafts: ")
-      and "pay back" in bl[0] and "left unsold" in bl[2] and bl[3].startswith("Sales "))
+check("advisor: Analyze batch leads with how many to make, then half, that and double", len(bl) == 7 and bl[0].startswith("Make 50: ")
+      and "at risk if it sells slowly" in bl[0] and "Left after a week: " in bl[0] and bl[1].startswith("More than 50 ")
+      and bl[2].startswith("25 crafts: ") and bl[3].startswith("50 crafts: ") and bl[4].startswith("100 crafts: ")
+      and "pay back" in bl[2] and "left unsold" in bl[4] and bl[5].startswith("Sales "))
+ttl = plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()"))
+check("advisor: the batch pane's title is the suggestion", ttl.startswith("Make 50: ") and "(slow / expected / fast)" in ttl)
+# How many to make: three labelled scenarios, worked out directly
+sg = D.Suggest(bi, L.eval("{ held = 0, fall = 0.1 }"))
+check("suggest: the biggest batch leaving at most 3 days of sales after a week (35 sell, 15 left)", sg.n == 50 and sg.limit == "stock"
+      and sg.scenarios.expected.left == 15 and sg.scenarios.fast.left == 0)
+check("suggest: gold at risk is the reagents not back in a slow week (half the sales, price -10%)",
+      abs(sg.scenarios.slow.atRisk - (2500 - 17.5 * 100 * 0.9 * 0.95)) < 1e-6 and sg.scenarios.slow.left == 32.5)
+check("suggest: stock you already hold sells first and counts toward what's left", D.Suggest(bi, L.eval("{ held = 40, fall = 0.1 }")).n == 10)
+check("suggest: Concentration caps it at the crafts your points cover", D.Suggest(bi, L.eval("{ held = 0, concCrafts = 8 }")).n == 8
+      and D.Suggest(bi, L.eval("{ held = 0, concCrafts = 8 }")).limit == "conc")
+run("STUB.cheap = { made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 55, deposit = 0, unit = 52, daily = 5, seed = 3, reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }")
+sc0 = D.Suggest(L.eval("STUB.cheap"), L.eval("{ held = 0, fall = 0.1 }"))
+check("suggest: don't craft when a 10% fall stops it paying for its reagents", sc0.n == 0 and sc0.limit == "price" and D.SuggestText(sc0).startswith("Don't craft"))
+run("STUB.cheap.daily = 0")
+check("suggest: no sale rate, no size", D.Suggest(L.eval("STUB.cheap"), L.eval("{ held = 0 }")).limit == "rate")
+check("suggest: a Concentration craft says what Concentration adds", "Concentration adds " in plain(D.SuggestText(D.Suggest(bi, L.eval("{ held = 0, gain = { gain = 400 } }")))))
 check("advisor: back to the notes", CH.AdvisorUI.SetPane("notes") == "notes")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.SetQty(9); AuctionIQ.AdvisorUI.QueueSelected()')
 bg = CH.Queue.Budget()
@@ -1612,6 +1631,10 @@ def audit(where):
 for tab in ["today", "research", "operations", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"AuctionIQ.UI.Page('{tab}')")
     audit(tab)
+run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.SetPane('batch')")
+check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
+audit("advisor batch pane")
+run("AuctionIQ.AdvisorUI.SetPane('notes')")
 for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
@@ -1837,6 +1860,10 @@ nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("AuctionIQ.LedgerUI.SEC
 perfnav = nav[nav.index("Performance") + 1:]
 check("performance nav: performance first, forecast accuracy and craft results next, no stock targets",
       perfnav[:3] == ["performance", "perf", "results"] and "par" not in perfnav and "scenarios" not in perfnav)
+srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
+made = {plain(r.cells[1]): r for r in srows if plain(r.cells[9]) != "-"}
+check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[9]) == "50"
+      and plain(made["Test Flask"].tip[1][1]).startswith("Make 50: "))
 # Scenarios reprice revenue, consumed reagents and what Resourcefulness gives back separately:
 # 130 revenue - 100 reagents + 20 back = 50; reagents +10% = 42, price -10% = 37, both = 29
 parts = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 0 }")

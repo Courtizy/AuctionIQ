@@ -5,6 +5,8 @@
 --   Evidence      where a sale estimate comes from: source, age and how many of your own sales
 --   ConcForecast  how many Concentration crafts the points cover now, and the refund upside
 --   Batch         what could happen to a batch over a week (Monte Carlo, on demand)
+--   Suggest       how many to make, the gold at risk and the stock left after a week, in three
+--                 labelled scenarios (slow, expected, fast), worked out directly, not simulated
 -- A craft's money is split the same way everywhere ("parts"): revenue (items after the cut, net of
 -- expected deposits and gold tied up, Multicraft's extras included), reagents consumed, what
 -- Resourcefulness gives back, deposits (which don't move with the price) and a fixed cost (the item a
@@ -290,7 +292,7 @@ function D.BatchInputs(result, r)
 	local item = r.item
 	local daily = item and CH.Scan and CH.Scan.DailyUnits(item) or 0
 	local ev = D.Evidence(item)
-	return { made = made, mc = mc, maxExtra = math.max(1, maxExtra), res = res, saved = r.parts and r.parts.saved or 0,
+	return { item = item, made = made, mc = mc, maxExtra = math.max(1, maxExtra), res = res, saved = r.parts and r.parts.saved or 0,
 		price = r.price, deposit = deposit, unit = r.unit, reagents = lines, daily = daily,
 		have = function(id) return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end,
 		evidence = ev, seed = (result.recipeID or 1) * 7 + r.quality * 131 + (r.concentration and 1 or 0) }
@@ -357,6 +359,124 @@ function D.Batch(inp, opts)
 			left = left, leftValue = left * (inp.unit or 0), items = quantile(made, 0.5) }
 	end
 	return out
+end
+
+-- How many to make (scenarios, exact) ------------------------------------------------------------
+-- Three labelled scenarios for a week, no probabilities yet: slow (half the sale rate, the price
+-- down by the Scenarios fall), expected, and fast (half as fast again). The suggested batch is the
+-- biggest that still pays for its reagents in the slow scenario's price (unsold stock valued at that
+-- price) and leaves at most D.LEAN_DAYS days of sales on hand after a week (the queue's Lean plan
+-- uses the same), counting what you hold.
+
+D.SCENARIOS = { { key = "slow", label = "Slow", pace = 0.5, fall = true }, { key = "expected", label = "Expected", pace = 1 },
+	{ key = "fast", label = "Fast", pace = 1.5 } }
+D.SUGGEST_MAX = 200 -- crafts considered
+
+--- Items one craft makes on average for batch inputs: the base, plus Multicraft's average extras.
+function D.ItemsPerCraft(inp)
+	return (inp.made or 1) + (inp.mc or 0) * (1 + ((inp.maxExtra or 1) - 1) / 2)
+end
+
+--- One scenario for n crafts: { key, label, items, sold, left, cash (gold back in the week), cost
+--- (reagents less what Resourcefulness saves), net (cash - cost), stockValue (left at this price),
+--- atRisk (cost not back in the week), heldLeft (of what you already held, still unsold) }.
+function D.Scenarios(inp, n, opts)
+	opts = opts or {}
+	local days = opts.days or D.HORIZON
+	local fall = opts.fall or D.Scenario().price
+	local held = opts.held or 0
+	local spend = D.BatchCost(inp, n)
+	local cost = spend - n * (inp.res or 0) * (inp.saved or 0)
+	local items = n * D.ItemsPerCraft(inp)
+	local out = {}
+	for _, sc in ipairs(D.SCENARIOS) do
+		local price = (inp.price or 0) * (sc.fall and (1 - fall) or 1)
+		local each = math.max(0, price * CH.AH_CUT - (inp.deposit or 0))
+		local demand = (inp.daily or 0) * sc.pace * days
+		-- what you hold sells first; the new batch gets what's left of the week's demand
+		local sold = math.max(0, math.min(items, demand - held))
+		local cash = sold * each
+		out[#out + 1] = { key = sc.key, label = sc.label, items = items, sold = sold, left = items - sold, cash = cash, cost = cost,
+			net = cash - cost, each = each, stockValue = (items - sold) * each, atRisk = math.max(0, cost - cash),
+			heldLeft = math.max(0, held - demand) }
+		out[sc.key] = out[#out]
+	end
+	return out
+end
+
+--- Batch inputs from a saved scan row (Operations, Professions, Compare crafts): what one craft
+--- makes on average (Multicraft included) and its reagents net of Resourcefulness as one cost. nil for
+--- an older scan without the breakdown or a sale price.
+function D.ScanInputs(row)
+	if not (row and row.item and row.accounts) then return nil end
+	local parts = D.AccountParts(row)
+	local a = row.accounts
+	if not (parts.price and parts.price > 0 and parts.items and parts.items > 0) then return nil end
+	return { item = row.item, made = parts.items, mc = 0, maxExtra = 1, res = 0, saved = 0, price = parts.price,
+		deposit = a.deposit or 0, unit = a.unit, daily = CH.Scan and CH.Scan.DailyUnits(row.item) or 0,
+		reagents = { { n = 1, unit = parts.consumed - parts.returned, finishing = true } },
+		have = function(id) return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end }
+end
+
+--- How many to make: { n (0 = don't), why, scenarios (for n, or for 1 craft when n is 0), limit
+--- ("price", "stock", "conc" or "max"), gain (what Concentration adds a craft, if it's a Concentration
+--- craft) } or nil without a sale rate. opts: held (items you already have), concCrafts (how many the
+--- Concentration you have covers), gain (D.ConcGain for the row), fall, days.
+function D.Suggest(inp, opts)
+	opts = opts or {}
+	if not inp or not inp.price or inp.price <= 0 then return nil end
+	local days = opts.days or D.HORIZON
+	local held = opts.held or (inp.item and inp.have and inp.have(inp.item)) or 0
+	local o = { held = held, fall = opts.fall, days = days }
+	local week = (inp.daily or 0) * days
+	local gain = opts.gain and opts.gain.gain or nil
+	if week <= 0 then
+		return { n = 0, why = "No sale rate for this item yet, so there's no batch size to suggest.", limit = "rate",
+			scenarios = D.Scenarios(inp, 1, o), gain = gain, held = held }
+	end
+	local keep = (inp.daily or 0) * D.LEAN_DAYS
+	local cap = D.SUGGEST_MAX
+	if opts.concCrafts then cap = math.min(cap, opts.concCrafts) end
+	local best, limit = 0, cap == D.SUGGEST_MAX and "max" or "conc"
+	for n = 1, cap do
+		local sc = D.Scenarios(inp, n, o)
+		local slow, exp = sc.slow, sc.expected
+		-- pays for itself at the slow price, counting unsold stock at that price
+		if slow.cash + slow.stockValue < slow.cost then limit = "price"; break end
+		-- at most a few days of sales left over after the week
+		if exp.left + exp.heldLeft > keep + 1e-9 then limit = "stock"; break end
+		best = n
+	end
+	local out = { n = best, limit = limit, gain = gain, held = held, scenarios = D.Scenarios(inp, math.max(1, best), o) }
+	local fallPct = math.floor(((opts.fall or D.Scenario().price) * 100) + 0.5)
+	if best == 0 then
+		out.why = limit == "price" and string.format("Don't craft: at %d%% under the estimate it doesn't pay for its reagents.", fallPct)
+			or limit == "stock" and string.format("Don't craft: you hold %d, more than a week and %d days of sales.", held, D.LEAN_DAYS)
+			or "Don't craft: no Concentration for it."
+	elseif limit == "price" then
+		out.why = string.format("More than %d stops paying for itself if the price falls %d%% (reagents get dearer as you buy more).", best, fallPct)
+	elseif limit == "stock" then
+		out.why = string.format("More than %d leaves over %d days of sales unsold after a week%s.", best, D.LEAN_DAYS,
+			held > 0 and string.format(" (you hold %d)", held) or "")
+	elseif limit == "conc" then
+		out.why = string.format("Your Concentration covers %d crafts.", best)
+	else
+		out.why = string.format("Pays and sells within the week even at %d crafts.", best)
+	end
+	return out
+end
+
+--- The suggestion in one line: "Make 14: 1,200g at risk if it sells slowly. Left after a week: 6 slow,
+--- 2 expected, 0 fast." Concentration's extra per craft is added for a Concentration craft.
+function D.SuggestText(s)
+	if not s then return nil end
+	local M = CH.FormatMoney
+	if s.n == 0 then return s.why end
+	local sc = s.scenarios
+	local function whole(x) return math.floor(x + 0.5) end
+	local t = string.format("Make %d: %s at risk if it sells slowly.", s.n, M(sc.slow.atRisk))
+	if s.gain then t = t .. string.format(" Concentration adds %s a craft.", M(s.gain)) end
+	return t .. string.format(" Left after a week: %d slow, %d expected, %d fast.", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left))
 end
 
 -- Concentration over a queue (exact) -------------------------------------------------------------

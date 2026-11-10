@@ -341,7 +341,9 @@ function AV.Scenarios(ctx, r, p)
 						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
 						breakEven = net > 0 and now / net or math.huge,
 						-- the sale price per item where the craft makes nothing, and how far the estimate can fall
-						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion })
+						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion,
+						-- how many to make (Decide.Suggest), from this scan
+						suggest = CH.Decide.Suggest(CH.Decide.ScanInputs(row), { fall = p }) })
 				end
 			end
 		end
@@ -355,15 +357,18 @@ local function scenarioRows(ctx)
 	for _, x in ipairs(AV.Scenarios(ctx)) do
 		if x.both < 0 then fragile = fragile + 1 end
 		local be = x.salePrice and (money(x.salePrice) .. T.Color(x.cushion < 0.1 and "bad" or "muted", " " .. pct(x.cushion))) or T.Color("muted", "older scan")
+		local sg = x.suggest
+		local make = not sg and T.Color("muted", "-") or sg.n == 0 and T.Color(sg.limit == "rate" and "muted" or "bad", sg.limit == "rate" and "-" or "0") or tostring(sg.n)
 		table.insert(out, { id = x.id, cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
-			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)) },
-			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven } })
+			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)), make },
+			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven, sg and sg.n or -1 },
+			tip = sg and { { CH.Decide.SuggestText(sg) }, sg.n > 0 and { sg.why } or nil } or nil })
 	end
 	if not out[1] then return out, T.Color("muted", "Scan a profession first: scenarios use your saved scans' profitable crafts.") end
 	local sc = AV.Scenario()
 	return out, string.format("Reagents +%d%%, selling price -%d%%. %d of %d crafts lose money if both happen.",
 		math.floor(sc.reagents * 100 + 0.5), math.floor(sc.price * 100 + 0.5), fragile, #out)
-		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Reagent room: how far reagents can rise before it stops paying.")
+		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Room: how far reagents can rise before it stops paying. Make: how many to craft (hover for the scenarios).")
 end
 
 AV.VIEWS = {
@@ -378,7 +383,7 @@ AV.VIEWS = {
 		{ "Ingenuity", 646, 78 } } },
 	scenarios = { label = "Compare crafts", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
 		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
-		{ "Reagent room", 628, 96 } } },
+		{ "Room", 628, 50 }, { "Make", 682, 42 } } },
 }
 
 -- Scenarios' two settings, as buttons over the table; the column headings follow them
