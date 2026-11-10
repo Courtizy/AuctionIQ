@@ -61,7 +61,10 @@ function SUI.Build(p, fs, panel)
 	import:SetPoint("TOPLEFT", 12, gy - 78)
 	import:SetScript("OnClick", function()
 		local n, err = CH.Groups.ImportTSM()
-		if n then say(string.format("Copied from TSM: %d operations, %d price sources, %d groups.", n.ops, n.sources, n.groups))
+		if n then
+			local head, lines = CH.Groups.ImportSummary(n)
+			say("Copied from TSM: " .. head .. "." .. (#lines > 0 and string.format(" %d differences from TSM, listed in chat.", #lines) or ""))
+			for _, l in ipairs(lines) do CH.Print(l) end
 		else say("Couldn't import: " .. tostring(err), true) end
 		CH.UI.Refresh()
 	end)

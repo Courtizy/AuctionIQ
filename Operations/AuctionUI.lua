@@ -109,7 +109,7 @@ function AUI.CancelScan()
 	CH.Auction.QueryOwned(function(list)
 		local byItem, ids = {}, {}
 		for _, a in ipairs(list) do
-			if CH.Groups.Path(a.id) then
+			if CH.Groups.Path(a.id, a.level) then
 				local key = a.id .. ":" .. (a.level or 0) -- gear: each item level against its own listings
 				if not byItem[key] then byItem[key] = {}; table.insert(ids, { id = a.id, level = a.level, key = key }) end
 				table.insert(byItem[key], a)

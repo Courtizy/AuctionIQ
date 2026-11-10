@@ -155,7 +155,10 @@ function GUI.Build(p, fs, panel)
 	p.importTSM:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - 6)
 	p.importTSM:SetScript("OnClick", function()
 		local n, err = CH.Groups.ImportTSM()
-		if n then CH.Print(string.format("copied from TSM: %d operations, %d price sources, %d group assignments. They're AuctionIQ's now.", n.ops, n.sources, n.groups))
+		if n then
+			local head, lines = CH.Groups.ImportSummary(n)
+			CH.Print("copied from TSM: " .. head .. ". They're AuctionIQ's now.")
+			for _, l in ipairs(lines) do CH.Print("  " .. l) end
 		else CH.Print("couldn't import: " .. tostring(err)) end
 		CH.UI.Refresh()
 	end)

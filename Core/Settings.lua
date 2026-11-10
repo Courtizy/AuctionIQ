@@ -191,6 +191,9 @@ function S.RenameOp(old, new)
 	if s.ops[new] then return nil, new .. " already exists" end
 	s.ops[new], s.ops[old] = s.ops[old], nil
 	for path, op in pairs(s.assign) do if op == old then s.assign[path] = new end end
+	for _, list in pairs(s.assignAll or {}) do
+		for i, op in ipairs(list) do if op == old then list[i] = new end end
+	end
 	return new
 end
 
@@ -202,6 +205,13 @@ function S.DeleteOp(name)
 	s.ops[name] = nil
 	local n = 0
 	for path, op in pairs(s.assign) do if op == name then s.assign[path] = nil; n = n + 1 end end
+	-- a group with TSM's ordered list falls to the next operation in it
+	for path, list in pairs(s.assignAll or {}) do
+		for i = #list, 1, -1 do if list[i] == name then table.remove(list, i) end end
+		if list[1] then
+			if not s.assign[path] then s.assign[path] = list[1] end
+		else s.assignAll[path] = nil end
+	end
 	return n
 end
 

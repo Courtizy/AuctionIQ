@@ -47,59 +47,134 @@ local function tsmProfile(db)
 	for _, p in pairs(cur) do return p end
 end
 
--- TSM's groups for the current profile, read only: { [itemID] = "TSM/A/B" }.
-local tsmCache, tsmRaw
-function G.TSMGroups()
-	if tsmCache then return tsmCache end
-	tsmCache, tsmRaw = {}, {}
+-- TSM's groups for the current profile, read only. TSM assigns an item string, and two variants of
+-- one item (gear at two item levels, "i:ID::iLEVEL") can sit in different groups, so each string is
+-- kept as it is (byString). byID is the fallback for a lookup without a variant: the explicit
+-- base-item entry ("i:ID") if TSM has one, else the variants' group when they all agree, else none
+-- (conflicts[id] = true: the item level decides).
+local tsmCache, tsmByString, tsmConflicts
+-- "i:123::i645" stays as it is; any other variant ("i:123:0:2:...") is kept by its exact string too.
+local function baseID(itemString) return tonumber(tostring(itemString):match("^i:(%d+)")) end
+local function tsmPath(path) return "TSM" .. SEP .. path:gsub("`", SEP) end
+local function readTSM()
+	if tsmCache then return end
+	tsmCache, tsmByString, tsmConflicts = {}, {}, {}
 	local db = TradeSkillMasterDB
-	if type(db) ~= "table" then return tsmCache end
+	if type(db) ~= "table" then return end
 	local profile = tsmProfile(db)
 	local items = profile and db["p@" .. profile .. "@userData@items"]
-	if type(items) ~= "table" then return tsmCache end
+	if type(items) ~= "table" then return end
+	local variants = {} -- [id] = path shared by every variant, or false when they differ
 	for itemString, path in pairs(items) do
-		local id = tonumber(tostring(itemString):match("^i:(%d+)"))
+		local str, id = tostring(itemString), baseID(itemString)
 		if id and type(path) == "string" and path ~= "" then
-			tsmCache[id] = "TSM" .. SEP .. path:gsub("`", SEP)
-			tsmRaw[id] = path
+			local full = tsmPath(path)
+			tsmByString[str] = full
+			if str == "i:" .. id then
+				tsmCache[id] = full
+			elseif variants[id] == nil then variants[id] = full
+			elseif variants[id] ~= full then variants[id] = false end
 		end
 	end
-	return tsmCache
+	for id, v in pairs(variants) do
+		if not tsmCache[id] then
+			if v then tsmCache[id] = v else tsmConflicts[id] = true end
+		end
+	end
+end
+
+--- TSM's groups by base item: { [itemID] = "TSM/A/B" } (see readTSM for variants).
+function G.TSMGroups() readTSM(); return tsmCache end
+
+--- TSM's groups by its own item strings: { ["i:ID" or "i:ID::iLEVEL" ...] = "TSM/A/B" }.
+function G.TSMGroupsByString() readTSM(); return tsmByString end
+
+--- TSM's group for one item, at one item level if given: that variant's own group first, then the
+--- base item's (nil when only other variants are grouped and they disagree).
+function G.TSMPath(id, level)
+	readTSM()
+	if not id then return nil end
+	if level then
+		local v = tsmByString["i:" .. id .. "::i" .. level]
+		if v then return v end
+	end
+	return tsmCache[id]
 end
 
 --- Forget the TSM groups read so far (they're read once per session).
-function G.ResetTSM() tsmCache, tsmRaw = nil, nil end
+function G.ResetTSM() tsmCache, tsmByString, tsmConflicts = nil, nil, nil end
 
 -- TSM's operation fields, copied into AuctionIQ's own operations.
 local function num(v) return tonumber(v) end
 
+-- What an imported operation does differently from TSM, one line per setting: { "bid at 80% of buyout" }.
+local function unsupported(op)
+	local out = {}
+	local bid = num(op.bidPercent)
+	if bid and bid < 1 then table.insert(out, string.format("bid at %d%% of buyout (AuctionIQ posts buyout only)", math.floor(bid * 100 + 0.5))) end
+	local low = num(op.ignoreLowDuration)
+	if low and low > 0 then table.insert(out, "ignoring auctions by time left (every listing counts here)") end
+	if type(op.blacklist) == "string" and op.blacklist:match("%S") then table.insert(out, "blacklisted sellers (undercut like anyone else here)") end
+	if type(op.keepQtySources) == "table" and next(op.keepQtySources) then table.insert(out, "amount kept counts bank or other sources (bags only here)") end
+	if type(op.ignoreFactionrealm) == "table" and next(op.ignoreFactionrealm) then table.insert(out, "ignored on some realms (applies everywhere here)") end
+	return out
+end
+G.Unsupported = unsupported
+
+-- TSM keeps operations per group in order; "ignore operation on characters" skips one for some
+-- characters. Whether an operation applies to the character you're on now.
+local function appliesHere(op)
+	local ig = op and op.ignorePlayer
+	if type(ig) ~= "table" or not next(ig) then return true end
+	local name = UnitName and UnitName("player") or ""
+	local realm = GetRealmName and GetRealmName() or ""
+	for key, on in pairs(ig) do
+		local k = tostring(key)
+		if on and k:find(name, 1, true) == 1 and (realm == "" or k:find(realm, 1, true)) then return false end
+	end
+	return true
+end
+
 --- Copy TSM's auctioning setup into AuctionIQ, once (TSM's data is only read):
 ---   * each Auctioning operation becomes an AuctionIQ operation of the same name with the same
----     formulas and settings (min, normal, max, undercut, post cap, keep, max expires, resets, duration)
+---     formulas and settings (min, normal, max, undercut, post cap, keep, max expires, below min,
+---     above max, duration) and canceling rules (cancel undercut, cancel to repost higher and its
+---     threshold)
 ---   * TSM's custom price sources become AuctionIQ's (see Formula.lua)
----   * each TSM group that sets its own operation gets it here too, and TSM's groups win over the
----     automatic ones, so items post as TSM would
+---   * each TSM group that sets its own operations gets them here too, in TSM's order, and TSM's
+---     groups win over the automatic ones, so items post as TSM would. The first operation that
+---     applies to the character prices, posts and cancels (as TSM's aucopmin/normal/max read it)
+---   * settings AuctionIQ can't follow are reported, so you know where it will act differently
 --- After this nothing needs TSM: change the operations here and they stay yours.
---- Returns { ops, sources, groups } counts, or nil and why.
+--- Returns { ops, sources, groups, multi, unsupported = { [op] = { why } }, conflicts }, or nil and why.
 function G.ImportTSM()
 	local db = TradeSkillMasterDB
 	if type(db) ~= "table" then return nil, "TSM's saved data isn't loaded" end
 	local profile = tsmProfile(db)
 	local s = store()
-	local n = { ops = 0, sources = 0, groups = 0 }
+	s.assignAll = s.assignAll or {}
+	local n = { ops = 0, sources = 0, groups = 0, multi = 0, unsupported = {}, conflicts = 0 }
 	local function opsFrom(t)
 		if type(t) ~= "table" or type(t.Auctioning) ~= "table" then return end
 		for name, op in pairs(t.Auctioning) do
 			if type(op) == "table" then
 				local cap = num(op.postCap)
+				local ignore = {}
+				if type(op.ignorePlayer) == "table" then for k, v in pairs(op.ignorePlayer) do ignore[k] = v end end
 				s.ops[name] = {
 					post = cap ~= 0, imported = "TSM",
 					minPrice = op.minPrice, normalPrice = op.normalPrice, maxPrice = op.maxPrice,
 					undercut = op.undercut or 0, cap = cap, keepQuantity = num(op.keepQuantity) or 0,
 					maxExpires = num(op.maxExpires) or 0, priceReset = op.priceReset or "none",
 					aboveMax = op.aboveMax or "maxPrice", duration = num(op.duration) or 2,
+					-- TSM's defaults: cancel when undercut, and cancel to repost higher by 1g or more
+					cancelUndercut = op.cancelUndercut ~= false, cancelRepost = op.cancelRepost ~= false,
+					cancelRepostThreshold = op.cancelRepostThreshold or "1g",
+					ignorePlayer = next(ignore) and ignore or nil,
 					floor = "market", floorPct = 1, maxMult = 3, learn = false,
 				}
+				local u = unsupported(op)
+				if #u > 0 then n.unsupported[name] = u end
 				n.ops = n.ops + 1
 			end
 		end
@@ -118,15 +193,39 @@ function G.ImportTSM()
 		for path, g in pairs(groups) do
 			local a = type(g) == "table" and g.Auctioning
 			if type(a) == "table" and a[1] and (a.override or path == "") then
-				local here = path == "" and "TSM" or ("TSM" .. SEP .. path:gsub("`", SEP))
-				s.assign[here] = a[1]
+				local here = path == "" and "TSM" or tsmPath(path)
+				local list = {}
+				for _, name in ipairs(a) do list[#list + 1] = name end
+				s.assign[here], s.assignAll[here] = list[1], list
+				if #list > 1 then n.multi = n.multi + 1 end
 				n.groups = n.groups + 1
 			end
 		end
 	end
 	s.useTSM, s.preferTSM = true, true
 	G.ResetTSM()
+	readTSM()
+	for _ in pairs(tsmConflicts) do n.conflicts = n.conflicts + 1 end
 	return n
+end
+
+--- One line for chat on what an import copied and where AuctionIQ will act differently from TSM.
+function G.ImportSummary(n)
+	local head = string.format("%d operations, %d price sources, %d groups", n.ops, n.sources, n.groups)
+	local lines = {}
+	if (n.multi or 0) > 0 then
+		table.insert(lines, string.format("%d groups have more than one operation: kept in TSM's order, the first that applies to the character is used", n.multi))
+	end
+	if (n.conflicts or 0) > 0 then
+		table.insert(lines, string.format("%d items have variants in different groups: each item level follows its own group", n.conflicts))
+	end
+	local names = {}
+	for name in pairs(n.unsupported or {}) do names[#names + 1] = name end
+	table.sort(names)
+	for _, name in ipairs(names) do
+		table.insert(lines, name .. " differs from TSM: " .. table.concat(n.unsupported[name], "; "))
+	end
+	return head, lines
 end
 
 --- Rebuild the automatic groups from your scans and TSM's records:
@@ -163,10 +262,11 @@ function G.Rebuild()
 end
 
 --- An item's group: yours if you moved it, else the automatic one, else TSM's (if used). After an
---- import from TSM, TSM's groups come before the automatic ones.
-function G.Path(id)
+--- import from TSM, TSM's groups come before the automatic ones. level: gear at that item level,
+--- which TSM may group apart from the item's other levels.
+function G.Path(id, level)
 	local s = store()
-	local tsm = s.useTSM and G.TSMGroups()[id] or nil
+	local tsm = s.useTSM and G.TSMPath(id, level) or nil
 	if s.manual[id] then return s.manual[id] end
 	if s.preferTSM and tsm then return tsm end
 	return s.auto[id] or tsm
@@ -175,7 +275,14 @@ end
 -- Every grouped item and its group, by the same order as Path.
 local function members()
 	local s, out = store(), {}
-	if s.useTSM then for id, p in pairs(G.TSMGroups()) do out[id] = p end end
+	if s.useTSM then
+		for id, p in pairs(G.TSMGroups()) do out[id] = p end
+		-- a variant grouped apart from its base item counts in its own group too
+		for str, p in pairs(G.TSMGroupsByString()) do
+			local id = baseID(str)
+			if id and str ~= "i:" .. id and out[id] ~= p and not s.manual[id] then out[str] = p end
+		end
+	end
 	for id, p in pairs(s.auto) do if not (s.preferTSM and out[id]) then out[id] = p end end
 	for id, p in pairs(s.manual) do out[id] = p end
 	return out
@@ -209,18 +316,32 @@ end
 function G.Items(path)
 	local out = {}
 	local function want(p) return p == path or p:sub(1, #path + 1) == path .. SEP end
-	for id, p in pairs(members()) do if want(p) then table.insert(out, id) end end
+	local seen = {}
+	for key, p in pairs(members()) do
+		local id = type(key) == "number" and key or baseID(key)
+		if id and want(p) and not seen[id] then seen[id] = true; table.insert(out, id) end
+	end
 	table.sort(out)
 	return out
 end
 
---- The operation for an item: the group's own, else its parent's, else by top-level group.
-function G.Operation(id)
+--- The operation for an item (at an item level): the group's own, else its parent's, else by
+--- top-level group. A group with several operations (from TSM) uses the first, in order, that
+--- applies to the character you're on.
+function G.Operation(id, level)
 	local s = store()
-	local path = G.Path(id)
+	local path = G.Path(id, level)
 	if not path then return nil end
 	local p = path
 	while p do
+		local list = s.assignAll and s.assignAll[p]
+		-- the ordered list only stands while the group's first operation is still the imported one
+		if list and list[1] == s.assign[p] then
+			for _, name in ipairs(list) do
+				local op = s.ops[name]
+				if op and appliesHere(op) then return op, name end
+			end
+		end
 		if s.assign[p] then return s.ops[s.assign[p]], s.assign[p] end
 		p = p:match("^(.*)" .. SEP .. "[^" .. SEP .. "]+$")
 	end
@@ -229,7 +350,11 @@ function G.Operation(id)
 	return s.ops[name], name
 end
 
-function G.Assign(path, opName) store().assign[path] = opName end
+function G.Assign(path, opName)
+	local s = store()
+	s.assign[path] = opName
+	if s.assignAll then s.assignAll[path] = nil end -- your choice replaces TSM's list
+end
 
 -- What making one costs, from the newest scan that makes it.
 local function costEach(id)
@@ -261,10 +386,10 @@ function G.Learn(id)
 end
 
 --- Posting prices and rules for an item: { min, normal, max, cap, undercut, duration, post, op, why,
---- keep, maxExpires, priceReset, aboveMax, learned }. opName prices it by that operation instead of its own. An operation with formulas (minPrice,
+--- keep, maxExpires, priceReset, aboveMax, learned, cancelUndercut, cancelRepost, repostThreshold }. opName prices it by that operation instead of its own. An operation with formulas (minPrice,
 --- normalPrice, maxPrice: see Formula.lua) prices by them; without, by its floor and multipliers.
 function G.Prices(id, opName, level)
-	local op, name = G.Operation(id)
+	local op, name = G.Operation(id, level)
 	if opName and store().ops[opName] then op, name = store().ops[opName], opName end
 	op = op or store().ops.Default
 	local F = CH.Formula
@@ -298,5 +423,10 @@ function G.Prices(id, opName, level)
 	return { min = min and math.floor(min), normal = normal and math.floor(normal), max = max and math.floor(max), cap = cap,
 		undercut = undercut, duration = op.duration or 2, post = op.post ~= false and cap > 0, op = name, why = why,
 		keep = op.keepQuantity or 0, maxExpires = op.maxExpires or 0, priceReset = op.priceReset or "none",
-		aboveMax = op.aboveMax or "maxPrice", learned = learned }
+		aboveMax = op.aboveMax or "maxPrice", learned = learned,
+		-- canceling: when undercut (unless the operation says not to), and to repost higher when the
+		-- price it would post at now beats yours by the threshold (TSM's "cancel to repost higher")
+		cancelUndercut = op.cancelUndercut ~= false, cancelRepost = op.cancelRepost == true,
+		repostThreshold = op.cancelRepost == true and (type(op.cancelRepostThreshold) == "number" and op.cancelRepostThreshold
+			or F.Value(op.cancelRepostThreshold or "1g", id, { normal = normal, min = min, max = max }, level)) or nil }
 end
