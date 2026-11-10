@@ -125,12 +125,17 @@ function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
 					for j, c in ipairs(cols) do if x >= c[2] and x < c[2] + c[3] + 4 then return j end end
 					return nil
 				end
-				b:SetScript("OnEnter", function(self) self.col = column(self); onEnter(self, i, self.col) end)
-				b:SetScript("OnUpdate", function(self)
+				-- follow the cursor across columns only while it's over this row: OnUpdate runs on
+				-- every shown frame, so a row it isn't over would take the tooltip over
+				local function track(self)
 					local j = column(self)
 					if j ~= self.col then self.col = j; onEnter(self, i, j) end
+				end
+				b:SetScript("OnEnter", function(self)
+					self.col = column(self); onEnter(self, i, self.col)
+					self:SetScript("OnUpdate", track)
 				end)
-				b:SetScript("OnLeave", function(self) self.col = nil; GameTooltip:Hide() end)
+				b:SetScript("OnLeave", function(self) self:SetScript("OnUpdate", nil); self.col = nil; GameTooltip:Hide() end)
 			end
 			r.button = b
 		end

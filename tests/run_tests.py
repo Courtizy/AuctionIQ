@@ -1765,6 +1765,16 @@ cl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
 check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
 rl2 = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
 check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
+tw = L.eval("""(function()
+  local f = CreateFrame('Frame'); STUB.entered = {}
+  local rows = AuctionIQ.Window.Table(f, { { 'A', 12, 50 }, { 'B', 70, 50 } }, 3, 0, 18, nil, function(_, i) table.insert(STUB.entered, i) end, 200)
+  local idle = rows[1].button.scripts.OnUpdate == nil and rows[2].button.scripts.OnUpdate == nil
+  rows[2].button.scripts.OnEnter(rows[2].button)
+  local tracks = rows[2].button.scripts.OnUpdate ~= nil and rows[1].button.scripts.OnUpdate == nil
+  rows[2].button.scripts.OnLeave(rows[2].button)
+  return idle and tracks and rows[2].button.scripts.OnUpdate == nil and #STUB.entered == 1 and STUB.entered[1] == 2
+end)()""")
+check("tables: only the row under the mouse follows it across columns (no other row takes the tooltip)", tw)
 check("orders: a patron order's customer reads NPC", by[78].customer == "NPC" and by[77].customer == "Pat")
 # each order row has its own Claim button: claims that order, then opens it once the game says yes
 run("""STUB.claimed = nil; STUB.claimedOrder = nil; STUB.opened = nil
