@@ -70,3 +70,4 @@ Research\Paths.lua
 Research\TreeView.lua
 Research\PathsUI.lua
 Research\SpecOverlay.lua
+Accounting\Statements.lua

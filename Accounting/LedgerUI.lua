@@ -642,6 +642,8 @@ function LUI.Build(p, fs, panel)
 			if self.cellTip and self.col and self.IsMouseOver and self:IsMouseOver() then LUI.ShowCellTip(self) end
 		end)
 		hit:SetScript("OnClick", function(self)
+			-- a statement line opens the transactions behind it
+			if self.go then return CH.UI.Go(self.go[1], self.go[2]) end
 			if view == "par" and self.id then LUI.ParClick(self.id) end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
 		end)
@@ -808,7 +810,7 @@ function LUI.Refresh()
 	local rows, footer = {}, ""
 	if CH.Ledger.Available() then
 		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil })
-		sortRows(rows, sortCol or 1, sortDesc)
+		if not v.fixed then sortRows(rows, sortCol or 1, sortDesc) end -- a statement keeps its own order
 	end
 	local SHOWN = ROWS
 	offset = math.max(0, math.min(offset, #rows - SHOWN))
@@ -831,6 +833,7 @@ function LUI.Refresh()
 		r.hit.tip = d and d.tip
 		r.hit.cellTip = d and d.cellTip
 		r.hit.key = d and keyOf(d)
+		r.hit.go = d and d.go
 		if r.bg then r.bg:SetColorTexture(1, 1, 1, (sel and d == sel) and 0.14 or r.zebra) end
 		for j, cell in ipairs(r.cells) do
 			local c = v.cols[j]

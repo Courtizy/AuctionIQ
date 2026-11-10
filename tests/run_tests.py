@@ -1499,8 +1499,8 @@ check("hand-off: clearing the filter shows everything again", plain(L.eval("Auct
 run("AuctionIQ.UI.Page('groups')")
 check("Groups and rules lives in Settings", L.eval("AuctionIQ.UI.Pages().groups:IsShown()") is True)
 run("AuctionIQ.UI.Page('ledger', 'sales')")
-check("Accounting sub-tabs: Overview, Revenue, Expenses, Profit, Performance",
-      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Overview", "Revenue", "Expenses", "Profit", "Performance"])
+check("Accounting sub-tabs: Statements first, then Overview, Revenue, Expenses, Profit, Performance",
+      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Statements", "Overview", "Revenue", "Expenses", "Profit", "Performance"])
 run("AuctionIQ.UI.Page('ledger', 'expired')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Expenses: purchases, other, expired, cancelled", LUI.Group() == "Expenses" and navshown == ["Purchases", "Other", "Expired", "Cancelled"])
@@ -2279,7 +2279,7 @@ run("AuctionIQ.Settings.Model('carry', -2)")
 lines = [plain(l[1]) for l in CH.AdvisorUI.ExpectLines(d).values()]
 check("expect: the advisor hover shows each step", any("Deposits lost" in x for x in lines) and any("Gold tied up" in x for x in lines) and lines[-1] == "Expected each")
 check("failed auctions: deposits lost", CH.Expect.LostDeposit(905, 3) == 360000)
-run("STUB.sellThrough = nil")
+run("STUB.sellThrough = {}")
 
 # One theme across the addon: every window's main action is the filled button, and the main blocks
 # carry the accent line or a shaded card
@@ -2287,6 +2287,32 @@ run('AuctionIQ.AuctionUI.Build(); AuctionIQ.MailUI.Build()')
 check("theme: Auction and Mail windows build with their main buttons filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil and AuctionIQ.MailUI.Build() ~= nil"))
 check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2, AuctionIQ.Theme.Card(CreateFrame('Frame'), 0, 0, 10, 10, true)) ~= nil"))
 check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
+
+# Accounting statements
+St = CH.Statements
+inc = St.Income(0, L.eval("time()") + 1)
+check("statements: net sales = auction sales less the 5% cut, plus other sales", abs(inc.net - (inc.auction * 0.95 + inc.other)) < 1)
+check("statements: net income = gross profit - deposits - expenses + other income",
+      abs(inc.netIncome - (inc.net - inc.cogsTotal - inc.deposits - inc.expenseTotal + inc.income)) < 1)
+bal = St.Balance()
+check("statements: assets = gold + inventory, and inventory is never above market less the cut",
+      abs(bal.assets - (bal.gold + bal.inventory)) < 1 and bal.inventory <= bal.market * 0.95 + 1)
+v = St.Value(L.eval("{ id = 1, unit = 1000 }"), L.eval("{ crafted = {}, index = {} }"), 0)
+check("statements: an item with no cost is carried at net realizable value", v.how == "gathered" and abs(v.book - v.nrv) < 1e-6)
+cf = St.Cash(0, L.eval("time()") + 1)
+check("statements: unclassified = change in gold less what the ledger classifies",
+      cf.change is None or abs(cf.unclassified - (cf.change - cf.classified)) < 1)
+run("AuctionIQ.UI.Page('ledger', 'statement')")
+srows = list(LUI.Rows("statement", L.eval("{}"))[0].values())
+check("statements: the Income Statement keeps its own order, ending on Net income",
+      len(srows) > 8 and "Net income" in plain(srows[-1].cells[1]) and "REVENUE" in plain(srows[0].cells[1]))
+check("statements: a line opens its transactions", any(r.go is not None and r.go[2] == "sales" for r in srows))
+check("statements: the period steps from This week", St.SetPeriod("week") == "week" and St.Step(1) == "lastweek" and St.SetPeriod("week") == "week")
+brows = [plain(r.cells[1]) for r in LUI.Rows("balance", L.eval("{}"))[0].values()]
+check("statements: the Balance Sheet carries the market value as a memo", any("Memo: inventory at market value" in x for x in brows) and any("Net worth" in x for x in brows))
+crows = [plain(r.cells[1]) for r in LUI.Rows("cashflow", L.eval("{}"))[0].values()]
+check("statements: the biggest item is named when it carries a quarter or more of inventory", (bal.top is None) or (bal.top.worth / max(bal.inventory, 1) < 0.25) or any("Largest:" in x for x in brows))
+check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
 
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
