@@ -1995,7 +1995,28 @@ check("performance nav: performance first, batch results, forecast accuracy and 
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[9]) != "-"}
 check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[9]) == "50"
-      and plain(made["Test Flask"].tip[1][1]).startswith("Make 50: "))
+      and any(plain(l[1]).startswith("Make 50: ") for l in made["Test Flask"].cellTip(9).values()))
+# Compare crafts hover: the craft's name shows the item, every other column what it is and how it was worked out
+ft = made["Test Flask"]
+def money_of(t):
+    t = letters(plain(t)).replace(",", "")
+    sign = -1 if t.startswith("-") else 1
+    g = re.search(r"(\d+)g", t); sv = re.search(r"(\d+)s", t); c = re.search(r"(\d+)c", t)
+    return sign * ((int(g.group(1)) * 10000 if g else 0) + (int(sv.group(1)) * 100 if sv else 0) + (int(c.group(1)) if c else 0))
+heads = [plain(ft.cellTip(j)[1][1]) for j in range(2, 10)]
+check("Compare crafts: each column after the craft explains itself on hover",
+      heads == ["Character", "Profit now", "Reagents +10%", "Price -10%", "Both", "Break-even per item", "Room", "Make"])
+pn = [l for l in ft.cellTip(3).values()][2:]
+check("Compare crafts: Profit now's breakdown adds up to the profit shown",
+      abs(sum(money_of(l[2]) for l in pn[:-1]) - money_of(pn[-1][2])) <= len(pn) and plain(pn[-1][1]) == "Profit a craft")
+ru = [l for l in ft.cellTip(4).values()][2:]
+check("Compare crafts: Reagents +10% starts from profit now and ends at the column's number",
+      plain(ru[0][1]) == "Profit now" and abs(sum(money_of(l[2]) for l in ru[:-1]) - money_of(ru[-1][2])) <= len(ru))
+run("STUB.hit = { id = 12345, cellTip = function(j) return AuctionIQ.AnalyticsViews.ScenarioTip(STUB.lastX, j) end }")
+L.globals().STUB.lastX = ft.x
+check("Compare crafts: hovering the craft name shows the item, another column its explanation",
+      L.eval("AuctionIQ.LedgerUI.ShowCellTip(STUB.hit, 1)") == 1 and L.eval("AuctionIQ.LedgerUI.ShowCellTip(STUB.hit, 3)") == 3
+      and L.eval("AuctionIQ.LedgerUI.ColumnAt(0)") == 1)
 # Scenarios reprice revenue, consumed reagents and what Resourcefulness gives back separately:
 # 130 revenue - 100 reagents + 20 back = 50; reagents +10% = 42, price -10% = 37, both = 29
 parts = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 0 }")

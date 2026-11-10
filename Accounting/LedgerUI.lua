@@ -576,6 +576,8 @@ function LUI.Build(p, fs, panel)
 		hit:SetPoint("TOPLEFT", X0, -50 - (i - 1) * RH)
 		hit:SetSize(TW, RH)
 		hit:SetScript("OnEnter", function(self)
+			-- a row with cell tips explains the column under the cursor (OnUpdate follows it across)
+			if self.cellTip then self.col = nil; return LUI.ShowCellTip(self) end
 			-- a row can carry its own explanation (tip lines); else the item's tooltip
 			if self.tip then
 				local lines = type(self.tip) == "function" and self.tip() or self.tip
@@ -586,7 +588,10 @@ function LUI.Build(p, fs, panel)
 				GameTooltip:Show()
 			end
 		end)
-		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		hit:SetScript("OnLeave", function(self) self.col = nil; GameTooltip:Hide() end)
+		hit:SetScript("OnUpdate", function(self)
+			if self.cellTip and self.col and self.IsMouseOver and self:IsMouseOver() then LUI.ShowCellTip(self) end
+		end)
 		hit:SetScript("OnClick", function(self)
 			if view == "par" and self.id then LUI.ParClick(self.id) end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
@@ -714,6 +719,7 @@ function LUI.Refresh()
 		r.hit:SetShown(i <= SHOWN)
 		r.hit.id = d and d.id
 		r.hit.tip = d and d.tip
+		r.hit.cellTip = d and d.cellTip
 		r.hit.key = d and keyOf(d)
 		if r.bg then r.bg:SetColorTexture(1, 1, 1, (sel and d == sel) and 0.14 or r.zebra) end
 		for j, cell in ipairs(r.cells) do
@@ -738,6 +744,38 @@ function LUI.Refresh()
 	if focus and CH.Ledger.Available() then footer = LUI.FocusText(focus) .. "   " .. footer end
 	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
+end
+
+--- The column (its index in the open view) at x pixels from the table's left edge.
+function LUI.ColumnAt(x)
+	local v = VIEWS[view]
+	local at = 1
+	for j, c in ipairs(v and v.cols or {}) do if x >= colX(c) - 2 then at = j end end
+	return at
+end
+
+--- A row's tooltip for the column under the cursor: the first column shows the item, the others what
+--- the number is and how it was worked out (row.cellTip(j) gives the lines). Redraws only when the
+--- cursor moves to another column. Returns the column.
+function LUI.ShowCellTip(hit, j)
+	if not j then
+		local x = GetCursorPosition and GetCursorPosition() or 0
+		local scale = hit.GetEffectiveScale and hit:GetEffectiveScale() or 1
+		j = LUI.ColumnAt(x / (scale > 0 and scale or 1) - (hit.GetLeft and hit:GetLeft() or 0))
+	end
+	if j == hit.col then return j end
+	hit.col = j
+	local lines = j > 1 and hit.cellTip and hit.cellTip(j)
+	if lines and lines[1] then
+		CH.Window.Tooltip(hit, lines)
+	elseif j == 1 and hit.id and GameTooltip.SetItemByID then
+		GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
+		GameTooltip:SetItemByID(hit.id)
+		GameTooltip:Show()
+	else
+		GameTooltip:Hide()
+	end
+	return j
 end
 
 --- Select a row of a view with a detail pane, by its key; the pane shows it.
