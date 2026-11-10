@@ -389,6 +389,37 @@ function AUI.BuyNowLines(c)
 	return out
 end
 
+--- A row's bought reagents totalled on each costing basis (Prices.ReagentCost), the one in use
+--- marked: { { label, money } }. Reagents you craft and finishing reagents count as they are in the row.
+function AUI.BasisLines(result, r)
+	local out = {}
+	local P, M, T = CH.Prices, CH.FormatMoney, CH.Theme
+	if not (P and P.ReagentCost) then return out end
+	local cur = P.CostBasis()
+	local totals, missing, fell = {}, {}, {}
+	for _, b in ipairs(P.BASES) do totals[b], missing[b], fell[b] = 0, false, 0 end
+	for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
+		for _, b in ipairs(P.BASES) do
+			local each, from
+			if c.finishing or c.crafted or not c.id then each, from = c.unit, b
+			else each, from = P.ReagentCost(c.id, b) end
+			if not each then missing[b] = true
+			else
+				totals[b] = totals[b] + each * c.n
+				if from ~= b then fell[b] = fell[b] + 1 end
+			end
+		end
+	end
+	table.insert(out, { T.Color("accent", "Costing basis") .. T.Color("muted", "  /aiq basis to change"), "" })
+	local why = { replacement = "  to buy them again today", tsm = "  as TSM's Crafting settings cost them", paid = "  what your last buys cost" }
+	for _, b in ipairs(P.BASES) do
+		local label = "   " .. P.BASIS_NAMES[b] .. (b == cur and T.Color("ok", "  in use") or T.Color("muted", why[b]))
+		if fell[b] > 0 then label = label .. T.Color("muted", string.format("  (%d at replacement)", fell[b])) end
+		table.insert(out, { label, missing[b] and T.Color("muted", "none") or M(math.floor(totals[b] + 0.5)) })
+	end
+	return out
+end
+
 --- What the item's posting operation would do, next to the market estimate (price): its min,
 --- normal and max and where it would post against the freshest listings, or that it wouldn't.
 function AUI.PostingLines(item, level, price)
@@ -428,7 +459,9 @@ function AUI.BreakdownLines(result, r, col)
 			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
-		add(CH.Theme.Color("muted", "Bought reagents at chmat: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
+		-- the same reagents on each costing basis: they answer different questions
+		for _, l in ipairs(AUI.BasisLines(result, r)) do add(l[1], l[2]) end
+		add(CH.Theme.Color("muted", "Replacement: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
 		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then

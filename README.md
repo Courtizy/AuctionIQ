@@ -58,6 +58,7 @@ for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/
 `/aiq advisor` - crafting advisor on or off<br>
 `/aiq queue` - craft queue and shopping list<br>
 `/aiq scan` - rank every recipe of the open profession<br>
+`/aiq basis` - cost reagents at replacement (chmat), TSM's material cost or what you paid<br>
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
 `/aiq minimap` - hide or show the minimap button
 

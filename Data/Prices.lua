@@ -14,6 +14,7 @@ local FORMULA = {
 	avgsell = "avgsell",
 	chvalue = "min(" .. NOW .. "," .. POST .. ")",
 	crafting = "crafting",
+	matprice = "matprice", -- TSM's material cost, as set in TSM's Crafting settings
 	-- Oribos Exchange (Undermine Exchange's addon), through TSM, when it's installed
 	oerealm = "oerealm",
 	oeregion = "oeregion",
@@ -125,8 +126,46 @@ function Prices.Raw(name, id, level)
 	return v
 end
 
+--- How reagents are costed for crafting decisions (Settings, /aiq basis):
+---   replacement  what buying it costs today: chmat (the default)
+---   tsm          TSM's material cost (matprice), however you set it up in TSM
+---   paid         what you paid on average over your last 30 days of buying it (TSM's purchase
+---                records), else replacement
+Prices.BASES = { "replacement", "tsm", "paid" }
+Prices.BASIS_NAMES = { replacement = "Replacement cost (chmat)", tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
+function Prices.CostBasis(v)
+	local st = CH.db and CH.db.settings
+	if v and st and Prices.BASIS_NAMES[v] then st.costBasis = v; Prices.ClearCache() end
+	local b = st and st.costBasis
+	return Prices.BASIS_NAMES[b or ""] and b or "replacement"
+end
+
+local paidCache, paidAt
+local function paidEach(id)
+	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
+	local now = GetTime()
+	if not paidCache or now - paidAt > CACHE_SECONDS then paidCache, paidAt = CH.Ledger.Paid(), now end
+	local e = paidCache[id]
+	return e and e.each or nil
+end
+
+--- What one of a reagent costs on a costing basis (default: the one in Settings): copper and the
+--- basis it really came from (paid falls back to replacement for what you never bought).
+function Prices.ReagentCost(id, basis)
+	if not id then return nil end
+	basis = basis or Prices.CostBasis()
+	if basis == "tsm" then
+		local v = Prices.Get("matprice", "i:" .. id)
+		if v then return v, "tsm" end
+	elseif basis == "paid" then
+		local v = paidEach(id)
+		if v then return v, "paid" end
+	end
+	return Prices.Get("chmat", "i:" .. id), "replacement"
+end
+
 function Prices.ClearCache()
-	cache, cacheTime, customOK = {}, {}, {}
+	cache, cacheTime, customOK, paidCache = {}, {}, {}, nil
 end
 
 --- Short codes used as column headings and labels, and what each means (shown on hover).
