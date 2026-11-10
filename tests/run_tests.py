@@ -2350,7 +2350,10 @@ check("statements: Cash Flow runs opening gold to closing gold, with unclassifie
 run("AuctionIQ.UI.Page('ledger', 'statement')")
 check("Reports: Income Statement, Balance Sheet, Cash Flow", [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Income Statement", "Balance Sheet", "Cash Flow"])
 run("AuctionIQ.UI.Page('ledger', 'holdings')")
-check("Inventory: inventory and holdings", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory", "Holdings"])
+run("AuctionIQ.UI.Page('ledger', 'inventory')")
+check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
+ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
+check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)

@@ -39,8 +39,9 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 	{ "Total", 530, 96 }, { "Time frame", 630, 94 } }
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
-	inventory = { label = "Inventory", parent = "Inventory", sort = 8, cols = { { "Item", 0, 230 }, { "Total", 234, 60 }, { "Bags", 298, 56 }, { "Bank", 358, 56 },
-		{ "Mail", 418, 50 }, { "Warband", 472, 66 }, { "AH", 542, 50 }, { "Market value", 596, 128 } } },
+	-- what you hold and what it's worth against what it cost; hover Held for where it is
+	inventory = { label = "Inventory", parent = "Inventory", sort = 5, cols = { { "Item", 0, 190 }, { "Held", 194, 50 }, { "Paid each", 248, 84 },
+		{ "Worth each", 336, 84 }, { "Value", 424, 100 }, { "Unrealized", 528, 96 }, { "Days of stock", 628, 96 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
 	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
@@ -76,7 +77,7 @@ local SECTIONS = {
 		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "expired", sub = true }, { "cancelled", sub = true },
-		{ "Inventory", "inventory" }, { "inventory", sub = true }, { "holdings", sub = true },
+		{ "Inventory", "inventory" }, { "inventory", sub = true },
 		{ "Profit", "pl" }, { "pl", sub = true }, { "overhead", sub = true } },
 	operations = {},
 }
@@ -219,15 +220,48 @@ function LUI.Rows(v, opts)
 	end
 
 	if v == "inventory" then
-		local total = 0
+		local T = CH.Theme
+		local total, gain = 0, 0
+		-- what each cost: what you paid in the last 30 days of buying it, else what it costs to make
+		local paid, crafted, index = L.Paid(), L.Crafted(), L.PaidIndex()
+		local sold30 = {}
+		for _, s in ipairs(L.Records("Sales")) do
+			if s.id and s.time >= now - 30 * 86400 then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
+		end
 		for _, e in ipairs(L.Inventory(opts.filter, opts.char)) do
 			local text, name = LUI.ItemText(e.id)
 			total = total + e.value
-			table.insert(out, { id = e.id, cells = { text, e.total, e.bags, e.bank, e.mail, e.warband, e.ah,
-				e.bound and CH.Theme.Color("muted", "bound") or money(e.value) },
-				sort = { name, e.total, e.bags, e.bank, e.mail, e.warband, e.ah, e.value } })
+			local each, how = paid[e.id] and paid[e.id].each, "bought"
+			if not each and crafted[e.id] then each, how = (L.CostAt(crafted[e.id].acc, index, now)), "crafted" end
+			local un = each and e.unit and (e.unit - each) * e.total or nil
+			if un then gain = gain + un end
+			local perDay = (sold30[e.id] or 0) / 30
+			local days = perDay > 0 and e.total / perDay or nil
+			table.insert(out, { id = e.id, cells = { text, e.total, each and money(each) or T.Color("muted", "-"),
+				e.bound and T.Color("muted", "bound") or money(e.unit), e.bound and T.Color("muted", "-") or money(e.value),
+				un and signed(un) or T.Color("muted", "-"), days and string.format("%.0f", days) or T.Color("muted", "no sales") },
+				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, days or math.huge },
+				cellTip = function(j)
+					if j == 2 then
+						local lines = { { "Where it is" } }
+						for _, w in ipairs({ { "Bags", e.bags }, { "Bank", e.bank }, { "Mail", e.mail }, { "Warband bank", e.warband }, { "On the AH", e.ah } }) do
+							if (w[2] or 0) > 0 then table.insert(lines, { w[1], tostring(w[2]) }) end
+						end
+						return lines
+					elseif j == 3 then
+						return { { "Paid each" }, { T.Color("muted", each and (how == "bought" and "Average of what you paid in your last 30 days of buying it."
+							or "What it costs to make, at the reagent prices you paid (today's for any you didn't buy).") or "No purchase or craft on record: gathered, looted or a reward.") } }
+					elseif j == 6 and un and each > 0 then
+						return { { "Unrealized" }, { "Worth against paid", string.format("%+d%%", math.floor((e.unit - each) / each * 100 + 0.5)) },
+							{ T.Color("muted", "Not profit until it sells. The Balance Sheet carries the lower of the two, after the AH cut.") } }
+					elseif j == 7 then
+						return { { "Days of stock" }, { "Sold in 30 days", tostring(sold30[e.id] or 0) }, { T.Color("muted", "How long what you hold lasts at that rate.") } }
+					end
+					return { { ({ "", "", "", "Worth each", "Value" })[j] or "" }, { T.Color("muted", "AuctionIQ value (market) per item, and for all you hold.") } }
+				end })
 		end
-		return out, "Total value: " .. money(total)
+		return out, "Total value: " .. money(total) .. "   Unrealized on what has a cost: " .. signed(gain)
+			.. CH.Theme.Color("muted", "   Hover Held for where it is.")
 	end
 
 	if v == "sales" or v == "purchases" then
