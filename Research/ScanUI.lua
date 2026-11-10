@@ -1,36 +1,56 @@
 -- Recipe scan window, three lists under one bar:
---   Recipes      every learned recipe ranked by profit, gold per Concentration point or gold a day
+--   Recipes      every learned recipe, in three views of the same scan:
+--                  Craft          profit without Concentration, sales and gold a day
+--                  Concentration  what spending points pays, per craft and per point
+--                  Buy vs craft   the cheapest listing against making it
 --   Work orders  every order the game has listed, with what it really pays and 1KP when it gives knowledge
 --   First crafts recipes that still give their first-craft knowledge point, and what each point costs
--- Click a column header to sort by it (again to flip). Click a row to open the recipe, shift-click
--- to queue it.
+-- Click a column header to sort by it (again to flip). Click a recipe to select it and open it: the
+-- strip under the list shows both crafts the scan found for it, each with its own Queue button, so
+-- what you queue is the craft you were looking at. Orders and first crafts: click to open,
+-- shift-click to queue that row.
 local _, CH = ...
 
 local SUI = {}
 CH.ScanUI = SUI
-local frame, status
+local frame, status, detail
 local N, W, H = 16, 836, 18
+local DETAIL = 72 -- the selected recipe's strip under the list
 local offset, data = 0, {}
 local scrollBar
 local showOlder = true
 local mode = "recipes"
+local view = "craft" -- the Recipes list's view: craft, conc or buy
+local selected -- recipeID of the selected recipe
+local qty = 1
 local tables, heads = {}, {}
 
--- { label, x, width, sort key, justify }
+-- { label, x, width, sort key, justify }. craft, conc and buy are the Recipes views.
 local COLS = {
-	recipes = { { "Recipe", 12, 196, "name" }, { "Profit/craft", 210, 114, "profit" }, { "%", 326, 40, "pct" },
-		{ "With Conc.", 368, 128, "concProfit" }, { "Per pt", 498, 60, "perPoint" }, { "Sold/day", 560, 64, "soldPerDay" },
-		{ "Est. gold/day", 626, 98, "perDay" }, { "Buy or craft", 728, 96, "buySave" } },
+	craft = { { "Recipe", 12, 236, "name" }, { "Profit/craft", 250, 120, "profit" }, { "%", 372, 44, "pct" },
+		{ "Reagents", 418, 96, "cost" }, { "Can make", 516, 70, "canMake" }, { "Sold/day", 588, 70, "soldPerDay" },
+		{ "Est. gold/day", 660, 164, "perDay" } },
+	conc = { { "Recipe", 12, 236, "name" }, { "Plain", 250, 130, "profit" }, { "With Conc.", 382, 140, "concProfit" },
+		{ "Points", 524, 60, "concentration" }, { "Per pt", 586, 100, "perPoint" }, { "Can make", 688, 136, "canMakeConc" } },
+	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
+		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
 	orders = { { "Order", 12, 250, "name" }, { "From", 264, 96, "from", "LEFT" }, { "Commission", 362, 92, "commission" },
 		{ "Rewards", 456, 110, "rewardValue" }, { "Reagents", 568, 88, "cost" }, { "Order profit", 658, 90, "profit" }, { "Craft at", 750, 74, "quality" } },
-	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Sells for", 466, 120, "value" },
+	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
 }
-local SORT = { recipes = { key = "profit" }, orders = { key = "default" }, first = { key = "net" } }
+local SORT = { craft = { key = "profit" }, conc = { key = "perPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
+local VIEWS = { { "craft", "Craft", 60 }, { "conc", "Concentration", 108 }, { "buy", "Buy vs craft", 96 } }
 local NAMES = { name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
 	perPoint = "gold per Concentration point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
 	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
-	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit" }
+	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit",
+	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
+	concentration = "Concentration points", craftEach = "what one costs to make", buyPrice = "cheapest listing",
+	resell = "what it resells for", flip = "buy and relist profit" }
+
+-- The list on screen: a Recipes view, or orders / first.
+local function listKey() return mode == "recipes" and view or mode end
 
 --- Sort rows by key (numbers biggest first, names A-Z; asc flips it). Missing values go last.
 local function sortRows(list, key, asc)
@@ -58,12 +78,28 @@ local function money(c)
 	return CH.Theme.Color(c >= 0 and "ok" or "bad", CH.FormatMoney(c))
 end
 
+--- The queue entry for one of a scanned recipe's two crafts, exactly as the scan found it: the
+--- plain craft, or (conc) the Concentration craft, with the reagents the scan picked. A scan saved
+--- before reagent slots were kept is worked out again, and queued only if it still finds the same
+--- craft at the same quality. Returns the entry, or nil and why.
+function SUI.ScanEntry(r, conc)
+	if not r or r.header then return nil, "pick a recipe first" end
+	if conc and not r.concProfit then return nil, "this recipe has no Concentration craft" end
+	if not conc and not r.profit then return nil, "this recipe has no plain craft with a price" end
+	local e = CH.Queue.FromScan(CH.CharacterKey(), CH.Me(), r, conc)
+	if e then return e end
+	local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
+	if not (ok and result) then return nil, "open the profession to queue it" end
+	local pick = conc and result.bestConc or (not conc and result.best)
+	if not pick or pick.quality ~= (conc and r.concQuality or r.quality) then
+		return nil, "the best craft has changed since the scan. Scan again, then queue it"
+	end
+	return CH.Queue.FromRow(result, pick)
+end
+
 local function queueRow(r)
-	if mode == "recipes" then
-		local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
-		if not (ok and result and result.best) then return false end
-		CH.Queue.Add(result, result.best, 1)
-	elseif not r.row or not r.result then
+	if mode == "recipes" then return SUI.QueueSelected(false, 1, r) end
+	if not r.row or not r.result then
 		return false
 	elseif mode == "orders" then
 		CH.Queue.Add(r.result, r.row, 1, { orderID = r.orderID, customer = r.from, special = r.kp })
@@ -73,6 +109,39 @@ local function queueRow(r)
 	CH.Print("queued 1 x " .. (r.name or "?"))
 	return true
 end
+
+-- The selected recipe's scan row, if it's still in the list.
+local function selectedRow()
+	if not selected then return nil end
+	for _, d in ipairs(data) do if not d.header and d.recipeID == selected then return d end end
+end
+SUI.SelectedRow = selectedRow
+
+--- Queue n of the selected recipe's plain craft, or (conc) its Concentration craft. r picks a row
+--- other than the selected one. Returns true, or false and why (also printed).
+function SUI.QueueSelected(conc, n, r)
+	r = r or selectedRow()
+	n = math.max(1, math.floor(n or qty))
+	local e, why = SUI.ScanEntry(r, conc)
+	if not e then
+		CH.Print("can't queue that: " .. why)
+		return false, why
+	end
+	CH.Queue.AddEntry(e, n)
+	CH.Print(string.format("queued %d x %s (Q%d%s)", n, r.name or "?", e.quality or 0,
+		e.concentration and (", Concentration " .. e.concentration .. " points") or ", no Concentration"))
+	return true
+end
+
+--- Select a recipe in the Recipes list (as a click does); the quantity goes back to 1.
+function SUI.Select(recipeID)
+	if recipeID ~= selected then qty = 1 end
+	selected = recipeID
+	return SUI.Refresh()
+end
+function SUI.Selected() return selected end
+function SUI.SetQty(n) qty = math.max(1, math.min(999, math.floor(n or 1))); return SUI.Refresh() end
+function SUI.Qty() return qty end
 
 local function click(i)
 	local r = data[i + offset]
@@ -87,12 +156,11 @@ local function click(i)
 		if not r.current then showOlder = false; offset = 0; SUI.Refresh() end
 		return
 	end
-	if IsShiftKeyDown and IsShiftKeyDown() then
-		queueRow(r)
-	elseif C_TradeSkillUI.OpenRecipe then
-		C_TradeSkillUI.OpenRecipe(r.recipeID)
-	end
+	-- a click selects the recipe and opens it; queueing is the strip's buttons, so it's always the craft shown there
+	SUI.Select(r.recipeID)
+	if C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(r.recipeID) end
 end
+SUI.Click = click
 
 local function kpTag(yes) return yes and CH.Theme.Color("accent", " 1KP") or "" end
 
@@ -190,7 +258,7 @@ local function hover(owner, i)
 		table.insert(lines, { T.Color("muted", "The cheapest listing may be only a few items; check the AH before buying out.") })
 	end
 	if r.perPoint then table.insert(lines, { T.Color("muted", "Gold a day counts Concentration crafts up to what a day's refill (about 250) pays for.") }) end
-	table.insert(lines, { T.Color("muted", "Click to open it (see it on the Advisor tab), shift-click to queue the best craft.") })
+	table.insert(lines, { T.Color("muted", "Click to select and open it. Queue it with the buttons under the list.") })
 	CH.Window.Tooltip(owner, lines)
 end
 
@@ -214,11 +282,18 @@ end
 SUI.SetMode = function(m) mode = m; offset = 0; if m == "orders" then SUI.FetchOrders() end return SUI.Refresh() end
 function SUI.Mode() return mode end
 --- Show or hide older-expansion recipes and orders.
+--- Switch the Recipes list's view: "craft", "conc" or "buy". Shows Recipes if another list is up.
+function SUI.SetView(v)
+	if not COLS[v] or v == "orders" or v == "first" then return {} end
+	mode, view, offset = "recipes", v, 0
+	return SUI.Refresh()
+end
+function SUI.View() return view end
 function SUI.ToggleOlder() showOlder = not showOlder; offset = 0; return SUI.Refresh() end
 
 --- Sort by a column (as a header click does): a new column sorts it biggest first, the same one flips.
 function SUI.SortBy(key)
-	local s = SORT[mode]
+	local s = SORT[listKey()]
 	if s.key == key then s.asc = not s.asc else s.key, s.asc = key, false end
 	offset = 0
 	return SUI.Refresh()
@@ -226,7 +301,7 @@ end
 
 local function build()
 	local Wd, T = CH.Window, CH.Theme
-	frame = Wd.New("AuctionIQScan", "Recipe scan", W, 92 + N * H)
+	frame = Wd.New("AuctionIQScan", "Recipe scan", W, 92 + N * H + DETAIL)
 	local x = -26
 	local function barButton(label, width, fn)
 		local b = T.Button(frame.bar, label, width, 18)
@@ -245,6 +320,19 @@ local function build()
 	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
 	SUI.nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	status = Wd.Text(frame, 12, -34, W - 24)
+	-- the Recipes views, at the right of the status line
+	SUI.viewButtons = {}
+	local vx = -12
+	for k = #VIEWS, 1, -1 do
+		local v = VIEWS[k]
+		local b = T.Button(frame, v[2], v[3], 18)
+		b:SetPoint("TOPRIGHT", vx, -30)
+		b:SetScript("OnClick", function() SUI.SetView(v[1]) end)
+		b.view = v[1]
+		vx = vx - v[3] - 4
+		SUI.viewButtons[k] = b
+	end
+	SUI.viewsWidth = -vx
 	for m, cols in pairs(COLS) do
 		local blank = {}
 		for j, c in ipairs(cols) do blank[j] = { "", c[2], c[3], c[5] } end
@@ -257,7 +345,6 @@ local function build()
 			hb.text = Wd.OneLine(Wd.Text(frame, c[2], -54, c[3], c[5] or (j == 1 and "LEFT" or "RIGHT"), "GameFontDisableSmall"))
 			hb:SetScript("OnClick", function() SUI.SortBy(c[4]) end)
 			hb:SetScript("OnEnter", function(self) local tip = { { "Sort by " .. (NAMES[c[4]] or c[1]) } }
-				if c[4] == "profit" or c[4] == "concProfit" then tip[2] = { T.Color("muted", "The number in brackets is how many you can make now.") } end
 				tip[#tip + 1] = { T.Color("muted", "Click again to flip it.") }
 				Wd.Tooltip(self, tip) end)
 			hb:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -266,6 +353,42 @@ local function build()
 		end
 	end
 	scrollBar = Wd.ScrollBar(frame, W - 8, -70, N * H)
+	-- The selected recipe: both crafts the scan found, each with its own Queue button
+	detail = CreateFrame("Frame", nil, frame)
+	detail:SetPoint("TOPLEFT", 0, -(70 + N * H + 4))
+	detail:SetSize(W, DETAIL)
+	local rule = detail:CreateTexture(nil, "ARTWORK")
+	rule:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
+	rule:SetPoint("TOPLEFT", 6, 0)
+	rule:SetPoint("TOPRIGHT", -6, 0)
+	rule:SetHeight(1)
+	detail.title = Wd.OneLine(Wd.Text(detail, 12, -6, W - 24 - 150, "LEFT", "GameFontHighlight"))
+	local function stepper(label, x, d)
+		local b = T.Button(detail, label, 22, 18)
+		b:SetPoint("TOPRIGHT", x, -3)
+		b:SetScript("OnClick", function() SUI.SetQty(qty + (IsShiftKeyDown and IsShiftKeyDown() and d * 10 or d)) end)
+		b:SetScript("OnEnter", function(self) Wd.Tooltip(self, { { "How many to queue" }, { T.Color("muted", "Shift-click for 10 at a time.") } }) end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		return b
+	end
+	stepper("+", -12, 1)
+	detail.qty = Wd.OneLine(Wd.Text(detail, W - 12 - 22 - 44, -6, 40, "CENTER", "GameFontHighlight"))
+	stepper("-", -(12 + 22 + 48), -1)
+	Wd.OneLine(Wd.Text(detail, W - 12 - 22 - 48 - 22 - 42, -6, 38, "RIGHT")):SetText("Qty")
+	detail.lines, detail.buttons = {}, {}
+	for k, conc in ipairs({ false, true }) do
+		local y = -6 - k * 22
+		detail.lines[k] = Wd.OneLine(Wd.Text(detail, 12, y, W - 24 - 190))
+		local b = T.Button(detail, conc and "Queue with Concentration" or "Queue plain", 180, 18)
+		b:SetPoint("TOPRIGHT", -12, y + 3)
+		b:SetScript("OnClick", function(self) if not self.off then SUI.QueueSelected(conc) end end)
+		b:SetScript("OnEnter", function(self)
+			Wd.Tooltip(self, { { conc and "Queue the Concentration craft" or "Queue the plain craft" },
+				{ T.Color("muted", self.off or "Adds the craft on this line, with the reagents the scan picked.") } })
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		detail.buttons[k] = b
+	end
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
@@ -280,10 +403,11 @@ end
 local function showTable()
 	local T = CH.Theme
 	for m, rows in pairs(tables) do
-		local on = m == mode
+		local on = m == listKey()
 		for _, r in ipairs(rows) do
 			for _, c in ipairs(r.cells) do c:SetText("") end
 			if r.button then r.button:SetShown(on) end
+			if not on then r.bg:Hide() end
 		end
 		for _, hb in ipairs(heads[m]) do
 			hb:SetShown(on)
@@ -300,7 +424,11 @@ local function showTable()
 	for m, b in pairs({ orders = SUI.ordersButton, first = SUI.firstButton }) do
 		if b and b.SetAlpha then b:SetAlpha(mode == m and 1 or 0.65) end
 	end
-	return tables[mode]
+	for _, b in ipairs(SUI.viewButtons or {}) do
+		if b.SetAlpha then b:SetAlpha(mode == "recipes" and view == b.view and 1 or 0.65) end
+	end
+	if detail then detail:SetShown(mode == "recipes") end
+	return tables[listKey()]
 end
 
 --- Queue every work order that pays or gives knowledge, or every first craft. Returns how many.
@@ -383,7 +511,7 @@ local function refreshLists()
 		end
 		list = keep
 	end
-	data = sortRows(list, SORT[mode].key, SORT[mode].asc)
+	data = sortRows(list, SORT[mode].key, SORT[mode].asc) -- mode is orders or first here
 	offset = math.max(0, math.min(offset, #data - N))
 	scrollBar:Set(offset, N, #data)
 	if mode == "orders" then
@@ -431,9 +559,56 @@ local function refreshLists()
 end
 
 --- Redraw from the saved scan. Returns the row texts, for tests.
+-- The selected recipe's strip: what each Queue button would add, and whether it can.
+local function renderDetail()
+	if not detail then return end
+	local T, M, Wd = CH.Theme, CH.FormatMoney, CH.Window
+	local r = selectedRow()
+	detail.qty:SetText(tostring(qty))
+	if not r then
+		detail.title:SetText(T.Color("muted", "Click a recipe to see its crafts and queue one."))
+		for k = 1, 2 do detail.lines[k]:SetText(""); detail.buttons[k].off = "Pick a recipe first."; detail.buttons[k]:SetAlpha(0.4) end
+		return
+	end
+	detail.title:SetText(Wd.ItemIcon(r.item or r.concItem, 16) .. T.Color("accent", r.name or "?")
+		.. (r.made and r.made ~= 1 and T.Color("muted", string.format("  makes %.1f a craft", r.made)) or ""))
+	local function can(n, short)
+		if not n then return "" end
+		local why = n == 0 and short and (short == "concentration" and "  not enough Concentration" or "  short of reagents") or ""
+		return T.Color(n > 0 and "fg" or "bad", "  can make " .. n) .. T.Color("muted", why)
+	end
+	local plain = r.profit and (T.Color("accent", "Plain") .. "  " .. Wd.QualityIcon(r.quality, 14, r.tiers)
+		.. "  reagents " .. M(r.cost or 0) .. "  profit " .. money(r.profit) .. " a craft" .. can(r.canMake, r.shortItem))
+		or T.Color("muted", "Plain: no priced craft without Concentration")
+	local acc = r.concAccounts
+	local conc = r.concProfit and (T.Color("accent", "Concentration") .. "  " .. Wd.QualityIcon(r.concQuality, 14, r.tiers)
+		.. string.format("  %d points", r.concentration or 0) .. "  reagents " .. M(acc and acc.cost or r.cost or 0)
+		.. "  profit " .. money(r.concProfit) .. (r.perPoint and T.Color("muted", " (" .. M(r.perPoint) .. " a point)") or "")
+		.. can(r.canMakeConc, r.shortConc))
+		or T.Color("muted", "Concentration: no craft that lifts the quality")
+	detail.lines[1]:SetText(plain)
+	detail.lines[2]:SetText(conc)
+	for k, c in ipairs({ false, true }) do
+		local b = detail.buttons[k]
+		local ok, why = SUI.ScanEntry(r, c)
+		b.off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil
+		b:SetAlpha(ok and 1 or 0.4)
+	end
+end
+SUI.RenderDetail = renderDetail
+
+-- What a Recipes view leaves out: rows with nothing to show in it.
+local INVIEW = {
+	craft = function() return true end,
+	conc = function(r) return r.concProfit ~= nil end,
+	buy = function(r) return r.buyPrice ~= nil end,
+}
+
+--- Redraw from the saved scan. Returns the row texts, for tests.
 function SUI.Refresh()
 	if not frame then return {} end
-	if mode ~= "recipes" then return refreshLists() end
+	if mode ~= "recipes" then status:SetWidth(W - 24); return refreshLists() end
+	status:SetWidth(W - 24 - (SUI.viewsWidth or 0))
 	local rows = showTable()
 	local T = CH.Theme
 	local profID = CH.OpenProfessionID() or SUI.prof
@@ -449,7 +624,10 @@ function SUI.Refresh()
 		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
 		r.bc = CH.Scan.BuyOrCraft(r)
 		r.buySave = r.bc and r.bc.save
-		if r.current or showOlder then
+		r.buyPrice, r.resell, r.flip = r.bc and r.bc.buy, r.bc and r.bc.resell, r.bc and r.bc.flip
+		if not INVIEW[view](r) then
+			-- not part of this view
+		elseif r.current or showOlder then
 			local key = r.current and math.huge or (r.line or 0)
 			if not groups[key] then groups[key] = {}; table.insert(order, key) end
 			table.insert(groups[key], r)
@@ -462,7 +640,7 @@ function SUI.Refresh()
 	table.sort(order, function(a, b) return a > b end)
 	local split = #order > 1 or (#order == 1 and order[1] ~= math.huge)
 	for _, key in ipairs(order) do
-		local g = sortRows(groups[key], SORT.recipes.key, SORT.recipes.asc)
+		local g = sortRows(groups[key], SORT[view].key, SORT[view].asc)
 		if split then
 			local cur = key == math.huge
 			table.insert(data, { header = true, current = cur, n = #g,
@@ -470,42 +648,60 @@ function SUI.Refresh()
 		end
 		for _, r in ipairs(g) do table.insert(data, r) end
 	end
+	offset = math.max(0, math.min(offset, #data - N))
+	scrollBar:Set(offset, N, #data)
 	SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	if not CH.Scan.IsRunning() then
 		local age = s and time() - s.at
 		local ago = age and (age < 3600 and string.format("%d min ago", math.floor(age / 60))
 			or age < 86400 and string.format("%dh ago", math.floor(age / 3600)) or string.format("%d days ago, scan again", math.floor(age / 86400)))
-		status:SetText(s and T.Color(age and age >= 86400 and "bad" or "muted", string.format("%d recipes, scanned %s. Sorted by %s.%s", count,
-			ago or "", NAMES[SORT.recipes.key] or SORT.recipes.key,
-			hidden > 0 and string.format(" %d from older expansions hidden.", hidden) or ""))
+		local what = view == "conc" and "recipes can use Concentration" or view == "buy" and "recipes have a listing" or "recipes"
+		status:SetText(s and T.Color(age and age >= 86400 and "bad" or "muted", string.format("%d %s, scanned %s.%s", count, what,
+			ago or "", hidden > 0 and string.format(" %d older hidden.", hidden) or ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
+	local function n(k) return k and T.Color(k > 0 and "fg" or "muted", tostring(k)) or T.Color("muted", "-") end
+	local function m(c) return c and money(c) or T.Color("muted", "-") end
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
+		r.bg:SetShown(d ~= nil and not d.header and d.recipeID == selected)
 		if d and d.header then
 			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion))
 			r.cells[2]:SetText(T.Color("muted", string.format(d.current and "current, %d" or "older, %d", d.n)))
 			table.insert(out, "== " .. d.expansion)
 		elseif d then
-			r.cells[1]:SetText(CH.Window.ItemIcon(d.item or d.concItem, 15) .. CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " "
-				.. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
-			local function n(k) return k and T.Color(k > 0 and "accent" or "muted", " (" .. k .. ")") or "" end
-			r.cells[2]:SetText(money(d.profit) .. n(d.canMake))
-			r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
-			r.cells[4]:SetText(d.concProfit and (CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit) .. n(d.canMakeConc)) or "")
-			r.cells[5]:SetText(d.perPoint and money(d.perPoint) or "")
-			r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
-			r.cells[7]:SetText(money(d.perDay))
-			local bc = d.bc
-			if bc and bc.save and bc.save > 0 then
-				r.cells[8]:SetText(T.Color("ok", "Buy " .. CH.FormatMoney(bc.buy)))
+			local q = view == "conc" and d.concQuality or d.quality
+			r.cells[1]:SetText(CH.Window.ItemIcon(view == "conc" and (d.concItem or d.item) or (d.item or d.concItem), 15)
+				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
+			if view == "craft" then
+				r.cells[2]:SetText(money(d.profit))
+				r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
+				r.cells[4]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
+				r.cells[5]:SetText(n(d.canMake))
+				r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
+				r.cells[7]:SetText(money(d.perDay))
+				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
+			elseif view == "conc" then
+				r.cells[2]:SetText(d.profit and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. money(d.profit)) or T.Color("muted", "-"))
+				r.cells[3]:SetText(CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit))
+				r.cells[4]:SetText(tostring(d.concentration or "-"))
+				r.cells[5]:SetText(m(d.perPoint))
+				r.cells[6]:SetText(n(d.canMakeConc))
+				table.insert(out, string.format("%s conc=%d pp=%d", d.name, math.floor(d.concProfit or 0), math.floor(d.perPoint or 0)))
 			else
-				r.cells[8]:SetText(bc and bc.craft and T.Color("muted", "Craft") or "")
+				local bc = d.bc or {}
+				r.cells[2]:SetText(bc.craft and CH.FormatMoney(bc.craft) or T.Color("muted", "-"))
+				r.cells[3]:SetText(bc.buy and CH.FormatMoney(bc.buy) or T.Color("muted", "-"))
+				r.cells[4]:SetText(bc.resell and CH.FormatMoney(bc.resell) or T.Color("muted", "-"))
+				r.cells[5]:SetText(bc.save and (bc.save > 0 and T.Color("ok", "buy, " .. CH.FormatMoney(bc.save)) or T.Color("muted", "craft"))
+					or T.Color("muted", "-"))
+				r.cells[6]:SetText(bc.flip and money(bc.flip) or T.Color("muted", "-"))
+				table.insert(out, string.format("%s save=%d", d.name, math.floor(bc.save or 0)))
 			end
-			table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
 		end
 	end
+	renderDetail()
 	return out
 end
 

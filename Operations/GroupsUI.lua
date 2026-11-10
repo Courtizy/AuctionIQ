@@ -1,12 +1,16 @@
 -- Groups page of the main window: the group tree on the left, the selected group's items with the
 -- prices its operation gives them on the right, and the operation's settings. Rebuild re-sorts your
--- items automatically; right-click an item to move it yourself.
+-- items automatically; right-click an item to move it yourself. Click an item to see the rule that
+-- really applies to it: its group and why it's there, its operation and where that was set, and the
+-- min, normal and max it evaluates to.
 local _, CH = ...
 
 local GUI = {}
 CH.GroupsUI = GUI
 local page, selected, treeOffset, itemOffset = nil, "Crafted", 0, 0
-local TREE_ROWS, ITEM_ROWS, RH = 26, 16, 18
+local selItem -- the item whose effective rule is shown under the list
+local TREE_ROWS, ITEM_ROWS, RH = 26, 14, 18
+local INFO = 36 -- the effective-rule lines under the items
 local X0 = 232
 
 local function money(c) return c and CH.FormatMoney(c) or CH.Theme.Color("muted", "-") end
@@ -51,6 +55,47 @@ function GUI.Rows(path)
 	return out
 end
 
+local SEP = "/"
+
+--- The rule that applies to an item, and where each part came from:
+--- { path, pathFrom, op, opFrom, prices } (pathFrom: "moved", "tsm", "auto"; opFrom: the group
+--- path that sets it, or "default").
+function GUI.Effective(id)
+	local G, s = CH.Groups, CH.Groups.Store()
+	local path = G.Path(id)
+	if not path then return nil end
+	local tsm = s.useTSM and G.TSMGroups()[id] or nil
+	local pathFrom = s.manual[id] and "moved" or (tsm and path == tsm) and "tsm" or "auto"
+	local _, name = G.Operation(id)
+	local opFrom, p = "default", path
+	while p do
+		if s.assign[p] or (s.assignAll and s.assignAll[p]) then opFrom = p; break end
+		p = p:match("^(.*)" .. SEP .. "[^" .. SEP .. "]+$")
+	end
+	return { path = path, pathFrom = pathFrom, op = name or "Default", opFrom = opFrom, prices = G.Prices(id) }
+end
+
+--- The two lines under the items for the selected item (also used by the tests).
+function GUI.EffectiveLines(id)
+	local T = CH.Theme
+	local e = id and GUI.Effective(id)
+	if not e then return { T.Color("muted", id and "This item isn't in any group." or "Click an item to see the rule that applies to it."), "" } end
+	local _, name = CH.LedgerUI.ItemText(id)
+	local from = ({ moved = "you moved it", tsm = "TSM group", auto = "automatic" })[e.pathFrom]
+	local opFrom = e.opFrom == "default" and "default for " .. (e.path:match("^([^" .. SEP .. "]+)") or "its group")
+		or e.opFrom == e.path and "set on this group" or ("from " .. e.opFrom)
+	local p = e.prices
+	local line1 = T.Color("accent", name or ("item " .. id)) .. "  " .. e.path .. T.Color("muted", " (" .. from .. ")")
+		.. "  Op " .. T.Color("accent", e.op) .. T.Color("muted", " (" .. opFrom .. ")")
+	local line2 = "Min " .. money(p.min) .. T.Color("muted", p.why and (" " .. p.why) or "") .. "   Normal " .. money(p.normal)
+		.. (p.learned and T.Color("muted", " learned") or "") .. "   Max " .. money(p.max)
+		.. "   " .. (p.post and ("posts up to " .. p.cap) or T.Color("bad", "doesn't post"))
+	return { line1, line2 }
+end
+
+--- Show an item's effective rule under the list (as a click on it does).
+function GUI.SelectItem(id) selItem = id; CH.UI.Refresh() end
+
 local function moveMenu(owner, id)
 	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
 	MenuUtil.CreateContextMenu(owner, function(_, root)
@@ -92,7 +137,7 @@ function GUI.Build(p, fs, panel)
 		b:SetScript("OnClick", function(self, button)
 			if not self.path then return end
 			if button == "RightButton" then return GUI.RouteMenu(self, self.path) end
-			selected, itemOffset = self.path, 0
+			selected, itemOffset, selItem = self.path, 0, nil
 			CH.UI.Refresh()
 		end)
 		p.tree[i] = b
@@ -136,7 +181,10 @@ function GUI.Build(p, fs, panel)
 		hit:SetPoint("TOPLEFT", X0, -42 - (i - 1) * RH)
 		hit:SetSize(664, RH)
 		if hit.RegisterForClicks then hit:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
-		hit:SetScript("OnClick", function(self, button) if self.id and button == "RightButton" then moveMenu(self, self.id) end end)
+		hit:SetScript("OnClick", function(self, button)
+			if not self.id then return end
+			if button == "RightButton" then moveMenu(self, self.id) else GUI.SelectItem(self.id) end
+		end)
 		hit:SetScript("OnEnter", function(self)
 			if self.id and GameTooltip.SetItemByID then GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetItemByID(self.id); GameTooltip:Show() end
 		end)
@@ -145,14 +193,16 @@ function GUI.Build(p, fs, panel)
 		for j, c in ipairs(cols) do r.cells[j] = fs(p, X0 + c[2], -44 - (i - 1) * RH, c[3], j == 1 and "LEFT" or "RIGHT") end
 		p.items[i] = r
 	end
+	p.info = {}
+	for k = 1, 2 do p.info[k] = CH.Window.OneLine(fs(p, X0, -44 - ITEM_ROWS * RH - 2 - (k - 1) * 16, 664, "LEFT")) end
 	p:EnableMouseWheel(true)
 	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); CH.UI.Refresh() end)
 
 	-- operation settings for the selected group's operation
-	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - 8, 500, "LEFT", "GameFontNormal")
+	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - INFO - 8, 500, "LEFT", "GameFontNormal")
 	-- copy TSM's operations, custom sources and group assignments in, once
 	p.importTSM = T.Button(p, "Import TSM rules", 150, 18)
-	p.importTSM:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - 6)
+	p.importTSM:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - INFO - 6)
 	p.importTSM:SetScript("OnClick", function()
 		local n, err = CH.Groups.ImportTSM()
 		if n then
@@ -165,7 +215,7 @@ function GUI.Build(p, fs, panel)
 	p.opFields = {}
 	for i, f in ipairs(OP_FIELDS) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
-		local x, y = X0 + col * 242, -44 - ITEM_ROWS * RH - 30 - row * 24
+		local x, y = X0 + col * 242, -44 - ITEM_ROWS * RH - INFO - 30 - row * 24
 		local label = fs(p, x, y - 3, 150, "LEFT")
 		label:SetText(f[2])
 		local minus = T.Button(p, "-", 18, 18); minus:SetPoint("TOPLEFT", x + 150, y)
@@ -188,7 +238,7 @@ function GUI.Build(p, fs, panel)
 		p.opFields[i] = { val = val, f = f }
 	end
 	p.formulas = {}
-	local fy = -44 - ITEM_ROWS * RH - 30 - 3 * 24 - 6
+	local fy = -44 - ITEM_ROWS * RH - INFO - 30 - 3 * 24 - 6
 	for i, f in ipairs(FORMULAS) do
 		local y = fy - (i - 1) * 24
 		local label = fs(p, X0, y - 3, 56, "LEFT")
@@ -234,6 +284,8 @@ function GUI.Refresh()
 		r.hit.id = d and d.id
 		for j, c in ipairs(r.cells) do c:SetText(d and tostring(d.cells[j] or "") or "") end
 	end
+	local lines = GUI.EffectiveLines(selItem)
+	for k, fsk in ipairs(p.info) do fsk:SetText(lines[k] or "") end
 	local _, name = CH.Groups.Operation(CH.Groups.Items(selected)[1] or 0)
 	name = name or "Default"
 	if p.opButton.text then p.opButton.text:SetText("Operation: " .. name) end

@@ -94,6 +94,18 @@ sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best,
 check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and ("After 5% auction cut", "285g") in sl)
 pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
 check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on reagents", "34%") in pl)
+# Expected proceeds: the source in the notes, and rows posting would skip
+check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(CH.AdvisorUI.SourceLine(res)))
+run("""STUB.oldGP = AuctionIQ.Groups.Prices
+AuctionIQ.Groups.Prices = function(id) return { min = 4000000, post = true, op = "Crafted", priceReset = "none" } end""")
+CH.AdvisorUI.Render(res)
+pls = [plain(x) for x in CH.AdvisorUI.PostLines(res).values()]
+check("advisor: a row below its operation's min says posting would skip it",
+      any("Below posting minimum (Crafted min 400g): posting would skip it" in x for x in pls) and len(pls) == len(set(r.quality for r in res.rows.values())))
+run("AuctionIQ.Groups.Prices = function() return { min = 1, post = true, op = 'Crafted', priceReset = 'none' } end")
+CH.AdvisorUI.Render(res)
+check("advisor: nothing flagged when every row clears the min", len(list(CH.AdvisorUI.PostLines(res).values())) == 0)
+run("AuctionIQ.Groups.Prices = STUB.oldGP")
 mx = CH.Advisor.MaxCraftable(res, best)
 check("max craftable is limited by the scarcest reagent", mx[0] == 1)  # 3 of item 205 at 2 each
 mq = CH.Advisor.MaxCraftable(res, res.rows[2], 50)
@@ -109,11 +121,20 @@ check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
 # Craft queue and shopping list
 run('AuctionIQ.db.settings.advisor.hide = false; AuctionIQ.AdvisorUI.Show(10)')
-run('AuctionIQ.AdvisorUI.RowClick(3)')            # Q2 without Concentration, one
-run('STUB.shift = true; AuctionIQ.AdvisorUI.RowClick(3); STUB.shift = false')  # shift: as many as you can make (1)
+check("advisor: a new recipe selects its recommended craft", CH.AdvisorUI.SelectedRow() is not None and CH.AdvisorUI.SelectedRow().recommended)
+run('AuctionIQ.AdvisorUI.RowClick(1)')            # Q1 without Concentration: selects, queues nothing
+check("advisor: a row click selects it and queues nothing", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 1
+      and CH.AdvisorUI.SelectedRow().concentration is None)
+run('STUB.shift = true; AuctionIQ.AdvisorUI.RowClick(3); STUB.shift = false')
+check("advisor: shift-click selects too, it doesn't queue", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 2)
+check("advisor: the queue button names how many", CH.AdvisorUI.QueueAction()[0] == "Queue 1")
+run('AuctionIQ.AdvisorUI.QueueSelected()')        # Q2 without Concentration, one
+run('AuctionIQ.AdvisorUI.SetQty(1); AuctionIQ.AdvisorUI.QueueSelected()')
 run('AuctionIQ.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentration
+check("advisor: selecting another row puts the quantity back to 1", CH.AdvisorUI.SetQty(0) == 1)
+run('AuctionIQ.AdvisorUI.QueueSelected()')
 q = list(CH.db.queue.values())
-check("queue: clicks add, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
+check("queue: the button adds the selected craft, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
 check("queue: Count adds up", CH.Queue.Count() == 3)
 check("queueing from the advisor keeps you on the Advisor tab", CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown())
 lines = CH.QueueUI.Show()
@@ -241,6 +262,10 @@ check("plan: describes itself in words", any("Node 900" in plain(l) for l in pla
 CH.AdvisorUI.SetPlan(plan)
 CH.AdvisorUI.Show(10)
 check("advisor simulates the plan", CH.AdvisorUI.Current().sim is not None)
+run('AuctionIQ.AdvisorUI.RowClick(1)')
+sa = CH.AdvisorUI.QueueAction()
+check("advisor: a simulated row offers to queue the live craft instead", sa[0] == "Queue live craft"
+      and (sa[1] is not None or sa[2].quality == CH.AdvisorUI.SelectedRow().quality))
 run('AuctionIQ.AdvisorUI.SetPlan(nil); AuctionIQ.AdvisorUI.SetSimSkill(0)')
 check("spec: the trees' layout is read per tab, with links",
       tree.tabs[1].name == "Test Mastery" and list(tree.tabs[1].nodes.values()) == [900, 901]
@@ -345,6 +370,13 @@ orows = list(o.rows.values())
 check("order: the customer's reagents aren't charged, the commission is the value",
       o.best.quality == 2 and o.best.cost == 2100000 and o.best.value == 900000 and o.best.profit == 900000 - 2100000)
 check("order: qualities under the minimum are marked", orows[0].short == True and L.eval("STUB.orderCall") == 77)
+CH.AdvisorUI.Render(o)
+check("advisor: an order selects its best craft that reaches the quality", CH.AdvisorUI.SelectedRow().quality == 2)
+run('AuctionIQ.AdvisorUI.RowClick(1)')
+oa = CH.AdvisorUI.QueueAction()
+check("advisor: a row under the order's quality can be selected but not queued", oa[1] is not None and "below the Q2" in oa[1]
+      and CH.AdvisorUI.QueueSelected()[0] is None and CH.Queue.Count() == 0)
+check("advisor: order proceeds say they're what the order pays", "what the order pays" in plain(CH.AdvisorUI.SourceLine(o)))
 # the customer gives part of a slot: we pay for the rest (slot 3 needs 2 of item 205 at 1g, they give 1)
 op = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
   reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 1 } } } }"""))
@@ -475,6 +507,34 @@ run('AuctionIQ.ScanUI.olderButton.scripts.OnClick()')
 run('for _, r in ipairs(AuctionIQ.Scan.Results(2906).rows) do r.line = nil; r.expansion = nil end')
 again = list(CH.ScanUI.Refresh().values())
 check("scan: an older saved scan gets its expansions filled in", "== Khaz Algar" in again)
+# Scan to queue: the selected recipe's plain and Concentration crafts, each queued as shown
+pot = [r for r in CH.Scan.Results(2906).rows.values() if r.name == "Test Potion"][0]
+run(f"AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.SetView('craft'); AuctionIQ.ScanUI.Select({pot.recipeID})")
+check("scan: a click selects the recipe, the strip shows it", CH.ScanUI.Selected() == pot.recipeID and CH.ScanUI.SelectedRow().name == "Test Potion")
+idx = [i for i, t in enumerate(list(CH.ScanUI.Refresh().values())) if t.startswith("Test Flask")][0]
+run(f"STUB.shift = true; AuctionIQ.ScanUI.Click({idx + 1}); STUB.shift = false")
+check("scan: shift-clicking a recipe selects it and queues nothing", CH.Queue.Count() == 0 and CH.ScanUI.SelectedRow().name == "Test Flask")
+run(f"AuctionIQ.ScanUI.Select({pot.recipeID}); AuctionIQ.ScanUI.SetQty(2); AuctionIQ.ScanUI.QueueSelected(true)")
+qc = list(CH.db.queue.values())
+check("scan: Queue with Concentration queues the Concentration craft the row shows",
+      len(qc) == 1 and qc[0].concentration == pot.concentration and qc[0].quality == pot.concQuality and qc[0].qty == 2)
+run("AuctionIQ.ScanUI.QueueSelected(false, 1)")
+qp = [e for e in CH.db.queue.values() if not e.concentration]
+check("scan: Queue plain queues the plain craft, apart from the Concentration one",
+      len(qp) == 1 and qp[0].quality == pot.quality and qp[0].qty == 1 and CH.Queue.Count() == 3)
+noconc = [r for r in CH.Scan.Results(2906).rows.values() if not r.concProfit]
+if noconc:
+    e, why = CH.ScanUI.ScanEntry(noconc[0], True)
+    check("scan: no Concentration craft, nothing to queue with it", e is None and "no Concentration craft" in why)
+run("AuctionIQ.Queue.Clear()")
+cv = list(CH.ScanUI.SetView("conc").values())
+check("scan: the Concentration view lists only recipes that can use it, by gold a point",
+      CH.ScanUI.View() == "conc" and all(" conc=" in x for x in cv if not x.startswith("== "))
+      and len([x for x in cv if not x.startswith("== ")]) == len([r for r in CH.Scan.Results(2906).rows.values() if r.concProfit]))
+bv = list(CH.ScanUI.SetView("buy").values())
+check("scan: the Buy vs craft view lists recipes with a listing", all(" save=" in x for x in bv if not x.startswith("== ")))
+run("AuctionIQ.ScanUI.SetView('craft')")
+check("scan: back to the Craft view", any(x.startswith("Test Potion profit=") for x in CH.ScanUI.Refresh().values()))
 
 
 # Cooldowns
@@ -810,6 +870,19 @@ run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@use
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
 check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())
+ef = CH.GroupsUI.Effective(302)
+el = [plain(x) for x in CH.GroupsUI.EffectiveLines(302).values()]
+gp302 = CH.Groups.Prices(302)
+check("groups page: an item shows its group, its operation and where each came from, and min, normal and max",
+      ef.path == CH.Groups.Path(302) and ef.op == CH.Groups.Operation(302)[1] and ef.pathFrom in ("moved", "tsm", "auto")
+      and ef.op in el[0] and ef.path in el[0] and "Min " + plain(CH.FormatMoney(gp302.min)) in el[1] and "Max " in el[1])
+run("AuctionIQ.Groups.Assign(AuctionIQ.Groups.Path(302), 'Default')")
+check("groups page: an operation set on the item's own group says so", CH.GroupsUI.Effective(302).opFrom == CH.Groups.Path(302)
+      and "set on this group" in plain(CH.GroupsUI.EffectiveLines(302)[1]))
+run("AuctionIQ.Groups.Assign(AuctionIQ.Groups.Path(302), nil)")
+run("AuctionIQ.GroupsUI.SelectItem(302)")
+check("groups page: clicking an item shows its rule under the list", ef.op in plain(CH.UI.Pages().groups.info[1].t)
+      if CH.UI.Pages().groups else True)
 check("groups now live in Settings: the old name opens them there", L.eval("AuctionIQ.UI.IsShown()"))
 # Trading tab: what to post and mail, before you get to the AH
 pp = {r.id: r for r in CH.TradingUI.PostPlan().values()}
