@@ -60,14 +60,16 @@ function W.New(name, title, width, height)
 	rule:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(1)
+	rule:SetHeight(2) -- ToxiUI's accent line under the title bar
+	f.rule = rule
 	local badge = bar:CreateTexture(nil, "ARTWORK")
 	badge:SetTexture(CH.ICON)
 	badge:SetSize(20, 20) -- a little larger than the 14px tab symbols
 	badge:SetPoint("LEFT", 4, 0)
 	f.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	f.title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
-	f.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", title))
+	T.TitleFont(f.title, 13)
+	f.title:SetText(T.Wordmark() .. "  " .. T.Color("muted", title))
 	f.close = T.Button(bar, "x", 18, 18)
 	f.close:SetPoint("RIGHT", -4, 0)
 	f.close:SetScript("OnClick", function() f:Hide() end)

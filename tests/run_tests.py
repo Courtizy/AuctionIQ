@@ -127,7 +127,19 @@ check("advisor: a row click selects it and queues nothing", CH.Queue.Count() == 
       and CH.AdvisorUI.SelectedRow().concentration is None)
 run('STUB.shift = true; AuctionIQ.AdvisorUI.RowClick(3); STUB.shift = false')
 check("advisor: shift-click selects too, it doesn't queue", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 2)
-check("advisor: the queue button names how many", CH.AdvisorUI.QueueAction()[0] == "Queue 1")
+check("advisor: the queue button names how many crafts", CH.AdvisorUI.QueueAction()[0] == "Queue 1 craft")
+nm = CH.AdvisorUI.RenderNext()
+check("advisor: Next Move names the craft and count, then profit, break-even and recovery",
+      nm is not None and nm.head.startswith("Craft 1 ") and nm.row.quality == 2 and nm.profit == CH.AdvisorUI.SelectedRow().profit
+      and (nm.recover is None or 0 <= nm.recover <= 1))
+run("AuctionIQ.AdvisorUI.SetQty(20)")
+nm20 = CH.AdvisorUI.RenderNext()
+check("advisor: Next Move and the queue button follow the quantity", nm20.head.startswith("Craft 20 ") and CH.AdvisorUI.QueueAction()[0] == "Queue 20 crafts"
+      and abs(nm20["items"] - 20 * nm["items"]) < 1e-6)
+check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc) or ("Multicraft" in nm20.sub))
+run("AuctionIQ.AdvisorUI.SetQty(1)")
+g = L.eval("{ AuctionIQ.Theme.GradientColors('MAGE') }")
+check("theme: ToxiUI's class gradient for bars", abs(g[1][1] - 0) < 1e-6 and abs(g[1][3] - 0xd7 / 255) < 1e-6 and abs(g[2][3] - 1) < 1e-6)
 run('AuctionIQ.AdvisorUI.QueueSelected()')        # Q2 without Concentration, one
 run('AuctionIQ.AdvisorUI.SetQty(1); AuctionIQ.AdvisorUI.QueueSelected()')
 run('AuctionIQ.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentration
@@ -183,7 +195,7 @@ AuctionIQ.Theme.Sync()
 STUB.p = CreateFrame("Frame"); AuctionIQ.Theme.Panel(STUB.p, "bg")
 STUB.b = AuctionIQ.Theme.Button(STUB.p, "Dock"); STUB.x = AuctionIQ.Theme.Button(STUB.p, "x")''')
 T = CH.Theme
-check("ElvUI: our palette stays by default, on ElvUI's templates", T.hex.accent == "e0a83a" and T.hex.bg == "0e1729")
+check("ElvUI: our palette stays by default, on ElvUI's templates", T.hex.accent == "ff7c0a" and T.hex.bg == "292929")
 run("AuctionIQ.db.settings.theme = 'elvui'; AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: /aiq theme takes its value colour as the accent", T.hex.accent == "336699")
 run("AuctionIQ.db.settings.theme = nil; AuctionIQ.Theme.Use('auctioniq')")
@@ -1109,7 +1121,7 @@ check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,C
 run("AuctionIQ.UI.Page('ledger')")
 check("theme: the Accounting tab is plum", L.eval("AuctionIQ.Theme.palette == 'accounting' and AuctionIQ.Theme.hex.bg == '1c1222'"))
 run("AuctionIQ.UI.Page('markets')")
-check("theme: other pages are AuctionIQ navy", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '0e1729'"))
+check("theme: other pages are ToxiUI graphite with the class accent", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '292929' and AuctionIQ.Theme.hex.panel == '1a1a1a' and AuctionIQ.Theme.hex.accent == 'ff7c0a'"))
 # AH scans: any search answered in the AH window is saved (Data/Scans.lua)
 run("""C_AuctionHouse.GetNumItemSearchResults = function() return 3 end
 C_AuctionHouse.GetItemSearchResultInfo = function(key, i) return ({ { buyoutAmount = 100000, quantity = 1 }, { buyoutAmount = 140000, quantity = 1 },
@@ -1494,6 +1506,9 @@ check("settings: TSM groups off", CH.Groups.Store().useTSM is False)
 run("AuctionIQ.Settings.UseTSM(true)")
 
 # layout: nothing outside its panel, no one-line text cut off, button labels fit
+cf = list(L.eval("AuctionIQ.UI.RenderConcFooter()").values())
+check("footer: up to three Concentration bars, fullest first", len(cf) <= 3 and all(0 <= b.share <= 1 for b in cf)
+      and all(cf[i].share >= 0 for i in range(len(cf))))
 L.execute((ROOT / "tests" / "layout_audit.lua").read_text())
 audit_all = []
 def audit(where):

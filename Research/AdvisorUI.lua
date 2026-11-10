@@ -7,7 +7,8 @@ local AUI = {}
 CH.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
-local HEIGHT = 456
+local TOP = 68 -- the Next Move block under the title bar
+local HEIGHT = 456 + TOP
 -- Simulation: extra skill, and a knowledge point plan from the Paths window.
 local sim = { skill = 0, plan = nil }
 local order -- the crafting order on screen, if any
@@ -60,14 +61,15 @@ local function build()
 	rule:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(1)
+	rule:SetHeight(2)
 	local badge = bar:CreateTexture(nil, "ARTWORK")
 	badge:SetTexture(CH.ICON)
 	badge:SetSize(18, 18)
 	badge:SetPoint("LEFT", 5, 0)
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
-	title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Crafting advisor"))
+	T.TitleFont(title, 13)
+	title:SetText(T.Wordmark() .. "  " .. T.Color("muted", "Crafting advisor"))
 	local close = T.Button(bar, "x", 18, 18)
 	close:SetPoint("RIGHT", -4, 0)
 	close:SetScript("OnClick", function() settings().hide = true; panel:Hide(); CH.Print("advisor hidden. /aiq advisor brings it back.") end)
@@ -89,13 +91,46 @@ local function build()
 	panel.batchBtn = paneButton("Analyze batch", 96, panel.chartBtn, "batch", { { "Analyze batch" },
 		{ T.Color("muted", "What could happen to 10, 30 or 100 of the selected craft over a week: the chance the sales pay back the reagents, the cash that comes back, and the stock left. Click again for the notes.") } })
 
+	-- Next Move: the selected craft and how many, then profit, break-even and the chance to
+	-- recover the spend in a week, biggest first (the summary hierarchy from the style review)
+	local nx = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+	T.Panel(nx, "panel", 1)
+	nx:SetPoint("TOPLEFT", 6, -32)
+	nx:SetSize(WIDTH - 12, TOP - 6)
+	panel.next = nx
+	nx.label = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 8, -5, 120, "LEFT", "GameFontNormalSmall")), 9, "bold")
+	nx.label:SetText(T.Color("accent", "NEXT MOVE"))
+	nx.head = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 8, -17, 330, "LEFT", "GameFontHighlight")), 14)
+	nx.sub = CH.Window.OneLine(CH.Window.Text(nx, WIDTH - 12 - 8 - 180, -20, 180, "RIGHT", "GameFontDisableSmall"))
+	nx.stats = {}
+	for i, lab in ipairs({ "PROFIT / CRAFT", "BREAK-EVEN / ITEM", "RECOVER IN 7 DAYS" }) do
+		local x = 8 + (i - 1) * 132
+		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -36, 128, "LEFT", "GameFontDisableSmall")), 8, "bold")
+		l:SetText(T.Color("muted", lab))
+		local v = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -46, 128, "LEFT", "GameFontHighlight")), 13)
+		nx.stats[i] = v
+	end
+	nx.back = nx:CreateTexture(nil, "ARTWORK")
+	nx.back:SetPoint("TOPLEFT", 8 + 3 * 132, -50)
+	nx.barW = WIDTH - 12 - 16 - 3 * 132
+	nx.back:SetSize(nx.barW, 6)
+	nx.back:SetColorTexture(0, 0, 0, 0.6)
+	nx.fill = nx:CreateTexture(nil, "OVERLAY")
+	nx.fill:SetPoint("TOPLEFT", nx.back, "TOPLEFT", 0, 0)
+	nx.fill:SetSize(1, 6)
+	T.Gradient(nx.fill)
+	local hit = CreateFrame("Button", nil, nx)
+	hit:SetAllPoints(nx)
+	hit:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip()) end)
+	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 	panel.recipe = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	panel.recipe:SetPoint("TOPLEFT", 12, -34)
+	panel.recipe:SetPoint("TOPLEFT", 12, -34 - TOP)
 	panel.recipe:SetWidth(WIDTH - 24)
 	panel.recipe:SetJustifyH("LEFT")
 	CH.Window.OneLine(panel.recipe)
 
-	local y = -56
+	local y = -56 - TOP
 	for _, c in ipairs(COLS) do
 		local h = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		h:SetPoint("TOPLEFT", 12 + c[2], y)
@@ -980,7 +1015,7 @@ function AUI.QueueAction()
 	if r.short then
 		return "Queue", string.format("This quality is below the Q%d the order asks for.", shown.order and shown.order.minQuality or 0)
 	end
-	return "Queue " .. selQty, nil, r
+	return string.format("Queue %d %s", selQty, selQty == 1 and "craft" or "crafts"), nil, r
 end
 
 --- Draw the bar under the rows: the selected craft, the quantity, and the queue button.
@@ -1006,6 +1041,89 @@ function AUI.RenderAction()
 			target.concentration and (", using " .. target.concentration .. " Concentration each") or ", no Concentration")) or nil
 	act.queue:SetAlpha(off and 0.4 or 1)
 	act:SetShown(shown ~= nil)
+	AUI.RenderNext()
+end
+
+local nextCache = {} -- recovery chances by craft and quantity
+
+--- The Next Move block's figures for the selected row and quantity: { head, sub, profit, breakEven,
+--- recover (0..1 or nil), items, mc }. nil with nothing selected.
+function AUI.NextMove()
+	local r = shown and AUI.SelectedRow()
+	if not r then return nil end
+	local Dc = CH.Decide
+	local qty = selQty
+	local made = shown.made or 1
+	local per = Dc and Dc.Items(made, r.parts) or made
+	local mc = r.parts and (r.parts.mc or 0) > 0
+	local out = { qty = qty, row = r, profit = r.profit, items = qty * per, mc = mc,
+		breakEven = r.breakEven and r.breakEven.price, estimate = r.price }
+	out.head = string.format("Craft %d × %s", qty, shown.name or "?")
+	local n = math.floor(out.items + 0.5)
+	if mc then out.sub = string.format("about %d items expected with Multicraft", n)
+	elseif made ~= 1 or qty > 1 then out.sub = string.format("%d items", n) end
+	if Dc and not shown.order then
+		local key = table.concat({ shown.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0), qty }, ":")
+		local hit = nextCache[key]
+		if hit == nil then
+			local inp = Dc.BatchInputs(shown, r)
+			local b = inp and Dc.Batch(inp, { sizes = { qty } })
+			hit = b and b[1] or false
+			nextCache[key] = hit
+		end
+		if hit then out.recover, out.batch = hit.recover, hit end
+	end
+	return out
+end
+
+--- Fill the Next Move block. Returns NextMove's figures, for the tests.
+function AUI.RenderNext()
+	local nx = panel and panel.next
+	if not nx then return nil end
+	local T, M = CH.Theme, CH.FormatMoney
+	local m = AUI.NextMove()
+	nx.lastMove = m
+	if not m then
+		nx.head:SetText(T.Color("muted", shown and "Click a row to pick a craft." or "Select a recipe."))
+		nx.sub:SetText("")
+		for _, v in ipairs(nx.stats) do v:SetText(T.Color("muted", "-")) end
+		nx.fill:Hide()
+		return nil
+	end
+	nx.head:SetText(m.head .. (m.row.concentration and T.Color("accent", "  Conc.") or "") .. (shown.sim and T.Color("bad", "  SIM") or ""))
+	nx.sub:SetText(m.sub and T.Color("muted", m.sub) or "")
+	nx.stats[1]:SetText(money(m.profit))
+	nx.stats[2]:SetText(m.breakEven and T.Color("gold", M(m.breakEven)) or T.Color("muted", shown.order and "order" or "-"))
+	if m.recover then
+		nx.stats[3]:SetText(pctText(m.recover))
+		T.Gradient(nx.fill)
+		nx.fill:SetWidth(math.max(1, nx.barW * m.recover))
+		nx.fill:Show()
+	else
+		nx.stats[3]:SetText(T.Color("muted", "-"))
+		nx.fill:Hide()
+	end
+	return m
+end
+
+--- The Next Move hover: what each figure means and what the chance rests on.
+function AUI.NextTip()
+	local T, M = CH.Theme, CH.FormatMoney
+	local m = (panel and panel.next and panel.next.lastMove) or AUI.NextMove()
+	local tip = { { "Next move" } }
+	if not m then
+		table.insert(tip, { T.Color("muted", "Click a row in the table to pick a craft, and set how many under it.") })
+		return tip
+	end
+	table.insert(tip, { T.Color("muted", string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) })
+	if m.mc then table.insert(tip, { T.Color("muted", string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
+	table.insert(tip, { "Profit / craft", money(m.profit) })
+	if m.breakEven then table.insert(tip, { "Break-even / item", M(m.breakEven) .. T.Color("muted", "  (estimate " .. M(m.estimate or 0) .. ")") }) end
+	if m.batch then
+		table.insert(tip, { "Recover in 7 days", pctText(m.recover) })
+		table.insert(tip, { T.Color("muted", string.format("The chance a week's sales pay back the %s of reagents, from %d simulated weeks.", M(m.batch.spend or 0), CH.Decide.RUNS)) })
+	end
+	return tip
 end
 
 --- Set how many of the selected craft to queue (1 to 999).

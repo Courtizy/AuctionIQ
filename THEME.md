@@ -4,14 +4,26 @@ Every page of the addon follows these rules. A colour changes in `Theme.lua`.
 
 ## Style
 
-- Flat dark panels with a 1px border, no Blizzard frame art (ElvUI style).
-- Title bar in the panel colour with a 1px gold rule under it. The name is gold and the page name is grey.
+Matched to ToxiUI's Dark style, read from its own files (ElvUI_ToxiUI 7.6): ElvUI backdrop `#1a1a1a`,
+see-through backdrop `#292929` at 80%, black borders, a 4px soft shadow at 60%, the class colour as
+ElvUI's value colour, ToxiUI's font for text and Montserrat Black for titles.
+
+- Graphite panels with a black 1px border, no Blizzard frame art (ElvUI style).
+- Title bar in the panel colour with a 2px accent rule under it. The wordmark is AUCTIONIQ in
+  Montserrat Black with IQ in the accent; the page name is grey.
+- The accent is the player's class colour. The active tab has the accent text and a 2px accent line.
+- Progress bars (the advisor's recovery chance, the footer's Concentration bars) use ToxiUI's class
+  gradient, from its own settings when it is loaded. Action buttons stay solid.
 - Money uses the game's gold, silver and copper coin icons, as TSM does. `/aiq coins` switches to `g s c` text.
-- Profit is green, loss and warnings are red, and labels are gold.
+  Break-even prices are gold (`#e0a83a`).
+- Profit is green, loss and warnings are red. Numbers in tables are right-aligned.
+- The advisor opens with a Next Move block: the craft and how many, expected output if Multicraft
+  applies, then profit per craft, break-even per item and the chance to recover the spend in 7 days.
 
 ## Two palettes, one window
 
-AuctionIQ (every page but one) is navy, gold and emerald: analytical, decision-making. Its
+AuctionIQ (every page but one) is ToxiUI graphite with the class accent. The earlier navy look is
+kept in `Theme.lua` as `navy`. Its
 Accounting tab is plum, parchment and gold: the books. Switching to Accounting re-tints the window;
 the title still reads AuctionIQ. Accounting sits last, after the other tabs.
 
@@ -23,7 +35,7 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
   borders and backdrop alpha. ToxiUI hooks those templates, so its soft shadow, inner shadow and noise
   come along when its theme is on.
 - Fonts are ElvUI's (ToxiUI's, if ToxiUI set them). Buttons and the close button use ElvUI's skins.
-- The backdrop colour comes from the palette (navy or plum), so the two identities still read.
+- The backdrop colour comes from the palette (graphite or plum), so the two identities still read.
 - `/aiq theme` switches to ElvUI's own colours instead: its value colour as the accent, its backdrop
   and border colours. Profit green, loss red and coin icons stay as they are.
 - The minimap button turns square to match ElvUI's square minimap.
@@ -32,12 +44,13 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
 
 | Token  | AuctionIQ | Accounting | Used for |
 |--------|-----------|---------------|----------|
-| bg     | `#0e1729` navy | `#1c1222` plum | window background |
-| panel  | `#15213b` | `#281a30` | title bar, buttons |
-| line   | `#263a63` | `#45304f` | borders and rules |
-| fg     | `#e6e8ee` | `#efe4c8` parchment | body text |
-| muted  | `#9aa6bd` | `#b8a69a` | hints, page name, footer |
-| accent | `#e0a83a` | `#e0a83a` | gold: name, headings, tooltip labels |
+| bg     | `#292929` at 80% | `#1c1222` plum | window background |
+| panel  | `#1a1a1a` | `#281a30` | title bar, buttons, Next Move |
+| line   | `#000000` | `#45304f` | borders |
+| fg     | `#f2f2f2` | `#efe4c8` parchment | body text |
+| muted  | `#a3a3ab` | `#b8a69a` | hints, page name, footer |
+| accent | class colour | `#e0a83a` | wordmark IQ, headings, active tab, selection |
+| gold   | `#e0a83a` | `#e0a83a` | break-even prices |
 | iq     | `#34c77b` emerald | `#d8c39a` | the trend line in the icon, highlights |
 | ok     | `#6cc58f` | `#6cc58f` | profit |
 | bad    | `#ef7d72` | `#ef7d72` | loss, FULL Concentration |
