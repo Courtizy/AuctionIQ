@@ -1766,6 +1766,21 @@ check("orders: hovering Crafting costs lists each reagent you supply with how ma
 rl2 = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
 check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
 check("orders: a patron order's customer reads NPC", by[78].customer == "NPC" and by[77].customer == "Pat")
+# each order row has its own Claim button: claims that order, then opens it once the game says yes
+run("""STUB.claimed = nil; STUB.claimedOrder = nil; STUB.opened = nil
+C_CraftingOrders.ClaimOrder = function(id)
+  STUB.claimed = id
+  for _, o in ipairs(C_CraftingOrders.GetCrafterOrders()) do if o.orderID == id then STUB.claimedOrder = o end end
+end
+C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
+STUB.oldOpen = AuctionIQ.Orders.Open; AuctionIQ.Orders.Open = function(o) STUB.opened = o and o.orderID end""")
+check("orders: an order's Claim button starts free", CH.ScanUI.ClaimState(by[77]) == "free")
+check("orders: Claim claims that order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77)
+run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
+check("orders: once claimed, the order opens and its button opens it again",
+      L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "claimed" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Open"))
+check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
+run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")

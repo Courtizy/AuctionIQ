@@ -35,7 +35,7 @@ local COLS = {
 	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
 		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
-	orders = { { "Recipe", 12, 290, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
+	orders = { { "Recipe", 62, 240, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
 		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "Conc.", 734, 90, "concentration" } },
 	first = { { "Recipe", 12, 330, "name" }, { "Reagents", 344, 120, "cost" }, { "Proceeds", 466, 120, "value" },
 		{ "Point costs", 588, 130, "net" } },
@@ -384,6 +384,20 @@ local function build()
 		local blank = {}
 		for j, c in ipairs(cols) do blank[j] = { "", c[2], c[3], c[5] } end
 		tables[m] = Wd.Table(frame, blank, N, -54, H, click, hover, W)
+		if m == "orders" then
+			-- a Claim button at the start of each order's row
+			for i, r in ipairs(tables[m]) do
+				local b = T.Button(frame, "Claim", 46, H - 2)
+				b:SetPoint("TOPLEFT", 10, -54 - i * H + 2)
+				local lvl = r.button and r.button.GetFrameLevel and r.button:GetFrameLevel()
+				if lvl and b.SetFrameLevel then b:SetFrameLevel(lvl + 2) end
+				b:SetScript("OnClick", function() SUI.Claim(data[i + offset]) end)
+				b:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.ClaimLines(data[i + offset])) end)
+				b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				b:Hide()
+				r.claim = b
+			end
+		end
 		heads[m] = {}
 		for j, c in ipairs(cols) do
 			local hb = CreateFrame("Button", nil, frame)
@@ -456,6 +470,7 @@ local function showTable()
 		for _, r in ipairs(rows) do
 			for _, c in ipairs(r.cells) do c:SetText("") end
 			if r.button then r.button:SetShown(on) end
+			if r.claim and not on then r.claim:Hide() end
 			if not on then r.bg:Hide() end
 		end
 		for _, hb in ipairs(heads[m]) do
@@ -547,6 +562,73 @@ function SUI.Next()
 	SUI.UpdateNext()
 end
 
+-- Claiming an order from its row ---------------------------------------------------------------
+local claimedID -- the order we asked the game to claim, to show it once the game says yes
+
+local function claimedOrder()
+	local co = C_CraftingOrders
+	return co and co.GetClaimedOrder and co.GetClaimedOrder()
+end
+
+--- "claimed" (this order is yours: the button opens it), "busy" (another order is claimed: the
+--- game allows one at a time) or "free".
+function SUI.ClaimState(d)
+	if not (d and d.orderID) then return nil end
+	local c = claimedOrder()
+	if c and CH.Orders.Same(c.orderID, d.orderID) then return "claimed" end
+	return c and "busy" or "free"
+end
+
+function SUI.ClaimLines(d)
+	local T = CH.Theme
+	local state = SUI.ClaimState(d)
+	if not state then return { { "Claim" } } end
+	local lines = { { (state == "claimed" and "Open " or "Claim ") .. (d.name or "the order"), d.customer or d.from or "" } }
+	if state == "claimed" then
+		table.insert(lines, { T.Color("muted", "You have this order: opens it on the Crafting Orders tab to craft and turn in.") })
+	elseif state == "busy" then
+		table.insert(lines, { T.Color("bad", "You already have an order claimed. Turn it in or release it first.") })
+	else
+		table.insert(lines, { T.Color("muted", "Claims the order and opens it, so you can craft it and turn it in.") })
+		if not d.ok then table.insert(lines, { T.Color("bad", "AuctionIQ couldn't price this one: check it before you craft.") }) end
+	end
+	return lines
+end
+
+--- Claim a work order from its row, or open it when it's already yours. Must be called from a click.
+function SUI.Claim(d)
+	local state = SUI.ClaimState(d)
+	if not state then return false end
+	if state == "claimed" then CH.Orders.Open(claimedOrder(), d.recipeID); return true end
+	if state == "busy" then
+		CH.Print("you already have an order claimed: turn it in or release it before claiming another.")
+		return false
+	end
+	local o = CH.Orders.Live(d.orderID)
+	if not o then
+		CH.Print("that order isn't listed any more: click Work orders to fetch them again.")
+		return false
+	end
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	claimedID = o.orderID
+	C_CraftingOrders.ClaimOrder(o.orderID, info and info.profession)
+	return true
+end
+
+CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
+	if not claimedID or not CH.Orders.Same(claimedID, orderID) then return end
+	claimedID = nil
+	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
+	if result ~= nil and result ~= ok then
+		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it.")
+	else
+		local o = CH.Orders.Live(orderID)
+		if o then CH.Orders.Open(o) end
+	end
+	if frame and frame:IsShown() then SUI.Refresh() end
+end)
+
 -- Work orders and first crafts.
 local function refreshLists()
 	local T = CH.Theme
@@ -588,6 +670,14 @@ local function refreshLists()
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
+		if r.claim then
+			local state = d and mode == "orders" and SUI.ClaimState(d)
+			r.claim:SetShown(state and true or false)
+			if state then
+				r.claim:SetText(state == "claimed" and "Open" or "Claim")
+				if r.claim.SetAlpha then r.claim:SetAlpha(state == "busy" and 0.45 or 1) end
+			end
+		end
 		if d and mode == "orders" then
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
