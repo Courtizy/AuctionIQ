@@ -6,10 +6,10 @@
 AuctionIQ helps you decide what to do, then keeps the books on what actually happened.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-In%20development-e0a83a?style=for-the-badge" alt="Status: in development">
+  <img src="https://img.shields.io/badge/Status-In%20development-3fc7eb?style=for-the-badge" alt="Status: in development">
   <img src="https://img.shields.io/badge/WoW-Retail-34c77b?style=for-the-badge&logo=battledotnet&logoColor=white" alt="WoW Retail">
   <a href="https://github.com/Courtizy/AuctionIQ/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/Courtizy/AuctionIQ/test.yml?branch=main&style=for-the-badge&label=Tests" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Courtizy/AuctionIQ?style=for-the-badge&color=263a63" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Courtizy/AuctionIQ?style=for-the-badge&color=1a1a1a" alt="License"></a>
 </p>
 
 A World of Warcraft addon that puts crafting and auction advice in one place: what to craft, buy,
@@ -24,6 +24,8 @@ makes you a better goblin.
 - **One window, four tabs**: everything a gold-maker needs, from the first scan to the final tally
 - **Know what's worth crafting**: every recipe ranked by profit, Concentration included
 - **Compare reagent costs**: the advisor looks for the cheapest mix for each quality
+- **Know where an estimate breaks**: break-even sale price per item, a downside scenario, what Concentration adds over the plain craft per point, and what each sales estimate rests on
+- **Analyze a batch**: the chance a week's sales pay back 10, 30 or 100 crafts, the cash that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
 - **A plan for every knowledge point**, drawn right on your profession trees
 - **Plan crafting, shopping, auctions and mail** across your warband
@@ -36,6 +38,21 @@ makes you a better goblin.
 | <img src="Media/readme/Tab-Research.png" width="28" height="28" alt=""> **Research** | What's worth doing |
 | <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | Getting it done |
 | <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What actually happened |
+
+## Look and branding
+
+AuctionIQ is styled after [ToxiUI](https://toxiui.com)'s Dark look: graphite panels, black borders,
+soft shadows and Montserrat titles. Every title bar carries the brand, **AUCTIONIQ**,
+with the IQ in the theme colour.
+
+| You run | Theme colour (IQ, accent, active tab, selection) | Progress bars |
+|---|---|---|
+| ToxiUI | ToxiUI's theme colour, so it changes with your class as you swap characters (pink on a Paladin, blue on a Mage) | ToxiUI's class gradient, from its own settings |
+| ElvUI | ElvUI's value colour | A shade of that colour into it |
+| Neither | AuctionIQ blue `#3fc7eb` | AuctionIQ blue's gradient, `#0080d7` to `#00d8ff` |
+
+The Accounting tab keeps its plum and parchment, with the brand's IQ still in the theme colour.
+`/aiq theme` also takes ElvUI's backdrop and border colours. The full palette is in [THEME.md](THEME.md).
 
 ## AddOns
 

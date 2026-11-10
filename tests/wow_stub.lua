@@ -78,7 +78,7 @@ local function newFrame(parent, kind, template)
 	setmetatable(f, { __index = function() return function() end end })
 	return f
 end
-function CreateFrame(kind, _, parent, template) return newFrame(parent, kind, template) end
+function CreateFrame(kind, name, parent, template) local f = newFrame(parent, kind, template); if name then _G[name] = f end; return f end
 UIParent = newFrame()
 UIParent.w, UIParent.h = 1920, 1080
 function Mixin(t) return t end

@@ -45,6 +45,9 @@ function Q.FromRow(result, r)
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
 		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item,
+		-- Ingenuity: the chance a Concentration craft refunds, and how many points it gives back
+		ingenuity = r.concentration and r.ingenuity or nil,
+		refund = r.concentration and r.concentration * ((CH.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
 		reagents = reagents, shop = shop, qty = 0,
 	}
 end
@@ -98,6 +101,7 @@ function Q.FromScan(charKey, char, row, conc)
 	return { char = charKey, charName = char.name, class = char.class, recipeID = row.recipeID, name = row.name,
 		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = conc and row.concentration or nil,
 		profit = conc and row.concProfit or row.profit, cost = acc.cost, item = conc and (row.concItem or row.item) or row.item,
+		avgConcentration = conc and (row.avgConcentration or acc.avgConcentration) or nil,
 		reagents = acc.queue, shop = shop, qty = 0 }
 end
 
@@ -370,9 +374,9 @@ function Q.FillPlan(profID, opts)
 end
 
 --- Reagents for the whole queue: need, have, buy and what buying costs, walking the listings. Sorted by cost, biggest first.
-function Q.ShoppingList()
+function Q.ShoppingList(entries)
 	local need, rank, tiers = {}, {}, {}
-	for _, e in ipairs(list()) do
+	for _, e in ipairs(entries or list()) do
 		for _, s in ipairs(e.shop) do
 			need[s.itemID] = (need[s.itemID] or 0) + s.n * e.qty
 			rank[s.itemID] = s.rank
@@ -413,6 +417,107 @@ function Q.ShoppingList()
 	end
 	table.sort(out, function(a, b) return (a.cost or 0) > (b.cost or 0) end)
 	return out, total
+end
+
+-- The saved profession on a character that has a recipe (from its scan or its best crafts).
+local function professionOf(charKey, recipeID)
+	local c = CH.db.characters and CH.db.characters[charKey]
+	for id, p in pairs(c and c.professions or {}) do
+		for _, r in ipairs(p.scan and p.scan.rows or {}) do
+			if r.recipeID == recipeID then return p, id end
+		end
+		for _, r in ipairs(p.crafts or {}) do
+			if r.recipeID == recipeID then return p, id end
+		end
+	end
+	if charKey == CH.CharacterKey() and CH.OpenProfessionID then
+		local id = CH.OpenProfessionID()
+		local info = id and C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(recipeID)
+		if info and info.learned then return c and c.professions[id], id end
+	end
+end
+Q.ProfessionOf = professionOf
+
+--- What the queue needs against what you have: gold (to buy the reagents you're short of, against
+--- this character's gold), reagents (their value on hand against all the queue uses) and
+--- Concentration (each craft's full cost, on each character's profession; refunds aren't counted
+--- until they happen). Also the first craft, in queue order, that hits each limit: { gold, reagents,
+--- conc = { need, have, entry, n, why } ... , stop = { entry, n, why } } where n is the craft's
+--- number within its entry and why is "gold", "reagents" or "concentration".
+function Q.Budget()
+	local shop, total = Q.ShoppingList()
+	local out = { gold = { need = total, have = GetMoney and GetMoney() or 0 }, reagents = { need = 0, have = 0 },
+		conc = { need = 0, have = 0 } }
+	local unit = {}
+	for _, s in ipairs(shop) do
+		local u = s.unit or 0
+		unit[s.itemID] = u
+		out.reagents.need = out.reagents.need + s.need * u
+		out.reagents.have = out.reagents.have + math.min(s.have, s.need) * u
+	end
+	-- walk the queue craft by craft: reagents on hand first, then buying, then Concentration
+	local stock, gold, points, seen, seq, start = {}, out.gold.have, {}, {}, {}, {}
+	-- Ingenuity on an entry: saved with it, else worked out from the average cost its scan kept
+	local function refundOf(e) return e.refund or (e.concentration or 0) * (CH.Stats.REFUND or 0.5) end
+	local function ingOf(e)
+		if e.ingenuity then return e.ingenuity end
+		local avg = e.avgConcentration
+		if not avg or not e.concentration or e.concentration <= 0 then return 0 end
+		return math.max(0, math.min(1, (1 - avg / e.concentration) / (CH.Stats.REFUND or 0.5)))
+	end
+	local function first(kind, e, n, extra)
+		if not out[kind].stop then out[kind].stop = { entry = e, n = n, why = kind, extra = extra } end
+		if not out.stop and kind ~= "reagents" then out.stop = out[kind].stop end
+	end
+	for _, e in ipairs(list()) do
+		local p, pid
+		if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
+		local pk = p and (e.char .. ":" .. tostring(pid))
+		if pk and not seen[pk] then
+			seen[pk] = true
+			points[pk] = CH.ConcentrationNow(p) or 0
+			start[pk] = points[pk]
+			out.conc.have = out.conc.have + points[pk]
+		end
+		if e.concentration then out.conc.need = out.conc.need + e.concentration * e.qty end
+		for n = 1, e.qty do
+			for _, s in ipairs(e.shop or {}) do
+				if stock[s.itemID] == nil then stock[s.itemID] = have(s.itemID) end
+				local take = math.min(stock[s.itemID], s.n)
+				stock[s.itemID] = stock[s.itemID] - take
+				local short = s.n - take
+				if short > 0 then
+					first("reagents", e, n, s.itemID)
+					gold = gold - short * (unit[s.itemID] or 0)
+					if gold < 0 then first("gold", e, n) end
+				end
+			end
+			if e.concentration then
+				if pk then
+					if points[pk] < e.concentration then first("conc", e, n) else points[pk] = points[pk] - e.concentration end
+					seq[pk] = seq[pk] or {}
+					table.insert(seq[pk], { cost = e.concentration, ing = ingOf(e), refund = refundOf(e), entry = e, n = n })
+				end
+			end
+		end
+	end
+	-- refund upside: the chance Ingenuity refunds earlier in the queue let the blocked craft start
+	local st = out.conc.stop
+	if st and CH.Decide then
+		for pk, list in pairs(seq) do
+			local reach = CH.Decide.ConcSequence(start[pk], list)
+			for k, c in ipairs(list) do
+				if c.entry == st.entry and c.n == st.n then
+					st.upside = reach[k]
+					-- crafts beyond the points you have that refunds cover on average
+					local extra = 0
+					for j = k, #list do extra = extra + (reach[j] or 0) end
+					st.extra = extra
+				end
+			end
+		end
+	end
+	return out
 end
 
 --- Whether this character can craft an entry now: theirs, profession open, recipe known.

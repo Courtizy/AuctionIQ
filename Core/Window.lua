@@ -7,6 +7,33 @@ CH.Window = W
 
 --- A movable panel with the AuctionIQ title bar. Returns the frame; frame.bar holds buttons,
 --- frame.title the title text, frame.close the close button.
+--- Close a window with Escape, like the game's own windows and other addons: it joins the game's
+--- list of windows Escape closes, so the first press closes it before the game menu opens. As a
+--- backup, while it shows it hears Escape itself (outside combat, where that is allowed) and closes.
+function W.CloseOnEscape(f, name)
+	if name and UISpecialFrames then
+		local known = false
+		for _, n in ipairs(UISpecialFrames) do if n == name then known = true end end
+		if not known then table.insert(UISpecialFrames, name) end
+	end
+	if not (f and f.EnableKeyboard and f.SetPropagateKeyboardInput) then return end
+	f:EnableKeyboard(true)
+	f:SetPropagateKeyboardInput(true)
+	f:SetScript("OnKeyDown", function(self, key)
+		if InCombatLockdown and InCombatLockdown() then return end -- keys pass on; the list closes it
+		if key == "ESCAPE" then
+			-- one press closes every AuctionIQ window, as the game closes all of its own
+			self:SetPropagateKeyboardInput(false)
+			for _, n in ipairs(UISpecialFrames or {}) do
+				local w = type(n) == "string" and n:find("^AuctionIQ") and _G[n]
+				if w and w.IsShown and w:IsShown() then w:Hide() end
+			end
+			self:Hide()
+			self:SetPropagateKeyboardInput(true)
+		end
+	end)
+end
+
 function W.New(name, title, width, height)
 	local T = CH.Theme
 	T.Sync()
@@ -22,7 +49,7 @@ function W.New(name, title, width, height)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
 	f:SetPoint("CENTER")
 	f:Hide()
-	table.insert(UISpecialFrames, name)
+	W.CloseOnEscape(f, name)
 
 	local bar = CreateFrame("Frame", nil, f, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)
@@ -30,17 +57,15 @@ function W.New(name, title, width, height)
 	bar:SetPoint("TOPRIGHT")
 	bar:SetHeight(26)
 	local rule = bar:CreateTexture(nil, "ARTWORK")
-	rule:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+	T.AccentTexture(rule)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(1)
-	local badge = bar:CreateTexture(nil, "ARTWORK")
-	badge:SetTexture(CH.ICON)
-	badge:SetSize(20, 20) -- a little larger than the 14px tab symbols
-	badge:SetPoint("LEFT", 4, 0)
+	rule:SetHeight(2) -- ToxiUI's accent line under the title bar
+	f.rule = rule
+	-- the brand alone, no icon: AUCTIONIQ with IQ in the theme colour
 	f.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	f.title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
-	f.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", title))
+	f.title:SetPoint("LEFT", 10, 0)
+	T.BrandTitle(f.title, title)
 	f.close = T.Button(bar, "x", 18, 18)
 	f.close:SetPoint("RIGHT", -4, 0)
 	f.close:SetScript("OnClick", function() f:Hide() end)
@@ -254,6 +279,7 @@ local function buildStrip()
 	strip:SetFrameStrata("HIGH")
 	strip:SetSize(10, 22)
 	strip:Hide()
+	if UISpecialFrames then table.insert(UISpecialFrames, "AuctionIQTabs") end
 	strip.buttons = {}
 	for i, t in ipairs(tabs) do
 		local b = T.Button(strip, t.label, 74, 22)

@@ -245,11 +245,24 @@ local function panel(parent, x, y, w, h)
 end
 
 local function setLabel(b, t) if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end end
+-- A tab or toggle: the active one in the accent with ToxiUI's 2px accent line under it.
 local function colorButton(b, on)
 	local T = CH.Theme
 	local f = b.text or (b.GetFontString and b:GetFontString())
 	local c = on and T.accent or T.fg
 	if f and f.SetTextColor then f:SetTextColor(c[1], c[2], c[3]) end
+	local line = rawget(b, "aiqLine")
+	if not line and b.CreateTexture then
+		line = b:CreateTexture(nil, "OVERLAY")
+		line:SetPoint("BOTTOMLEFT", 1, 1)
+		line:SetPoint("BOTTOMRIGHT", -1, 1)
+		line:SetHeight(2)
+		b.aiqLine = line
+	end
+	if line then
+		line:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+		line:SetShown(on and true or false)
+	end
 end
 
 local function money(c, sign)
@@ -568,7 +581,7 @@ UI.TABS, UI.OLD = TABS, OLD
 
 --- The window title: AuctionIQ, on every tab (Accounting keeps its plum colours).
 local function titleText()
-	return CH.Theme.Color("accent", "AuctionIQ") -- the icon is the title bar's badge, beside it
+	return CH.Theme.Wordmark() -- the icon is the title bar's badge, beside it
 end
 UI.TitleText = titleText
 
@@ -756,6 +769,32 @@ function build()
 	frame.foot = fs(frame, 12, -H + 16, W - 40, "LEFT", "GameFontDisableSmall")
 	frame.foot:ClearAllPoints()
 	frame.foot:SetPoint("BOTTOMLEFT", 12, 8) -- stays at the bottom when the window is resized
+	frame.foot:SetWidth(300)
+	-- Concentration on the fullest characters, as class-gradient bars along the footer
+	frame.conc = {}
+	local prev
+	for i = 3, 1, -1 do
+		local s = CreateFrame("Frame", nil, frame)
+		s:SetSize(170, 14)
+		if prev then s:SetPoint("RIGHT", prev, "LEFT", -12, 0) else s:SetPoint("BOTTOMRIGHT", -28, 6) end
+		s.name = CH.Window.OneLine(fs(s, 0, -1, 70, "RIGHT", "GameFontHighlightSmall"))
+		s.back = s:CreateTexture(nil, "BACKGROUND")
+		s.back:SetPoint("LEFT", 76, 0)
+		s.back:SetSize(60, 6)
+		s.back:SetColorTexture(0, 0, 0, 0.6)
+		s.fill = s:CreateTexture(nil, "ARTWORK")
+		s.fill:SetPoint("LEFT", s.back, "LEFT", 0, 0)
+		s.fill:SetSize(60, 6)
+		s.value = CH.Window.OneLine(fs(s, 140, -1, 30, "LEFT", "GameFontDisableSmall"))
+		local hit = CreateFrame("Button", nil, s)
+		hit:SetAllPoints(s)
+		hit:SetScript("OnClick", function() UI.Go("research", "professions") end)
+		hit:SetScript("OnEnter", function(self) if s.tip then CH.Window.Tooltip(self, s.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		s:Hide()
+		frame.conc[i] = s
+		prev = s
+	end
 	frame:SetScript("OnShow", function()
 		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
@@ -895,6 +934,66 @@ function UI.DashboardFigures(now)
 	return f
 end
 
+--- Concentration on every character's professions, fullest first: { char, class, prof, cur, max,
+--- hours (to full), best = { name, gain (gold per expected point over the plain craft) } }.
+function UI.ConcentrationBars(now)
+	now = now or time()
+	local out = {}
+	for key, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			local cur, max
+			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
+			if cur and max and max > 0 then
+				local best
+				for _, r in ipairs(p.scan and p.scan.rows or {}) do
+					local g = CH.Scan and CH.Scan.GainPerPoint(r)
+					if g and g > 0 and (not best or g > best.gain) then best = { name = r.name, gain = g } end
+				end
+				table.insert(out, { key = key, char = c.name or key, class = c.class, prof = p.name, cur = cur, max = max,
+					hours = cur >= max and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR), best = best })
+			end
+		end
+	end
+	table.sort(out, function(a, b) if a.hours ~= b.hours then return a.hours < b.hours end return a.char < b.char end)
+	return out
+end
+
+-- A bar drawn in text, for tooltips: filled share of `width` pixels in one colour, the rest in another.
+local BAR = "|TInterface\\Buttons\\WHITE8X8:8:%d:0:0:8:8:0:8:0:8:%d:%d:%d|t"
+local function textBar(share, width)
+	local T = CH.Theme
+	local on = math.max(0, math.min(width, math.floor(share * width + 0.5)))
+	local function part(w, c) return w > 0 and string.format(BAR, w, math.floor(c[1] * 255), math.floor(c[2] * 255), math.floor(c[3] * 255)) or "" end
+	return part(on, T.accent) .. part(width - on, T.muted)
+end
+UI.TextBar = textBar
+
+--- The footer's Concentration bars: the three fullest characters, each a class-gradient bar with
+--- its points. Returns what it drew, for the tests: { { char, cur, max, share } }.
+function UI.RenderConcFooter()
+	local slots = frame and frame.conc
+	local out = {}
+	if not slots then return out end
+	local T = CH.Theme
+	local bars = UI.ConcentrationBars()
+	for i, s in ipairs(slots) do
+		local b = bars[i]
+		s:SetShown(b ~= nil)
+		if b then
+			local share = math.max(0, math.min(1, b.cur / b.max))
+			s.name:SetText(classColor(b.class) .. b.char .. "|r")
+			T.Gradient(s.fill)
+			s.fill:SetWidth(math.max(1, 60 * share))
+			s.fill:SetShown(share > 0)
+			s.value:SetText(b.cur >= b.max and T.Color("bad", tostring(b.cur)) or tostring(b.cur))
+			s.tip = { { (b.char or "?") .. "  " .. T.Color("muted", b.prof or "") }, { string.format("%d/%d Concentration", b.cur, b.max) },
+				{ b.hours == 0 and T.Color("bad", "Full: spend it before it's wasted.") or T.Color("muted", "Full in " .. b.hours .. "h.") } }
+			table.insert(out, { char = b.char, cur = b.cur, max = b.max, share = share })
+		end
+	end
+	return out
+end
+
 local function refreshFigures(d)
 	local T = CH.Theme
 	local f = UI.DashboardFigures()
@@ -912,8 +1011,15 @@ local function refreshFigures(d)
 		{ T.Color("muted", "Click for the work queue in Operations.") } }
 	F.conc.value:SetText(f.conc > 0 and T.Color("accent", f.conc) or "0")
 	F.conc.sub:SetText(f.conc > 0 and T.Color("muted", "wasting") or T.Color("muted", "none full"))
-	local tip = { { "Professions at full Concentration: it stops refilling until you spend it." } }
-	for _, n in ipairs(f.concList) do table.insert(tip, { n }) end
+	local tip = { { "Concentration by character, fullest first: who to log into first." } }
+	for _, b in ipairs(UI.ConcentrationBars()) do
+		table.insert(tip, { classColor(b.class) .. b.char .. "|r " .. T.Color("muted", b.prof or "?") .. "  " .. textBar(b.cur / b.max, 80),
+			string.format("%d/%d  ", b.cur, b.max) .. (b.hours == 0 and T.Color("bad", "full") or T.Color("muted", "full in " .. b.hours .. "h")) })
+		if b.best then
+			table.insert(tip, { T.Color("muted", "   best: " .. (b.best.name or "?")), T.Color("ok", "+" .. CH.FormatMoney(b.best.gain)) .. T.Color("muted", " a point over plain") })
+		end
+	end
+	if #tip == 1 then table.insert(tip, { T.Color("muted", "Open each character's professions once to see it here.") }) end
 	F.conc.hit.tip = tip
 	return f
 end
@@ -1030,8 +1136,8 @@ function UI.Refresh()
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
 	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
-	frame.foot:SetText(CH.Theme.Color("muted", "/aiq dashboard, research, operations, report.  /aiq help for more.")
-		.. "   " .. CH.Theme.Color("accent", "All trades settled in gold."))
+	frame.foot:SetText(CH.Theme.Color("muted", "/aiq help for commands.  Esc closes."))
+	UI.RenderConcFooter()
 	if page == "today" then return refreshDashboard()
 	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
 	elseif beside == "paths" then refreshLedger(); return CH.PathsUI.Refresh()

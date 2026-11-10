@@ -6,6 +6,8 @@ local QUI = {}
 CH.QueueUI = QUI
 local panel, qrows, srows, shopHead, empty
 local QROWS, SROWS, W = 8, 8, 540
+local BUDGET_H = 84 -- the budget bars under the shopping list
+local budget -- { head, bars = { { label, fill, need, text } }, stop }
 local qOffset, sOffset = 0, 0
 local qBar, sBar
 
@@ -80,14 +82,14 @@ local function build()
 	T.Sync()
 	panel = CreateFrame("Frame", "AuctionIQQueue", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
-	panel:SetSize(W, 74 + (QROWS + SROWS) * 18 + 40)
+	panel:SetSize(W, 74 + (QROWS + SROWS) * 18 + 40 + BUDGET_H)
 	panel:SetFrameStrata("HIGH")
 	panel:SetMovable(true)
 	panel:SetClampedToScreen(true)
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
-	table.insert(UISpecialFrames, "AuctionIQQueue")
+	CH.Window.CloseOnEscape(panel, "AuctionIQQueue")
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)
@@ -208,6 +210,33 @@ local function build()
 	swheel:SetSize(W, SROWS * 18)
 	sBar = CH.Window.ScrollBar(panel, W - 5, y - 16, SROWS * 18, true)
 	CH.Window.Wheel(swheel, SROWS, function() return sOffset end, function(v) sOffset = v end, function() return #(CH.Queue.ShoppingList()) end, QUI.Refresh, sBar)
+
+	-- Budget: gold, reagents and Concentration, on hand against still needed, and what stops the queue
+	y = y - SROWS * 18 - 22
+	budget = { head = CH.Window.OneLine(text(panel, 12, y, W - 24 - 110, "LEFT", "GameFontNormalSmall")), bars = {} }
+	local plans = T.Button(panel, "Compare plans", 100, 16)
+	plans:SetPoint("TOPRIGHT", -12, y + 2)
+	plans:SetScript("OnClick", function(self) CH.Window.Tooltip(self, QUI.PlanLines()) end)
+	plans:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Compare restock plans" },
+		{ T.Color("muted", "The queue as it is against a lean plan of a few days' sales: gold up front, gold back in a week, and stock left. Click to run it.") } }) end)
+	plans:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	budget.plans = plans
+	for i, name in ipairs({ "Gold", "Reagents", "Concentration" }) do
+		local by = y - 4 - i * 14
+		local b = { label = CH.Window.OneLine(text(panel, 12, by, 90)) }
+		b.label:SetText(name)
+		b.track = panel:CreateTexture(nil, "BACKGROUND")
+		b.track:SetPoint("TOPLEFT", 106, by - 1)
+		b.track:SetSize(260, 9)
+		b.track:SetColorTexture(T.bad[1], T.bad[2], T.bad[3], 0.35)
+		b.fill = panel:CreateTexture(nil, "ARTWORK")
+		b.fill:SetPoint("TOPLEFT", 106, by - 1)
+		b.fill:SetSize(1, 9)
+		b.fill:SetColorTexture(T.ok[1], T.ok[2], T.ok[3], 0.8)
+		b.text = CH.Window.OneLine(text(panel, 372, by, W - 372 - 12, "RIGHT"))
+		budget.bars[i] = b
+	end
+	budget.stop = CH.Window.OneLine(text(panel, 12, y - 4 - 4 * 14, W - 24))
 	T.Fonts(panel)
 	CH.Window.Attach("queue", panel)
 end
@@ -275,6 +304,82 @@ function QUI.Refresh()
 			for j = 1, 5 do r[j]:SetText("") end
 		end
 	end
+	lines.budget = QUI.RenderBudget()
+	return lines
+end
+
+local function ordinal(n) return CH.Decide and CH.Decide.Ordinal(n) or tostring(n) end
+
+--- The budget lines: each bar's text, and the craft that hits a limit first. Also used by the tests.
+function QUI.BudgetLines(b)
+	local T, M = CH.Theme, CH.FormatMoney
+	b = b or CH.Queue.Budget()
+	local out = {}
+	local function line(x, fmt, unitFmt)
+		if x.need <= 0 then return T.Color("muted", "none needed") end
+		local short = math.max(0, x.need - x.have)
+		return string.format("%s of %s on hand", unitFmt(math.min(x.have, x.need)), unitFmt(x.need))
+			.. (short > 0 and T.Color("bad", ", " .. unitFmt(short) .. " short") or T.Color("ok", ", covered"))
+	end
+	out[1] = line(b.gold, nil, M)
+	out[2] = line(b.reagents, nil, M)
+	out[3] = line(b.conc, nil, function(v) return tostring(math.floor(v + 0.5)) .. " pts" end)
+	local function at(st)
+		local e = st.entry
+		return string.format("the %s %s%s", ordinal(st.n), e.name or "?", e.charName and (" (" .. e.charName .. ")") or "")
+	end
+	local WHY = { gold = "you run out of gold to buy its reagents", conc = "Concentration runs out", reagents = "reagents on hand run out" }
+	local cs = b.conc.stop
+	local up = cs and cs.upside and cs.upside >= 0.005 and T.Color("muted", string.format(" %d%% chance refunds cover it.", math.floor(cs.upside * 100 + 0.5))) or ""
+	if b.stop then
+		out[4] = T.Color("bad", "Stops at " .. at(b.stop) .. ": " .. WHY[b.stop.why]) .. "." .. (b.stop == cs and up or "")
+	elseif b.reagents.stop then
+		out[4] = T.Color("muted", "Buy first: " .. WHY.reagents .. " at " .. at(b.reagents.stop) .. ". Gold and Concentration cover the rest.")
+	elseif CH.db.queue[1] then
+		out[4] = T.Color("ok", "Nothing blocks this queue.")
+	else
+		out[4] = ""
+	end
+	return out
+end
+
+--- The plan comparison, as tooltip lines: for each plan, gold up front, gold back in a week (median
+--- and the middle 80% of runs), the chance it pays back, and the stock left. Also used by the tests.
+function QUI.PlanLines(opts)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = { { T.Color("accent", "Restock plans") .. T.Color("muted", string.format("  %d days, prices share one market move", CH.Decide.HORIZON)) } }
+	if not CH.db.queue[1] then
+		table.insert(out, { T.Color("muted", "The queue is empty.") })
+		return out
+	end
+	for _, plan in ipairs(CH.Decide.Plans()) do
+		local r = CH.Decide.Plan(plan.entries, opts)
+		table.insert(out, { T.Color("accent", plan.label), string.format("%d crafts", r.crafts) })
+		table.insert(out, { "   Gold up front, to buy reagents", M(r.cash) })
+		table.insert(out, { "   Gold back by day " .. CH.Decide.HORIZON .. T.Color("muted", string.format("  80%%: %s to %s", M(r.back.p10 or 0), M(r.back.p90 or 0))), M(r.back.p50 or 0) })
+		table.insert(out, { "   Chance sales cover the reagents", string.format("%d%%", math.floor(r.recover * 100 + 0.5)) })
+		table.insert(out, { "   Stock left, estimated value", M(r.left) })
+		if r.unpriced > 0 then table.insert(out, { T.Color("muted", string.format("   %d entries left out: no scan or price for their item", r.unpriced)) }) end
+	end
+	table.insert(out, { T.Color("muted", "Sales from region volume capped at your daily cap; price spread from Scenarios. Gold back counts only what sells.") })
+	return out
+end
+
+--- Draw the budget bars. Returns their lines.
+function QUI.RenderBudget()
+	if not budget then return {} end
+	local T = CH.Theme
+	local b = CH.Queue.Budget()
+	local lines = QUI.BudgetLines(b)
+	budget.head:SetText(T.Color("accent", "Budget") .. T.Color("muted", "  green on hand, red still needed"))
+	for i, k in ipairs({ "gold", "reagents", "conc" }) do
+		local x, bar = b[k], budget.bars[i]
+		local share = x.need > 0 and math.min(1, x.have / x.need) or 1
+		bar.fill:SetSize(math.max(1, 260 * share), 9)
+		bar.track:SetAlpha(x.need > 0 and 1 or 0.3)
+		bar.text:SetText(lines[i])
+	end
+	budget.stop:SetText(lines[4])
 	return lines
 end
 
