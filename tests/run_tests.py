@@ -2354,6 +2354,10 @@ run("AuctionIQ.UI.Page('ledger', 'inventory')")
 check("Inventory: one view, what you hold against what it cost", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory"])
 ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
 check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
+lt = ir[0].cellTip(7)
+check("Inventory: Last sold sits before Days of stock, with the sales rate on hover",
+      [c[1] for c in L.eval("AuctionIQ.LedgerUI.ViewDef('inventory').cols").values()][-2:] == ["Last sold", "Days of stock"]
+      and plain(lt[1][1]) == "Last sold" and any(plain(x[1]) == "Sold in 30 days" for x in lt.values() if x[1]))
 for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)

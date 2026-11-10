@@ -40,8 +40,8 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
 	-- what you hold and what it's worth against what it cost; hover Held for where it is
-	inventory = { label = "Inventory", parent = "Inventory", sort = 5, cols = { { "Item", 0, 190 }, { "Held", 194, 50 }, { "Paid each", 248, 84 },
-		{ "Worth each", 336, 84 }, { "Value", 424, 100 }, { "Unrealized", 528, 96 }, { "Days of stock", 628, 96 } } },
+	inventory = { label = "Inventory", parent = "Inventory", sort = 5, cols = { { "Item", 0, 166 }, { "Held", 170, 46 }, { "Paid each", 220, 78 },
+		{ "Worth each", 302, 78 }, { "Value", 384, 90 }, { "Unrealized", 478, 84 }, { "Last sold", 566, 70 }, { "Days of stock", 640, 84 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
 	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
@@ -224,9 +224,11 @@ function LUI.Rows(v, opts)
 		local total, gain = 0, 0
 		-- what each cost: what you paid in the last 30 days of buying it, else what it costs to make
 		local paid, crafted, index = L.Paid(), L.Crafted(), L.PaidIndex()
-		local sold30 = {}
+		local sold30, sold7, last = {}, {}, {}
 		for _, s in ipairs(L.Records("Sales")) do
 			if s.id and s.time >= now - 30 * 86400 then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
+			if s.id and s.time >= now - 7 * 86400 then sold7[s.id] = (sold7[s.id] or 0) + s.quantity end
+			if s.id and (not last[s.id] or s.time > last[s.id].time) then last[s.id] = s end
 		end
 		for _, e in ipairs(L.Inventory(opts.filter, opts.char)) do
 			local text, name = LUI.ItemText(e.id)
@@ -237,10 +239,15 @@ function LUI.Rows(v, opts)
 			if un then gain = gain + un end
 			local perDay = (sold30[e.id] or 0) / 30
 			local days = perDay > 0 and e.total / perDay or nil
+			-- when you last sold one, in days (TSM keeps your sales, not the market's)
+			local ls = last[e.id]
+			local ago = ls and math.max(0, math.floor((now - ls.time) / 86400))
+			local agoText = not ls and T.Color("muted", "never") or ago == 0 and T.Color("ok", "today")
+				or T.Color(ago <= 7 and "ok" or ago <= 30 and "fg" or "bad", ago .. (ago == 1 and " day" or " days"))
 			table.insert(out, { id = e.id, cells = { text, e.total, each and money(each) or T.Color("muted", "-"),
 				e.bound and T.Color("muted", "bound") or money(e.unit), e.bound and T.Color("muted", "-") or money(e.value),
-				un and signed(un) or T.Color("muted", "-"), days and string.format("%.0f", days) or T.Color("muted", "no sales") },
-				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, days or math.huge },
+				un and signed(un) or T.Color("muted", "-"), agoText, days and string.format("%.0f", days) or T.Color("muted", "no sales") },
+				sort = { name, e.total, each or -1, e.unit or 0, e.value, un or -math.huge, ago or math.huge, days or math.huge },
 				cellTip = function(j)
 					if j == 2 then
 						local lines = { { "Where it is" } }
@@ -255,6 +262,24 @@ function LUI.Rows(v, opts)
 						return { { "Unrealized" }, { "Worth against paid", string.format("%+d%%", math.floor((e.unit - each) / each * 100 + 0.5)) },
 							{ T.Color("muted", "Not profit until it sells. The Balance Sheet carries the lower of the two, after the AH cut.") } }
 					elseif j == 7 then
+						local lines = { { "Last sold" } }
+						if ls then
+							table.insert(lines, { "Last sale", string.format("%s x%d at %s", LUI.Ago(ls.time, now), ls.quantity or 1, money(ls.price)) })
+						else table.insert(lines, { "Last sale", T.Color("muted", "none on record") }) end
+						table.insert(lines, { "Sold in 7 days", tostring(sold7[e.id] or 0) })
+						table.insert(lines, { "Sold in 30 days", string.format("%d (%.1f a day)", sold30[e.id] or 0, perDay) })
+						local sold, expired = 0, 0
+						if L.SellThrough then sold, expired = L.SellThrough(e.id) end
+						if (sold or 0) + (expired or 0) > 0 then
+							table.insert(lines, { "Sell-through, 30 days", string.format("%d%% (%d sold, %d expired)", math.floor(sold / (sold + expired) * 100 + 0.5), sold, expired) })
+						end
+						local rate = CH.Expect and CH.Expect.RegionRate and CH.Expect.RegionRate(e.id)
+						local perDayRegion = CH.Advisor and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(e.id)
+						if perDayRegion then table.insert(lines, { "Region sold a day", string.format("%.1f", perDayRegion) }) end
+						if rate then table.insert(lines, { "Region sale rate", string.format("%d%%", math.floor(rate * 100 + 0.5)) }) end
+						table.insert(lines, { T.Color("muted", "Your own sales, from TSM. The region figures are TSM's market data for every seller.") })
+						return lines
+					elseif j == 8 then
 						return { { "Days of stock" }, { "Sold in 30 days", tostring(sold30[e.id] or 0) }, { T.Color("muted", "How long what you hold lasts at that rate.") } }
 					end
 					return { { ({ "", "", "", "Worth each", "Value" })[j] or "" }, { T.Color("muted", "AuctionIQ value (market) per item, and for all you hold.") } }
