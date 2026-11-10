@@ -64,7 +64,7 @@ local function build()
 	rule:SetHeight(2)
 	local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	title:SetPoint("LEFT", 10, 0)
-	T.BrandTitle(title, "Crafting advisor")
+	T.BrandTitle(title, "Crafting Advisor")
 	local close = T.Button(bar, "x", 18, 18)
 	close:SetPoint("RIGHT", -4, 0)
 	close:SetScript("OnClick", function() settings().hide = true; panel:Hide(); CH.Print("advisor hidden. /aiq advisor brings it back.") end)
@@ -973,7 +973,7 @@ end
 --- The Advisor tab: bring it to the front (turning it back on if it was closed).
 function AUI.Open()
 	if not CH.OpenProfessionID() and not current then
-		CH.Print("open a profession to see the crafting advisor.")
+		CH.Print("open a profession to see the Crafting Advisor.")
 		return
 	end
 	settings().hide = false

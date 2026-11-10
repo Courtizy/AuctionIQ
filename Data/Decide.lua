@@ -5,6 +5,7 @@
 --   Evidence      where a sale estimate comes from: source, age and how many of your own sales
 --   ConcForecast  how many Concentration crafts the points cover now, and the refund upside
 --   Batch         what could happen to a batch over a week (Monte Carlo, on demand)
+--   PostAdvice    post now, post fewer or wait, for stock you hold, inside your TSM limits
 --   Suggest       how many to make, the gold at risk and the stock left after a week, in three
 --                 labelled scenarios (slow, expected, fast), worked out directly, not simulated
 -- A craft's money is split the same way everywhere ("parts"): revenue (items after the cut, net of
@@ -477,6 +478,107 @@ function D.SuggestText(s)
 	local t = string.format("Make %d: %s at risk if it sells slowly.", s.n, M(sc.slow.atRisk))
 	if s.gain then t = t .. string.format(" Concentration adds %s a craft.", M(s.gain)) end
 	return t .. string.format(" Left after a week: %d slow, %d expected, %d fast.", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left))
+end
+
+-- Posting advice -------------------------------------------------------------------------------
+-- For stock you hold in a posting group: post now, post fewer, or wait, with the price, quantity and
+-- reason. It never goes past your TSM operation (its cap, keep, min and max): the most it suggests
+-- is what posting would put up, and fewer when that much would sit on the AH. "Enough" on the AH is
+-- D.POST_DAYS days of the item's sales. Each piece of advice is saved, once an item a day, with what
+-- it assumed, so later it can be compared with what you posted and what sold.
+
+D.POST_DAYS = 2      -- days of sales worth having up at once
+D.PEAK_SHARE = 0.4   -- a selling window this share of your sales or more is worth waiting for
+D.PEAK_AHEAD = 6     -- hours: wait for a window that starts within this many hours, not further
+
+--- Advice for one Ready to post row (TradingUI.PostPlan): { action = "post" | "fewer" | "wait", qty,
+--- price, reason, daily, enough (items worth having up), basis }. opts: daily (sales a day; else the
+--- item's), times (Ledger.SaleTimes entry), hour (now, 0 to 23).
+function D.PostAdvice(r, opts)
+	opts = opts or {}
+	if not r then return nil end
+	local M = CH.FormatMoney
+	local daily = opts.daily
+	if daily == nil then daily = CH.Scan and CH.Scan.DailyUnits(r.id) or 0 end
+	local out = { price = r.price, daily = daily, qty = 0, up = r.up, cap = r.cap }
+	if r.verdict == "full" then
+		out.action, out.reason = "wait", string.format("%d up already, your TSM cap", r.up)
+		return out
+	end
+	if r.verdict == "hold" then
+		out.action = "wait"
+		out.reason = string.format("the AH's lowest (%s) is under your min (%s): TSM won't post below it", M(r.ah or 0), M(r.min or 0))
+		return out
+	end
+	-- a selling window that hasn't opened yet
+	local t = opts.times
+	if t and t.sold >= 3 and t.share >= D.PEAK_SHARE and opts.hour then
+		local ahead = (t.bestHour - opts.hour) % 24
+		if ahead > 0 and ahead <= D.PEAK_AHEAD and ahead > 3 then
+			out.action = "wait"
+			out.reason = string.format("%d%% of your sales come from %02d:00, in %d hours", math.floor(t.share * 100 + 0.5), t.bestHour, ahead)
+			return out
+		end
+	end
+	if not daily or daily <= 0 then
+		out.action, out.qty = "post", r.post
+		out.reason = "no sale rate yet, so TSM's limits decide how many"
+		out.basis = "none"
+		return out
+	end
+	local enough = math.max(1, math.ceil(daily * D.POST_DAYS))
+	out.enough = enough
+	local want = enough - (r.up or 0)
+	if want <= 0 then
+		out.action = "wait"
+		out.reason = string.format("%d up already covers about %s of sales (%s a day)", r.up, D.DaysText(r.up / daily), D.RateText(daily))
+	elseif want < r.post then
+		out.action, out.qty = "fewer", want
+		out.reason = string.format("selling about %s a day: %d up is %d days' worth; TSM would post %d", D.RateText(daily), enough, D.POST_DAYS, r.post)
+	else
+		out.action, out.qty = "post", r.post
+		out.reason = string.format("selling about %s a day; %d up lasts about %s", D.RateText(daily), (r.up or 0) + r.post, D.DaysText(((r.up or 0) + r.post) / daily))
+	end
+	return out
+end
+
+function D.RateText(x) return x % 1 == 0 and tostring(x) or string.format("%.1f", x) end
+function D.DaysText(d)
+	if d < 1 then return "under a day" end
+	local n = math.floor(d + 0.5)
+	return n == 1 and "a day" or (n .. " days")
+end
+
+--- Short label for the advice: "Post 4", "Post 2 (fewer)", "Wait".
+function D.PostLabel(a)
+	if not a then return "" end
+	if a.action == "post" then return "Post " .. a.qty end
+	if a.action == "fewer" then return "Post " .. a.qty .. " (fewer)" end
+	return "Wait"
+end
+
+local function adviceLog()
+	CH.db.postAdvice = CH.db.postAdvice or {}
+	return CH.db.postAdvice
+end
+D.AdviceLog = adviceLog
+D.ADVICE_KEEP = 500
+
+--- Save the advice for an item, at most once a day each (the day's first). Returns the saved entry.
+function D.SaveAdvice(id, a, now)
+	if not (id and a) then return nil end
+	now = now or time()
+	local day = math.floor(now / 86400)
+	local list = adviceLog()
+	for i = #list, math.max(1, #list - 200), -1 do
+		local e = list[i]
+		if e.id == id and e.day == day then return e end
+	end
+	local e = { at = now, day = day, id = id, action = a.action, qty = a.qty, price = a.price, daily = a.daily, up = a.up,
+		cap = a.cap, enough = a.enough, reason = a.reason }
+	list[#list + 1] = e
+	while #list > D.ADVICE_KEEP do table.remove(list, 1) end
+	return e
 end
 
 -- Concentration over a queue (exact) -------------------------------------------------------------

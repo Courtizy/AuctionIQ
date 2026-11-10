@@ -120,4 +120,5 @@ MUI.VIEWS = {
 		{ "Undercut", 342, 80 }, { "Top rival", 426, 150 }, { "Market", 580, 144 } } },
 }
 
-LUI.Register("operations", MUI.VIEWS, { "compare", "market", "rivals", "when" }, "Markets")
+-- (Research/Views.lua files them under Operations, Trade)
+LUI.Register("operations", MUI.VIEWS, {})
