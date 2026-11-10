@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="Media/Logo-Branded.png" width="560" alt="AUCTIONIQ: economic intelligence for the Auction House">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Media/Logo-Readme-Dark.png">
+    <img src="Media/Logo-Readme-Light.png" width="600" alt="AUCTIONIQ: intelligence for the Auction House">
+  </picture>
 </p>
 
 <p align="center">AuctionIQ helps you decide what to do, then keeps the books on what actually happened.</p>

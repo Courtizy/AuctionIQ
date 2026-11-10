@@ -2,7 +2,9 @@
 -- minimap. /ch minimap hides or shows it. No libraries, so it works without LibDBIcon.
 local _, CH = ...
 
-local ICON = CH.ICON
+-- the IQ monogram: a white glyph tinted with the theme colour, so it follows ToxiUI/ElvUI like the window
+local GLYPH = "Interface\\AddOns\\AuctionIQ\\Media\\Icon-IQ"
+local ROUND = "Interface\\AddOns\\AuctionIQ\\Media\\Icon-Round"
 local button
 
 local function place()
@@ -30,24 +32,34 @@ function CH.CreateMinimapButton()
 	button:RegisterForDrag("LeftButton")
 	button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
+	local T = CH.Theme
+	local bg = button:CreateTexture(nil, "BACKGROUND")
 	local icon = button:CreateTexture(nil, "ARTWORK")
-	icon:SetTexture(ICON)
-	icon:SetSize(20, 20)
-	icon:SetPoint("TOPLEFT", 6, -5)
-	if CH.Theme.Elv() and button.SetTemplate then
-		-- ElvUI's minimap is square: a square skinned button instead of the round ring
+	icon:SetTexture(GLYPH)
+	button.glyph = icon
+	if T.Elv() and button.SetTemplate then
+		-- ElvUI's minimap is square: a square skinned button with the accent rule on top
 		button:SetSize(24, 24)
 		button:SetTemplate("Default")
-		icon:ClearAllPoints()
 		icon:SetPoint("TOPLEFT", 1, -1)
 		icon:SetPoint("BOTTOMRIGHT", -1, 1)
-		icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+		local rule = button:CreateTexture(nil, "OVERLAY")
+		rule:SetPoint("TOPLEFT", 1, -1)
+		rule:SetPoint("TOPRIGHT", -1, -1)
+		rule:SetHeight(2)
+		button.rule = rule
 	else
+		bg:SetTexture(ROUND)
+		bg:SetSize(20, 20)
+		bg:SetPoint("TOPLEFT", 6, -5)
+		icon:SetSize(20, 20)
+		icon:SetPoint("TOPLEFT", 6, -5)
 		local border = button:CreateTexture(nil, "OVERLAY")
 		border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
 		border:SetSize(53, 53)
 		border:SetPoint("TOPLEFT")
 	end
+	CH.TintMinimapButton()
 
 	button:SetScript("OnClick", function() CH.UI.Toggle() end)
 	button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", onDrag) end)
@@ -62,6 +74,15 @@ function CH.CreateMinimapButton()
 	place()
 	CH.UpdateMinimapButton()
 	return button
+end
+
+-- recolour the monogram (and the ElvUI accent rule) when the theme colour changes
+function CH.TintMinimapButton()
+	if not button then return end
+	local c = CH.Theme.accent
+	button.glyph:SetVertexColor(c[1], c[2], c[3])
+	local rule = rawget(button, "rule")
+	if rule then rule:SetColorTexture(c[1], c[2], c[3], 1) end
 end
 
 function CH.UpdateMinimapButton()

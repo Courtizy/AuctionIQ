@@ -16,6 +16,12 @@ ElvUI's value colour, ToxiUI's font for text and Montserrat Black for titles.
   it changes as you swap characters), or ElvUI's value colour without ToxiUI. With neither it is
   AuctionIQ blue `#3fc7eb`. If the colour changes while you play, the windows follow it.
 - The active tab has the accent text and a 2px accent line.
+- Icons are white line drawings (2px round strokes on a 24 grid) in `Media/Tab-*.tga`, tinted in game:
+  the active tab's icon in the theme colour, the rest grey. Dashboard is a trend panel, Operations a
+  crate, Accounting a ledger with a coin, and Settings is the gear alone (named in its tooltip).
+- The minimap button is the IQ monogram (`Media/Icon-IQ.tga`, white, tinted with the theme colour) on
+  a dark square with an accent rule for ElvUI's square minimap, or a dark circle for the default one.
+  `Media/Icon.tga` is the fixed blue version for the AddOns list.
 - Progress bars (the advisor's recovery chance, the footer's Concentration bars) use ToxiUI's class
   gradient from its own settings, a shade of ElvUI's value colour into it, or AuctionIQ blue's
   gradient `#0080d7` to `#00d8ff`. Action buttons stay solid.
@@ -56,7 +62,7 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
 | muted  | `#a3a3ab` | `#b8a69a` | hints, page name, footer |
 | accent | theme colour, default `#3fc7eb` | `#e0a83a` | wordmark IQ, headings, active tab, selection |
 | gold   | `#e0a83a` | `#e0a83a` | break-even prices |
-| iq     | `#34c77b` emerald | `#d8c39a` | the trend line in the icon, highlights |
+| iq     | `#34c77b` emerald | `#d8c39a` | highlights |
 | ok     | `#6cc58f` | `#6cc58f` | profit |
 | bad    | `#ef7d72` | `#ef7d72` | loss, FULL Concentration |
 

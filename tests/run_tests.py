@@ -77,6 +77,17 @@ check("dragging moves it round the minimap", abs(CH.db.settings.minimap.angle) <
 run('SlashCmdList.AUCTIONIQ("minimap")')
 check("/ch minimap hides it", not btn.shown)
 
+# icons: white line icons tinted in the label, theme colour when active and grey otherwise
+run('if not AuctionIQ.UI.IsShown() then AuctionIQ.UI.Toggle() end; AuctionIQ.UI.Go("today")')
+tabs = CH.UI.Buttons()
+check("tab icons: Dashboard uses the trend panel icon, tinted blue when active", "Media\\Tab-Dashboard:14:14:0:0:64:64:0:64:0:64:63:199:235|t Dashboard" in tabs.today.label)
+check("tab icons: inactive tabs are grey", ":163:163:171|t Operations" in tabs.operations.label and ":163:163:171|t Accounting" in tabs.ledger.label)
+check("tab icons: Settings is the gear alone", "Tab-Settings" in tabs.settings.label and "Settings" not in tabs.settings.label.split("|t")[-1])
+run('AuctionIQ.UI.Go("operations")')
+check("tab icons: the active tab follows the page", ":63:199:235|t Operations" in tabs.operations.label and ":163:163:171|t Dashboard" in tabs.today.label)
+glyph = btn.glyph
+check("minimap: IQ monogram tinted with the theme colour", glyph.vc is not None and abs(glyph.vc[1] - 63/255) < 0.01 and abs(glyph.vc[3] - 235/255) < 0.01)
+
 res = CH.Advisor.Analyze(10)
 rows = list(CH.AdvisorUI.Render(res).values())
 check("advisor: cheapest reagents for each quality", rows[0].startswith("Q1 plain cost=670000 profit=280000") and rows[2].startswith("Q2 plain cost=2120000 profit=730000"))
