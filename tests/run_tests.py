@@ -272,6 +272,10 @@ fa = {a.itemID: a for a in CH.Advisor.FinishingAdvice(pr).values()}
 check("finishing advice: every option with its gain, what you own and the verdict",
       set(fa) == {221, 222} and fa[221].own == 2 and fa[222].own == 0 and fa[222].picked and fa[222].verdict == "buy" and fa[222].gain > 0
       and "Multicraft" in fa[222].effect and "skill" in fa[221].effect)
+run("STUB.lockedSlot = 77")
+lk = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+check("a finishing slot the game has locked is never filled", len(list(lk.best.finishing.values())) == 0 and len(list(lk.bestConc.finishing.values())) == 0)
+run("STUB.lockedSlot = nil")
 fl = [plain(x) for x in CH.AdvisorUI.FinishingLines(pr).values()]
 check("finishing advice in the advisor notes", any(x.startswith("Finishing: buy item 222") for x in fl) or any("Or buy: buy item 222" in x for x in fl))
 run("STUB.prices['i:221'].formula_value = 10000; AuctionIQ.Prices.ClearCache()")   # you could sell yours for only 1g

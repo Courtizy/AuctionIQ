@@ -37,6 +37,17 @@ local function reagentType(name, fallback)
 	return Enum and Enum.CraftingReagentType and Enum.CraftingReagentType[name] or fallback
 end
 
+--- True when the game has this slot locked for you (a finishing slot your specialization hasn't
+--- opened yet shows a padlock). A craft that fills a locked slot is refused without a word.
+function A.SlotLocked(recipeID, s)
+	local ui = C_TradeSkillUI
+	local mcr = s and s.slotInfo and s.slotInfo.mcrSlotID
+	if not (ui and ui.GetReagentSlotStatus and mcr and recipeID) then return false end
+	local info = ui.GetRecipeInfo and ui.GetRecipeInfo(recipeID)
+	local ok, locked = pcall(ui.GetReagentSlotStatus, mcr, recipeID, info and info.skillLineAbilityID)
+	return ok and locked == true
+end
+
 --- Required reagent slots, split into those with qualities (we choose) and fixed ones (we just pay),
 --- plus finishing slots. On a crafting order, what the customer gives comes off each slot's quantity.
 function A.Slots(schematic, provided)
@@ -57,7 +68,7 @@ function A.Slots(schematic, provided)
 			local slot = { index = s.dataSlotIndex, qty = need, items = items }
 			if s.reagentType == basic and s.required ~= false then
 				table.insert(#items > 1 and qual or fixed, slot)
-			elseif s.reagentType == fin then
+			elseif s.reagentType == fin and not A.SlotLocked(schematic.recipeID, s) then
 				table.insert(finishing, slot)
 			end
 		end

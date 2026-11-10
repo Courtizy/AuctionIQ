@@ -783,6 +783,24 @@ function Q.Craft(e, amount)
 				end
 			end
 			mine = held
+			-- a reagent in a slot the game has locked for you (an unopened finishing slot) is dropped
+			local sch2 = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+			local lockedSlot = {}
+			for _, sl in ipairs(sch2 and sch2.reagentSlotSchematics or {}) do
+				if CH.Advisor and CH.Advisor.SlotLocked and CH.Advisor.SlotLocked(e.recipeID, sl) then lockedSlot[sl.dataSlotIndex] = true end
+			end
+			held, names = {}, {}
+			for _, r in ipairs(mine) do
+				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
+				if r.dataSlotIndex and lockedSlot[r.dataSlotIndex] then
+					CH.Print(string.format("left out %s: that slot is locked for you", nm))
+				else
+					-- the game's own shape, as CraftSim passes it
+					table.insert(held, { reagent = { itemID = r.itemID }, quantity = r.quantity, dataSlotIndex = r.dataSlotIndex })
+					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
+				end
+			end
+			mine = held
 			CH.Print(string.format("crafting %s into the order with %s, Concentration %s, rank %s needed",
 				e.name or "?", #names > 0 and table.concat(names, ", ") or "only the customer's reagents", conc and "on" or "off", tostring(need)))
 			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
