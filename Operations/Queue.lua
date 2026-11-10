@@ -14,7 +14,13 @@ local function have(id)
 end
 
 local function keyOf(e)
-	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "", e.orderID and tostring(e.orderID) or "" }, ":")
+	local mix = {}
+	for _, reagent in ipairs(e.reagents or {}) do
+		mix[#mix + 1] = table.concat({ reagent.slot, reagent.itemID, reagent.n }, ":")
+	end
+	table.sort(mix)
+	return table.concat({ e.char, e.recipeID, e.quality, e.concentration or "", e.orderID and tostring(e.orderID) or "",
+		table.concat(mix, ",") }, ":")
 end
 
 --- Turn an advisor row into a queue entry for this character.
@@ -91,7 +97,7 @@ end
 --- A queue entry from a saved scan row, for any character, without the profession window open.
 --- conc picks the Concentration craft. nil when the scan predates saving reagent slots.
 function Q.FromScan(charKey, char, row, conc)
-	local acc = conc and row.concAccounts or row.accounts
+	local acc = conc and row.concAccounts or not conc and row.accounts
 	if not acc or not acc.queue then return nil end
 	local shop = {}
 	for _, s in ipairs(acc.reagents or {}) do table.insert(shop, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers }) end
