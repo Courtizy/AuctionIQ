@@ -34,14 +34,21 @@ local function craftLines(lines, row, acc, at)
 	local how = acc.concentration and string.format("with Concentration (%d)", acc.concentration) or "without Concentration"
 	table.insert(lines, { "Crafting, per craft", T.Color("muted", how .. (at and date and date(", scan %H:%M", at) or "")) })
 	-- revenue, before the cut
+	-- the sale price (older scans didn't save it: then it's worked back from what you keep)
 	local cut = CH.AH_CUT
 	local sales, mc = acc.sales or 0, acc.mcGold or 0
 	local made = math.floor((acc.made or 0) * 10 + 0.5) / 10
-	table.insert(lines, { string.format("  Sales, %g made at %s", made, m((acc.unit or 0) / cut)), m(sales / cut) })
+	local items = (acc.made or 0) + (acc.extraItems or 0)
+	local price = acc.price or (acc.unit or 0) / cut
+	table.insert(lines, { string.format("  Sales, %g made at %s", made, m(price)), m(price * (acc.made or 0)) })
 	if mc ~= 0 then
-		table.insert(lines, { string.format("  Multicraft, +%.2f items on average", acc.extraItems or 0), "+" .. m(mc / cut), "ok" })
+		table.insert(lines, { string.format("  Multicraft, +%.2f items on average", acc.extraItems or 0), "+" .. m(price * (acc.extraItems or 0)), "ok" })
 	end
-	table.insert(lines, { "  " .. cutPct(), m(-((sales + mc) / cut - (sales + mc))), "bad" })
+	local gross = price * items
+	table.insert(lines, { "  " .. cutPct(), m(-(gross * (1 - cut))), "bad" })
+	-- deposits lost to expiries and the gold tied up until it sells (Expect.Value)
+	local losses = gross * cut - (sales + mc)
+	if losses >= 1 then table.insert(lines, { "  Deposits and waiting to sell", m(-losses), "bad" }) end
 	table.insert(lines, { "  Revenue after cut", m(sales + mc), nil, "accent" })
 	-- reagents, itemised
 	table.insert(lines, { "  Reagents", m(-(acc.cost or 0)), "bad" })
@@ -59,7 +66,6 @@ local function craftLines(lines, row, acc, at)
 	-- the bottom line
 	local good = acc.profit >= 0 and "ok" or "bad"
 	table.insert(lines, { "Profit per craft", m(acc.profit), good })
-	local items = (acc.made or 1) + (acc.extraItems or 0)
 	if items > 0 then
 		table.insert(lines, { string.format("  Per item (%.2f a craft)", items), m(acc.profit / items), good })
 	end

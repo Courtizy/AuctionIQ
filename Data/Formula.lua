@@ -153,9 +153,9 @@ local FN = {
 	end,
 	-- check(x, a, b): a when x is above 0, else b
 	check = function(a, ctx, ev) local x = ev(a[1], ctx); if x and x > 0 then return ev(a[2], ctx) end return a[3] and ev(a[3], ctx) end,
-	round = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return x and f and math.floor(x / f + 0.5) * f end,
-	roundup = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return x and f and math.ceil(x / f) * f end,
-	rounddown = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return x and f and math.floor(x / f) * f end,
+	round = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return (x and f and f > 0) and math.floor(x / f + 0.5) * f or nil end,
+	roundup = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return (x and f and f > 0) and math.ceil(x / f) * f or nil end,
+	rounddown = function(a, ctx, ev) local x, f = ev(a[1], ctx), a[2] and ev(a[2], ctx) or 1; return (x and f and f > 0) and math.floor(x / f) * f or nil end,
 }
 local function compare(test)
 	return function(a, ctx, ev)

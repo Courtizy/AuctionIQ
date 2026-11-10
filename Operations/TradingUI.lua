@@ -41,8 +41,13 @@ function TUI.PostPlan()
 				if post == 0 then verdict = "full"
 				elseif ah and p.min and ah < p.min then verdict = "hold"
 				else verdict = "post" end
+				-- priced the way posting prices it: undercut the cheapest, kept between your min and max
 				local price = p.normal
-				if ah and price and ah < price then price = math.max(ah - (p.undercut or 1), p.min or 0) end
+				if ah and price then
+					price = ah - (p.undercut or 1)
+					if p.max and price > p.max then price = p.max end
+					if p.min and price < p.min then price = p.min end
+				end
 				table.insert(out, { id = e.id, path = path, held = held, up = up, cap = p.cap, post = post, price = price, ah = ah,
 					min = p.min, value = verdict == "post" and price and price * post * CH.AH_CUT or 0, verdict = verdict, mail = e.mail })
 			end

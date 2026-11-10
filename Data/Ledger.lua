@@ -117,6 +117,14 @@ function Lg.Records(kind)
 	return out
 end
 
+--- The gold a sale put in your bags: an auction sale after the AH cut, a vendor or trade sale as is.
+function Lg.Net(s)
+	if not s then return 0 end
+	local src = s.source
+	if src == nil or src == "Auction" then return (s.amount or 0) * CH.AH_CUT end
+	return s.amount or 0
+end
+
 -- Gold history --------------------------------------------------------------------------------
 local function goldLog(scope)
 	local out = {}
@@ -194,8 +202,10 @@ function Lg.Archive()
 	end
 	for _, r in ipairs(Lg.Records("Sales")) do
 		local e = d(r.time)
-		e.sales, e.sold = e.sales + r.amount, e.sold + r.quantity
-		if r.id then e.items[r.id] = (e.items[r.id] or 0) + r.amount end
+		-- what reached your bags: auction sales after the cut (TSM records the price before it)
+		local net = Lg.Net(r)
+		e.sales, e.sold = e.sales + net, e.sold + r.quantity
+		if r.id then e.items[r.id] = (e.items[r.id] or 0) + net end
 	end
 	for _, r in ipairs(Lg.Records("Buys")) do local e = d(r.time); e.buys = e.buys + r.amount end
 	for _, r in ipairs(Lg.Records("Income")) do
@@ -205,6 +215,17 @@ function Lg.Archive()
 		if not mine[r.other] then local e = d(r.time); e.expense = e.expense + r.amount end
 	end
 	local s = store()
+	-- days archived before sales were counted after the AH cut: those TSM no longer has are
+	-- brought into line once (nearly all of them are auction sales)
+	if not s.net then
+		for k, v in pairs(s.days) do
+			if not days[k] then
+				v.sales = (v.sales or 0) * CH.AH_CUT
+				for id, g in pairs(v.items or {}) do v.items[id] = g * CH.AH_CUT end
+			end
+		end
+		s.net = true
+	end
 	for k, v in pairs(days) do s.days[k] = v end
 	return s.days
 end
@@ -472,7 +493,7 @@ function Lg.ProductPL(since, char)
 			end
 			local each, share = Lg.CostAt(cr.acc, index, s.time)
 			e.sold = e.sold + s.quantity
-			e.revenue = e.revenue + s.amount * CH.AH_CUT
+			e.revenue = e.revenue + Lg.Net(s)
 			e.cost = e.cost + each * s.quantity
 			e.known = e.known + share * s.quantity
 		end
@@ -599,7 +620,7 @@ function Lg.Overhead(since, char)
 		end
 	end
 	local sales, buys = 0, 0
-	for _, s in ipairs(Lg.Records("Sales")) do if s.time >= since and (not char or s.player == char) then sales = sales + s.amount * CH.AH_CUT end end
+	for _, s in ipairs(Lg.Records("Sales")) do if s.time >= since and (not char or s.player == char) then sales = sales + Lg.Net(s) end end
 	for _, b in ipairs(Lg.Records("Buys")) do if b.time >= since and (not char or b.player == char) then buys = buys + b.amount end end
 	return { types = list, total = total, sales = sales, buys = buys, profit = sales - buys, afterOverhead = sales - buys - total }
 end
@@ -684,8 +705,8 @@ function Lg.Report(now)
 	local byItem = {}
 	for _, s in ipairs(Lg.Records("Sales")) do
 		if s.time >= day then
-			r.sold, r.earned = r.sold + s.quantity, r.earned + s.amount
-			if s.id then byItem[s.id] = (byItem[s.id] or 0) + s.amount end
+			r.sold, r.earned = r.sold + s.quantity, r.earned + Lg.Net(s)
+			if s.id then byItem[s.id] = (byItem[s.id] or 0) + Lg.Net(s) end
 		end
 	end
 	for _, b in ipairs(Lg.Records("Buys")) do
@@ -702,7 +723,7 @@ function Lg.Report(now)
 		if s.time >= week and s.id and (held[s.id] or 0) == 0 then
 			local e = weekly[s.id] or { id = s.id, sold = 0, gold = 0 }
 			weekly[s.id] = e
-			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+			e.sold, e.gold = e.sold + s.quantity, e.gold + Lg.Net(s)
 		end
 	end
 	for _, e in pairs(weekly) do table.insert(r.restock, e) end

@@ -173,6 +173,10 @@ run('ElvUI = nil')
 St = CH.Stats
 check("multicraft: average extra items from the base yield", abs(St.MulticraftExtra(2, 0) - 2.33) < 1e-9 and abs(St.MulticraftExtra(1, 0.25) - 1.8125) < 1e-9)
 check("concentration cost from the game's curve", St.ConcentrationCost(1, 100, 25, 0) == 100 and St.ConcentrationCost(1, 100, 25, 0.1) == 90)
+run("AuctionIQ.ConcCurves[9901] = { c = { [0] = 100, [200] = 300 }, v = { [0] = 1, [1] = 1 } }")
+# the constant follows difficulty (150 -> 250), not skill (50 -> 150)
+check("concentration: curve constant read at the recipe's difficulty", St.ConcentrationCost(9901, 150, 50, 0) == 250 and St.ConcentrationCost(9901, 400, 50, 0) == 300)
+run("AuctionIQ.ConcCurves[9901] = nil")
 pr = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
 prow = list(pr.rows.values())
 best = pr.best
@@ -496,10 +500,12 @@ run("AuctionIQ.UI.SetRange('1M')")
 d = CH.UI.DashboardData()
 s = d.summary
 check("dashboard: sales, buys and real expenses in range; own transfers left out",
-      s.sales == 7000000 and s.buys == 1000000 and s.income == 0 and s.expense == 20000 and s.cash == 5980000 and s.topItem == 302)
+      s.sales == 6650000 and s.buys == 1000000 and s.income == 0 and s.expense == 20000 and s.cash == 5630000 and s.topItem == 302)
+check("ledger: auction sales count after the 5% cut, vendor and trade sales as they are",
+      LG.Net(L.eval("{ amount = 1000, source = 'Auction' }")) == 950 and LG.Net(L.eval("{ amount = 1000, source = 'Vendor' }")) == 1000)
 check("dashboard: top sale, top purchase, 52 week high and low", d.topSale == 6000000 and d.topBuy == 1000000 and d.high == 10000000 and 0 < d.low <= d.high)
 run("AuctionIQ.UI.SetRange('All')")
-check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 11000000)
+check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 10450000)
 act = list(LG.Activity(10).values())
 check("activity log: grouped by character and hour", act[0].player == "Courtizy" and act[0].sold == 2 and act[0].expired == 1 and sum(a.bought for a in act) == 10)
 inv = {e.id: e for e in LG.Inventory().values()}
@@ -509,7 +515,7 @@ w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
 LG.Snapshot()
 check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.now") - 6 * 86400)[0] == 0 and w1[0] > 10000000)
 rep = LG.Report()
-check("morning report: last day's sales and what came back", rep.sold == 2 and rep.earned == 6000000 and rep.bought == 10
+check("morning report: last day's sales and what came back", rep.sold == 2 and rep.earned == 5700000 and rep.bought == 10
       and list(rep.expired.values())[0].id == 302 and len(list(rep.restock.values())) == 0)
 bt = plain(CH.UI.BriefingText())
 check("briefing opens with the last 24 hours", bt.startswith("Last 24 hours") and "Came back unsold" in bt and "repost it" in bt)
@@ -691,6 +697,11 @@ pp = {r.id: r for r in CH.TradingUI.PostPlan().values()}
 check("trading: ready to post counts what every character holds in a posting group", 302 in pp and pp[302].held >= 3 and pp[302].verdict in ("post", "hold", "full"))
 r302 = pp[302]
 check("trading: posts no more than the group's cap less what's up", r302.post <= max(0, (r302.cap or 0) - r302.up))
+gp = CH.Groups.Prices(302)
+if r302.ah:
+    want = min(max(r302.ah - (gp.undercut or 1), gp.min or 0), gp.max or 10**12)
+    want = max(want, gp.min or 0)
+    check("trading: planned price undercuts the AH within min and max, as posting does", r302.price == want)
 run("AuctionIQ.Mail.Route('Crafted', 'Luxaren')")
 mp = list(CH.TradingUI.MailPlan().values())
 check("trading: to mail lists items on a character other than their route", any(r.id == 302 and r["from"] == "Courtizy" and r.to == "Luxaren" for r in mp))
@@ -775,6 +786,9 @@ check("calendar: your dates with what they mean for demand", up[0].name.lower() 
 run("AuctionIQ.Planner.StartSession('Auction House'); STUB.now = STUB.now + 1800; AuctionIQ.Planner.StopSession('Auction House')")
 tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
 check("gold per hour: time per activity", abs(tm.kinds["Auction House"] - 0.5) < 1e-9 and tm.perHour is not None)
+run("AuctionIQ.Planner.StartSession('Auction House'); AuctionIQ.Planner.StartSession('Crafting'); STUB.now = STUB.now + 1800; AuctionIQ.Planner.StopSession('Crafting'); AuctionIQ.Planner.StopSession('Auction House')")
+tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
+check("gold per hour: two windows open together count the time once", abs(tm.hours - 1.0) < 1e-9 and abs(tm.kinds["Crafting"] - 0.5) < 1e-9)
 run("AuctionIQ.UI.Page('plan')")
 check("plan page draws", CH.UI.IsShown() and len(list(CH.PlanUI.Refresh().values())) == 1)
 run("""function GetInboxNumItems() return 3 end
@@ -1324,7 +1338,7 @@ AuctionIQ.Ledger.Inventory = function(_, name)
   if name == nil then return { { id = 991, bags = 0, bank = 0, mail = 0, warband = 3 } } end
   return {}
 end""")
-need = L.eval("AuctionIQ.Mail.ReagentNeeds()")
+need = L.eval("AuctionIQ.Mail.ReagentNeeds()")[0]
 check("mail: a queued crafter is short what their crafts need less what they and the Warband bank hold",
       need["Alt"] is not None and need["Alt"][991] == 7 and need["Far"] is None)
 run("""STUB.oldCC = C_Container
@@ -1350,7 +1364,7 @@ AuctionIQ.Ledger.Inventory = function(_, name)
 end
 C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
   GetContainerItemInfo = function(bag, slot) return { itemID = 991, stackCount = 6 } end }""")
-need = L.eval("AuctionIQ.Mail.ReagentNeeds()")
+need = L.eval("AuctionIQ.Mail.ReagentNeeds()")[0]
 check("mail: the Warband bank isn't counted for more than one crafter",
       need["Alt"][991] == 1 and need["Bee"][991] == 4)
 box = L.eval("AuctionIQ.Mail.Outbox()")

@@ -65,7 +65,7 @@ local function match()
 	local cursor = {}
 	for _, s in ipairs(sales) do
 		local left = s.quantity
-		local each = (s.amount / s.quantity) * CH.AH_CUT
+		local each = CH.Ledger.Net(s) / s.quantity
 		local list = byItem[s.id]
 		local i = cursor[s.id] or 1
 		while list[i] and list[i].sold >= list[i].qty do i = i + 1 end

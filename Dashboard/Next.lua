@@ -97,7 +97,7 @@ function Next.List(now)
 			end
 			for _, e in ipairs(r.expired or {}) do
 				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
-				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n), gold = unit and unit * e.n, tier = 2,
+				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n), gold = unit and unit * CH.AH_CUT * e.n, tier = 2,
 					go = { "ledger", "expired" }, act = postAct("Repost") })
 			end
 			for _, e in ipairs(r.stale or {}) do
