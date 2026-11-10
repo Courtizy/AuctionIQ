@@ -322,17 +322,64 @@ function AUI.ExpectLines(d)
 	return out
 end
 
+--- A reagent's buy-now cost for the units a craft needs, when AH listings have been seen and it
+--- differs from the estimate: { { label, money } } (empty otherwise). c: an Advisor.CostLines entry.
+function AUI.BuyNowLines(c)
+	local out = {}
+	if not (c and c.id and not c.finishing and CH.Depth) then return out end
+	local d = CH.Depth.Cost(c.id, c.n)
+	if not d or d.source == "chmat" then return out end
+	local from = d.source == "ah" and ("AH search " .. CH.Scans.Age(d.age) .. (d.age and d.age >= 60 and " ago" or ""))
+		or ("AH scan " .. CH.Scans.Age(d.age) .. " old")
+	local unit = math.floor(d.unit + 0.5)
+	if c.unit and math.abs(unit - c.unit) < 0.005 * c.unit then return out end
+	local mut = function(t) return CH.Theme.Color("muted", t) end
+	table.insert(out, { mut("   buy now, " .. from), mut(CH.FormatMoney(unit) .. " ea  " .. CH.FormatMoney(d.cost)) })
+	if (d.short or 0) > 0 then table.insert(out, { CH.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
+	return out
+end
+
+--- What the item's posting operation would do, next to the market estimate (price): its min,
+--- normal and max and where it would post against the freshest listings, or that it wouldn't.
+function AUI.PostingLines(item, level, price)
+	local out = {}
+	local pc = item and CH.Auction and CH.Auction.PostCheck and CH.Auction.PostCheck(item, level)
+	if not pc then return out end
+	local M, T = CH.FormatMoney, CH.Theme
+	table.insert(out, { T.Color("accent", "Posting") .. T.Color("muted", "  " .. tostring(pc.op or "no operation")), "" })
+	table.insert(out, { "   Min / normal / max", string.format("%s / %s / %s", pc.min and M(pc.min) or "-", pc.normal and M(pc.normal) or "-", pc.max and M(pc.max) or "-") })
+	local from = pc.source == "ah" and ("your AH search " .. CH.Scans.Age(pc.age) .. " ago")
+		or pc.source == "scan" and ("your last AH scan, " .. CH.Scans.Age(pc.age) .. " old") or "no AH listings seen"
+	if pc.cheapest then table.insert(out, { "   Cheapest listed" .. T.Color("muted", "  " .. from), M(pc.cheapest) })
+	else table.insert(out, { T.Color("muted", "   " .. from), "" }) end
+	if pc.action == "post" then
+		table.insert(out, { "   Would post at" .. T.Color("muted", "  " .. (pc.why or "")), M(pc.price) })
+		if price and pc.price and pc.price < price * 0.95 then
+			table.insert(out, { T.Color("bad", "   Posts under the market estimate: profit is likely lower"), "" })
+		end
+	else
+		table.insert(out, { T.Color("bad", "   Would not post: " .. (pc.why or "")), "" })
+		table.insert(out, { T.Color("bad", "   The profit above assumes a sale the operation won't make now"), "" })
+	end
+	return out
+end
+
 --- Lines for a row's hover breakdown: col 3 reagents, col 4 profit. Also used by the tests.
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
 	local function add(l, rt) table.insert(lines, { l, rt }) end
 	if col == 3 then
-		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  bought at chmat"))
+		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  estimated cost"))
+		local live
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)),
+			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
+			-- what buying them really costs, from AH listings you've seen (walking up the book)
+			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
+		add(CH.Theme.Color("muted", "Bought reagents at chmat: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
+		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
@@ -347,12 +394,18 @@ function AUI.BreakdownLines(result, r, col)
 		end
 		local vals = CH.Prices.Values(r.item)
 		if vals.realized then add(string.format("   RZ  Realized, your %d sales", vals.n), CH.FormatMoney(vals.realized)) end
-		add("AuctionIQ value (chvalue)", CH.FormatMoney(r.price and r.price / (r.shade or 1)))
+		add("Market estimate (chvalue)", CH.FormatMoney(r.price and r.price / (r.shade or 1)))
 		if r.shade then
 			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")), CH.FormatMoney(r.price))
 		end
 		for _, l in ipairs(AUI.ExpectLines(r.ev)) do add(l[1], l[2]) end
 		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), CH.FormatMoney(r.value)) end
+		-- the operation that would post it decides separately from the estimate: show both
+		if not result.order then
+			local key = result.model and result.model.outputKeys and result.model.outputKeys[r.quality]
+			local level = key and tonumber(tostring(key):match("::i(%d+)"))
+			for _, l in ipairs(AUI.PostingLines(r.item, level, r.price)) do add(l[1], l[2]) end
+		end
 	elseif col == 5 then
 		add(CH.Theme.Color("accent", "Average profit") .. CH.Theme.Color("muted", "  per craft"))
 		add(result.order and "Commission and rewards" or "Expected sale value", CH.FormatMoney(r.value))

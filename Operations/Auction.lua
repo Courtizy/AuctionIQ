@@ -82,18 +82,20 @@ local function note(id, results, normal)
 	CH.Ledger.NoteCompetition(id, other ~= nil and normal ~= nil and other < normal, owners)
 end
 
-function A.Decide(id, results, held, level)
-	local p = CH.Groups.Prices(id, nil, level)
-	note(id, results, p.normal)
-	if not p.post then return { action = "skip", why = (p.op or "its operation") .. " doesn't post it" } end
+-- The cheapest listing outside the account, and yours. With "ignore auctions below min" (TSM's
+-- priceReset = "ignore"), listings under your min don't count as competition.
+local function competition(results, p)
+	if p.priceReset ~= "ignore" or not p.min then return lowest(results) end
+	local kept = {}
+	for _, r in ipairs(results or {}) do if r.mine or r.price >= p.min then kept[#kept + 1] = r end end
+	return lowest(kept)
+end
+
+--- The price an operation posts an item at against these listings, before caps and bags:
+--- { action = "post", price, why } or { action = "skip", why }. p: Groups.Prices.
+function A.PostPrice(p, results)
 	if not p.normal then return { action = "skip", why = "no price" } end
-	if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
-		local n = CH.Ledger.NumExpires(id)
-		if n >= p.maxExpires then
-			return { action = "skip", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
-		end
-	end
-	local other, mine = lowest(results)
+	local other, mine = competition(results, p)
 	local price, why
 	if not other then
 		price, why = mine and math.min(mine, p.normal) or p.normal, mine and "matching your own listing" or "nobody else listed"
@@ -125,6 +127,23 @@ function A.Decide(id, results, held, level)
 	price = math.floor(price / 100) * 100
 	if p.min and price < p.min then price = math.ceil(p.min / 100) * 100 end
 	price = math.max(100, price)
+	return { action = "post", price = math.floor(price), why = why }
+end
+
+function A.Decide(id, results, held, level)
+	local p = CH.Groups.Prices(id, nil, level)
+	note(id, results, p.normal)
+	if not p.post then return { action = "skip", why = (p.op or "its operation") .. " doesn't post it" } end
+	if not p.normal then return { action = "skip", why = "no price" } end
+	if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
+		local n = CH.Ledger.NumExpires(id)
+		if n >= p.maxExpires then
+			return { action = "skip", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
+		end
+	end
+	local pp = A.PostPrice(p, results)
+	if pp.action ~= "post" then return pp end
+	local price, why = pp.price, pp.why
 	local room = p.cap - A.Listed(id)
 	if room <= 0 then return { action = "skip", why = string.format("Warband already has %d up (cap %d)", A.Listed(id), p.cap) } end
 	local qty = math.min(room, held or room)
@@ -137,14 +156,57 @@ function A.Decide(id, results, held, level)
 	return { action = "post", price = math.floor(price), qty = qty, why = why, duration = p.duration }
 end
 
---- Whether to cancel one of your auctions: { action = "cancel"|"keep", why }.
+--- What the item's own operation would do right now, apart from any market estimate: its min,
+--- normal and max, and the price it would post at against the freshest AH listings there are
+--- (your AH search in the last 15 minutes, else your last AH scan, else none: posting at normal).
+--- Caps and bags aren't counted: this is whether and where it posts, not how many.
+--- { op, min, normal, max, action = "post"|"skip", price, why, source = "ah"|"scan"|nil, age, cheapest }
+function A.PostCheck(id, level)
+	if not id then return nil end
+	local p = CH.Groups.Prices(id, nil, level)
+	local out = { op = p.op or "Default", min = p.min, normal = p.normal, max = p.max }
+	local results, source, age
+	local rows, src, a
+	if CH.Depth then rows, src, a = CH.Depth.Book(id) end
+	if rows and src == "ah" then
+		results, source, age = {}, "ah", a
+		for _, r in ipairs(rows) do results[#results + 1] = { price = r[1], qty = r[2] } end
+	else
+		local sc = CH.Scans and CH.Scans.Get(id)
+		if sc and sc.min then results, source, age = { { price = sc.min, qty = 1 } }, "scan", sc.age end
+	end
+	out.source, out.age = source, age
+	out.cheapest = results and results[1] and results[1].price or nil
+	if not p.post then out.action, out.why = "skip", (p.op or "its operation") .. " doesn't post it"; return out end
+	local pp = A.PostPrice(p, results or {})
+	out.action, out.price, out.why = pp.action, pp.price, pp.why
+	return out
+end
+
+--- Whether to cancel one of your auctions: { action = "cancel"|"keep", why }. As TSM's canceling:
+---   * undercut by someone outside the account: cancel to repost under them, unless the operation
+---     doesn't cancel undercut auctions or beating them would go under your min
+---   * not undercut, and the operation cancels to repost higher: cancel when what it would post at
+---     now is above your price by the threshold or more
 function A.DecideCancel(id, price, results, level)
 	local p = CH.Groups.Prices(id, nil, level)
-	local other = lowest(results)
-	if not other or other >= price then return { action = "keep", why = "still cheapest outside your account" } end
-	local repost = other - p.undercut
-	if p.min and repost < p.min then return { action = "keep", why = "beating them would go under your min" } end
-	return { action = "cancel", why = string.format("undercut: %s vs your %s", CH.FormatMoney(other), CH.FormatMoney(price)) }
+	local other = competition(results, p)
+	if other and other < price then
+		if not p.cancelUndercut then return { action = "keep", why = (p.op or "its operation") .. " doesn't cancel undercut auctions" } end
+		local repost = other - p.undercut
+		if p.min and repost < p.min then return { action = "keep", why = "beating them would go under your min" } end
+		return { action = "cancel", why = string.format("undercut: %s vs your %s", CH.FormatMoney(other), CH.FormatMoney(price)) }
+	end
+	if p.cancelRepost and p.repostThreshold and p.post then
+		-- what it would post at with your own listing out of the way
+		local others = {}
+		for _, r in ipairs(results or {}) do if not r.mine then others[#others + 1] = r end end
+		local pp = A.PostPrice(p, others)
+		if pp.action == "post" and pp.price - price >= math.max(1, p.repostThreshold) then
+			return { action = "cancel", why = string.format("repost higher: %s vs your %s", CH.FormatMoney(pp.price), CH.FormatMoney(price)) }
+		end
+	end
+	return { action = "keep", why = "still cheapest outside your account" }
 end
 
 -- The game side --------------------------------------------------------------------------------
@@ -184,10 +246,10 @@ function A.Postable()
 	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local info = C_Container.GetContainerItemInfo(bag, slot)
-			if info and info.itemID and not info.isBound and CH.Groups.Path(info.itemID) then
+			local level = info and info.itemID and A.Level(info.itemID, info.hyperlink)
+			if info and info.itemID and not info.isBound and CH.Groups.Path(info.itemID, level) then
 				local id, n = info.itemID, info.stackCount or 1
 				out[id] = (out[id] or 0) + n
-				local level = A.Level(id, info.hyperlink)
 				local key = id .. ":" .. (level or 0)
 				if not byKey[key] then byKey[key] = { id = id, level = level, count = 0 }; table.insert(list, byKey[key]) end
 				byKey[key].count = byKey[key].count + n

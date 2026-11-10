@@ -679,7 +679,8 @@ function A.PicksText(result, picks, fin)
 	return table.concat(parts, ", ")
 end
 
---- Each reagent in a row: name, rank, units, price per unit, line total. Fixed reagents have no rank.
+--- Each reagent in a row: id, name, rank, units, price per unit (chmat: an estimate), line total.
+--- Fixed reagents have no rank.
 function A.CostLines(result, picks, fin)
 	local out = {}
 	for i, slot in ipairs(result.qual) do
@@ -687,16 +688,16 @@ function A.CostLines(result, picks, fin)
 			local n = picks[i][q] or 0
 			if n > 0 then
 				local unit, via = reagentPrice(result.model, slot.items[q]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[q], result.recipeID))
-				table.insert(out, { name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n, crafted = via })
+				table.insert(out, { id = slot.items[q], name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n, crafted = via })
 			end
 		end
 	end
 	for _, slot in ipairs(result.fixed) do
 		local unit, via = reagentPrice(result.model, slot.items[1]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[1], result.recipeID))
-		table.insert(out, { name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty, crafted = via })
+		table.insert(out, { id = slot.items[1], name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty, crafted = via })
 	end
 	for _, f in ipairs(fin or {}) do
-		table.insert(out, { name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })
+		table.insert(out, { id = f.itemID, name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })
 	end
 	return out
 end

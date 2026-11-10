@@ -88,9 +88,10 @@ def plain(t): return re.sub(r"\|c\w{8}|\|r", "", letters(str(t)))
 best = res.best
 rl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 3).values()]
 check("reagent hover lists each reagent with rank, price each and total",
-      ("4x item 202 Q2", "15g ea  60g") in rl and ("2x item 205", "1g ea  2g") in rl and rl[-1] == ("Total", "212g"))
+      ("4x item 202 Q2", "15g ea  60g") in rl and ("2x item 205", "1g ea  2g") in rl and ("Total", "212g") in rl
+      and any("estimate" in l[0] for l in rl))
 sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
-check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and sl[-1] == ("After 5% auction cut", "285g"))
+check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and ("After 5% auction cut", "285g") in sl)
 pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
 check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on reagents", "34%") in pl)
 mx = CH.Advisor.MaxCraftable(res, best)
@@ -742,6 +743,69 @@ run("AuctionIQ.Groups.Store().ops['Flask Op'].learn = true; STUB.ledgerLearn = t
 lf, lwhy = L.eval("AuctionIQ.Groups.Learn(302)"), None
 check("learn: too few sales and expiries changes nothing", lf == 1)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].learn = false")
+
+# Variants: TSM can put two item levels of one item in different groups
+run("""TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302::i645"] = "Alch`Gear645", ["i:302::i642"] = "Alch`Gear642", ["i:301"] = "Loot`Pets" }
+AuctionIQ.Groups.ResetTSM()""")
+check("variants: each item level follows its own TSM group",
+      CH.Groups.Path(302, 645) == "TSM/Alch/Gear645" and CH.Groups.Path(302, 642) == "TSM/Alch/Gear642")
+check("variants: no base entry and the variants disagree, so no base-item fallback from TSM",
+      CH.Groups.TSMGroups()[302] is None and CH.Groups.TSMPath(302) is None)
+check("variants: a variant counts in its own group", 302 in list(CH.Groups.Items("TSM/Alch/Gear645").values()))
+run("""TradeSkillMasterDB["p@Warband@userData@items"]["i:302"] = "Alch`Flasks"; AuctionIQ.Groups.ResetTSM()""")
+check("variants: the explicit base-item entry is the fallback, the variant still wins at its level",
+      CH.Groups.Path(302) == "TSM/Alch/Flasks" and CH.Groups.Path(302, 645) == "TSM/Alch/Gear645" and CH.Groups.Path(302, 700) == "TSM/Alch/Flasks")
+run("""TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302::i645"] = "Alch`Flasks", ["i:302::i642"] = "Alch`Flasks" }; AuctionIQ.Groups.ResetTSM()""")
+check("variants: when every variant shares a group, that group is the fallback", CH.Groups.TSMPath(302) == "TSM/Alch/Flasks")
+
+# Operation order, cancel rules and settings AuctionIQ can't follow
+run("""
+TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302"] = "Alch`Flasks", ["i:301"] = "Loot`Pets" }
+TradeSkillMasterDB["p@Warband@userData@groups"]["Alch`Flasks"] = { Auctioning = { "Alt Only", "Flask Op", override = true } }
+TradeSkillMasterDB["g@ @userData@sharedOperations"] = { Auctioning = {
+  ["Alt Only"] = { minPrice = "1g", normalPrice = "2g", maxPrice = "3g", postCap = "1", undercut = "1s", duration = 1,
+    ignorePlayer = { ["Seyko - Emerald Dream"] = true } },
+  ["Flask Op"] = { minPrice = "2950000", normalPrice = "3150000", maxPrice = "4000000", postCap = "2", undercut = "1s", duration = 2,
+    priceReset = "none", aboveMax = "maxPrice", cancelUndercut = false, cancelRepost = true, cancelRepostThreshold = "10g",
+    bidPercent = 0.8, blacklist = "Goblin" } } }
+""")
+imp = L.eval("AuctionIQ.Groups.ImportTSM()")
+check("import: a group's operations kept in TSM's order", list(CH.Groups.Store().assignAll["TSM/Alch/Flasks"].values()) == ["Alt Only", "Flask Op"] and imp.multi >= 1)
+check("import: settings AuctionIQ can't follow are reported", imp.unsupported["Flask Op"] is not None
+      and any("bid" in x for x in imp.unsupported["Flask Op"].values()) and any("blacklist" in x for x in imp.unsupported["Flask Op"].values()))
+head, lines = L.eval("AuctionIQ.Groups.ImportSummary(AuctionIQ.Groups.ImportTSM())")
+check("import: the summary names each difference", "operations" in head and any("Flask Op differs" in l for l in lines.values()))
+check("operations: the first that applies to this character is used", L.eval("select(2, AuctionIQ.Groups.Operation(302))") == "Flask Op")
+c = CH.Auction.DecideCancel(302, 3500000, L.eval("{ { price = 3400000, qty = 1, mine = false } }"))
+check("cancel: an operation that doesn't cancel undercut auctions keeps them", c.action == "keep" and "doesn't cancel" in c.why)
+c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 3000000, qty = 1, mine = true } }"))
+check("cancel: repost higher when the operation would post 10g+ above yours", c.action == "cancel" and "repost higher" in c.why)
+c = CH.Auction.DecideCancel(302, 3100000, L.eval("{ }"))
+check("cancel: not when the gain is under the threshold", c.action == "keep")
+run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'ignore'")
+d = CH.Auction.Decide(302, L.eval("{ { price = 100, qty = 1, mine = false }, { price = 3600000, qty = 3, mine = false } }"), 10)
+check("rules: ignore auctions below min undercuts the next seller", d.action == "post" and d.price == 3599900)
+run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'none'")
+c = CH.Groups.Assign("TSM/Alch/Flasks", "Alt Only")
+check("operations: assigning one yourself replaces TSM's list", CH.Groups.Store().assignAll["TSM/Alch/Flasks"] is None
+      and L.eval("select(2, AuctionIQ.Groups.Operation(302))") == "Alt Only")
+run("AuctionIQ.Groups.Assign('TSM/Alch/Flasks', 'Flask Op')")
+
+# The advisor's market estimate and the posting decision are shown apart
+run("AuctionIQ.Depth.Remember(302, { { price = 2900000, qty = 2 } })")
+pc = CH.Auction.PostCheck(302)
+check("post check: the operation skips when the fresh AH is under its min", pc.op == "Flask Op" and pc.action == "skip" and pc.source == "ah" and pc.cheapest == 2900000)
+pl = [plain(l[1]) for l in CH.AdvisorUI.PostingLines(302, None, 3150000).values()]
+check("advisor: posting lines show min/normal/max and that it won't post", any("Min / normal / max" in l for l in pl) and any("Would not post" in l for l in pl))
+run("AuctionIQ.Depth.Remember(302, { { price = 3600000, qty = 2 } })")
+pc = CH.Auction.PostCheck(302)
+check("post check: posts by the operation when the AH allows", pc.action == "post" and pc.price == 3599900)
+run("AuctionIQ.Depth.Forget(302)")
+run("AuctionIQ.Depth.Remember(205, { { price = 20000, qty = 1 }, { price = 40000, qty = 5 } })")
+bl = [(plain(l[0+1]), plain(l[1+1])) for l in CH.AdvisorUI.BuyNowLines(L.eval("{ id = 205, n = 2, unit = 10000, total = 20000 }")).values()]
+check("advisor: buy-now cost from listings seen, apart from the estimate", len(bl) == 1 and "buy now" in bl[0][0] and "3g ea" in bl[0][1] and "6g" in bl[0][1])
+run("AuctionIQ.Depth.Forget(205)")
+run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
 grows = list(CH.GroupsUI.Refresh().values())
