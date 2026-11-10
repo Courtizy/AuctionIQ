@@ -769,8 +769,22 @@ function Q.Craft(e, amount)
 		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
 			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, conc)
 		else
-			CH.Print(string.format("crafting %s into the order: %d of your reagents, Concentration %s, rank %s needed",
-				e.name or "?", #mine, conc and "on" or "off", tostring(need)))
+			-- a reagent you don't hold enough of makes the game refuse the craft without a word: leave
+			-- optional ones (finishing) out and say so
+			local held, names = {}, {}
+			for _, r in ipairs(mine) do
+				local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(r.itemID, true, false, true, true) or r.quantity
+				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
+				if have >= r.quantity then
+					table.insert(held, r)
+					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
+				else
+					CH.Print(string.format("left out %s: you have %d of the %d it takes", nm, have, r.quantity))
+				end
+			end
+			mine = held
+			CH.Print(string.format("crafting %s into the order with %s, Concentration %s, rank %s needed",
+				e.name or "?", #names > 0 and table.concat(names, ", ") or "only the customer's reagents", conc and "on" or "off", tostring(need)))
 			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
 		end
 		return true
