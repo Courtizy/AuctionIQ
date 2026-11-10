@@ -1435,6 +1435,10 @@ check("execution plan: crafts with their status, another character's marked swit
       and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Professions")
 wrows, wfoot = L.eval("AuctionIQ.LedgerUI.Rows('work', {})")
 check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
+rrows, rfoot = L.eval("AuctionIQ.LedgerUI.Rows('ready', {})")
+rr = {plain(r.cells[1]): plain(r.cells[6]) for r in rrows.values()}
+check("Queue opens on Ready on this character: ready first, blocked grouped by what unlocks it",
+      rr.get("A") == "craft" and rr.get("B", "").startswith("buy 10") and rr.get("C") == "log in as Other" and rr.get("C", "").startswith("log in as") and "1 ready on this character" in plain(rfoot))
 run("AuctionIQ.UI.Page('today')")
 qf = L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
@@ -1452,7 +1456,7 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
 run("AuctionIQ.UI.Page('operations', 'mail')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Execution plan", "Production queue", "Shopping list", "To mail"])
+check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "To mail"])
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
@@ -2036,7 +2040,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
