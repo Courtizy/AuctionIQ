@@ -1532,8 +1532,8 @@ check("hand-off: clearing the filter shows everything again", plain(L.eval("Auct
 run("AuctionIQ.UI.Page('groups')")
 check("Groups and rules lives in Settings", L.eval("AuctionIQ.UI.Pages().groups:IsShown()") is True)
 run("AuctionIQ.UI.Page('ledger', 'sales')")
-check("Accounting sub-tabs: Statements, Revenue, Expenses, Inventory, Profit, Performance",
-      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Statements", "Revenue", "Expenses", "Inventory", "Profit", "Performance"])
+check("Accounting sub-tabs: Reports, Revenue, Expenses, Inventory, Profit, Performance",
+      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Reports", "Revenue", "Expenses", "Inventory", "Profit", "Performance"])
 run("AuctionIQ.UI.Page('ledger', 'expired')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Expenses: purchases, other, expired, cancelled", LUI.Group() == "Expenses" and navshown == ["Purchases", "Other", "Expired", "Cancelled"])
@@ -2348,7 +2348,7 @@ check("statements: the biggest item is named when it carries a quarter or more o
 check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
 
 run("AuctionIQ.UI.Page('ledger', 'statement')")
-check("Statements: Income Statement, Balance Sheet, Cash Flow, Report", [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Income Statement", "Balance Sheet", "Cash Flow", "Report"])
+check("Reports: Income Statement, Balance Sheet, Cash Flow", [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Income Statement", "Balance Sheet", "Cash Flow"])
 run("AuctionIQ.UI.Page('ledger', 'holdings')")
 check("Inventory: inventory and holdings", LUI.Group() == "Inventory" and [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Inventory", "Holdings"])
 for a in sorted(set(audit_all)):

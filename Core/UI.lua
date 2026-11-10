@@ -363,7 +363,7 @@ function UI.WhatChanged(data)
 	-- what the gold log moved that the ledger doesn't explain: transfers and anything TSM didn't log
 	local other = gold - s.cash
 	if math.abs(other) >= 10000 then
-		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "report" },
+		table.insert(moves, { key = "other", label = "Unclassified gold movement", gold = other, go = { "ledger", "cashflow" },
 			tip = "Gold that moved without a sale, purchase or expense behind it: mail, bank and guild transfers, and anything TSM didn't log." })
 	end
 	if data.worthChange then

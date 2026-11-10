@@ -63,7 +63,8 @@ local VIEWS = {
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	report = { label = "Report", parent = "Statements", page = "briefing", cols = {} },
+	-- the old weekly briefing: off the nav (the statements replace it), still opened by /aiq report
+	report = { label = "Report", page = "briefing", cols = {} },
 	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Two tabs share this table page, each with sub-tabs across the top and their views in the left
