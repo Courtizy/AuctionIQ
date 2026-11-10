@@ -1251,6 +1251,15 @@ function AUI.QueueSelected()
 		local inp = CH.Decide.BatchInputs(from, target)
 		local s = inp and CH.Decide.Batch(inp, { sizes = { selQty }, runs = 300 })
 		if s and s[1] then CH.Decide.SaveForecast(target.item, from.recipeID, s[1]) end
+		-- and the whole decision, so Accounting > Performance > Batch results can explain the outcome
+		if inp and CH.Forecast and CH.Forecast.SaveDecision then
+			local sc = CH.Decide.Scenarios(inp, selQty).expected
+			local ev = inp.evidence and CH.Decide.EvidenceText(inp.evidence)
+			CH.Forecast.SaveDecision({ item = target.item, recipe = from.recipeID, name = from.name, quality = target.quality,
+				conc = target.concentration and true or nil, n = selQty, itemsEach = CH.Decide.ItemsPerCraft(inp),
+				costEach = sc.cost / selQty, priceEach = inp.price, netEach = sc.each, daily = inp.daily, leftWeek = sc.left,
+				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis })
+		end
 	end
 	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
 	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
