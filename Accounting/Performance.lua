@@ -151,7 +151,13 @@ function P.Compare(char, p, now)
 	return r
 end
 
-local function money(c) return (c or 0) == 0 and "0g" or CH.FormatMoney(math.abs(c)) end
+-- whole gold above 10g: silver and copper only clutter a headline
+local function money(c)
+	c = math.abs(c or 0)
+	if c == 0 then return "0g" end
+	if c >= 100000 then c = math.floor(c / 10000 + 0.5) * 10000 end
+	return CH.FormatMoney(c)
+end
 local function signed(c) return (c >= 0 and "+" or "-") .. money(c) end
 --- Gold in a few characters for chart labels: "12.3k", "1.2M", "450", with its sign.
 function P.Compact(c)
@@ -199,7 +205,9 @@ end
 
 -- Page ------------------------------------------------------------------------------------------
 local page, cache
-local CW, CH1 = 350, 150 -- each chart's width and plot height
+local CW, CH1 = 350, 150 -- each chart's width and body height
+-- the weekly chart's plot: room above for the tallest bar's label, below for a loss's label, then dates
+local PTOP, PH = -84 - 44, 110
 
 local function tip(owner, lines)
 	if not GameTooltip then return end
@@ -283,17 +291,17 @@ function P.Build(p, fs)
 	local slot = math.floor((CW - 20) / 8)
 	for i = 1, 8 do
 		local hit = CreateFrame("Button", nil, p)
-		hit:SetSize(slot - 6, CH1)
-		hit:SetPoint("TOPLEFT", 10 + (i - 1) * slot + 3, y - 34)
+		hit:SetSize(slot - 6, PH)
+		hit:SetPoint("TOPLEFT", 10 + (i - 1) * slot + 3, PTOP)
 		hit.bar = hit:CreateTexture(nil, "ARTWORK")
 		hit.value = fs(p, 10 + (i - 1) * slot, 0, slot, "CENTER", "GameFontHighlightSmall")
-		hit.date = fs(p, 10 + (i - 1) * slot, y - 40 - CH1, slot, "CENTER", "GameFontDisableSmall")
+		hit.date = fs(p, 10 + (i - 1) * slot, PTOP - PH - 18, slot, "CENTER", "GameFontDisableSmall")
 		hit:SetScript("OnEnter", function(self) if self.tip then tip(self, self.tip) end end)
 		hit:SetScript("OnLeave", untip)
 		hit:SetScript("OnClick", function(self) if self.e then P.OpenWeek(self.e) end end)
 		p.weeks[i] = hit
 	end
-	p.wNote = fs(p, 10, y - 46 - CH1, CW - 20, "LEFT", "GameFontDisableSmall")
+	p.wNote = fs(p, 10, PTOP - PH - 36, CW - 20, "LEFT", "GameFontDisableSmall")
 
 	-- chart 2: what drove the change
 	local x0 = CW + 16
@@ -318,14 +326,14 @@ function P.Build(p, fs)
 		hit:SetScript("OnClick", function(self) if self.x then P.Open(self.x, cache) end end)
 		p.drivers[i] = hit
 	end
-	p.dNote = fs(p, x0 + 10, y - 46 - CH1, CW - 20, "LEFT", "GameFontDisableSmall")
+	p.dNote = fs(p, x0 + 10, PTOP - PH - 36, CW - 20, "LEFT", "GameFontDisableSmall")
 
 	-- the detail views, one click away
 	local ly = y - CH1 - 76
-	p.more = fs(p, 0, ly - 4, 40, "LEFT", "GameFontDisableSmall")
+	p.more = fs(p, 0, ly - 4, 48, "LEFT", "GameFontDisableSmall")
 	p.more:SetText("More:")
 	p.links = {}
-	local lx = 40
+	local lx = 50
 	for _, v in ipairs({ { "drivers", "Drivers" }, { "performance", "By line" }, { "batches", "Batches" }, { "perf", "Forecasts" },
 		{ "capital", "Capital" }, { "crafting", "Crafting" }, { "time", "Per hour" }, { "results", "Craft log" } }) do
 		local b = button(p, 82, v[2], function() CH.UI.Go("ledger", v[1]) end)
@@ -368,14 +376,14 @@ function P.Refresh(now)
 	local hi, lo = 0, 0
 	for _, e in ipairs(weeks) do hi, lo = math.max(hi, e.profit), math.min(lo, e.profit) end
 	local span = math.max(1, hi - lo)
-	local top = -84 - 34
-	local zeroY = top - math.floor(CH1 * hi / span + 0.5)
+	local top = PTOP
+	local zeroY = top - math.floor(PH * hi / span + 0.5)
 	p.zero:ClearAllPoints()
 	p.zero:SetPoint("TOPLEFT", 10, zeroY)
 	p.zero:SetSize(CW - 20, 1)
 	for i, hit in ipairs(p.weeks) do
 		local e = weeks[i]
-		local h = math.max(1, math.floor(CH1 * math.abs(e.profit) / span + 0.5))
+		local h = math.max(1, math.floor(PH * math.abs(e.profit) / span + 0.5))
 		local col = e.profit >= 0 and T.ok or T.bad
 		local alpha = e.partial and 0.45 or 0.9
 		hit.bar:SetColorTexture(col[1], col[2], col[3], alpha)
@@ -385,7 +393,7 @@ function P.Refresh(now)
 		hit.value:ClearAllPoints()
 		hit.value:SetPoint("TOPLEFT", p, "TOPLEFT", 10 + (i - 1) * math.floor((CW - 20) / 8), e.profit >= 0 and (zeroY + h + 12) or (zeroY - h - 2))
 		hit.value:SetText(e.profit ~= 0 and T.Color("muted", P.Compact(e.profit)) or "")
-		hit.date:SetText(e.partial and "now" or (date and date("%b %d", e.from) or tostring(i)))
+		hit.date:SetText(e.partial and "now" or (date and string.format("%d/%d", tonumber(date("%m", e.from)), tonumber(date("%d", e.from)))) or tostring(i))
 		hit.e = e
 		local label = date and date("Week of %b %d", e.from) or "Week"
 		hit.tip = { { label .. (e.partial and " (so far)" or "") },
