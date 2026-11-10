@@ -44,7 +44,7 @@ function SUI.Build(p, fs, panel)
 	minus:SetScript("OnClick", function() S.DailyCap(S.DailyCap() - 1); SUI.Refresh() end)
 	plus:SetScript("OnClick", function() S.DailyCap(S.DailyCap() + 1); SUI.Refresh() end)
 
-	local gy = cy - 36
+	local gy = cy - 30
 	fs(gen, 12, gy, 140, "LEFT", "GameFontNormal"):SetText("Groups")
 	local groupsBtn = T.Button(gen, "Edit groups", 110, 18)
 	groupsBtn:SetPoint("TOPLEFT", 156, gy + 2)
@@ -65,7 +65,7 @@ function SUI.Build(p, fs, panel)
 		else say("Couldn't import: " .. tostring(err), true) end
 		CH.UI.Refresh()
 	end)
-	local my = gy - 112
+	local my = gy - 104
 	fs(gen, 12, my, 256, "LEFT", "GameFontNormal"):SetText("Math")
 	p.model = {}
 	for i, m in ipairs(S.MODEL) do
@@ -81,7 +81,7 @@ function SUI.Build(p, fs, panel)
 	local note = fs(gen, 12, my - 24 - #S.MODEL * 24 - 8, 256, "LEFT", "GameFontDisableSmall")
 	note:SetText("The /aiq commands still work too.")
 	-- About: the logo, the version and where it lives
-	local ay0 = my - 24 - #S.MODEL * 24 - 30
+	local ay0 = my - 24 - #S.MODEL * 24 - 26
 	local logo = gen:CreateTexture(nil, "ARTWORK")
 	logo:SetTexture("Interface\\AddOns\\AuctionIQ\\Media\\Logo-Branded")
 	logo:SetTexCoord(0, 1, 0, 193 / 256)
@@ -91,8 +91,8 @@ function SUI.Build(p, fs, panel)
 	p.about = {}
 	local ver = tostring(CH.version or "dev")
 	if ver:find("^@") then ver = "dev build" end -- unpackaged: the toc still says @project-version@
-	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 18 }, { "crafters and traders.", 30 },
-		{ "On GitHub:", 48 }, { "Courtizy/AuctionIQ", 60 } }) do
+	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 16 }, { "crafters and traders.", 28 },
+		{ "On GitHub:", 42 }, { "Courtizy/AuctionIQ", 54 } }) do
 		p.about[i] = fs(gen, 138, ay0 - 6 - t[2], 130, "LEFT", "GameFontDisableSmall")
 		t = t[1]
 		p.about[i]:SetText(t)

@@ -36,6 +36,10 @@ function QUI.CostLines(s)
 	end
 	if (s.short or 0) > 0 then out[#out + 1] = T.Color("bad", "Only " .. (s.buy - s.short) .. " listed; the rest is priced at the top listing") end
 	out[#out + 1] = T.Color("muted", "From " .. from)
+	if s.craft then
+		out[#out + 1] = T.Color("ok", string.format("Cheaper to craft: %s makes it (%s) for %s each, %s for %d",
+			s.craft.char or "?", s.craft.name or "?", M(math.floor(s.craft.each + 0.5)), M(math.floor(s.craft.cost + 0.5)), s.buy))
+	end
 	return out
 end
 

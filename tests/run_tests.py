@@ -348,6 +348,11 @@ check("order: qualities under the minimum are marked", orows[0].short == True an
 op = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
   reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 1 } } } }"""))
 check("order: part of a slot from the customer, the rest is ours to pay", op.best.cost == o.best.cost + 10000)
+run("STUB.savedQueue = AuctionIQ.db.queue; AuctionIQ.db.queue = {}")
+CH.Queue.Add(op, op.best, 1)
+need205 = [x for x in CH.Queue.ShoppingList()[0].values() if x.itemID == 205]
+check("order: the queue and shopping list ask for the same remaining units", len(need205) == 1 and need205[0].need == 1)
+run("AuctionIQ.db.queue = STUB.savedQueue")
 # 3 of the 4 in the quality slot from the customer: only 1 left to pick
 oq = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 1, tipAmount = 1000000, consortiumCut = 0,
   reagents = { { reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 3 } } } }"""))
@@ -362,6 +367,23 @@ plain1 = [r for r in cm.rows.values() if r.quality == 1 and not r.concentration]
 conc1 = [r for r in cm.rows.values() if r.concentration and r["from"] == 1][0]
 check("concentration: picks a mix with more skill when it pays more per point", conc1.skill > plain1.skill and conc1.cost > plain1.cost)
 run("AuctionIQ.ConcCurves[9902] = nil; STUB.craftingDataID = nil")
+
+# Subrecipes: a reagent an alt crafts for less than buying it is priced at the craft
+base10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost
+run("""AuctionIQ.db.characters['Sub-Realm'] = { name = 'Sub', professions = { [77] = { name = 'Test Smithing', scan = { at = STUB.now, rows = {
+  { recipeID = 50, name = 'Make 205', item = 205, craftEach = 4000 } } } } } }; AuctionIQ.Scan.ClearCrafted()""")
+sub10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+check("subrecipe: a reagent you craft for less is priced at the craft", sub10.best.cost == base10 - 2 * (10000 - 4000))
+cl = [x for x in CH.Advisor.CostLines(sub10, sub10.best.picks).values() if x.name == "item 205"]
+check("subrecipe: the reagent line says who crafts it", len(cl) == 1 and cl[0].crafted and cl[0].crafted.char == "Sub")
+run("AuctionIQ.db.settings.subrecipes = false")
+check("subrecipe: off in Settings, reagents are bought", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.settings.subrecipes = nil")
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now - 30 * 86400; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: a stale scan isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now; AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.rows[1].viaCraft = true; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: one level deep, a craft priced by crafted reagents isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'] = nil; AuctionIQ.Scan.ClearCrafted()")
 
 # Recraft
 rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))

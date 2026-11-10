@@ -241,6 +241,11 @@ function AUI.Render(result, reason)
 		table.insert(lines, T.Color("accent", string.format("With Concentration, Q%d: ", c.quality)) .. money(c.profit) .. " a craft for "
 			.. string.format("%d points", c.concentration or 0) .. " (" .. CH.FormatMoney(c.perPoint) .. " a point). " .. T.Color("muted", "Use ")
 			.. CH.Advisor.PicksText(result, c.picks, c.finishing))
+		-- what spending the points adds over the plain craft you'd make anyway
+		local plain = result.best and result.best.profit
+		if plain and plain > 0 and c.profit then
+			table.insert(lines, T.Color("muted", "  Over the plain craft: ") .. money(c.profit - plain) .. T.Color("muted", " more a craft"))
+		end
 	end
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
@@ -364,6 +369,8 @@ function AUI.BreakdownLines(result, r, col)
 		if r.profit and r.cost and r.cost > 0 then add("Return on reagents", string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
 		if r.concentration then
 			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+			local plain = result.best and result.best.profit
+			if plain and plain > 0 and r.profit then add("  More than the plain craft", money(r.profit - plain)) end
 			if (r.ingenuity or 0) > 0 then
 				add(string.format("  Ingenuity %d%%, %.0f points on average", math.floor(r.ingenuity * 100 + 0.5), r.avgConcentration or r.concentration), "")
 			end

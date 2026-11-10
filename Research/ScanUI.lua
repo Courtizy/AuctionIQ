@@ -157,6 +157,9 @@ local function hover(owner, i)
 	if r.perPoint then
 		table.insert(lines, { "Best with Concentration", CH.Window.QualityIcon(r.concQuality, 14, r.tiers) .. " " .. CH.FormatMoney(r.concProfit) })
 		table.insert(lines, { string.format("  %d points", r.concentration or 0), CH.FormatMoney(r.perPoint) .. " per point" })
+		if r.profit and r.profit > 0 and r.concProfit then
+			table.insert(lines, { "  More than the plain craft", CH.FormatMoney(r.concProfit - r.profit) })
+		end
 	end
 	local function short(id)
 		if id == "concentration" then return "Concentration" end
