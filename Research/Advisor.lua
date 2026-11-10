@@ -173,7 +173,23 @@ function A.Measure(recipeID, opts)
 	local schematic = ui.GetRecipeSchematic(recipeID, opts.allocationGUID ~= nil)
 	if not info or not schematic then return nil, "No recipe data." end
 	local order = opts.order
-	local qual, fixed, finishing = A.Slots(schematic, order and order.providedSlots)
+	-- The slot a customer's reagent fills is the recipe slot that lists its item: the order's own
+	-- slot numbers needn't match the recipe's (a Phoenix Oil order listed two reagents in slot 1).
+	local slotOf, givenSlots = {}, order and order.providedSlots
+	for _, s in ipairs(schematic.reagentSlotSchematics or {}) do
+		for _, r in ipairs(s.reagents or {}) do
+			local id = r.itemID or (r.reagent and r.reagent.itemID)
+			if id then slotOf[id] = s.dataSlotIndex end
+		end
+	end
+	if order and order.provided then
+		givenSlots = {}
+		for _, r in ipairs(order.provided) do
+			local slot = slotOf[r.itemID] or r.dataSlotIndex
+			if slot then givenSlots[slot] = (givenSlots[slot] or 0) + (r.quantity or 1) end
+		end
+	end
+	local qual, fixed, finishing = A.Slots(schematic, givenSlots)
 	-- what the customer gives, no more units per slot than the slot takes (a list can name more)
 	local provided
 	if order and order.provided then
@@ -181,7 +197,7 @@ function A.Measure(recipeID, opts)
 		for _, s in ipairs(schematic.reagentSlotSchematics or {}) do need[s.dataSlotIndex] = s.quantityRequired or 1 end
 		provided = {}
 		for _, r in ipairs(order.provided) do
-			local slot = r.dataSlotIndex
+			local slot = slotOf[r.itemID] or r.dataSlotIndex
 			local room = need[slot] and (need[slot] - (used[slot] or 0)) or r.quantity
 			local n = math.min(r.quantity or 1, room or 0)
 			if n > 0 then

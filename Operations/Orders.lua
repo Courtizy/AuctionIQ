@@ -359,6 +359,14 @@ function O.Debug()
 			given[#given + 1] = string.format("%s:%sx%s@%s", tostring(r.source), tostring(i.reagent and i.reagent.itemID), tostring(i.quantity), tostring(i.dataSlotIndex or r.slotIndex))
 		end
 		CH.Print(string.format("  reagentState %s, listed: %s", tostring(order.reagentState), #given > 0 and table.concat(given, " ") or "none"))
+		-- the recipe's slots: data slot, units, first item, to match against what the order lists
+		local sch = C_TradeSkillUI.GetRecipeSchematic and C_TradeSkillUI.GetRecipeSchematic(order.spellID, false)
+		local slots = {}
+		for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
+			local first = sl.reagents and sl.reagents[1]
+			slots[#slots + 1] = string.format("%s:%sx%s", tostring(sl.dataSlotIndex), tostring(first and (first.itemID or first.reagent and first.reagent.itemID)), tostring(sl.quantityRequired))
+		end
+		CH.Print("  recipe slots: " .. (#slots > 0 and table.concat(slots, " ") or "none"))
 		if not ok then
 			CH.Print(head .. " error " .. tostring(result))
 		elseif not result then
