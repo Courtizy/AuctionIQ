@@ -205,13 +205,44 @@ function W.ScrollBar(parent, x, y, h, noCount)
 end
 
 --- Show tooltip lines ({left, right} or {left}) on owner.
+--- lines: { left, right, rightColor, leftColor }, as the item tooltip draws them: a line that
+--- isn't indented is a heading or total (accent), an indented one is a line item (fg); colors are
+--- Theme names. A line with no right side is a note and wraps.
 function W.Tooltip(owner, lines)
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	local Th = CH.Theme
 	for _, l in ipairs(lines) do
-		if l[2] then GameTooltip:AddDoubleLine(l[1], l[2], 1, 1, 1, 1, 1, 1) else GameTooltip:AddLine(l[1], 1, 1, 1, true) end
+		if l[2] then
+			local lc = Th[l[4] or (tostring(l[1]):sub(1, 2) == "  " and "fg" or "accent")] or Th.fg
+			local rc = Th[l[3] or "fg"] or Th.fg
+			GameTooltip:AddDoubleLine(l[1], l[2], lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+		else
+			GameTooltip:AddLine(l[1], 1, 1, 1, true)
+		end
 	end
 	GameTooltip:Show()
 end
+
+--- Bookkeeping lines for tooltips, laid out like the statements and the item tooltip:
+---   Head("Profit")                       heading
+---   Line("Commission", 7200000)          line item, gold in, as is
+---   Line("Reagents", -451000, true)      line item, gold out in red
+---   Sub("Paid price", text)              detail under a line, muted
+---   Total("Profit", 690000)              total, green or red
+---   Note("Only what you supply.")        muted note
+local Book = {}
+W.Book = Book
+local function gold(c) return CH.FormatMoney(c or 0) end
+function Book.Head(label, right) return { label, right or "", "muted", "accent" } end
+function Book.Line(label, c, out)
+	if c == nil then return { "  " .. label, CH.Theme.Color("muted", "-"), "muted", "fg" } end
+	local neg = out or c < 0
+	return { "  " .. label, (neg and c ~= 0 and "-" or "") .. gold(math.abs(c)), neg and c ~= 0 and "bad" or "fg", "fg" }
+end
+function Book.Text(label, text, color) return { "  " .. label, text, color or "fg", "fg" } end
+function Book.Sub(label, text) return { "      " .. label, text, "muted", "muted" } end
+function Book.Total(label, c) return { label, (c and c < 0 and "-" or "") .. gold(math.abs(c or 0)), (c or 0) >= 0 and "ok" or "bad", "accent" } end
+function Book.Note(text) return { CH.Theme.Color("muted", text) } end
 
 --- An item's icon, inline in text. The game has every item icon loaded, so this is cheap.
 function W.ItemIcon(itemID, size)

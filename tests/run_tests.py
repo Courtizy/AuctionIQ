@@ -98,14 +98,14 @@ check("advisor: no Concentration row when the quality is already top", len(rows)
 check("advisor: picks the cheaper skill first", CH.Advisor.PicksText(res, res.best.picks).count("Q2") == 2)
 def plain(t): return re.sub(r"\|c\w{8}|\|r", "", letters(str(t)))
 best = res.best
-rl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 3).values()]
-check("reagent hover lists each reagent with rank, price each and total",
-      ("4x item 202 Q2", "15g ea  60g") in rl and ("2x item 205", "1g ea  2g") in rl and ("Total", "212g") in rl
-      and any("estimate" in l[0] for l in rl))
+rl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 3).values()]
+check("reagent hover reads like a statement: each reagent at its price, as gold out, then the total",
+      ("4x item 202 Q2 @ 15g", "-60g") in rl and ("2x item 205 @ 1g", "-2g") in rl and ("Total", "-212g") in rl
+      and any("estimate" in l[1] for l in rl))
 sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
 check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and ("After 5% auction cut", "285g") in sl)
-pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
-check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on cost  profit / reagents", "34%") in pl)
+pl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
+check("profit hover reads like a statement: revenue, costs, profit, return", ("Revenue", "average per craft") in pl and ("Reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on cost  profit / reagents", "34%") in pl)
 # Expected proceeds: the source in the notes, and rows posting would skip
 check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(CH.AdvisorUI.SourceLine(res)))
 run("""STUB.oldGP = AuctionIQ.Groups.Prices
@@ -263,7 +263,7 @@ conc = pr.bestConc
 check("skill finishing reagent picked for the Concentration craft, less Concentration",
       [f.itemID for f in conc.finishing.values()] == [221] and conc.concentration == 60 and conc.cost == 90000)
 check("Ingenuity: average Concentration counts the refund", conc.avgConcentration == 51 and abs(conc.perPoint - conc.profit / 51) < 1e-6)
-pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(pr, best, 5).values()]
+pl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(pr, best, 5).values()]
 check("profit hover shows the Multicraft and Resourcefulness parts",
       any(a.startswith("Multicraft  35% x 2.3 more") for a, _ in pl) and any(a.startswith("Resourcefulness  20% saves") for a, _ in pl))
 cl = [plain(l[1]) for l in CH.AdvisorUI.BreakdownLines(pr, best, 3).values()]
@@ -656,7 +656,7 @@ pl5 = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.
 check("profit hover keeps the whole profit per point for CraftSim, and the extra over plain",
       ("  Extra per expected point", "1g 81s") in pl5 and ("  Whole profit per point (as CraftSim)", "2g 72s") in pl5
       and ("  Over the best plain craft", "145g per craft") in pl5)
-pl6 = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
+pl6 = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
 check("profit hover: margin is profit over proceeds, and the break-even price", ("Margin  profit / proceeds", "26%") in pl6 and ("Break-even sale price", "223g per item") in pl6)
 ev = D.EvidenceText(D.Evidence(302))
 check("evidence: source and how much of the sell rate is yours", ev.price.startswith("Price: TSM, ") and "none known" in ev.rate and ev.volume.startswith("Volume: region"))
@@ -1800,11 +1800,11 @@ orows = list(CH.ScanUI.Refresh().values())
 check("scan tab: lists orders with 1KP flagged", len(orows) == 3 and "kp=true" in orows[0])
 tip = [plain(l[1]) for l in CH.ScanUI.OrderLines(by[78]).values()]
 check("scan tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
-pl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 4).values()]
-check("orders: hovering Profit breaks it down from the commission", pl[0] == "Profit" and pl[1].startswith("Commission") and "Profit" in pl[-1] or "Profit" in pl)
-cl = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
+pl = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[77], 4).values()]
+check("orders: hovering Profit reads like a statement: revenue, costs, profit", pl[0] == "Revenue" and pl[1].startswith("Commission") and "Costs" in pl and "Profit" in pl)
+cl = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
 check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
-rl2 = [plain(l[1]) for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
+rl2 = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
 check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
 tw = L.eval("""(function()
   local f = CreateFrame('Frame'); STUB.entered = {}

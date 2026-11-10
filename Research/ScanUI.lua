@@ -173,11 +173,13 @@ function SUI.OrderLines(d)
 		table.insert(lines, { d.kind .. " order", d.from })
 		if d.expansion then table.insert(lines, { "Expansion", d.expansion .. (d.current and "" or T.Color("muted", "  (older)")) }) end
 		if d.minQuality then table.insert(lines, { "Asks for at least", CH.Window.QualityIcon(d.minQuality, 14, d.tiers) }) end
-		table.insert(lines, { "Commission, after the consortium's cut", M(d.commission) })
+		local B = CH.Window.Book
+		table.insert(lines, B.Head("Revenue"))
+		table.insert(lines, B.Line("Commission, after the consortium's cut", d.commission or 0))
 		for _, rw in ipairs(d.rewards) do
 			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
-			table.insert(lines, { "  " .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
-				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+			local label = rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or "")
+			table.insert(lines, rw.value and B.Line(label, rw.value) or B.Text(label, T.Color("muted", "can't be sold"), "muted"))
 		end
 		if d.ok and d.have then
 			table.insert(lines, { "Reagents", T.Color("ok", "you have them all") })
@@ -192,11 +194,11 @@ function SUI.OrderLines(d)
 		if d.ok then
 			-- commission and rewards less your reagents, then what procs save on average
 			local pays = (d.commission or 0) + (d.rewardValue or 0)
-			table.insert(lines, { "Your reagents", "-" .. M(d.cost or 0) })
-			table.insert(lines, { "Commission and rewards less reagents", money(pays - (d.cost or 0)) })
+			table.insert(lines, B.Head("Costs"))
+			table.insert(lines, B.Line("Your reagents", -(d.cost or 0), true))
 			local procs = (d.profit or 0) - (pays - (d.cost or 0))
-			if math.abs(procs) >= 100 then table.insert(lines, { "Resourcefulness, on average", money(procs) }) end
-			table.insert(lines, { "Profit", money(d.profit) })
+			if math.abs(procs) >= 100 then table.insert(lines, B.Line("Resourcefulness, on average", procs)) end
+			table.insert(lines, B.Total("Profit", d.profit))
 			if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. d.concentration .. " Concentration to reach the quality asked.") }) end
 		elseif d.learned == false then
 			table.insert(lines, { T.Color("bad", "You haven't learned this recipe.") })
@@ -217,39 +219,43 @@ function SUI.OrderLines(d)
 	return lines
 end
 
---- A work order cell's own tooltip: rewards (3), profit (4) or crafting costs (5). nil for the rest.
+--- A work order cell's own tooltip: rewards (3), profit (4) or crafting costs (5), laid out like a
+--- statement (CH.Window.Book). nil for the rest.
 function SUI.OrderCellLines(d, col)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M, B = CH.Theme, CH.FormatMoney, CH.Window.Book
 	if col == 3 then
-		local lines = { { "Rewards" } }
+		local lines = { B.Head("Rewards") }
 		for _, rw in ipairs(d.rewards) do
 			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
-			table.insert(lines, { CH.Window.ItemIcon(rw.id, 14) .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or ""),
-				rw.value and M(rw.value) or T.Color("muted", "can't be sold") })
+			local label = CH.Window.ItemIcon(rw.id, 14) .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or "")
+			table.insert(lines, rw.value and B.Line(label, rw.value) or B.Text(label, T.Color("muted", "can't be sold"), "muted"))
 		end
-		if not d.rewards[1] then table.insert(lines, { T.Color("muted", "No rewards beyond the commission.") }) end
-		table.insert(lines, { T.Color("muted", "Sellable rewards at what they bring after the AH cut.") })
+		if not d.rewards[1] then table.insert(lines, B.Note("No rewards beyond the commission.")) end
+		table.insert(lines, B.Total("Total", d.rewardValue or 0))
+		table.insert(lines, B.Note("Sellable rewards at what they bring after the AH cut."))
 		return lines
 	elseif col == 4 and d.ok then
 		local pays = (d.commission or 0) + (d.rewardValue or 0)
 		local procs = (d.profit or 0) - (pays - (d.cost or 0))
-		local lines = { { "Profit" }, { "Commission, after the consortium's cut", M(d.commission) } }
-		if (d.rewardValue or 0) > 0 then table.insert(lines, { "Rewards you can sell", M(d.rewardValue) }) end
-		table.insert(lines, { "Reagents you supply", (d.cost or 0) > 0 and ("-" .. M(d.cost)) or M(0) })
-		if math.abs(procs) >= 100 then table.insert(lines, { "Resourcefulness, on average", money(procs) }) end
-		table.insert(lines, { "Profit", money(d.profit) })
-		if d.concentration then table.insert(lines, { T.Color("muted", "Needs " .. CH.Window.ConcIcon(12) .. " " .. math.floor(d.concentration + 0.5) .. " Concentration to reach the quality asked.") }) end
+		local lines = { B.Head("Revenue"), B.Line("Commission, after the consortium's cut", d.commission or 0) }
+		if (d.rewardValue or 0) > 0 then table.insert(lines, B.Line("Rewards you can sell", d.rewardValue)) end
+		table.insert(lines, B.Head("Costs"))
+		table.insert(lines, B.Line("Reagents you supply", -(d.cost or 0), true))
+		if math.abs(procs) >= 100 then table.insert(lines, B.Line("Resourcefulness, on average", procs)) end
+		table.insert(lines, B.Total("Profit", d.profit))
+		if d.concentration then table.insert(lines, B.Note("Needs " .. math.floor(d.concentration + 0.5) .. " Concentration to reach the quality asked.")) end
 		return lines
 	elseif col == 5 and d.ok then
-		local lines = { { "Crafting costs" } }
+		local lines = { B.Head("Crafting costs") }
 		for _, l in ipairs(d.costLines or {}) do
-			table.insert(lines, { CH.Window.ItemIcon(l.id, 14) .. l.n .. " x " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or "")
-				.. T.Color(l.have >= l.n and "ok" or "bad", string.format("  (have %d)", l.have)), l.total and M(l.total) or T.Color("bad", "no price") })
+			local label = CH.Window.ItemIcon(l.id, 14) .. l.n .. " x " .. (l.name or "?") .. (l.rank and (" " .. CH.Window.QualityIcon(l.rank, 12, l.tiers)) or "")
+				.. T.Color(l.have >= l.n and "ok" or "bad", string.format("  (have %d)", l.have))
+			table.insert(lines, l.total and B.Line(label, -l.total, true) or B.Text(label, T.Color("bad", "no price"), "bad"))
 			for _, t in ipairs(CH.Advisor.HeldText(l)) do table.insert(lines, t) end
 		end
-		if not (d.costLines and d.costLines[1]) then table.insert(lines, { T.Color("ok", "The customer provides every reagent.") }) end
-		table.insert(lines, { "Total", M(d.cost or 0) })
-		table.insert(lines, { T.Color("muted", "Only what you supply: the customer's reagents aren't counted.") })
+		if not (d.costLines and d.costLines[1]) then table.insert(lines, B.Note("The customer provides every reagent.")) end
+		table.insert(lines, B.Total("Total", -(d.cost or 0)))
+		table.insert(lines, B.Note("Only what you supply: the customer's reagents aren't counted."))
 		return lines
 	end
 	return nil

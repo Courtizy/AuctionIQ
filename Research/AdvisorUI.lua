@@ -863,25 +863,27 @@ end
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
 	local function add(l, rt) table.insert(lines, { l, rt }) end
+	local B = CH.Window.Book
+	local function put(l) table.insert(lines, l) end
 	if col == 3 then
-		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  estimated cost"))
+		put(B.Head("Reagents", CH.Theme.Color("muted", "estimated cost")))
 		local live
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
-				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
-			for _, t in ipairs(CH.Advisor.HeldText(c)) do add(t[1], t[2]) end
+			local label = string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.unit and CH.Theme.Color("muted", " @ " .. CH.FormatMoney(c.unit)) or "")
+				.. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or "")
+			put(c.total and B.Line(label, -c.total, true) or B.Text(label, CH.Theme.Color("bad", "no price"), "bad"))
+			for _, t in ipairs(CH.Advisor.HeldText(c)) do put(t) end
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
-			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
+			for _, l in ipairs(AUI.BuyNowLines(c)) do put({ "   " .. l[1], l[2], "muted", "muted" }); live = true end
 		end
-		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
+		put(B.Total("Total", -(r.cost or 0)))
 		-- the same reagents on each costing basis: they answer different questions
-		for _, l in ipairs(AUI.BasisLines(result, r)) do add(l[1], l[2]) end
-		add(CH.Theme.Color("muted", "Replacement: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
-		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
-		add(CH.Theme.Color("muted", "Opportunity cost: what yours would bring sold at the sell price, after the 5% cut."))
+		for _, l in ipairs(AUI.BasisLines(result, r)) do put(l[2] == "" and B.Head(l[1]) or B.Sub(l[1], l[2])) end
+		if live then put(B.Note("Buy now: the listings you've seen for that many, which is what you'd pay.")) end
+		put(B.Note("Opportunity cost: what yours would bring at the sell price, after the 5% cut."))
 		-- two questions, two costs: restocking today against what the reagents you hold cost you
-		for _, l in ipairs(AUI.PaidLines(result, r)) do add(l[1], l[2]) end
-		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
+		for _, l in ipairs(AUI.PaidLines(result, r)) do put(l[2] == "" and { l[1], "" } or B.Sub(l[1], l[2])) end
+		if result.order and next(result.order.providedSlots or {}) then put(B.Note("The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
 		add(CH.Theme.Color("accent", name) .. rankText(r.quality, result.model and result.model.maxQ))
@@ -908,26 +910,27 @@ function AUI.BreakdownLines(result, r, col)
 			for _, l in ipairs(AUI.PostingLines(r.item, level, r.price)) do add(l[1], l[2]) end
 		end
 	elseif col == 5 then
-		add(CH.Theme.Color("accent", "Average profit") .. CH.Theme.Color("muted", "  per craft"))
-		add(result.order and "Commission and rewards" or "Expected sale value", CH.FormatMoney(r.value))
-		add("Less reagents", CH.FormatMoney(-r.cost))
+		put(B.Head("Revenue", CH.Theme.Color("muted", "average per craft")))
+		put(B.Line(result.order and "Commission and rewards" or "Expected sale value", r.value))
 		local pp = r.parts
 		if pp and pp.mc > 0 and not result.order then
-			add(string.format("Multicraft  %d%% x %.1f more", math.floor(pp.mc * 100 + 0.5), pp.extraItems), "+" .. CH.FormatMoney(pp.mcGold))
+			put(B.Line(string.format("Multicraft  %d%% x %.1f more", math.floor(pp.mc * 100 + 0.5), pp.extraItems), pp.mcGold))
 		end
+		put(B.Head("Costs"))
+		put(B.Line("Reagents", -(r.cost or 0), true))
 		if pp and pp.res > 0 then
-			add(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), "+" .. CH.FormatMoney(pp.resGold))
+			put(B.Line(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), pp.resGold))
 		end
-		if r.oldValue then add("Less the item you recraft", CH.FormatMoney(-r.oldValue)) end
-		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
-		if r.profit and r.cost and r.cost > 0 then add("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
+		if r.oldValue then put(B.Line("The item you recraft", -r.oldValue, true)) end
+		put(B.Total("Profit", r.profit))
+		if r.profit and r.cost and r.cost > 0 then put(B.Text("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5)))) end
 		-- margin: profit over what the craft brings in (proceeds, Multicraft's extras included)
 		local proceeds = r.value and r.parts and (r.value + (r.parts.mcGold or 0))
 		if r.profit and proceeds and proceeds > 0 and not result.order then
-			add("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5)))
+			put(B.Text("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5))))
 		end
 		if r.breakEven then
-			add("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item")
+			put(B.Text("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item"))
 			add(CH.Theme.Color("muted", string.format("  estimate %s per item; can fall %s", CH.FormatMoney(r.breakEven.estimate),
 				pctText(math.max(0, r.breakEven.cushion)))), "")
 		end
@@ -981,11 +984,7 @@ end
 function AUI.ShowBreakdown(owner, i, col)
 	local r = shown and shown.rows[i]
 	if not r then return end
-	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-	for _, l in ipairs(AUI.BreakdownLines(shown, r, col)) do
-		if l[2] then GameTooltip:AddDoubleLine(l[1], l[2], 1, 1, 1, 1, 1, 1) else GameTooltip:AddLine(l[1]) end
-	end
-	GameTooltip:Show()
+	CH.Window.Tooltip(owner, AUI.BreakdownLines(shown, r, col))
 end
 
 --- Update the advisor for a recipe (or the one on screen). It comes to the front unless another tab

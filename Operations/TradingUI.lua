@@ -114,17 +114,28 @@ local SOURCE = { ah = "your AH search", scan = "your last AH scan" }
 
 --- One item's posting call, as lines: the recommendation, why, and what your rules allow apart from it.
 function TUI.PostLines(r, a)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M, B = CH.Theme, CH.FormatMoney, CH.Window.Book
+	local qty = a.qty or 0
 	local lines = {
-		{ D_LABEL(a) .. ((a.action == "post" or a.action == "fewer") and r.price and ("  at " .. M(r.price)) or "") },
+		{ D_LABEL(a) .. ((a.action == "post" or a.action == "fewer") and r.price and ("  at " .. M(r.price)) or ""), "", "muted", "accent" },
 		{ T.Color("muted", "Because " .. a.reason .. ".") },
-		{ "Recommended quantity", tostring(a.qty or 0) },
-		{ "Allowed by your rules", (r.post or 0) .. T.Color("muted", string.format("  (%d up of a %d cap)", r.up or 0, r.cap or 0)) },
+		B.Head("Quantity"),
+		B.Text("Recommended", tostring(qty)),
+		B.Text("Allowed by your rules", tostring(r.post or 0)),
+		B.Sub("Up / cap", string.format("%d / %d", r.up or 0, r.cap or 0)),
+		B.Head("Price"),
+		B.Text("Post at", r.price and M(r.price) or "-"),
+		B.Sub("Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
+			or T.Color("bad", "no AH scan")),
 	}
-	if r.why then table.insert(lines, { "Rule check", T.Color("muted", r.why) }) end
-	table.insert(lines, { "Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
-		or T.Color("bad", "no AH scan: your operation's normal price") })
-	if r.min then table.insert(lines, { "Your min", M(r.min) }) end
+	if r.min then lines[#lines + 1] = B.Sub("Your min", M(r.min)) end
+	if r.why then lines[#lines + 1] = B.Sub("Rule check", r.why) end
+	if r.price and qty > 0 then
+		lines[#lines + 1] = B.Head("Proceeds")
+		lines[#lines + 1] = B.Line(string.format("%d x %s", qty, M(r.price)), r.price * qty)
+		lines[#lines + 1] = B.Line("AH cut (5%)", -(r.price * qty * (1 - CH.AH_CUT)), true)
+		lines[#lines + 1] = B.Total("After the cut", r.price * qty * CH.AH_CUT)
+	end
 	return lines
 end
 

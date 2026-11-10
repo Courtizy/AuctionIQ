@@ -817,14 +817,15 @@ function A.HeldText(l)
 	if not (l and l.own and l.own > 0) then return out end
 	local M, T = CH.FormatMoney, CH.Theme
 	local function m(v) return v and M(v) or T.Color("muted", "-") end
+	local B = CH.Window.Book
 	local list = CH.Prices.Get("chvalue", "i:" .. l.id)
 	local lowest = CH.Prices.Raw and CH.Prices.Raw("dbminbuyout", l.id) or l.buy
-	out[#out + 1] = { string.format("   Opportunity cost (%d yours)", l.own), m(l.ownEach) }
-	out[#out + 1] = { T.Color("muted", "      Stock"), tostring(l.stock or l.own) }
-	out[#out + 1] = { T.Color("muted", "      Paid price"), m(l.paidEach) }
-	out[#out + 1] = { T.Color("muted", "      Current price"), m(lowest) }
-	out[#out + 1] = { T.Color("muted", "      Sell price"), m(list) }
-	if (l.buyN or 0) > 0 then out[#out + 1] = { string.format("   To buy (%d)", l.buyN), m(l.buy) } end
+	out[#out + 1] = B.Sub(string.format("Opportunity cost (%d yours)", l.own), m(l.ownEach))
+	out[#out + 1] = B.Sub("   Stock", tostring(l.stock or l.own))
+	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
+	out[#out + 1] = B.Sub("   Current price", m(lowest))
+	out[#out + 1] = B.Sub("   Sell price", m(list))
+	if (l.buyN or 0) > 0 then out[#out + 1] = B.Sub(string.format("To buy (%d)", l.buyN), m(l.buy)) end
 	return out
 end
 
