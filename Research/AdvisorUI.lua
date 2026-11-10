@@ -241,6 +241,11 @@ function AUI.Render(result, reason)
 		table.insert(lines, T.Color("accent", string.format("With Concentration, Q%d: ", c.quality)) .. money(c.profit) .. " a craft for "
 			.. string.format("%d points", c.concentration or 0) .. " (" .. CH.FormatMoney(c.perPoint) .. " a point). " .. T.Color("muted", "Use ")
 			.. CH.Advisor.PicksText(result, c.picks, c.finishing))
+		-- what spending the points adds over the plain craft you'd make anyway
+		local plain = result.best and result.best.profit
+		if plain and plain > 0 and c.profit then
+			table.insert(lines, T.Color("muted", "  Over the plain craft: ") .. money(c.profit - plain) .. T.Color("muted", " more a craft"))
+		end
 	end
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(lines, l) end
 	if #result.qual == 0 then table.insert(lines, T.Color("muted", "No reagent qualities to choose for this recipe.")) end
@@ -364,16 +369,16 @@ function AUI.BreakdownLines(result, r, col)
 	local lines = {}
 	local function add(l, rt) table.insert(lines, { l, rt }) end
 	if col == 3 then
-		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  estimated cost (chmat)"))
+		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  estimated cost"))
 		local live
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)),
+			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
 				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
 			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
 		end
 		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
-		add(CH.Theme.Color("muted", "chmat: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
+		add(CH.Theme.Color("muted", "Bought reagents at chmat: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
 		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
 		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
 	elseif col == 4 then
@@ -417,6 +422,8 @@ function AUI.BreakdownLines(result, r, col)
 		if r.profit and r.cost and r.cost > 0 then add("Return on reagents", string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
 		if r.concentration then
 			add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
+			local plain = result.best and result.best.profit
+			if plain and plain > 0 and r.profit then add("  More than the plain craft", money(r.profit - plain)) end
 			if (r.ingenuity or 0) > 0 then
 				add(string.format("  Ingenuity %d%%, %.0f points on average", math.floor(r.ingenuity * 100 + 0.5), r.avgConcentration or r.concentration), "")
 			end

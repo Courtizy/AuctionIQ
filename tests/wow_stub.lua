@@ -207,7 +207,7 @@ C_TradeSkillUI = {
 		end
 		return { baseSkill = 100, bonusSkill = bonus, baseDifficulty = 130, craftingQuality = (concentrate and 2 or q) + (STUB.qualityOffset or 0),
 			lowerSkillThreshold = q == 2 and 130 or 0, upperSkillTreshold = q == 1 and 130 or 0,
-			concentrationCost = 20 + 2 * math.max(0, 130 - skill), bonusStats = stats }
+			concentrationCost = 20 + 2 * math.max(0, 130 - skill), bonusStats = stats, craftingDataID = STUB.craftingDataID }
 	end,
 }
 

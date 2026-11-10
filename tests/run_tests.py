@@ -175,8 +175,8 @@ St = CH.Stats
 check("multicraft: average extra items from the base yield", abs(St.MulticraftExtra(2, 0) - 2.33) < 1e-9 and abs(St.MulticraftExtra(1, 0.25) - 1.8125) < 1e-9)
 check("concentration cost from the game's curve", St.ConcentrationCost(1, 100, 25, 0) == 100 and St.ConcentrationCost(1, 100, 25, 0.1) == 90)
 run("AuctionIQ.ConcCurves[9901] = { c = { [0] = 100, [200] = 300 }, v = { [0] = 1, [1] = 1 } }")
-# the constant follows difficulty (150 -> 250), not skill (50 -> 150)
-check("concentration: curve constant read at the recipe's difficulty", St.ConcentrationCost(9901, 150, 50, 0) == 250 and St.ConcentrationCost(9901, 400, 50, 0) == 300)
+# CraftSim: bracket by skill (50 is in 0..200), constant read at difficulty 150 -> 250
+check("concentration: curve constant as CraftSim reads it", St.ConcentrationCost(9901, 150, 50, 0) == 250)
 run("AuctionIQ.ConcCurves[9901] = nil")
 pr = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
 prow = list(pr.rows.values())
@@ -345,6 +345,46 @@ orows = list(o.rows.values())
 check("order: the customer's reagents aren't charged, the commission is the value",
       o.best.quality == 2 and o.best.cost == 2100000 and o.best.value == 900000 and o.best.profit == 900000 - 2100000)
 check("order: qualities under the minimum are marked", orows[0].short == True and L.eval("STUB.orderCall") == 77)
+# the customer gives part of a slot: we pay for the rest (slot 3 needs 2 of item 205 at 1g, they give 1)
+op = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
+  reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 1 } } } }"""))
+check("order: part of a slot from the customer, the rest is ours to pay", op.best.cost == o.best.cost + 10000)
+run("STUB.savedQueue = AuctionIQ.db.queue; AuctionIQ.db.queue = {}")
+CH.Queue.Add(op, op.best, 1)
+need205 = [x for x in CH.Queue.ShoppingList()[0].values() if x.itemID == 205]
+check("order: the queue and shopping list ask for the same remaining units", len(need205) == 1 and need205[0].need == 1)
+run("AuctionIQ.db.queue = STUB.savedQueue")
+# 3 of the 4 in the quality slot from the customer: only 1 left to pick
+oq = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 1, tipAmount = 1000000, consortiumCut = 0,
+  reagents = { { reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 3 } } } }"""))
+q1 = [sl for sl in oq.model.qual.values() if sl.index == 1]
+check("order: a quality slot the customer part-fills keeps the rest to pick", len(q1) == 1 and q1[0].qty == 1)
+
+# Concentration on the mix with the most gold per point, not just the cheapest mix for the quality:
+# with this curve each point of skill makes Concentration much cheaper
+run("AuctionIQ.ConcCurves[9902] = { c = { [0] = 1000 }, v = { [0] = 1, [1] = 0 } }; STUB.craftingDataID = 9902")
+cm = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+plain1 = [r for r in cm.rows.values() if r.quality == 1 and not r.concentration][0]
+conc1 = [r for r in cm.rows.values() if r.concentration and r["from"] == 1][0]
+check("concentration: picks a mix with more skill when it pays more per point", conc1.skill > plain1.skill and conc1.cost > plain1.cost)
+run("AuctionIQ.ConcCurves[9902] = nil; STUB.craftingDataID = nil")
+
+# Subrecipes: a reagent an alt crafts for less than buying it is priced at the craft
+base10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost
+run("""AuctionIQ.db.characters['Sub-Realm'] = { name = 'Sub', professions = { [77] = { name = 'Test Smithing', scan = { at = STUB.now, rows = {
+  { recipeID = 50, name = 'Make 205', item = 205, craftEach = 4000 } } } } } }; AuctionIQ.Scan.ClearCrafted()""")
+sub10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+check("subrecipe: a reagent you craft for less is priced at the craft", sub10.best.cost == base10 - 2 * (10000 - 4000))
+cl = [x for x in CH.Advisor.CostLines(sub10, sub10.best.picks).values() if x.name == "item 205"]
+check("subrecipe: the reagent line says who crafts it", len(cl) == 1 and cl[0].crafted and cl[0].crafted.char == "Sub")
+run("AuctionIQ.db.settings.subrecipes = false")
+check("subrecipe: off in Settings, reagents are bought", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.settings.subrecipes = nil")
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now - 30 * 86400; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: a stale scan isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now; AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.rows[1].viaCraft = true; AuctionIQ.Scan.ClearCrafted()")
+check("subrecipe: one level deep, a craft priced by crafted reagents isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+run("AuctionIQ.db.characters['Sub-Realm'] = nil; AuctionIQ.Scan.ClearCrafted()")
 
 # Recraft
 rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
@@ -376,7 +416,22 @@ check("scan: a slow frame pauses part-way through a recipe and the results come 
       not CH.Scan.IsRunning() and after == before and L.eval("STUB.scanSteps") > len(before))
 run("""AuctionIQ.Scan.Run(); AuctionIQ.Scan.Stop(); for i = 1, 20 do STUB.RunTimers() end""")
 check("scan: Stop ends a running scan", not CH.Scan.IsRunning())
-check("scan: gold a day = profit x units sold (up to the cap) / per craft", abs(pot.perDay - pot.profit * 10 / 2) < 1e-6)
+# a craft makes its base 2 plus Multicraft's average extra, as the profit per craft counts them
+yb = 2 + (pot.accounts.extraItems or 0)
+yc = 2 + (pot.concAccounts.extraItems or 0)
+plainDay = pot.profit * 10 / yb
+cc = min(10 / yc, L.eval("AuctionIQ.CONC_PER_HOUR") * 24 / pot.avgConcentration)
+concDay = cc * pot.concProfit + max(0, 10 / yb - cc * yc / yb) * pot.profit
+check("scan: gold a day = profit x units sold (up to the cap) / items per craft, Multicraft included",
+      (pot.accounts.extraItems or 0) > 0 and abs(pot.perDay - max(plainDay, concDay)) < 1e-3)
+# Concentration making a better item: it sells to its own buyers, on top of the plain crafts
+run("""STUB.oldSold = AuctionIQ.Advisor.SoldPerDay; AuctionIQ.Advisor.SoldPerDay = function(id) return id == 900 and 10 or 2 end""")
+sm = L.eval("""AuctionIQ.Scan.Summary({ recipeID = 1, name = 'x', made = 2,
+  best = { profit = 100, cost = 50, item = 900, quality = 1, parts = { mc = 0.2, extraItems = 2.33 } },
+  bestConc = { profit = 300, item = 901, quality = 2, avgConcentration = 1, concentration = 1, parts = { mc = 0, extraItems = 0 } } })""")
+run("AuctionIQ.Advisor.SoldPerDay = STUB.oldSold")
+check("scan: a better item from Concentration adds its own sales to the plain crafts",
+      abs(sm.perDay - (100 * 10 / 2.466 + 300 * 2 / 2)) < 1e-6)
 top = list(CH.Scan.Top(2906, 1).values())
 tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
 names = [t[0] for t in tl]

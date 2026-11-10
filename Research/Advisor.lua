@@ -23,12 +23,22 @@ local function price(kind, itemID)
 	return itemID and CH.Prices.Get(kind, "i:" .. itemID)
 end
 
+-- A reagent's price in a recipe: buying it, or making it when someone on the warband crafts it for
+-- less (Scan.ReagentPrice). Marks the model when a crafted price was used.
+local function reagentPrice(model, itemID)
+	if not (CH.Scan and CH.Scan.ReagentPrice) then return price("chmat", itemID) end
+	local p, via = CH.Scan.ReagentPrice(itemID, model and model.recipeID)
+	if via and model then model.viaCraft = true end
+	return p
+end
+A.ReagentPrice = reagentPrice
+
 local function reagentType(name, fallback)
 	return Enum and Enum.CraftingReagentType and Enum.CraftingReagentType[name] or fallback
 end
 
 --- Required reagent slots, split into those with qualities (we choose) and fixed ones (we just pay),
---- plus finishing slots. Slots the customer fills on a crafting order are left out.
+--- plus finishing slots. On a crafting order, what the customer gives comes off each slot's quantity.
 function A.Slots(schematic, provided)
 	local qual, fixed, finishing = {}, {}, {}
 	local basic, fin = reagentType("Basic", 1), reagentType("Finishing", 2)
@@ -38,8 +48,13 @@ function A.Slots(schematic, provided)
 			local id = r.itemID or (r.reagent and r.reagent.itemID)
 			if id then table.insert(items, id) end
 		end
-		if not (provided and provided[s.dataSlotIndex]) and #items > 0 then
-			local slot = { index = s.dataSlotIndex, qty = s.quantityRequired or 1, items = items }
+		-- the customer may give all of a slot (left out) or part of it (we supply the rest)
+		local given = provided and provided[s.dataSlotIndex]
+		local need = s.quantityRequired or 1
+		if given == true then given = need end
+		need = need - (given or 0)
+		if need > 0 and #items > 0 then
+			local slot = { index = s.dataSlotIndex, qty = need, items = items }
 			if s.reagentType == basic and s.required ~= false then
 				table.insert(#items > 1 and qual or fixed, slot)
 			elseif s.reagentType == fin then
@@ -105,14 +120,14 @@ local function cost(model, picks)
 		for q, id in ipairs(slot.items) do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local p = price("chmat", id)
+				local p = reagentPrice(model, id)
 				if not p then return nil end
 				total = total + n * p
 			end
 		end
 	end
 	for _, slot in ipairs(model.fixed) do
-		local p = price("chmat", slot.items[1])
+		local p = reagentPrice(model, slot.items[1])
 		if not p then return nil end
 		total = total + slot.qty * p
 	end
@@ -206,7 +221,7 @@ function A.Measure(recipeID, opts)
 			local op = operation(model, p)
 			local perUnit = op and (skillOf(op) - model.skill0) / slot.qty or 0
 			model.perUnit[i][q] = perUnit
-			local extra = (price("chmat", slot.items[q]) or math.huge) - (price("chmat", slot.items[1]) or 0)
+			local extra = (reagentPrice(model, slot.items[q]) or math.huge) - (reagentPrice(model, slot.items[1]) or 0)
 			if perUnit > 0 and extra < math.huge then
 				table.insert(model.moves, { slot = i, q = q, skill = perUnit, extra = math.max(0, extra) })
 			end
@@ -320,6 +335,43 @@ end
 -- Long work (a scan) can pause here and pick up next frame, so one heavy recipe can't freeze the game.
 local function yield() local s = CH.Scan; if s and s.Yield then s.Yield() end end
 
+local frontier, picksOf -- below: the cheapest reagent mixes for each amount of skill
+
+-- Concentration costs less the more skill the reagents give, so the cheapest mix for a quality isn't
+-- always the best one to concentrate on (CraftSim optimises it apart). With the game's curve, every
+-- mix on the skill/cost frontier that lands on this quality is scored by gold per point, and the
+-- best is used. Without a curve the cheapest mix stays (only the game knows the cost).
+local CONC_CANDIDATES = 60
+local function concMix(model, q, f, s, base0, fin, item, citem)
+	if not (model.craftingDataID and model.difficulty and model.perUnit and #model.qual > 0) then return f end
+	if not St().ConcentrationCost(model.craftingDataID, model.difficulty, f.skill, s.concReduce) then return f end
+	local states = frontier(model)
+	if not states then return f end
+	local list = {}
+	for _, st in ipairs(states) do
+		local sk = base0 + st.s
+		if A.QualityAt(model, math.floor(sk + 1e-6)) == q then list[#list + 1] = { st = st, skill = sk } end
+	end
+	local step = math.max(1, math.ceil(#list / CONC_CANDIDATES))
+	local function score(picks, c, sk)
+		local cc = St().ConcentrationCost(model.craftingDataID, model.difficulty, sk, s.concReduce)
+		if not cc or cc <= 0 then return nil end
+		local r = valueRow(model, { quality = q + 1, from = q, concentration = cc, picks = picks, skill = sk }, s, citem, c, fin)
+		local avg = St().AverageConcentration(cc, s)
+		return r.profit and avg > 0 and r.profit / avg or nil
+	end
+	local best, bestPP = f, score(f.picks, f.cost, f.skill)
+	for k = 1, #list, step do
+		local picks = picksOf(model, list[k].st)
+		local c = cost(model, picks)
+		local pp = c and score(picks, c, list[k].skill)
+		if pp and (not bestPP or pp > bestPP + 1e-9) then
+			best, bestPP = { quality = q, picks = picks, cost = c, skill = list[k].skill }, pp
+		end
+	end
+	return best
+end
+
 local function build(model, delta, fin, live)
 	yield()
 	local stats = St().Add(St().Copy(model.stats0), delta)
@@ -382,9 +434,17 @@ local function build(model, delta, fin, live)
 		end
 		local item = model.outputs[q] or model.output
 		table.insert(rows, valueRow(model, { quality = q, picks = f.picks, skill = f.skill }, s, item, f.cost, fin))
-		-- The same reagents with Concentration: it lifts the craft to the next quality.
+		-- With Concentration it lifts the craft to the next quality, on the mix that gives the most
+		-- gold per point (often the cheapest one, sometimes one with more skill).
 		if model.supportsQualities and q < model.maxQ then
 			local cc, cq
+			local g = concMix(model, q, f, s, base0, fin, item, model.outputs[q + 1] or item)
+			if g ~= f and live then
+				-- the game has the last word on the quality these reagents make
+				local op = operation(model, g.picks, false, fin)
+				if not (op and A.QualityAt(model, skillOf(op)) == q) then g = f else g.skill = skillOf(op) end
+			end
+			f = g
 			if live then
 				local opc = operation(model, f.picks, true, fin)
 				cc, cq = opc and opc.concentrationCost or 0, q + 1
@@ -414,7 +474,7 @@ end
 local function slotMixes(model, i)
 	local slot, out = model.qual[i], {}
 	local prices = {}
-	for q, id in ipairs(slot.items) do prices[q] = price("chmat", id) end
+	for q, id in ipairs(slot.items) do prices[q] = reagentPrice(model, id) end
 	local nq = #slot.items
 	local function walk(q, left, row, sk, c)
 		if q == nq then
@@ -445,12 +505,12 @@ end
 local function priceKey(model)
 	local parts = {}
 	for _, slot in ipairs(model.qual) do
-		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(price("chmat", id) or "-") end
+		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(reagentPrice(model, id) or "-") end
 	end
 	return table.concat(parts, ",")
 end
 
-local function frontier(model)
+function frontier(model)
 	local key = priceKey(model)
 	local c = model.frontierCache
 	if c and c.key == key and c.perUnit == model.perUnit then return c.states end
@@ -477,6 +537,17 @@ local function frontier(model)
 end
 A.Frontier = frontier
 
+-- The reagent picks a frontier state stands for (picks[i][q]).
+function picksOf(model, state)
+	local picks, st = {}, state
+	for i = #model.qual, 1, -1 do
+		local row = {}
+		for q, n in pairs(st.row) do row[q] = n end
+		picks[i], st = row, st.prev
+	end
+	return picks
+end
+
 function A.Cheapest(model, base)
 	if not model.perUnit or #model.qual == 0 then return {} end
 	local states = frontier(model)
@@ -488,15 +559,7 @@ function A.Cheapest(model, base)
 		for _, st in ipairs(states) do
 			if math.floor((base or 0) + st.s + 1e-6) >= need and (not pick or st.c < pick.c) then pick = st end
 		end
-		if pick then
-			local picks, st = {}, pick
-			for i = #model.qual, 1, -1 do
-				local row = {}
-				for q, n in pairs(st.row) do row[q] = n end
-				picks[i], st = row, st.prev
-			end
-			out[#out + 1] = picks
-		end
+		if pick then out[#out + 1] = picksOf(model, pick) end
 	end
 	return out
 end
@@ -624,14 +687,14 @@ function A.CostLines(result, picks, fin)
 		for q = #slot.items, 1, -1 do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local unit = price("chmat", slot.items[q])
-				table.insert(out, { id = slot.items[q], name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n })
+				local unit, via = reagentPrice(result.model, slot.items[q]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[q], result.recipeID))
+				table.insert(out, { id = slot.items[q], name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n, crafted = via })
 			end
 		end
 	end
 	for _, slot in ipairs(result.fixed) do
-		local unit = price("chmat", slot.items[1])
-		table.insert(out, { id = slot.items[1], name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty })
+		local unit, via = reagentPrice(result.model, slot.items[1]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[1], result.recipeID))
+		table.insert(out, { id = slot.items[1], name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty, crafted = via })
 	end
 	for _, f in ipairs(fin or {}) do
 		table.insert(out, { id = f.itemID, name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })

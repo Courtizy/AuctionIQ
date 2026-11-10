@@ -34,8 +34,14 @@ function Q.FromRow(result, r)
 		table.insert(reagents, { itemID = f.itemID, slot = f.slot, n = 1 })
 		table.insert(shop, { itemID = f.itemID, n = 1 })
 	end
+	-- what the customer gives, as the advisor planned it: the craft supplies only the rest
+	local given
+	for _, g in ipairs(result.order and result.order.provided or {}) do
+		given = given or {}
+		given[g.itemID] = (given[g.itemID] or 0) + (g.quantity or 0)
+	end
 	local me = CH.Me()
-	return {
+	return { given = given,
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
 		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item,
@@ -366,7 +372,11 @@ function Q.ShoppingList()
 		local unit = d and d.unit or CH.Prices.Get("chmat", "i:" .. id)
 		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
-		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost,
+		-- someone on the warband makes it for less than buying it: say who, and what it would cost them
+		local made = CH.Scan and CH.Scan.SubrecipesOn and CH.Scan.SubrecipesOn() and CH.Scan.Crafted(id)
+		local craft = made and buy > 0 and (not unit or made.each < unit) and
+			{ char = made.char, key = made.key, recipeID = made.recipeID, name = made.name, each = made.each, cost = made.each * buy } or nil
+		table.insert(out, { itemID = id, rank = rank[id], tiers = tiers[id], need = n, have = h, buy = buy, unit = unit, cost = cost, craft = craft,
 			source = d and d.source, short = d and d.short or 0, first = d and d.first, age = d and d.age,
 			name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or ("item " .. id) })
 	end
@@ -451,14 +461,22 @@ function Q.Craft(e, amount)
 			return true
 		end
 		-- craft into the order: the customer's reagents are theirs, leave them out of ours
+		-- only what they give beyond what the advisor already planned for comes off ours
 		local supplied = {}
 		for _, r in ipairs(claimed.reagents or {}) do
 			local info = r.reagentInfo or r
 			local id = info.reagent and info.reagent.itemID or info.itemID
-			if id then supplied[id] = true end
+			if id then supplied[id] = (supplied[id] or 0) + (info.quantity or math.huge) end
 		end
+		for id, n in pairs(e.given or {}) do if supplied[id] then supplied[id] = math.max(0, supplied[id] - n) end end
 		local mine = {}
-		for _, r in ipairs(reagents) do if not supplied[r.itemID] then table.insert(mine, r) end end
+		for _, r in ipairs(reagents) do
+			local off = math.min(r.quantity, supplied[r.itemID] or 0)
+			if off > 0 then supplied[r.itemID] = supplied[r.itemID] - off end
+			if r.quantity - off > 0 then
+				table.insert(mine, { reagent = r.reagent, itemID = r.itemID, dataSlotIndex = r.dataSlotIndex, quantity = r.quantity - off })
+			end
+		end
 		-- The game silently refuses a craft below the order's rank, so ask it first what these
 		-- reagents make for this order, and turn Concentration on when that's what reaches it.
 		local conc = e.concentration ~= nil
