@@ -348,6 +348,11 @@ check("order: qualities under the minimum are marked", orows[0].short == True an
 op = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
   reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 1 } } } }"""))
 check("order: part of a slot from the customer, the rest is ours to pay", op.best.cost == o.best.cost + 10000)
+run("STUB.savedQueue = AuctionIQ.db.queue; AuctionIQ.db.queue = {}")
+CH.Queue.Add(op, op.best, 1)
+need205 = [x for x in CH.Queue.ShoppingList()[0].values() if x.itemID == 205]
+check("order: the queue and shopping list ask for the same remaining units", len(need205) == 1 and need205[0].need == 1)
+run("AuctionIQ.db.queue = STUB.savedQueue")
 # 3 of the 4 in the quality slot from the customer: only 1 left to pick
 oq = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 1, tipAmount = 1000000, consortiumCut = 0,
   reagents = { { reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 3 } } } }"""))
