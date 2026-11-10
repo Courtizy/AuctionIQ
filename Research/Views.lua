@@ -315,26 +315,12 @@ local function step(x, dir)
 	return S[1]
 end
 
---- What a craft's money is made of, from its saved scan: revenue (items after the cut and the cost
---- of gold tied up, Multicraft's extras included), reagents consumed, what Resourcefulness gives back,
---- and the deposits lost to expiries (which don't move with the price). Older scans without the
---- breakdown count everything as revenue less reagents.
-function AV.Parts(row)
-	local a = row.accounts
-	if a and a.sales and a.cost then
-		local revenue = a.sales + (a.mcGold or 0)
-		local units = (a.unit and a.unit > 0) and revenue / a.unit or 0
-		return { revenue = revenue, consumed = a.cost, returned = a.resGold or 0, deposits = (a.deposit or 0) * units }
-	end
-	return { revenue = row.profit + row.cost, consumed = row.cost, returned = 0, deposits = 0 }
-end
+--- What a craft's money is made of, from its saved scan (Decide.AccountParts): revenue, reagents
+--- consumed, what Resourcefulness gives back, and deposits lost to expiries.
+function AV.Parts(row) return CH.Decide.AccountParts(row) end
 
---- A craft's profit with reagents up r and the selling price down p (fractions). Reagents that
---- Resourcefulness gives back are worth more too; deposits stay what they are.
-function AV.Reprice(parts, r, p)
-	local revenue = parts.revenue - p * (parts.revenue + parts.deposits)
-	return revenue - parts.consumed * (1 + r) + parts.returned * (1 + r)
-end
+--- A craft's profit with reagents up r and the selling price down p (fractions): Decide.Reprice.
+function AV.Reprice(parts, r, p) return CH.Decide.Reprice(parts, r, p) end
 
 --- What price changes would do to each craft in your saved scans: profit a craft now, with reagents
 --- up, with the selling price down, both, and the reagent rise that would wipe the profit out.
@@ -350,9 +336,12 @@ function AV.Scenarios(ctx, r, p)
 					local parts = AV.Parts(row)
 					local now = AV.Reprice(parts, 0, 0)
 					local net = parts.consumed - parts.returned
+					local be = CH.Decide.BreakEvenParts(parts, parts.price)
 					table.insert(out, { id = row.item, name = row.name, char = c.name or key, profit = now,
 						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
-						breakEven = net > 0 and now / net or math.huge })
+						breakEven = net > 0 and now / net or math.huge,
+						-- the sale price per item where the craft makes nothing, and how far the estimate can fall
+						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion })
 				end
 			end
 		end
@@ -365,16 +354,16 @@ local function scenarioRows(ctx)
 	local out, fragile = {}, 0
 	for _, x in ipairs(AV.Scenarios(ctx)) do
 		if x.both < 0 then fragile = fragile + 1 end
-		table.insert(out, { id = x.id, cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both),
-			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)),
-			x.both < 0 and T.Color("bad", "loses money") or T.Color("ok", "holds up") },
-			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.breakEven, x.both } })
+		local be = x.salePrice and (money(x.salePrice) .. T.Color(x.cushion < 0.1 and "bad" or "muted", " " .. pct(x.cushion))) or T.Color("muted", "older scan")
+		table.insert(out, { id = x.id, cells = { x.name, x.char, signed(x.profit), signed(x.reagentsUp), signed(x.priceDown), signed(x.both), be,
+			T.Color(x.breakEven < 0.2 and "bad" or x.breakEven < 0.5 and "fg" or "ok", x.breakEven == math.huge and "any" or "+" .. pct(x.breakEven)) },
+			sort = { x.name, x.char, x.profit, x.reagentsUp, x.priceDown, x.both, x.cushion or -math.huge, x.breakEven } })
 	end
 	if not out[1] then return out, T.Color("muted", "Scan a profession first: scenarios use your saved scans' profitable crafts.") end
 	local sc = AV.Scenario()
 	return out, string.format("Reagents +%d%%, selling price -%d%%. %d of %d crafts lose money if both happen.",
 		math.floor(sc.reagents * 100 + 0.5), math.floor(sc.price * 100 + 0.5), fragile, #out)
-		.. T.Color("muted", "  Break-even: how far reagents can rise before the craft stops paying. Estimated from your scans.")
+		.. T.Color("muted", "  Break-even: the sale price per item where a craft makes nothing, and how far the estimate can fall. Reagent room: how far reagents can rise before it stops paying.")
 end
 
 AV.VIEWS = {
@@ -387,9 +376,9 @@ AV.VIEWS = {
 	crafting = { label = "Crafting efficiency", sort = 3, noTime = true, rows = craftingRows, cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 },
 		{ "Crafts", 258, 44 }, { "Per craft", 306, 80 }, { "Per Conc. pt", 390, 80 }, { "Multicraft", 474, 80 }, { "Resourceful", 558, 84 },
 		{ "Ingenuity", 646, 78 } } },
-	scenarios = { label = "Scenarios", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 170 }, { "Character", 174, 76 },
-		{ "Profit now", 254, 76 }, { "Reagents +10%", 334, 86 }, { "Price -10%", 424, 76 }, { "Both", 504, 70 }, { "Break-even", 578, 70 },
-		{ "", 652, 72 } } },
+	scenarios = { label = "Scenarios", sort = 7, asc = true, noTime = true, rows = scenarioRows, cols = { { "Craft", 0, 140 }, { "Character", 144, 70 },
+		{ "Profit now", 218, 72 }, { "Reagents +10%", 294, 86 }, { "Price -10%", 384, 72 }, { "Both", 460, 60 }, { "Break-even/item", 524, 100 },
+		{ "Reagent room", 628, 96 } } },
 }
 
 -- Scenarios' two settings, as buttons over the table; the column headings follow them

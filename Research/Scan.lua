@@ -111,6 +111,16 @@ function Sc.BuyOrCraft(r)
 		save = buy and craft and craft - buy }
 end
 
+--- What a scanned row's Concentration craft adds per expected point over its best plain craft (or
+--- over not crafting, when no plain craft pays). Works on scans saved before it was kept.
+function Sc.GainPerPoint(r)
+	if not r then return nil end
+	if r.gainPerPoint then return r.gainPerPoint end
+	local avg = r.avgConcentration or r.concentration
+	if not (r.concProfit and avg and avg > 0) then return nil end
+	return (r.concProfit - math.max(0, r.profit or 0)) / avg
+end
+
 local function summary(result)
 	local b, c = result.best, result.bestConc
 	local item = b and b.item or (c and c.item)
@@ -148,6 +158,9 @@ local function summary(result)
 		avgConcentration = avg, concItem = c and c.item,
 		accounts = accounts(result, b), concAccounts = accounts(result, c),
 		craftEach = Sc.CraftEach(b, made),
+		-- the decision numbers, kept with the scan: what Concentration adds per point, the break-even price
+		gainPerPoint = c and c.gain and c.gain.perPoint, concGain = c and c.gain and c.gain.gain,
+		breakEven = b and b.breakEven and b.breakEven.price, cushion = b and b.breakEven and b.breakEven.cushion,
 		-- priced with a reagent you craft: not used to price other crafts, so costs never loop
 		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),

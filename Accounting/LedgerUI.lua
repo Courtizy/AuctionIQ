@@ -545,7 +545,11 @@ function LUI.Build(p, fs, panel)
 		hit:SetPoint("TOPLEFT", X0, -50 - (i - 1) * RH)
 		hit:SetSize(TW, RH)
 		hit:SetScript("OnEnter", function(self)
-			if self.id and GameTooltip.SetItemByID then
+			-- a row can carry its own explanation (tip lines); else the item's tooltip
+			if self.tip then
+				local lines = type(self.tip) == "function" and self.tip() or self.tip
+				if lines and lines[1] then CH.Window.Tooltip(self, lines) end
+			elseif self.id and GameTooltip.SetItemByID then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				GameTooltip:SetItemByID(self.id)
 				GameTooltip:Show()
@@ -634,6 +638,7 @@ function LUI.Refresh()
 		local d = i <= ROWS and rows[i + offset] or nil
 		r.hit:SetShown(i <= ROWS)
 		r.hit.id = d and d.id
+		r.hit.tip = d and d.tip
 		for j, cell in ipairs(r.cells) do
 			local c = v.cols[j]
 			if c and d then

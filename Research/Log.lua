@@ -100,6 +100,9 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		expected = row and row.profit, cost = cost, mc = row and row.parts and row.parts.mc,
 		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
 		order = order and true or nil,
+		-- the forecast's yield, Resourcefulness and item value, kept so results can be explained later
+		items = row and CH.Decide and CH.Decide.Items(r.made, row.parts) or nil, expSaved = row and row.parts and row.parts.resGold or nil,
+		unit = row and row.unit or nil,
 		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
 		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil }
 end
@@ -163,6 +166,15 @@ function Lg.Result(data)
 		e.expMc = e.expMc + (pending.mc or 0)
 		e.expRes = e.expRes + (pending.res or 0)
 		e.expIng = e.expIng + (pending.ing or 0)
+		if pending.items then
+			-- only crafts the advisor forecast count toward the yield comparison
+			e.fcCrafts = (e.fcCrafts or 0) + 1
+			e.fcItems = (e.fcItems or 0) + qty
+			e.expItems = (e.expItems or 0) + pending.items
+			e.expSaved = (e.expSaved or 0) + (pending.expSaved or 0)
+			e.fcSaved = (e.fcSaved or 0) + saved
+			e.expUnit = (e.expUnit or 0) + (pending.unit or 0) * pending.items
+		end
 		pending.count = pending.count - 1
 		if pending.count <= 0 then pending = nil end
 	end
@@ -211,11 +223,84 @@ function Lg.AllRows()
 					mcRate = e.mcProcs / e.crafts, expMcRate = e.expMc / e.crafts, resRate = e.resProcs / e.crafts,
 					expResRate = e.expRes / e.crafts, ingRate = e.concCrafts > 0 and e.ingProcs / e.concCrafts or nil,
 					expIngRate = e.concCrafts > 0 and e.expIng / e.concCrafts or nil,
-					concSpent = e.concSpent, concActual = e.concGold })
+					concSpent = e.concSpent, concActual = e.concGold, stages = Lg.Stages(c.name, id, e) })
 			end
 		end
 	end
 	table.sort(out, function(a, b) return a.crafts > b.crafts end)
+	return out
+end
+
+--- A recipe's crafts in three stages, kept apart:
+---   forecast  what the advisor expected at craft time (profit, saved when each craft was made)
+---   actual    what the crafts really gave: items made and reagents used, valued at market when made
+---   realized  what has sold: later sales matched to these crafts by item and date, oldest first
+--- Unsold items keep an estimated value; they count as realized only once they sell. Where the
+--- forecast is known it explains the gap: yield (items against expected), Resourcefulness (reagents
+--- saved against expected) and sale price (what sold units fetched against their forecast).
+function Lg.Stages(char, recipeID, e)
+	local out = { forecast = e.expected or 0, actual = (e.value or 0) + (e.saved or 0) - (e.cost or 0), crafts = e.crafts or 0 }
+	if (e.fcCrafts or 0) > 0 then
+		local each = (e.expItems or 0) > 0 and (e.expUnit or 0) / e.expItems or 0
+		out.produced = { items = e.fcItems, expected = e.expItems, gold = ((e.fcItems or 0) - (e.expItems or 0)) * each }
+		out.saved = { got = e.fcSaved or 0, expected = e.expSaved or 0, gold = (e.fcSaved or 0) - (e.expSaved or 0) }
+	end
+	-- realized: the batches these crafts recorded, with what has sold of each
+	local made, sold, revenue, soldCost, forecastSold, unsold = 0, 0, 0, 0, 0, 0
+	local unsoldValue = 0
+	if CH.Forecast then
+		local byItem = {}
+		for _, b in ipairs(CH.Forecast.Store()) do
+			if b.recipe == recipeID and (not b.char or not char or b.char == char) then byItem[b.id] = true end
+		end
+		for id in pairs(byItem) do
+			local value = CH.Prices.Get("chvalue", "i:" .. id)
+			for _, b in ipairs(CH.Forecast.Batches(id)) do
+				if b.recipe == recipeID and (not b.char or not char or b.char == char) then
+					made = made + b.qty
+					sold = sold + (b.sold or 0)
+					revenue = revenue + (b.revenue or 0)
+					soldCost = soldCost + (b.cost and b.cost / b.qty or 0) * (b.sold or 0)
+					forecastSold = forecastSold + (b.expectEach or 0) * (b.sold or 0)
+					local left = b.qty - (b.sold or 0)
+					unsold = unsold + left
+					unsoldValue = unsoldValue + left * (value or 0) * CH.AH_CUT
+				end
+			end
+		end
+	end
+	if made > 0 then
+		out.realized = { made = made, sold = sold, revenue = revenue, cost = soldCost, profit = revenue - soldCost,
+			unsold = unsold, unsoldValue = unsoldValue, price = sold > 0 and (revenue - forecastSold) or nil }
+	end
+	return out
+end
+
+--- Hover lines explaining one recipe's stages: { { label, value } }.
+function Lg.StageLines(d)
+	local T, M = CH.Theme, CH.FormatMoney
+	local s = d.stages
+	local mut = function(t) return T.Color("muted", t) end
+	local signed = function(c) return T.Color(c >= 0 and "ok" or "bad", (c >= 0 and "+" or "") .. M(c)) end
+	local out = { { T.Color("accent", (d.name or "?") .. "  " .. (d.char or "")) } }
+	table.insert(out, { "1. Forecast at craft time", M(s.forecast) })
+	table.insert(out, { mut("   what the advisor expected, " .. s.crafts .. " crafts"), "" })
+	table.insert(out, { "2. Actual yield and reagents", M(s.actual) })
+	table.insert(out, { mut("   items made and reagents used, at market when made"), "" })
+	if s.produced then
+		table.insert(out, { string.format("   Yield: %d items, %.1f expected", s.produced.items or 0, s.produced.expected or 0), signed(s.produced.gold) })
+		table.insert(out, { "   Resourcefulness: saved against expected", signed(s.saved.gold) })
+	end
+	local r = s.realized
+	if r then
+		table.insert(out, { "3. Realized sales", signed(r.profit) })
+		table.insert(out, { string.format("   %d of %d sold for %s, their reagents %s", r.sold, r.made, M(r.revenue), M(r.cost)), "" })
+		if r.price then table.insert(out, { "   Sale price against the forecast", signed(r.price) }) end
+		if r.unsold > 0 then table.insert(out, { string.format("   %d unsold, estimated value (not realized)", r.unsold), M(r.unsoldValue) }) end
+		table.insert(out, { mut("Estimated attribution: sales are matched to crafts by item and date, oldest first. Deposits aren't matched to crafts.") })
+	else
+		table.insert(out, { "3. Realized sales", mut("none matched yet") })
+	end
 	return out
 end
 
@@ -228,27 +313,35 @@ end
 
 local function resultRows(ctx)
 	local T, out = CH.Theme, {}
-	local crafts, actual, expected = 0, 0, 0
+	local crafts, forecast, actual, realized = 0, 0, 0, 0
+	local M = CH.FormatMoney
 	for _, d in ipairs(Lg.AllRows()) do
 		if ctx.keepName(d.name) then
-			crafts, actual, expected = crafts + d.crafts, actual + d.actual, expected + d.expected
-			table.insert(out, { cells = { d.name or "?", d.char, d.crafts, pct(d.mcRate, d.expMcRate), pct(d.resRate, d.expResRate),
-				pct(d.ingRate, d.expIngRate), T.Color(d.actual >= d.expected and "ok" or "bad", CH.FormatMoney(d.actual)),
-				T.Color("muted", CH.FormatMoney(d.expected)) },
-				sort = { d.name or "", d.char, d.crafts, d.mcRate or 0, d.resRate or 0, d.ingRate or 0, d.actual, d.expected } })
+			local s = d.stages
+			local r = s.realized
+			crafts, forecast, actual = crafts + d.crafts, forecast + s.forecast, actual + s.actual
+			if r then realized = realized + r.profit end
+			local yield = s.produced and (T.Color((s.produced.items or 0) + 0.5 >= (s.produced.expected or 0) and "ok" or "bad", tostring(s.produced.items or 0))
+				.. T.Color("muted", string.format("/%.0f", s.produced.expected or 0))) or T.Color("muted", "-")
+			table.insert(out, { tip = function() return Lg.StageLines(d) end,
+				cells = { d.name or "?", d.char, d.crafts, T.Color("muted", M(s.forecast)), T.Color(s.actual >= s.forecast and "ok" or "bad", M(s.actual)), yield,
+					r and T.Color(r.profit >= 0 and "ok" or "bad", M(r.profit)) or T.Color("muted", "none sold"),
+					r and string.format("%d/%d", r.sold, r.made) or T.Color("muted", "-") },
+				sort = { d.name or "", d.char, d.crafts, s.forecast, s.actual, s.produced and (s.produced.items - s.produced.expected) or 0, r and r.profit or -math.huge,
+					r and r.made > 0 and r.sold / r.made or -1 } })
 		end
 	end
 	if not out[1] then
 		return out, T.Color("muted", "Nothing logged yet. Every craft is recorded here, on each character.")
 	end
-	return out, string.format("%d crafts: %s at market against %s expected.", crafts, CH.FormatMoney(actual), CH.FormatMoney(expected))
-		.. T.Color("muted", "  Rates are what you got / what was expected. /aiq results clear empties this character's log.")
+	return out, string.format("%d crafts: forecast %s, actual %s at market, %s realized from sales.", crafts, M(forecast), M(actual), M(realized))
+		.. T.Color("muted", "  Hover a row for the gap. Unsold items aren't realized. /aiq results clear empties this character's log.")
 end
 
 -- (Research/Views.lua puts it in Research, under Performance)
 CH.LedgerUI.Register("research", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
-	cols = { { "Recipe", 0, 190 }, { "Character", 194, 90 }, { "Crafts", 288, 50 }, { "Multicraft", 342, 76 }, { "Resourceful", 422, 80 },
-		{ "Ingenuity", 506, 70 }, { "At market", 580, 72 }, { "Expected", 656, 68 } } } }, {})
+	cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 }, { "Crafts", 258, 44 }, { "Forecast", 306, 80 }, { "Actual", 390, 84 },
+		{ "Yield", 478, 66 }, { "Realized", 548, 96 }, { "Sold", 648, 76 } } } }, {})
 
 --- Craft results now live in Analytics.
 function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("research", "results") end end

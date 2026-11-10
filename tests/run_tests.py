@@ -93,7 +93,7 @@ check("reagent hover lists each reagent with rank, price each and total",
 sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
 check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and ("After 5% auction cut", "285g") in sl)
 pl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
-check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on reagents", "34%") in pl)
+check("profit hover shows the sum and return", ("Less reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on cost  profit / reagents", "34%") in pl)
 # Expected proceeds: the source in the notes, and rows posting would skip
 check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(CH.AdvisorUI.SourceLine(res)))
 run("""STUB.oldGP = AuctionIQ.Groups.Prices
@@ -550,6 +550,80 @@ run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 2, 
 lr = list(CH.Log.Rows().values())[0]
 check("results log: craft, Multicraft proc and saved reagents counted",
       lr.crafts == 1 and lr.e.mcProcs == 1 and lr.e.saved == 300000 and lr.e.value == 2 * 3000000 * 0.95 and lr.expected == 730000)
+
+# Decisions: break-even, Concentration over plain, evidence, Concentration forecast, batch outcomes
+check("craft log: the forecast's yield is kept with the craft", lr.e.fcCrafts == 1 and lr.e["fcItems"] == 2 and abs(lr.e.expItems - 1) < 1e-9)
+st = CH.Log.Stages("Seyko", 10, lr.e)
+check("craft log: forecast, actual and realized are kept apart", st.forecast == 730000 and st.actual == lr.actual
+      and st.produced["items"] == 2 and abs(st.produced.gold - 2850000) < 1 and st.realized.made == 2 and st.realized.sold == 0 and st.realized.unsold == 2)
+sl3 = [plain(x[1]) for x in CH.Log.StageLines(L.eval("function(s) return { name = 'Test Flask', char = 'Seyko', stages = s } end")(st)).values()]
+check("craft log: the hover says unsold items aren't realized and the matching is estimated",
+      any("unsold, estimated value (not realized)" in x for x in sl3) and any("Estimated attribution" in x for x in sl3))
+D = L.eval("AuctionIQ.Decide")
+be = res.best.breakEven
+check("break-even: the sale price per item where the plain craft makes nothing (cut included)",
+      abs(be.price - 2120000 / 0.95) < 1 and be.estimate == 3000000 and abs(be.cushion - (1 - 2120000 / 2850000)) < 1e-9)
+check("break-even: profit at the break-even price is zero", abs(D.ProfitAt(D.RowParts(res, res.best), 3000000, be.price)) < 1)
+bp = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 10, fixed = 0 }")
+bpe = D.BreakEvenParts(bp, 13)
+check("break-even: Resourcefulness lowers it, deposits raise it", abs(bpe.factor - 90 / 140) < 1e-12 and abs(D.ProfitAt(bp, 13, bpe.price)) < 1e-9)
+g = res.bestConc.gain
+check("Concentration: extra profit over the best plain craft, and per expected point", g.gain == 1450000 and g.perPoint == 18125 and g.total == 27250)
+check("Concentration: when no plain craft pays, the gain is over not crafting", D.ConcGain(L.eval("{ profit = 100, avgConcentration = 10 }"), -50).gain == 100)
+sm = [plain(x) for x in CH.AdvisorUI.SummaryLines(res).values()]
+check("advisor summary: craft, break-even against the estimate, downside, then Concentration",
+      sm[0].startswith("Craft Q2: 73g expected profit per craft") and "Break-even 223g per item, estimated sale price 300g per item" in sm[1]
+      and sm[2].startswith("  Downside") and "price falls 10%" in sm[2] and any("more per craft than the plain craft" in x and "per expected point" in x for x in sm))
+pl5 = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.bestConc, 5).values()]
+check("profit hover keeps the whole profit per point for CraftSim, and the extra over plain",
+      ("  Extra per expected point", "1g 81s") in pl5 and ("  Whole profit per point (as CraftSim)", "2g 72s") in pl5
+      and ("  Over the best plain craft", "145g per craft") in pl5)
+pl6 = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
+check("profit hover: margin is profit over proceeds, and the break-even price", ("Margin  profit / proceeds", "26%") in pl6 and ("Break-even sale price", "223g per item") in pl6)
+ev = D.EvidenceText(D.Evidence(302))
+check("evidence: source and how much of the sell rate is yours", ev.price.startswith("Price: TSM, ") and "none known" in ev.rate and ev.volume.startswith("Volume: region"))
+check("evidence: the advisor's source line names it", "Sell rate:" in plain(CH.AdvisorUI.SourceLine(res)) and "Volume: region" in plain(CH.AdvisorUI.SourceLine(res)))
+cf = D.ConcForecast(100, 30, 0.5, 15)
+check("Concentration forecast: 3 now, exact chance of a 4th (2 refunds in 3) and a 5th (4 in 4)",
+      cf.now == 3 and abs(cf.chance[1] - 0.5) < 1e-12 and abs(cf.chance[2] - 0.0625) < 1e-12)
+check("Concentration forecast: without Ingenuity, only what the points cover", D.ConcForecast(100, 30, 0, 15).now == 3 and D.ConcForecast(100, 30, 0, 15).chance[1] is None)
+check("Concentration forecast text", D.ConcForecastText(cf) == "Can make 3 now, 50% chance of a 4th with Ingenuity refunds")
+bi = L.eval("""{ made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95, daily = 5, seed = 3,
+  reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }""")
+bo = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
+check("batch: a small batch sells out in a week and pays back", bo[0].recover == 1 and bo[0].spend == 500 and bo[0].left == 0 and bo[0].net.p50 == 450)
+check("batch: a big one can't sell in a week: cash back stays under spend, stock is left",
+      bo[1].recover == 0 and bo[1].spend == 5000 and 55 <= bo[1].left <= 75 and bo[1].cashBack.p50 < 5000 and bo[1].leftValue == bo[1].left * 95)
+bo2 = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
+check("batch: the same batch gives the same answer each time", bo2[1].net.p50 == bo[1].net.p50)
+CH.AdvisorUI.Render(res)
+check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
+      and any("Plain Q2: breaks even at 223g per item, 26% under the estimate of 300g" in plain(x) for x in CH.AdvisorUI.RenderPane().values()))
+bl = [plain(x) for x in CH.AdvisorUI.SetPane("batch") and CH.AdvisorUI.RenderPane().values()]
+check("advisor: Analyze batch shows 10, 30 and 100 crafts and its inputs", len(bl) == 5 and bl[0].startswith("10 crafts: ") and bl[2].startswith("100 crafts: ")
+      and "pay back" in bl[0] and "left unsold" in bl[2] and bl[3].startswith("Sales "))
+check("advisor: back to the notes", CH.AdvisorUI.SetPane("notes") == "notes")
+run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.SetQty(9); AuctionIQ.AdvisorUI.QueueSelected()')
+bg = CH.Queue.Budget()
+check("queue budget: gold, reagents and Concentration, on hand against needed", bg.gold.need > bg.gold.have and bg.reagents.need > bg.reagents.have
+      and bg.conc.need == 720)
+check("queue budget: the first craft that hits a limit", bg.stop.why == "gold" and bg.stop.n == 5)
+bll = [plain(x) for x in CH.QueueUI.BudgetLines(bg).values()]
+check("queue budget: lines say what's short and where it stops", "short" in bll[0] and bll[3] == "Stops at the 5th Test Flask (Seyko): you run out of gold to buy its reagents.")
+run('STUB.money = 999999999')
+bg2 = CH.Queue.Budget()
+run('STUB.money = 1234567')
+check("queue budget: with gold, Concentration is next to block", bg2.stop is None or bg2.stop.why == "conc")
+run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.SetQty(1)')
+run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [1] = { name = 'Alchemy', conc = 500, concMax = 1000, concAt = time(),
+  scan = { rows = { { name = 'Cheap Flask', recipeID = 99, item = 100, profit = 10, breakEven = 99999999, concProfit = 900, avgConcentration = 30 } } } } } }""")
+nx = [x for x in L.eval("AuctionIQ.Next.List()").values() if x.title == "Below break-even"]
+check("dashboard: a craft now under its break-even price gets a card that opens Scenarios",
+      len(nx) == 1 and "Cheap Flask" in plain(nx[0].detail) and nx[0].go[2] == "scenarios")
+cb = [x for x in L.eval("AuctionIQ.UI.ConcentrationBars()").values() if x.char == "Be"]
+check("dashboard: Concentration by character, with time to full and the best extra per point",
+      len(cb) == 1 and cb[0].cur == 500 and cb[0].hours == 48 and abs(cb[0].best.gain - 890 / 30) < 1e-9)
+run("AuctionIQ.db.characters['Be-Realm'] = nil")
 
 # Tabs: one window at a time, the queue can pop out
 run('AuctionIQ.ScanUI.Open()')
@@ -1624,6 +1698,9 @@ rp = L.eval("AuctionIQ.AnalyticsViews.Reprice")
 check("scenarios: Resourcefulness's returns are repriced with the reagents",
       abs(rp(parts, 0, 0) - 50) < 1e-9 and abs(rp(parts, 0.1, 0) - 42) < 1e-9 and abs(rp(parts, 0, 0.1) - 37) < 1e-9 and abs(rp(parts, 0.1, 0.1) - 29) < 1e-9)
 pa = L.eval("AuctionIQ.AnalyticsViews.Parts({ profit = 50, cost = 100, accounts = { sales = 120, mcGold = 10, cost = 100, resGold = 20, unit = 13, deposit = 1 } })")
+sb = L.eval("AuctionIQ.Decide.BreakEvenParts(AuctionIQ.Decide.AccountParts({ profit = 50, cost = 100, accounts = { sales = 120, mcGold = 10, cost = 100, resGold = 20, unit = 13, deposit = 1, price = 14 } }), 14)")
+check("scenarios: break-even sale price per item from a scan's accounts (deposits stay, returns help)",
+      abs(sb.factor - 90 / 140) < 1e-12 and abs(sb.price - 14 * 90 / 140) < 1e-9)
 check("scenarios: a scan's accounts split into revenue, reagents, returns and deposits",
       pa.revenue == 130 and pa.consumed == 100 and pa.returned == 20 and abs(pa.deposits - 10) < 1e-9 and abs(rp(pa, 0, 0.1) - 36) < 1e-9)
 # Scenarios: editable, saved, and the headings follow

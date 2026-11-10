@@ -895,6 +895,40 @@ function UI.DashboardFigures(now)
 	return f
 end
 
+--- Concentration on every character's professions, fullest first: { char, class, prof, cur, max,
+--- hours (to full), best = { name, gain (gold per expected point over the plain craft) } }.
+function UI.ConcentrationBars(now)
+	now = now or time()
+	local out = {}
+	for key, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			local cur, max
+			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
+			if cur and max and max > 0 then
+				local best
+				for _, r in ipairs(p.scan and p.scan.rows or {}) do
+					local g = CH.Scan and CH.Scan.GainPerPoint(r)
+					if g and g > 0 and (not best or g > best.gain) then best = { name = r.name, gain = g } end
+				end
+				table.insert(out, { key = key, char = c.name or key, class = c.class, prof = p.name, cur = cur, max = max,
+					hours = cur >= max and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR), best = best })
+			end
+		end
+	end
+	table.sort(out, function(a, b) if a.hours ~= b.hours then return a.hours < b.hours end return a.char < b.char end)
+	return out
+end
+
+-- A bar drawn in text, for tooltips: filled share of `width` pixels in one colour, the rest in another.
+local BAR = "|TInterface\\Buttons\\WHITE8X8:8:%d:0:0:8:8:0:8:0:8:%d:%d:%d|t"
+local function textBar(share, width)
+	local T = CH.Theme
+	local on = math.max(0, math.min(width, math.floor(share * width + 0.5)))
+	local function part(w, c) return w > 0 and string.format(BAR, w, math.floor(c[1] * 255), math.floor(c[2] * 255), math.floor(c[3] * 255)) or "" end
+	return part(on, T.accent) .. part(width - on, T.muted)
+end
+UI.TextBar = textBar
+
 local function refreshFigures(d)
 	local T = CH.Theme
 	local f = UI.DashboardFigures()
@@ -912,8 +946,15 @@ local function refreshFigures(d)
 		{ T.Color("muted", "Click for the work queue in Operations.") } }
 	F.conc.value:SetText(f.conc > 0 and T.Color("accent", f.conc) or "0")
 	F.conc.sub:SetText(f.conc > 0 and T.Color("muted", "wasting") or T.Color("muted", "none full"))
-	local tip = { { "Professions at full Concentration: it stops refilling until you spend it." } }
-	for _, n in ipairs(f.concList) do table.insert(tip, { n }) end
+	local tip = { { "Concentration by character, fullest first: who to log into first." } }
+	for _, b in ipairs(UI.ConcentrationBars()) do
+		table.insert(tip, { classColor(b.class) .. b.char .. "|r " .. T.Color("muted", b.prof or "?") .. "  " .. textBar(b.cur / b.max, 80),
+			string.format("%d/%d  ", b.cur, b.max) .. (b.hours == 0 and T.Color("bad", "full") or T.Color("muted", "full in " .. b.hours .. "h")) })
+		if b.best then
+			table.insert(tip, { T.Color("muted", "   best: " .. (b.best.name or "?")), T.Color("ok", "+" .. CH.FormatMoney(b.best.gain)) .. T.Color("muted", " a point over plain") })
+		end
+	end
+	if #tip == 1 then table.insert(tip, { T.Color("muted", "Open each character's professions once to see it here.") }) end
 	F.conc.hit.tip = tip
 	return f
 end
