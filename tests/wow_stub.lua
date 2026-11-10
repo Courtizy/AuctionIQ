@@ -1,6 +1,6 @@
 -- Minimal stand-ins for the WoW API, enough to load AuctionIQ and drive its events.
 local events, timers = {}, {}
-STUB = { now = 1000000, gametime = 0, money = 1234567, tooltips = {} }
+STUB = { now = 1700000000, gametime = 0, money = 1234567, tooltips = {} }
 
 function time() return STUB.now end
 function GetTime() return STUB.gametime end
@@ -52,6 +52,7 @@ local function newFrame(parent, kind, template)
 	function f:HookScript(k, fn) local old = self.scripts[k]; self.scripts[k] = function(...) if old then old(...) end fn(...) end end
 	function f:IsShown() return self.shown end
 	function f:SetText(t) self.label = t end
+	function f:GetText() return self.label end
 	function f:GetFontString() return nil end
 	function f:CreateFontString(_, _, font)
 		local fs = { t = "", font = font, w = 0, wrap = true, hidden = false, owner = f, points = {} }

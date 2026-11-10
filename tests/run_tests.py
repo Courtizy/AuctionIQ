@@ -108,11 +108,24 @@ check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
 # Craft queue and shopping list
 run('AuctionIQ.db.settings.advisor.hide = false; AuctionIQ.AdvisorUI.Show(10)')
-run('AuctionIQ.AdvisorUI.RowClick(3)')            # Q2 without Concentration, one
-run('STUB.shift = true; AuctionIQ.AdvisorUI.RowClick(3); STUB.shift = false')  # shift: as many as you can make (1)
-run('AuctionIQ.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentration
+run('AuctionIQ.AdvisorUI.RowClick(3)')
+check("advisor: selecting a craft leaves the queue alone", CH.Queue.Count() == 0)
+run('AuctionIQ.AdvisorUI.QueueSelected(); AuctionIQ.AdvisorUI.QueueSelected()')
+run('AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.QueueSelected()')
 q = list(CH.db.queue.values())
 check("queue: clicks add, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
+check("queue: a missing Concentration scan result cannot queue the plain craft",
+      CH.Queue.FromScan(CH.CharacterKey(), CH.Me(), L.eval("{ accounts = { queue = {} } }"), True) is None)
+run("""local q = AuctionIQ.Queue
+local old = AuctionIQ.db.queue[1]
+local other = {}
+for k, v in pairs(old) do other[k] = v end
+other.reagents = { { slot = 1, itemID = 9999, n = 1 } }
+q.AddEntry(other, 1)
+STUB.mixPreserved = q.Count() == 4 and old.reagents[1].itemID ~= 9999
+q.Remove(other)
+""")
+check("queue: different reagent mixes stay separate", L.globals().STUB.mixPreserved)
 check("queue: Count adds up", CH.Queue.Count() == 3)
 check("queueing from the advisor keeps you on the Advisor tab", CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown())
 lines = CH.QueueUI.Show()

@@ -32,6 +32,8 @@ function AUI.Place()
 	if panel then CH.Window.Place(panel) end
 end
 
+local shown, selected
+
 local function build()
 	local T = CH.Theme
 	T.Sync()
@@ -159,6 +161,17 @@ local function build()
 	off:SetPoint("RIGHT", -72, 0)
 	off:SetScript("OnClick", function() sim.skill = 0; sim.plan = nil; AUI.Show() end)
 
+	panel.add = T.Button(panel, "Queue selected craft", 135, 18)
+	panel.add:SetPoint("BOTTOMLEFT", 68, 8)
+	panel.add:SetScript("OnClick", function() AUI.QueueSelected() end)
+	panel.quantity = CreateFrame("EditBox", nil, panel, "InputBoxTemplate")
+	panel.quantity:SetSize(42, 18)
+	panel.quantity:SetPoint("BOTTOMLEFT", 16, 8)
+	panel.quantity:SetAutoFocus(false)
+	panel.quantity:SetText("1")
+	panel.quantity:SetScript("OnEnterPressed", function(self) self:ClearFocus(); AUI.QueueSelected() end)
+	panel.quantity:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
 	panel.status = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	panel.status:SetPoint("BOTTOMRIGHT", -10, 14)
 	panel.status:SetJustifyH("RIGHT")
@@ -166,8 +179,6 @@ local function build()
 	CH.Window.Attach("advisor", panel)
 	AUI.Place()
 end
-
-local shown -- the result on screen, for the hover breakdowns
 
 -- Concentration you have now for the open profession, if known.
 local function concNow()
@@ -191,7 +202,9 @@ function AUI.Render(result, reason)
 		r.bg:Hide()
 		for _, fs in ipairs(r.cells) do fs:SetText("") end
 	end
-	shown = result
+	shown, selected = result, nil
+	panel.add:Hide()
+	panel.quantity:Hide()
 	if not result then
 		panel.recipe:SetText(T.Color("muted", reason or "Select a recipe."))
 		notes:SetText("")
@@ -507,10 +520,33 @@ function AUI.SetSimSkill(n) sim.skill = n or 0 end
 function AUI.RowClick(i)
 	local r = shown and shown.rows[i]
 	if not r then return end
-	local qty = IsShiftKeyDown and IsShiftKeyDown() and math.max(1, r.max or 1) or 1
-	CH.Queue.Add(shown, r, qty)
+	selected = i
+	for j, row in ipairs(rows) do
+		local candidate = shown.rows[j]
+		row.bg:SetShown(candidate ~= nil and (j == i or candidate.recommended or candidate.bestConcentration) or false)
+	end
+	local canQueue = not shown.sim and not r.short
+	panel.add:SetShown(canQueue)
+	panel.quantity:SetShown(canQueue and not shown.order)
+	panel.quantity:SetText("1")
+	local label = r.concentration and ("Queue Q%d (%d pt)"):format(r.quality, r.concentration)
+		or ("Queue Q%d plain"):format(r.quality)
+	panel.add.text:SetText(label)
+end
+
+function AUI.QueueSelected()
+	local r = shown and shown.rows[selected]
+	if not r or shown.sim or r.short then return nil end
+	local qty = shown.order and 1 or tonumber(panel.quantity:GetText())
+	if not qty or qty < 1 or qty > 9999 or qty ~= math.floor(qty) then
+		CH.Print("Enter a whole craft quantity between 1 and 9999.")
+		return nil
+	end
+	local order = shown.order
+	local entry = CH.Queue.Add(shown, r, qty, order and { orderID = order.orderID, customer = order.customer })
 	CH.Print(string.format("queued %d x %s (Q%d%s)", qty, shown.name or "?", r.quality, r.concentration and ", Concentration" or ""))
 	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
+	return entry
 end
 
 function AUI.UpdateQueueButton()

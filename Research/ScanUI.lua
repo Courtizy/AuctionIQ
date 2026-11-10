@@ -58,12 +58,10 @@ local function money(c)
 	return CH.Theme.Color(c >= 0 and "ok" or "bad", CH.FormatMoney(c))
 end
 
+local selectedRecipe
+
 local function queueRow(r)
-	if mode == "recipes" then
-		local ok, result = pcall(CH.Advisor.Analyze, r.recipeID, { professionID = CH.OpenProfessionID() })
-		if not (ok and result and result.best) then return false end
-		CH.Queue.Add(result, result.best, 1)
-	elseif not r.row or not r.result then
+	if not r.row or not r.result then
 		return false
 	elseif mode == "orders" then
 		CH.Queue.Add(r.result, r.row, 1, { orderID = r.orderID, customer = r.from, special = r.kp })
@@ -87,10 +85,32 @@ local function click(i)
 		if not r.current then showOlder = false; offset = 0; SUI.Refresh() end
 		return
 	end
-	if IsShiftKeyDown and IsShiftKeyDown() then
-		queueRow(r)
-	elseif C_TradeSkillUI.OpenRecipe then
-		C_TradeSkillUI.OpenRecipe(r.recipeID)
+	selectedRecipe = r
+	SUI.UpdateRecipeActions()
+end
+
+function SUI.QueueRecipe(concentrate)
+	if mode ~= "recipes" or not selectedRecipe then return nil end
+	local entry = CH.Queue.FromScan(CH.CharacterKey(), CH.Me(), selectedRecipe, concentrate)
+	if not entry then return nil end
+	local queued = CH.Queue.AddEntry(entry, 1)
+	CH.Print("queued 1 x " .. entry.name .. (concentrate and " with Concentration" or ""))
+	return queued
+end
+
+function SUI.UpdateRecipeActions()
+	local r = mode == "recipes" and selectedRecipe
+	SUI.recipeSelection:SetText(r and r.name or "Select a recipe to queue a craft.")
+	SUI.recipeSelection:SetShown(mode == "recipes")
+	SUI.openRecipe:SetShown(r ~= nil and r ~= false)
+	for _, action in ipairs(SUI.recipeActions) do
+		local acc = r and (action.conc and r.concAccounts or not action.conc and r.accounts)
+		action.button:SetShown(acc and acc.queue ~= nil or false)
+		if acc then
+			local label = action.conc and ("Queue Q%d (%d pt)"):format(acc.quality, acc.concentration)
+				or ("Queue Q%d plain"):format(acc.quality)
+			action.button.text:SetText(label)
+		end
 	end
 end
 
@@ -241,6 +261,31 @@ local function build()
 	SUI.nextButton = barButton("Claim next", 100, function() SUI.Next() end)
 	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
 	SUI.nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	SUI.recipeSelection = Wd.Text(frame, 12, -76 - N * H, W - 425)
+	SUI.openRecipe = T.Button(frame, "Open recipe", 96, 18)
+	SUI.openRecipe:SetPoint("BOTTOMRIGHT", -304, 6)
+	SUI.openRecipe:SetScript("OnClick", function()
+		if selectedRecipe and C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(selectedRecipe.recipeID) end
+	end)
+	SUI.recipeActions = {}
+	for i, conc in ipairs({ false, true }) do
+		local b = T.Button(frame, "Queue craft", 140, 18)
+		b:SetPoint("BOTTOMRIGHT", -12 - (2 - i) * 146, 6)
+		b:SetScript("OnClick", function() SUI.QueueRecipe(conc) end)
+		b:SetScript("OnEnter", function(self)
+			local r = selectedRecipe
+			local acc = r and (conc and r.concAccounts or not conc and r.accounts)
+			if not acc then return end
+			local lines = { { "Queue one craft", CH.FormatMoney(acc.cost) } }
+			for _, reagent in ipairs(acc.reagents or {}) do
+				local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(reagent.itemID)
+				table.insert(lines, { name or ("Item " .. reagent.itemID), tostring(reagent.n) })
+			end
+			Wd.Tooltip(self, lines)
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		SUI.recipeActions[i] = { button = b, conc = conc }
+	end
 	status = Wd.Text(frame, 12, -34, W - 24)
 	for m, cols in pairs(COLS) do
 		local blank = {}
@@ -430,6 +475,8 @@ end
 --- Redraw from the saved scan. Returns the row texts, for tests.
 function SUI.Refresh()
 	if not frame then return {} end
+	selectedRecipe = nil
+	SUI.UpdateRecipeActions()
 	if mode ~= "recipes" then return refreshLists() end
 	local rows = showTable()
 	local T = CH.Theme
