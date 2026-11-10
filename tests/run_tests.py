@@ -650,6 +650,17 @@ check("dashboard: Concentration by character, with time to full and the best ext
       len(cb) == 1 and cb[0].cur == 500 and cb[0].hours == 48 and abs(cb[0].best.gain - 890 / 30) < 1e-9)
 run("AuctionIQ.db.characters['Be-Realm'] = nil")
 
+# Escape closes AuctionIQ's windows, like the game's own
+run("AuctionIQ.UI.Page('today'); AuctionIQ.db.settings.advisor.hide = false; AuctionIQ.AdvisorUI.Show(10, true)")
+esc = [n for n in L.globals().UISpecialFrames.values()]
+check("escape: every AuctionIQ window is on the game's close-on-Escape list",
+      all(n in esc for n in ("AuctionIQFrame", "AuctionIQAdvisor", "AuctionIQQueue")))
+fr = L.globals().AuctionIQFrame
+if fr.scripts and fr.scripts.OnKeyDown:
+    run('AuctionIQFrame.scripts.OnKeyDown(AuctionIQFrame, "ESCAPE")')
+    check("escape: one press closes the window and the advisor", not CH.UI.IsShown() and not CH.AdvisorUI.IsShown())
+run("AuctionIQ.UI.Page('today'); AuctionIQ.UI.Toggle()")
+
 # Tabs: one window at a time, the queue can pop out
 run('AuctionIQ.ScanUI.Open()')
 check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")

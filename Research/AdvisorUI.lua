@@ -49,6 +49,7 @@ local function build()
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
+	CH.Window.CloseOnEscape(panel, "AuctionIQAdvisor")
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)

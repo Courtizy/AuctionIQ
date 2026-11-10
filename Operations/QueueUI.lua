@@ -82,7 +82,7 @@ local function build()
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
-	table.insert(UISpecialFrames, "AuctionIQQueue")
+	CH.Window.CloseOnEscape(panel, "AuctionIQQueue")
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)
