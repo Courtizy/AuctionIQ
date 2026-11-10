@@ -33,8 +33,8 @@ local function reagentPrice(model, itemID)
 end
 A.ReagentPrice = reagentPrice
 
--- n units of a reagent: on the "held" basis the ones you hold cost what you paid for them (or
--- today's price if you gathered them or never bought any), and only the rest cost today's price.
+-- n units of a reagent: on the "held" basis the ones you hold cost what they'd sell for after the
+-- cut (their opportunity cost; today's price if there's no sale price), and only the rest cost today's price.
 -- On any other basis every unit costs the same. nil when there's no price for a unit you'd buy.
 local function heldInfo(model, id)
 	model.heldCache = model.heldCache or {}
@@ -42,7 +42,9 @@ local function heldInfo(model, id)
 	if not h then
 		local P = CH.Prices
 		local n = P.Held and P.Held(id) or 0
-		h = { n = n, each = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
+		-- opportunity cost: what yours would bring if you sold them instead (after the cut)
+		local v = n > 0 and P.Get("chvalue", "i:" .. id) or nil
+		h = { n = n, each = v and v * CH.AH_CUT or nil, paid = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
 		model.heldCache[id] = h
 	end
 	return h
@@ -801,9 +803,8 @@ function A.HeldLine(l, model)
 	l.own = math.min(l.n, h.n)
 	l.buyN = l.n - l.own
 	l.ownEach = h.each or l.buy
-	l.paid = h.each ~= nil
-	local v = CH.Prices.Get("chvalue", "i:" .. l.id)
-	l.sell = v and v * CH.AH_CUT
+	l.sell = h.each
+	l.paidEach = h.paid
 	return l
 end
 
@@ -812,9 +813,9 @@ function A.HeldText(l)
 	local out = {}
 	if not (l and l.own and l.own > 0) then return out end
 	local M, T = CH.FormatMoney, CH.Theme
-	out[#out + 1] = T.Color("muted", string.format("   %d yours at %s (%s)", l.own, l.ownEach and M(l.ownEach) or "-", l.paid and "what you paid" or "no buy on record: today's price"))
+	out[#out + 1] = T.Color("muted", string.format("   %d yours at %s (%s)", l.own, l.ownEach and M(l.ownEach) or "-", l.sell and "what they'd sell for after the cut" or "no sale price: today's price"))
 	if (l.buyN or 0) > 0 then out[#out + 1] = T.Color("muted", string.format("   %d to buy at %s", l.buyN, l.buy and M(l.buy) or "-")) end
-	if l.sell then out[#out + 1] = T.Color("muted", string.format("   or sell yours for about %s each after the cut", M(l.sell))) end
+	if l.paidEach then out[#out + 1] = T.Color("muted", string.format("   you paid about %s each (already spent, so not counted)", M(l.paidEach))) end
 	return out
 end
 

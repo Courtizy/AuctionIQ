@@ -792,9 +792,10 @@ function AUI.BasisLines(result, r)
 				-- what you hold at what you paid (today's price if you never bought it), the rest at today's
 				local buy = P.ReagentCost(c.id, "replacement")
 				local own = math.min(c.n, P.Held and P.Held(c.id) or 0)
-				local paid = own > 0 and P.PaidEach and P.PaidEach(c.id) or nil
-				if buy or (own == c.n and paid) then
-					each, from = (own * (paid or buy or 0) + (c.n - own) * (buy or 0)) / c.n, (own > 0 and not paid) and "replacement" or b
+				local v = own > 0 and P.Get("chvalue", "i:" .. c.id) or nil
+				local sell = v and v * CH.AH_CUT
+				if buy or (own == c.n and sell) then
+					each, from = (own * (sell or buy or 0) + (c.n - own) * (buy or 0)) / c.n, (own > 0 and not sell) and "replacement" or b
 				end
 			else each, from = P.ReagentCost(c.id, b) end
 			if not each then missing[b] = true
@@ -805,7 +806,7 @@ function AUI.BasisLines(result, r)
 		end
 	end
 	table.insert(out, { T.Color("accent", "Costing basis") .. T.Color("muted", "  /aiq basis to change"), "" })
-	local why = { held = "  what you hold at paid", replacement = "  to buy them again today", tsm = "  as TSM's Crafting settings cost them", paid = "  what your last buys cost" }
+	local why = { held = "  yours at what they'd sell for", replacement = "  to buy them again today", tsm = "  as TSM's Crafting settings cost them", paid = "  what your last buys cost" }
 	for _, b in ipairs(P.BASES) do
 		local label = "   " .. P.BASIS_NAMES[b] .. (b == cur and T.Color("ok", "  in use") or T.Color("muted", why[b]))
 		if fell[b] > 0 then label = label .. T.Color("muted", string.format("  (%d at replacement)", fell[b])) end

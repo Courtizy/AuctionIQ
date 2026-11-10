@@ -131,10 +131,10 @@ end
 ---   tsm          TSM's material cost (matprice), however you set it up in TSM
 ---   paid         what you paid on average over your last 30 days of buying it (TSM's purchase
 ---                records), else replacement
----   held         (default) the units you hold at what you paid for them (today's price for ones you
----                gathered or never bought), and only what you'd buy at today's price
+---   held         (default) the units you hold at their opportunity cost, what they'd sell for after
+---                the cut, and only what you'd buy at today's price
 Prices.BASES = { "held", "replacement", "tsm", "paid" }
-Prices.BASIS_NAMES = { held = "What you hold at paid, the rest at today's price", replacement = "Replacement cost (chmat)",
+Prices.BASIS_NAMES = { held = "What you hold at sale value, the rest at today's price", replacement = "Replacement cost (chmat)",
 	tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
 function Prices.CostBasis(v)
 	local st = CH.db and CH.db.settings
