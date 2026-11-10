@@ -167,3 +167,43 @@ function Next.List(now)
 	end)
 	return out
 end
+
+--- Do next as decisions, not a list: the same action on several items (Repost, Restock, Post now...)
+--- becomes one card ("Repost 9 items"), its gold the sum, opening its view on all of them. Best first,
+--- `max` of them at most (4 by default). Each card keeps its reason, gold and biggest uncertainty.
+function Next.Ranked(now, max)
+	local groups, order = {}, {}
+	for _, e in ipairs(Next.List(now)) do
+		local k = e.title .. "|" .. (e.go and (e.go[1] .. ":" .. e.go[2]) or "")
+		local g = groups[k]
+		if not g then g = { e }; groups[k] = g; table.insert(order, k) else table.insert(g, e) end
+	end
+	local out = {}
+	for _, k in ipairs(order) do
+		local g = groups[k]
+		if #g == 1 then
+			table.insert(out, g[1])
+		else
+			local first = g[1]
+			local gold, names = 0, {}
+			for i, e in ipairs(g) do
+				gold = gold + (e.gold or 0)
+				local n = e.go and e.go[3] and e.go[3].name
+				if n and i <= 3 then table.insert(names, n) end
+			end
+			local more = #g > #names and string.format(" and %d more", #g - #names) or ""
+			table.insert(out, { title = string.format("%s %d items", first.title, #g),
+				detail = (#names > 0 and table.concat(names, ", ") .. more or (#g .. " items")) .. ". Biggest: " .. first.detail,
+				gold = gold > 0 and gold or nil, tier = first.tier, risk = first.risk, rows = g,
+				-- one item's button can't do them all: the card opens its view on the whole list
+				go = first.go and { first.go[1], first.go[2], { title = first.title .. ", " .. #g .. " items" } } })
+		end
+	end
+	table.sort(out, function(a, b)
+		if a.tier ~= b.tier then return a.tier < b.tier end
+		return (a.gold or 0) > (b.gold or 0)
+	end)
+	local all = #out
+	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
+	return out, all
+end

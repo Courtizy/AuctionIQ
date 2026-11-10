@@ -1512,6 +1512,36 @@ run("AuctionIQ.UI.Page('groups')"); run("AuctionIQ.UI.Page('plan')"); run("Aucti
 check("old page names open the new tabs", CH.UI.IsShown())
 nxt = list(CH.Next.List().values())
 check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier <= nxt[i + 1].tier for i in range(len(nxt) - 1)))
+# Do next as decisions: the same action on several items is one card, four cards at most
+run("""STUB.oldNextList = AuctionIQ.Next.List
+AuctionIQ.Next.List = function() local out = {}
+  for i = 1, 9 do table.insert(out, { title = 'Repost', detail = 'Item ' .. i .. ' x1 came back unsold', gold = i * 10000, tier = 2, risk = 'it expired once',
+    go = { 'operations', 'post', { name = 'Item ' .. i, title = 'Repost' } } }) end
+  for _, t in ipairs({ 'Collect mail', 'Cooldown ready', 'Weekly knowledge', 'Rethink' }) do table.insert(out, { title = t, detail = t, tier = t == 'Collect mail' and 1 or 3, gold = 5 }) end
+  return out end""")
+rk, allk = L.eval("AuctionIQ.Next.Ranked()")
+rk = list(rk.values())
+rep = [e for e in rk if e.title.startswith("Repost")]
+check("Do next: nine reposts become one card with their gold summed, four cards at most, urgent first",
+      len(rk) == 4 and allk == 5 and rk[0].title == "Collect mail" and len(rep) == 1 and rep[0].title == "Repost 9 items"
+      and rep[0].gold == 450000 and rep[0].risk == "it expired once" and rep[0].go[3].name is None and "and 6 more" in rep[0].detail)
+run("AuctionIQ.UI.Page('today')")
+c2who = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].who:GetText()")
+c2risk = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].l2:GetText()")
+check("Do next: the cards show the reason and the biggest uncertainty, with no list to scroll",
+      plain(c2who) == "Repost 9 items" and plain(c2risk) == "Risk: it expired once"
+      and "matter most" in plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")))
+run("AuctionIQ.Next.List = STUB.oldNextList")
+wc = L.eval("AuctionIQ.UI.Pages().dashboard.d.whatChanged")
+check("What changed: the change in gold and up to three moves behind it, each opening Accounting",
+      wc is not None and len(list(wc.moves.values())) <= 3 and all(m.go[1] == "ledger" for m in wc.moves.values())
+      and plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.changed.head:GetText()")).startswith("Gold "))
+data = L.eval("AuctionIQ.UI.DashboardData()")
+w2 = L.eval("AuctionIQ.UI.WhatChanged")(data)
+mv = {m.key: m.gold for m in w2.moves.values()}
+check("What changed: sales and purchases come from the ledger, the rest of the gold change shows as unclassified",
+      all(abs(v) >= 10000 for v in mv.values()) and ("sales" not in mv or mv["sales"] == data.summary.sales)
+      and ("other" not in mv or abs(mv["other"] - (w2.gold - data.summary.cash)) < 1))
 # Do next cards carry a button that does the job: queue the Concentration craft or the restock
 run("""STUB.oldConcNow = AuctionIQ.ConcentrationNow
 AuctionIQ.ConcentrationNow = function(p) if p.name == 'Test Alchemy' then return 1000, 1000 end return STUB.oldConcNow(p) end
