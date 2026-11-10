@@ -131,13 +131,16 @@ end
 ---   tsm          TSM's material cost (matprice), however you set it up in TSM
 ---   paid         what you paid on average over your last 30 days of buying it (TSM's purchase
 ---                records), else replacement
-Prices.BASES = { "replacement", "tsm", "paid" }
-Prices.BASIS_NAMES = { replacement = "Replacement cost (chmat)", tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
+---   held         (default) the units you hold at what you paid for them (today's price for ones you
+---                gathered or never bought), and only what you'd buy at today's price
+Prices.BASES = { "held", "replacement", "tsm", "paid" }
+Prices.BASIS_NAMES = { held = "What you hold at paid, the rest at today's price", replacement = "Replacement cost (chmat)",
+	tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
 function Prices.CostBasis(v)
 	local st = CH.db and CH.db.settings
 	if v and st and Prices.BASIS_NAMES[v] then st.costBasis = v; Prices.ClearCache() end
 	local b = st and st.costBasis
-	return Prices.BASIS_NAMES[b or ""] and b or "replacement"
+	return Prices.BASIS_NAMES[b or ""] and b or "held"
 end
 
 local paidCache, paidAt
@@ -147,6 +150,15 @@ local function paidEach(id)
 	if not paidCache or now - paidAt > CACHE_SECONDS then paidCache, paidAt = CH.Ledger.Paid(), now end
 	local e = paidCache[id]
 	return e and e.each or nil
+end
+
+--- What you paid for one, on average over your last 30 days of buying it (nil if you never bought it).
+function Prices.PaidEach(id) return id and paidEach(id) or nil end
+
+--- How many of an item you hold for crafting: bags, bank, reagent bank and warband bank.
+function Prices.Held(id)
+	if not (id and C_Item and C_Item.GetItemCount) then return 0 end
+	return C_Item.GetItemCount(id, true, false, true, true) or 0
 end
 
 --- What one of a reagent costs on a costing basis (default: the one in Settings): copper and the

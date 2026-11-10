@@ -160,7 +160,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 			for k, b in ipairs(P.BASES) do if b == cur then i = k end end
 			want = P.BASES[i % #P.BASES + 1]
 		end
-		if not P.BASIS_NAMES[want] then CH.Print("/aiq basis replacement | tsm | paid")
+		if not P.BASIS_NAMES[want] then CH.Print("/aiq basis held | replacement | tsm | paid")
 		else P.CostBasis(want); CH.Print("reagents costed at: " .. P.BASIS_NAMES[want]); if CH.UI.IsShown() then CH.UI.Refresh() end end
 	elseif msg == "alerts" then
 		CH.Alerts.Toggle()

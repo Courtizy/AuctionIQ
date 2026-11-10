@@ -33,6 +33,34 @@ local function reagentPrice(model, itemID)
 end
 A.ReagentPrice = reagentPrice
 
+-- n units of a reagent: on the "held" basis the ones you hold cost what you paid for them (or
+-- today's price if you gathered them or never bought any), and only the rest cost today's price.
+-- On any other basis every unit costs the same. nil when there's no price for a unit you'd buy.
+local function heldInfo(model, id)
+	model.heldCache = model.heldCache or {}
+	local h = model.heldCache[id]
+	if not h then
+		local P = CH.Prices
+		local n = P.Held and P.Held(id) or 0
+		h = { n = n, each = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
+		model.heldCache[id] = h
+	end
+	return h
+end
+local function unitsCost(model, id, n)
+	if n <= 0 then return 0 end
+	local buy = reagentPrice(model, id)
+	if not (CH.Prices.CostBasis and CH.Prices.CostBasis() == "held") then return buy and n * buy end
+	local h = heldInfo(model, id)
+	local own = math.min(n, h.n)
+	local ownEach = h.each or buy
+	if own > 0 and not ownEach then return nil end
+	if n - own > 0 and not buy then return nil end
+	return own * (ownEach or 0) + (n - own) * (buy or 0)
+end
+A.UnitsCost = unitsCost
+A.HeldInfo = heldInfo
+
 local function reagentType(name, fallback)
 	return Enum and Enum.CraftingReagentType and Enum.CraftingReagentType[name] or fallback
 end
@@ -140,16 +168,16 @@ local function cost(model, picks)
 		for q, id in ipairs(slot.items) do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local p = reagentPrice(model, id)
-				if not p then model.unpriced = id; return nil end
-				total = total + n * p
+				local c = unitsCost(model, id, n)
+				if not c then model.unpriced = id; return nil end
+				total = total + c
 			end
 		end
 	end
 	for _, slot in ipairs(model.fixed) do
-		local p = reagentPrice(model, slot.items[1])
-		if not p then model.unpriced = slot.items[1]; return nil end
-		total = total + slot.qty * p
+		local c = unitsCost(model, slot.items[1], slot.qty)
+		if not c then model.unpriced = slot.items[1]; return nil end
+		total = total + c
 	end
 	return total
 end
@@ -538,22 +566,31 @@ end
 -- Every way to fill one slot's units across its qualities: { skill, cost, row }.
 local function slotMixes(model, i)
 	local slot, out = model.qual[i], {}
-	local prices = {}
-	for q, id in ipairs(slot.items) do prices[q] = reagentPrice(model, id) end
 	local nq = #slot.items
+	-- what n units of each quality cost (the ones you hold first, on the held basis)
+	local costs = {}
+	local function costN(q, n)
+		if n == 0 then return 0 end
+		costs[q] = costs[q] or {}
+		local c = costs[q][n]
+		if c == nil then c = unitsCost(model, slot.items[q], n) or false; costs[q][n] = c end
+		return c or nil
+	end
 	local function walk(q, left, row, sk, c)
 		if q == nq then
-			if left > 0 and not prices[q] then return end
+			local cl = costN(q, left)
+			if not cl then return end
 			local r = {}
 			for k, v in pairs(row) do r[k] = v end
 			if left > 0 then r[q] = left end
-			out[#out + 1] = { sk + left * (model.perUnit[i][q] or 0), c + left * (prices[q] or 0), r }
+			out[#out + 1] = { sk + left * (model.perUnit[i][q] or 0), c + cl, r }
 			return
 		end
 		for n = 0, left do
-			if n > 0 and not prices[q] then break end
+			local cn = costN(q, n)
+			if not cn then break end
 			row[q] = n > 0 and n or nil
-			walk(q + 1, left - n, row, sk + n * (model.perUnit[i][q] or 0), c + n * (prices[q] or 0))
+			walk(q + 1, left - n, row, sk + n * (model.perUnit[i][q] or 0), c + cn)
 		end
 		row[q] = nil
 	end
@@ -570,7 +607,10 @@ end
 local function priceKey(model)
 	local parts = {}
 	for _, slot in ipairs(model.qual) do
-		for _, id in ipairs(slot.items) do parts[#parts + 1] = tostring(reagentPrice(model, id) or "-") end
+		for _, id in ipairs(slot.items) do
+			local h = CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" and heldInfo(model, id)
+			parts[#parts + 1] = tostring(reagentPrice(model, id) or "-") .. (h and ("/" .. h.n .. "@" .. tostring(h.each)) or "")
+		end
 	end
 	return table.concat(parts, ",")
 end
@@ -753,6 +793,31 @@ function A.PicksText(result, picks, fin)
 	return table.concat(parts, ", ")
 end
 
+--- Add to a reagent line what you hold of it: own (units from your stock), ownEach (what you paid,
+--- or today's price), buyN (units to buy) and sell (what one would bring on the AH after the cut).
+function A.HeldLine(l, model)
+	if not (model and CH.Prices.CostBasis and CH.Prices.CostBasis() == "held") then return l end
+	local h = heldInfo(model, l.id)
+	l.own = math.min(l.n, h.n)
+	l.buyN = l.n - l.own
+	l.ownEach = h.each or l.buy
+	l.paid = h.each ~= nil
+	local v = CH.Prices.Get("chvalue", "i:" .. l.id)
+	l.sell = v and v * CH.AH_CUT
+	return l
+end
+
+--- The held split of a reagent line, as muted text lines (empty off the held basis or when you hold none).
+function A.HeldText(l)
+	local out = {}
+	if not (l and l.own and l.own > 0) then return out end
+	local M, T = CH.FormatMoney, CH.Theme
+	out[#out + 1] = T.Color("muted", string.format("   %d yours at %s (%s)", l.own, l.ownEach and M(l.ownEach) or "-", l.paid and "what you paid" or "no buy on record: today's price"))
+	if (l.buyN or 0) > 0 then out[#out + 1] = T.Color("muted", string.format("   %d to buy at %s", l.buyN, l.buy and M(l.buy) or "-")) end
+	if l.sell then out[#out + 1] = T.Color("muted", string.format("   or sell yours for about %s each after the cut", M(l.sell))) end
+	return out
+end
+
 --- Each reagent in a row: id, name, rank, units, price per unit (chmat: an estimate), line total.
 --- Fixed reagents have no rank.
 function A.CostLines(result, picks, fin)
@@ -761,14 +826,20 @@ function A.CostLines(result, picks, fin)
 		for q = #slot.items, 1, -1 do
 			local n = picks[i][q] or 0
 			if n > 0 then
-				local unit, via = reagentPrice(result.model, slot.items[q]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[q], result.recipeID))
-				table.insert(out, { id = slot.items[q], name = itemName(slot.items[q]), rank = q, tiers = #slot.items, n = n, unit = unit, total = unit and unit * n, crafted = via })
+				local id = slot.items[q]
+				local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
+				local total = unitsCost(result.model, id, n)
+				table.insert(out, A.HeldLine({ id = id, name = itemName(id), rank = q, tiers = #slot.items, n = n, unit = total and total / n or unit,
+					buy = unit, total = total, crafted = via }, result.model))
 			end
 		end
 	end
 	for _, slot in ipairs(result.fixed) do
-		local unit, via = reagentPrice(result.model, slot.items[1]), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(slot.items[1], result.recipeID))
-		table.insert(out, { id = slot.items[1], name = itemName(slot.items[1]), n = slot.qty, unit = unit, total = unit and unit * slot.qty, crafted = via })
+		local id = slot.items[1]
+		local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
+		local total = unitsCost(result.model, id, slot.qty)
+		table.insert(out, A.HeldLine({ id = id, name = itemName(id), n = slot.qty, unit = total and total / slot.qty or unit, buy = unit,
+			total = total, crafted = via }, result.model))
 	end
 	for _, f in ipairs(fin or {}) do
 		table.insert(out, { id = f.itemID, name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })
