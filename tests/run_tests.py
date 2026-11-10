@@ -1406,8 +1406,31 @@ check("hand-off: Craft opens on the recommended recipe, filtered to it, saying w
       LUI.View() == "scenarios" and LUI.Group() == "Craft" and LUI.Focus().name == "Test Flask"
       and plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "Test Flask"
       and foot.startswith("From Dashboard: Restock, 20 x Test Flask on Alt"))
+# Craft detail pane: the handed-over recipe is selected, sized to the Dashboard's quantity, and queues
+det = L.eval("AuctionIQ.LedgerUI.lastDetail")
+check("Craft pane: the selected recipe, live while the profession window has it, sized to the hand-off",
+      det is not None and plain(det.title).startswith("Test Flask") and "Live from the profession window" in plain(det.title)
+      and det.n == 20 and plain(det.actions[1].label) == "Queue 20" and L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
+run("AuctionIQ.AnalyticsViews._LiveFor = AuctionIQ.AnalyticsViews.LiveFor; AuctionIQ.AnalyticsViews.LiveFor = function() return nil end; AuctionIQ.UI.Refresh()")
+det = L.eval("AuctionIQ.LedgerUI.lastDetail")
+check("Craft pane: otherwise the last scan, labelled with its character and age", re.search(r"Last scan on \w+, .+ old$", plain(det.title)) is not None and det.live is False)
+run("AuctionIQ.AnalyticsViews.LiveFor = AuctionIQ.AnalyticsViews._LiveFor; AuctionIQ.UI.Refresh()")
+det = L.eval("AuctionIQ.LedgerUI.lastDetail")
+lines = [plain(x) for x in det.lines.values()]
+check("Craft pane: profit and break-even, the batch's risk, stock left and reagent cost",
+      lines[0].startswith("Profit ") and any(l.startswith("Make ") for l in lines) and any(l.startswith("Left after a week") for l in lines)
+      and lines[-1].startswith("Reagents for 20: about "))
+run("AuctionIQ.db.queue = {}; AuctionIQ.db.decisions = {}")
+run("local b = AuctionIQ.UI.Pages().ledger.detail.buttons[1]; b.scripts.OnClick(b)")
+q = list(L.eval("AuctionIQ.db.queue").values())
+dec = list(L.eval("AuctionIQ.db.decisions").values())
+check("Craft pane: Queue adds the batch and saves its forecast, from Craft",
+      len(q) == 1 and q[0].qty == 20 and len(dec) == 1 and dec[0].n == 20 and dec[0]["from"] == "craft" and dec[0].name == "Test Flask"
+      and plain(L.eval("AuctionIQ.UI.Pages().ledger.detail.said:GetText()")).startswith("Queued 20 x Test Flask"))
+run("AuctionIQ.db.queue = {}; AuctionIQ.db.decisions = {}")
 run("AuctionIQ.UI.Go('operations', 'post')")
 check("hand-off: moving to another view lets it go", LUI.Focus() is None)
+check("Craft pane hides on a view without one", not L.eval("AuctionIQ.UI.Pages().ledger.detail").shown)
 run("AuctionIQ.UI.Pages().ledger.search:SetText('')")
 check("hand-off: clearing the filter shows everything again", plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "")
 run("AuctionIQ.UI.Page('groups')")
