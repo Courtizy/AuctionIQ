@@ -391,7 +391,11 @@ local function build()
 				b:SetPoint("TOPLEFT", 10, -54 - i * H + 2)
 				local lvl = r.button and r.button.GetFrameLevel and r.button:GetFrameLevel()
 				if lvl and b.SetFrameLevel then b:SetFrameLevel(lvl + 2) end
-				b:SetScript("OnClick", function() SUI.Claim(data[i + offset]) end)
+				b:SetScript("OnClick", function()
+					-- say what went wrong instead of failing silently (errors are often hidden)
+					local ok, err = xpcall(SUI.Claim, debugstack and function(m) return tostring(m) .. "\n" .. debugstack(2, 3, 0) end or tostring, data[i + offset])
+					if not ok then CH.Print("that step hit an error: " .. tostring(err)) end
+				end)
 				b:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.ClaimLines(data[i + offset])) end)
 				b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 				b:Hide()

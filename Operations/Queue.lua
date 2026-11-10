@@ -769,6 +769,8 @@ function Q.Craft(e, amount)
 		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
 			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, conc)
 		else
+			CH.Print(string.format("crafting %s into the order: %d of your reagents, Concentration %s, rank %s needed",
+				e.name or "?", #mine, conc and "on" or "off", tostring(need)))
 			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
 		end
 		return true
