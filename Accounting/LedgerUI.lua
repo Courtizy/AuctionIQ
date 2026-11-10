@@ -670,6 +670,7 @@ function LUI.Build(p, fs, panel)
 	for k = 1, 3 do
 		local b = CH.Theme.Button(det, "", IW, 22)
 		b:SetPoint("BOTTOMLEFT", 10, 10 + (k - 1) * 26)
+		if k == 1 then CH.Theme.Primary(b) end -- the main action, filled with the accent like the design
 		b:SetScript("OnClick", function(self)
 			if not self.run then return end
 			local ok, msg = self.run()

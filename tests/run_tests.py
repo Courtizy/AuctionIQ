@@ -151,6 +151,13 @@ check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc)
 for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "Recover")):
     tp = list(L.eval("AuctionIQ.AdvisorUI.NextTip('%s')" % w).values())
     check("advisor: the %s hover explains it and shows the breakdown" % head, tp[0][1] == head and len(tp) >= 3)
+af = CH.AdvisorUI.Frame()
+check("advisor redesign: Next Move sits on a shaded card with the accent line", af.nextCard is not None and af.accentBar is not None and af.tableCard is not None and af.paneCard is not None)
+check("advisor redesign: the title bar keeps only Queue; the pane has its own tabs", af.notesBtn is not None and af.chartBtn is not None and af.batchBtn is not None
+      and L.eval("function(b) return select(2, b:GetPoint()) end")(af.chartBtn) != L.eval("function(f) return f end")(af.queue))
+check("advisor redesign: the Queue button is the filled main action", af.act.queue.aiqFill is not None)
+check("advisor redesign: the Break-even tab opens the chart, Notes goes back", CH.AdvisorUI.SetPane("chart") == "chart" and CH.AdvisorUI.SetPane("notes") == "notes" and af.notesBtn.on)
+check("advisor redesign: the sub line has the card's full width", af.next.sub.w is None or af.next.sub.w >= 400)
 run("AuctionIQ.AdvisorUI.SetQty(1)")
 g = L.eval("{ AuctionIQ.Theme.GradientColors('MAGE') }")
 check("theme: ToxiUI's class gradient for bars", abs(g[1][1] - 0) < 1e-6 and abs(g[1][3] - 0xd7 / 255) < 1e-6 and abs(g[2][3] - 1) < 1e-6)
