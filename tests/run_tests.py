@@ -2509,6 +2509,14 @@ check("statements: a line opens its transactions", any(r.go is not None and r.go
 check("statements: the period steps from This week", St.SetPeriod("week") == "week" and St.Step(1) == "lastweek" and St.SetPeriod("week") == "week")
 brows = [plain(r.cells[1]) for r in LUI.Rows("balance", L.eval("{}"))[0].values()]
 check("statements: the Balance Sheet carries the market value as a memo", any("Memo: inventory at market value" in x for x in brows) and any("Net worth" in x for x in brows))
+check("Balance Sheet: inventory split by how fast it becomes gold adds up to inventory",
+      abs(bal.liquid.week + bal.liquid.slow + bal.liquid.dead - bal.inventory) < 1)
+check("Balance Sheet: speed buckets from your own sales", St.Speed(5, 30) == "week" and St.Speed(20, 30) == "slow" and St.Speed(50, 30) == "dead" and St.Speed(3, 0) == "dead")
+check("Balance Sheet: free gold is gold less what the queue still has to buy", abs(bal.freeGold - (bal.gold - bal.committed)) < 1
+      and any("Free gold" in x for x in brows) and any("Sells within a week" in x for x in brows))
+br = St.Bridge(0, L.eval("time()") + 1)
+check("Balance Sheet: the net worth bridge adds up, opening to closing",
+      br is None or abs(br.opening + br.netIncome + br.unclassified + br.prices - br.closing) < 1)
 crows = [plain(r.cells[1]) for r in LUI.Rows("cashflow", L.eval("{}"))[0].values()]
 check("statements: the biggest item is named when it carries a quarter or more of inventory", (bal.top is None) or (bal.top.worth / max(bal.inventory, 1) < 0.25) or any("Largest:" in x for x in brows))
 check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
