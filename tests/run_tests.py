@@ -1796,6 +1796,26 @@ sk = L.eval("""(function()
   return info.bonusSkill
 end)()""")
 check("orders: the customer's reagents' quality counts toward skill (a claimed Phoenix Oil read 141 instead of 323)", sk == 180)
+# A single-quality reagent in the list makes the game answer nothing (CraftSim leaves them out too)
+nq = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local old = ui.GetCraftingOperationInfoForOrder
+  ui.GetCraftingOperationInfoForOrder = function(id, infos, orderID, conc)
+    local skill = 0
+    for _, r in ipairs(infos) do
+      if r.itemID == 205 then return nil end -- slot 3 has one quality: the game refuses
+      if r.itemID == 202 then skill = skill + 20 * r.quantity end
+    end
+    return { baseSkill = 100, bonusSkill = skill, baseDifficulty = 130 }
+  end
+  local m = AuctionIQ.Advisor.Measure(10, { order = { orderID = 9, minQuality = 1,
+    provided = { { reagent = { itemID = 202 }, itemID = 202, dataSlotIndex = 1, quantity = 4 },
+                 { reagent = { itemID = 205 }, itemID = 205, dataSlotIndex = 3, quantity = 2 } } } })
+  ui.GetCraftingOperationInfoForOrder = old
+  return m and m.skill0
+end)()""")
+check("orders: the customer's quality reagents count even when a single-quality one is in the order", nq == 180)
+
 # Recipe slots can share a data slot number: the customer's reagents go to the slot listing their item
 ds = L.eval("""(function()
   local ui = C_TradeSkillUI

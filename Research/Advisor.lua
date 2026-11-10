@@ -202,7 +202,10 @@ function A.Measure(recipeID, opts)
 			local slot = s and s.dataSlotIndex or r.dataSlotIndex
 			local room = s and ((s.quantityRequired or 1) - (used[key] or 0)) or r.quantity
 			local n = math.min(r.quantity or 1, room or 0)
-			if n > 0 and key then
+			-- only reagents with qualities go to the game: a single-quality one (Phoenix Oil's Sunglass
+			-- Vial) makes it answer nothing at all, as CraftSim notes, and adds no skill anyway
+			local quality = not s or #(s.reagents or {}) > 1
+			if n > 0 and key and quality then
 				used[key] = (used[key] or 0) + n
 				table.insert(provided, { reagent = r.reagent, itemID = r.itemID, dataSlotIndex = slot, quantity = n })
 			end

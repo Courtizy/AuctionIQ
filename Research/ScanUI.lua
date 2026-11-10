@@ -641,6 +641,12 @@ function SUI.Claim(d)
 		C_CraftingOrders.ClaimOrder(o.orderID, info and info.profession)
 		return true
 	end
+	if state == "shatter" then
+		-- Shatter needs no plan for the order: just the buff
+		local ok, why = CH.Queue.Shatter()
+		if not ok then CH.Print("can't Shatter: " .. tostring(why)) end
+		return ok
+	end
 	local e = entryFor(d)
 	if not e then
 		-- nothing AuctionIQ can craft for it: leave it to the order's page
