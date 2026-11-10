@@ -559,6 +559,10 @@ check("craft log: forecast, actual and realized are kept apart", st.forecast == 
 sl3 = [plain(x[1]) for x in CH.Log.StageLines(L.eval("function(s) return { name = 'Test Flask', char = 'Seyko', stages = s } end")(st)).values()]
 check("craft log: the hover says unsold items aren't realized and the matching is estimated",
       any("unsold, estimated value (not realized)" in x for x in sl3) and any("Estimated attribution" in x for x in sl3))
+wf = list(CH.Log.Waterfall(st).values())
+def wsum(a, b): return sum(x[2] for x in wf[a:b])
+check("waterfall: the steps add up from forecast to actual to realized",
+      wf[0][1] == "Forecast at craft time" and wf[-1][1] == "Realized" and abs(wf[0][2] + wsum(1, 4) - wf[4][2]) < 1 and abs(wf[4][2] + wsum(5, 8) - wf[-1][2]) < 1)
 D = L.eval("AuctionIQ.Decide")
 be = res.best.breakEven
 check("break-even: the sale price per item where the plain craft makes nothing (cut included)",
@@ -614,6 +618,27 @@ run('STUB.money = 999999999')
 bg2 = CH.Queue.Budget()
 run('STUB.money = 1234567')
 check("queue budget: with gold, Concentration is next to block", bg2.stop is None or bg2.stop.why == "conc")
+seq = list(D.ConcSequence(100, L.eval("{ { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 } }")).values())
+check("queue Concentration: exact chance each craft can start, refunds landing after the craft that earns them",
+      seq[:3] == [1, 1, 1] and abs(seq[3] - 0.5) < 1e-12 and abs(seq[4] - 0.0625) < 1e-12)
+pll = [(plain(l[1]), plain(l[2]) if l[2] else "") for l in CH.QueueUI.PlanLines(L.eval("{ runs = 200 }")).values()]
+labels = [x[0] for x in pll]
+check("restock plans: as queued against lean, with gold up front, gold back by day 7 and stock left",
+      "As queued" in labels and any(x.startswith("Lean (") for x in labels) and labels.count("   Gold up front, to buy reagents") == 2
+      and any(x.startswith("   Gold back by day 7") for x in labels) and labels.count("   Stock left, estimated value") == 2)
+pq = L.eval("AuctionIQ.Decide.Plans()")
+check("restock plans: lean never queues more than the queue", sum(e.qty for e in pq[2].entries.values()) <= sum(e.qty for e in pq[1].entries.values()))
+run("AuctionIQ.db.batchForecasts = nil; AuctionIQ.AdvisorUI.SetQty(2); AuctionIQ.AdvisorUI.QueueSelected()")
+fc = list(L.eval("AuctionIQ.Decide.Forecasts()").values())
+check("batch forecast: queueing saves what the simulation said", len(fc) == 1 and fc[0].n == 2 and fc[0].p50 is not None)
+run("AuctionIQ.db.batchForecasts[1].at = time() - 8 * 86400")
+run("""STUB.oldLA, STUB.oldLR = AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records
+AuctionIQ.Ledger.Available = function() return true end
+AuctionIQ.Ledger.Records = function() return { { id = AuctionIQ.db.batchForecasts[1].item, time = time() - 7 * 86400, quantity = 1, price = 100 } } end""")
+cal = L.eval("AuctionIQ.Decide.Calibration()")
+run("AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records = STUB.oldLA, STUB.oldLR")
+check("batch forecast: a week on, checked against what the item really sold for", cal is not None and cal.checked == 1 and cal.under + cal.over == 1)
+run("AuctionIQ.db.batchForecasts = nil")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.SetQty(1)')
 run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [1] = { name = 'Alchemy', conc = 500, concMax = 1000, concAt = time(),
   scan = { rows = { { name = 'Cheap Flask', recipeID = 99, item = 100, profit = 10, breakEven = 99999999, concProfit = 900, avgConcentration = 30 } } } } } }""")

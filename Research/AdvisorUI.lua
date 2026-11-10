@@ -1029,6 +1029,12 @@ function AUI.QueueSelected()
 	if off then CH.Print("can't queue that: " .. off); return nil, off end
 	local from = shown.sim and live or shown
 	local e = CH.Queue.Add(from, target, selQty)
+	-- what the simulation says about this batch, kept to check against what it really brings in
+	if CH.Decide and not from.order then
+		local inp = CH.Decide.BatchInputs(from, target)
+		local s = inp and CH.Decide.Batch(inp, { sizes = { selQty }, runs = 300 })
+		if s and s[1] then CH.Decide.SaveForecast(target.item, from.recipeID, s[1]) end
+	end
 	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
 	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
 	return e

@@ -247,7 +247,7 @@ function Lg.Stages(char, recipeID, e)
 	end
 	-- realized: the batches these crafts recorded, with what has sold of each
 	local made, sold, revenue, soldCost, forecastSold, unsold = 0, 0, 0, 0, 0, 0
-	local unsoldValue = 0
+	local unsoldValue, unsoldMargin = 0, 0
 	if CH.Forecast then
 		local byItem = {}
 		for _, b in ipairs(CH.Forecast.Store()) do
@@ -265,15 +265,44 @@ function Lg.Stages(char, recipeID, e)
 					local left = b.qty - (b.sold or 0)
 					unsold = unsold + left
 					unsoldValue = unsoldValue + left * (value or 0) * CH.AH_CUT
+					unsoldMargin = unsoldMargin + left * ((b.expectEach or 0) - (b.cost and b.cost / b.qty or 0))
 				end
 			end
 		end
 	end
 	if made > 0 then
 		out.realized = { made = made, sold = sold, revenue = revenue, cost = soldCost, profit = revenue - soldCost,
-			unsold = unsold, unsoldValue = unsoldValue, price = sold > 0 and (revenue - forecastSold) or nil }
+			unsold = unsold, unsoldValue = unsoldValue, unsoldMargin = unsoldMargin, price = sold > 0 and (revenue - forecastSold) or nil }
 	end
 	return out
+end
+
+--- The forecast-to-realized waterfall for a recipe: { { label, value, total } }, each step what moved
+--- the result, ending on what has really been realized. The steps:
+---   Forecast at craft time
+---   + yield (items against expected, at the expected value) + Resourcefulness (against expected)
+---   + market by craft time (the rest of the gap to the crafts' value when made)
+---   = Actual at market
+---   + sale price (what sold units fetched against their forecast)
+---   - still unsold (their expected margin isn't realized yet)
+---   + the rest (deposits, Resourcefulness not in batch costs, matching)
+---   = Realized
+--- nil before any of these crafts have a forecast and a recorded batch.
+function Lg.Waterfall(s)
+	if not (s.produced and s.realized) then return nil end
+	local r = s.realized
+	local steps = { { "Forecast at craft time", s.forecast, true } }
+	local y, sv = s.produced.gold, s.saved and s.saved.gold or 0
+	table.insert(steps, { "Yield", y })
+	table.insert(steps, { "Resourcefulness", sv })
+	table.insert(steps, { "Market by craft time", s.actual - s.forecast - y - sv })
+	table.insert(steps, { "Actual at market", s.actual, true })
+	local price = r.price or 0
+	table.insert(steps, { "Sale price", price })
+	table.insert(steps, { "Still unsold", -r.unsoldMargin })
+	table.insert(steps, { "Deposits, matching, rest", r.profit - s.actual - price + r.unsoldMargin })
+	table.insert(steps, { "Realized", r.profit, true })
+	return steps
 end
 
 --- Hover lines explaining one recipe's stages: { { label, value } }.
@@ -297,6 +326,16 @@ function Lg.StageLines(d)
 		table.insert(out, { string.format("   %d of %d sold for %s, their reagents %s", r.sold, r.made, M(r.revenue), M(r.cost)), "" })
 		if r.price then table.insert(out, { "   Sale price against the forecast", signed(r.price) }) end
 		if r.unsold > 0 then table.insert(out, { string.format("   %d unsold, estimated value (not realized)", r.unsold), M(r.unsoldValue) }) end
+		local w = Lg.Waterfall(s)
+		if w then
+			table.insert(out, { T.Color("accent", "Forecast to realized") })
+			local big = 1
+			for _, st in ipairs(w) do big = math.max(big, math.abs(st[2])) end
+			for _, st in ipairs(w) do
+				local bar = CH.UI and CH.UI.TextBar and CH.UI.TextBar(math.abs(st[2]) / big, 60) or ""
+				table.insert(out, { (st[3] and st[1] or ("   " .. st[1])) .. "  " .. bar, st[3] and M(st[2]) or signed(st[2]) })
+			end
+		end
 		table.insert(out, { mut("Estimated attribution: sales are matched to crafts by item and date, oldest first. Deposits aren't matched to crafts.") })
 	else
 		table.insert(out, { "3. Realized sales", mut("none matched yet") })
@@ -334,7 +373,10 @@ local function resultRows(ctx)
 	if not out[1] then
 		return out, T.Color("muted", "Nothing logged yet. Every craft is recorded here, on each character.")
 	end
-	return out, string.format("%d crafts: forecast %s, actual %s at market, %s realized from sales.", crafts, M(forecast), M(actual), M(realized))
+	local cal = CH.Decide and CH.Decide.Calibration()
+	local calText = cal and string.format("  Batch forecasts: %d checked, %d inside their 80%% range, %d came in under the median%s.", cal.checked, cal.inside, cal.under,
+		cal.checked >= 4 and cal.under / cal.checked >= 0.7 and " (runs optimistic)" or "") or ""
+	return out, string.format("%d crafts: forecast %s, actual %s at market, %s realized from sales.", crafts, M(forecast), M(actual), M(realized)) .. calText
 		.. T.Color("muted", "  Hover a row for the gap. Unsold items aren't realized. /aiq results clear empties this character's log.")
 end
 

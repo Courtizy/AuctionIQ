@@ -358,3 +358,161 @@ function D.Batch(inp, opts)
 	end
 	return out
 end
+
+-- Concentration over a queue (exact) -------------------------------------------------------------
+
+--- For a run of Concentration crafts in order, each { cost, ing, refund }: the chance each one can
+--- start (it needs its full cost; a refund lands only after the craft that earns it). Worked out
+--- exactly over the refunds that have landed. Returns reach[k] for k = 1..#crafts.
+function D.ConcSequence(budget, crafts)
+	local states = { [0] = 1 } -- refunded points so far (rounded to a tenth) -> chance, among runs still going
+	local key = function(x) return math.floor(x * 10 + 0.5) end
+	local spent, reach = 0, {}
+	for k, c in ipairs(crafts) do
+		local nxt, p = {}, 0
+		for r10, pr in pairs(states) do
+			if budget - spent + r10 / 10 >= c.cost - 1e-9 then
+				p = p + pr
+				local ing = math.max(0, math.min(1, c.ing or 0))
+				nxt[r10] = (nxt[r10] or 0) + pr * (1 - ing)
+				if ing > 0 then
+					local k2 = r10 + key(c.refund or 0)
+					nxt[k2] = (nxt[k2] or 0) + pr * ing
+				end
+			end
+		end
+		reach[k] = p
+		if p < 1e-6 then for j = k + 1, #crafts do reach[j] = 0 end break end
+		states, spent = nxt, spent + c.cost
+	end
+	return reach
+end
+
+-- Restock plans ----------------------------------------------------------------------------------
+-- Compare plans (lists of queue entries) by what they cost up front, the gold that comes back in a
+-- week, and the stock left. Each item's sales are drawn from its daily volume; prices move with one
+-- market shock shared by every item plus each item's own, so related items don't all move apart.
+
+D.SHARED = 0.6 -- how much of a price move is the market's (shared) rather than the item's own
+
+--- What one queued craft makes and sells for, from the best saved scan that makes its item:
+--- { item, items (per craft, Multicraft included), price, deposit, unit, daily } or nil.
+function D.EntryModel(e)
+	if not (e and e.item and CH.Queue and CH.Queue.ScanRowFor) then return nil end
+	local _, _, row = CH.Queue.ScanRowFor(e.item)
+	local acc = row and ((e.concentration and row.concAccounts) or row.accounts)
+	local price = acc and acc.price or CH.Prices.Get("chvalue", "i:" .. e.item)
+	if not price then return nil end
+	local items = acc and ((acc.made or 1) + (acc.extraItems or 0)) or (row and row.made) or 1
+	return { item = e.item, items = items, price = price, deposit = acc and acc.deposit or 0,
+		unit = acc and acc.unit or price * CH.AH_CUT, daily = CH.Scan and CH.Scan.DailyUnits(e.item) or 0 }
+end
+
+--- Outcomes of a plan: { cash (to buy what you don't have, walking the listings), crafts, back = {
+--- p10, p50, p90 } (gold from sales in `days`), left (median value of unsold stock), recover (chance
+--- the week's sales cover the reagents' cost), unpriced (entries left out: no scan or price) }.
+function D.Plan(entries, opts)
+	opts = opts or {}
+	local runs, days = opts.runs or 500, opts.days or D.HORIZON
+	local fall = opts.price or D.Scenario().price
+	local sd = fall / 1.2816
+	local shop, cash = CH.Queue.ShoppingList(entries)
+	local spend = 0
+	for _, s in ipairs(shop) do spend = spend + (s.unit or 0) * s.need end
+	local byItem, unpriced, crafts = {}, 0, 0
+	for _, e in ipairs(entries) do
+		local m = D.EntryModel(e)
+		if m then
+			local x = byItem[m.item] or { m = m, items = 0 }
+			x.items = x.items + m.items * e.qty
+			byItem[m.item] = x
+			crafts = crafts + e.qty
+		else
+			unpriced = unpriced + 1
+		end
+	end
+	local u = rng(opts.seed or 11)
+	local backs, lefts, covered = {}, {}, 0
+	for k = 1, runs do
+		local market = normal(u)
+		local back, left = 0, 0
+		for _, x in pairs(byItem) do
+			local z = D.SHARED * market + math.sqrt(1 - D.SHARED ^ 2) * normal(u)
+			local shock = math.max(0.05, 1 + sd * z)
+			local made = math.floor(x.items + u()) -- whole items, fractions drawn
+			local sold = math.min(made, poisson(u, x.m.daily * days))
+			back = back + sold * math.max(0, x.m.price * shock * CH.AH_CUT - x.m.deposit)
+			left = left + (made - sold) * x.m.unit
+		end
+		if back >= spend then covered = covered + 1 end
+		backs[k], lefts[k] = back, left
+	end
+	table.sort(backs); table.sort(lefts)
+	return { cash = cash, spend = spend, crafts = crafts, unpriced = unpriced, recover = covered / runs,
+		back = { p10 = quantile(backs, 0.1), p50 = quantile(backs, 0.5), p90 = quantile(backs, 0.9) }, left = quantile(lefts, 0.5) or 0 }
+end
+
+--- The plans worth comparing for the queue: as queued, and lean (each item up to `leanDays` days of
+--- its sales, less what you hold). { { label, entries } }.
+D.LEAN_DAYS = 3
+function D.Plans(queue)
+	queue = queue or CH.db.queue
+	local lean, made = {}, {}
+	for _, e in ipairs(queue) do
+		local m = D.EntryModel(e)
+		local copy = {}
+		for k, v in pairs(e) do copy[k] = v end
+		if m and m.items > 0 then
+			local held = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(e.item, true, false, true, true) or 0
+			local want = math.max(0, m.daily * D.LEAN_DAYS - held - (made[e.item] or 0))
+			copy.qty = math.min(e.qty, math.ceil(want / m.items))
+			made[e.item] = (made[e.item] or 0) + copy.qty * m.items
+		end
+		if copy.qty > 0 then lean[#lean + 1] = copy end
+	end
+	return { { label = "As queued", entries = queue }, { label = string.format("Lean (%d days of sales)", D.LEAN_DAYS), entries = lean } }
+end
+
+-- Checking the batch forecasts -------------------------------------------------------------------
+-- Each batch you queue saves what the simulation said about it; a week later the sales say what
+-- happened. Over many batches that shows whether the simulation runs optimistic.
+
+local function forecasts()
+	CH.db.batchForecasts = CH.db.batchForecasts or {}
+	return CH.db.batchForecasts
+end
+D.Forecasts = forecasts
+
+--- Save a batch forecast: one size's outcome from D.Batch, for an item. Keeps the last 200.
+function D.SaveForecast(item, recipeID, s, now)
+	if not (item and s and s.cashBack) then return nil end
+	local list = forecasts()
+	local f = { at = now or time(), item = item, recipe = recipeID, n = s.n, p10 = s.cashBack.p10, p50 = s.cashBack.p50,
+		p90 = s.cashBack.p90, recover = s.recover, spend = s.spend }
+	list[#list + 1] = f
+	while #list > 200 do table.remove(list, 1) end
+	return f
+end
+
+--- How the saved forecasts held up, for those a full horizon old: what the item really brought in
+--- over the days after each (your sales after the cut) against the forecast range. { checked, inside
+--- (within the middle 80%), under (below the median), over } or nil before any can be checked.
+function D.Calibration(now)
+	now = now or time()
+	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
+	local sales = CH.Ledger.Records("Sales")
+	local out = { checked = 0, inside = 0, under = 0, over = 0 }
+	for _, f in ipairs(forecasts()) do
+		local to = f.at + D.HORIZON * 86400
+		if to <= now then
+			local got = 0
+			for _, s in ipairs(sales) do
+				if s.id == f.item and s.time >= f.at and s.time < to then got = got + CH.Ledger.Net(s) end
+			end
+			out.checked = out.checked + 1
+			if got >= (f.p10 or 0) and got <= (f.p90 or math.huge) then out.inside = out.inside + 1 end
+			if got < (f.p50 or 0) then out.under = out.under + 1 else out.over = out.over + 1 end
+		end
+	end
+	return out.checked > 0 and out or nil
+end

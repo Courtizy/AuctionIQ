@@ -206,7 +206,14 @@ local function build()
 
 	-- Budget: gold, reagents and Concentration, on hand against still needed, and what stops the queue
 	y = y - SROWS * 18 - 22
-	budget = { head = CH.Window.OneLine(text(panel, 12, y, W - 24, "LEFT", "GameFontNormalSmall")), bars = {} }
+	budget = { head = CH.Window.OneLine(text(panel, 12, y, W - 24 - 110, "LEFT", "GameFontNormalSmall")), bars = {} }
+	local plans = T.Button(panel, "Compare plans", 100, 16)
+	plans:SetPoint("TOPRIGHT", -12, y + 2)
+	plans:SetScript("OnClick", function(self) CH.Window.Tooltip(self, QUI.PlanLines()) end)
+	plans:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Compare restock plans" },
+		{ T.Color("muted", "The queue as it is against a lean plan of a few days' sales: gold up front, gold back in a week, and stock left. Click to run it.") } }) end)
+	plans:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	budget.plans = plans
 	for i, name in ipairs({ "Gold", "Reagents", "Concentration" }) do
 		local by = y - 4 - i * 14
 		local b = { label = CH.Window.OneLine(text(panel, 12, by, 90)) }
@@ -315,8 +322,10 @@ function QUI.BudgetLines(b)
 		return string.format("the %s %s%s", ordinal(st.n), e.name or "?", e.charName and (" (" .. e.charName .. ")") or "")
 	end
 	local WHY = { gold = "you run out of gold to buy its reagents", conc = "Concentration runs out", reagents = "reagents on hand run out" }
+	local cs = b.conc.stop
+	local up = cs and cs.upside and cs.upside >= 0.005 and T.Color("muted", string.format(" %d%% chance refunds cover it.", math.floor(cs.upside * 100 + 0.5))) or ""
 	if b.stop then
-		out[4] = T.Color("bad", "Stops at " .. at(b.stop) .. ": " .. WHY[b.stop.why]) .. "."
+		out[4] = T.Color("bad", "Stops at " .. at(b.stop) .. ": " .. WHY[b.stop.why]) .. "." .. (b.stop == cs and up or "")
 	elseif b.reagents.stop then
 		out[4] = T.Color("muted", "Buy first: " .. WHY.reagents .. " at " .. at(b.reagents.stop) .. ". Gold and Concentration cover the rest.")
 	elseif CH.db.queue[1] then
@@ -327,13 +336,35 @@ function QUI.BudgetLines(b)
 	return out
 end
 
+--- The plan comparison, as tooltip lines: for each plan, gold up front, gold back in a week (median
+--- and the middle 80% of runs), the chance it pays back, and the stock left. Also used by the tests.
+function QUI.PlanLines(opts)
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = { { T.Color("accent", "Restock plans") .. T.Color("muted", string.format("  %d days, prices share one market move", CH.Decide.HORIZON)) } }
+	if not CH.db.queue[1] then
+		table.insert(out, { T.Color("muted", "The queue is empty.") })
+		return out
+	end
+	for _, plan in ipairs(CH.Decide.Plans()) do
+		local r = CH.Decide.Plan(plan.entries, opts)
+		table.insert(out, { T.Color("accent", plan.label), string.format("%d crafts", r.crafts) })
+		table.insert(out, { "   Gold up front, to buy reagents", M(r.cash) })
+		table.insert(out, { "   Gold back by day " .. CH.Decide.HORIZON .. T.Color("muted", string.format("  80%%: %s to %s", M(r.back.p10 or 0), M(r.back.p90 or 0))), M(r.back.p50 or 0) })
+		table.insert(out, { "   Chance sales cover the reagents", string.format("%d%%", math.floor(r.recover * 100 + 0.5)) })
+		table.insert(out, { "   Stock left, estimated value", M(r.left) })
+		if r.unpriced > 0 then table.insert(out, { T.Color("muted", string.format("   %d entries left out: no scan or price for their item", r.unpriced)) }) end
+	end
+	table.insert(out, { T.Color("muted", "Sales from region volume capped at your daily cap; price spread from Scenarios. Gold back counts only what sells.") })
+	return out
+end
+
 --- Draw the budget bars. Returns their lines.
 function QUI.RenderBudget()
 	if not budget then return {} end
 	local T = CH.Theme
 	local b = CH.Queue.Budget()
 	local lines = QUI.BudgetLines(b)
-	budget.head:SetText(T.Color("accent", "Budget") .. T.Color("muted", "  on hand (green), still needed (red). Each craft needs its full Concentration."))
+	budget.head:SetText(T.Color("accent", "Budget") .. T.Color("muted", "  green on hand, red still needed"))
 	for i, k in ipairs({ "gold", "reagents", "conc" }) do
 		local x, bar = b[k], budget.bars[i]
 		local share = x.need > 0 and math.min(1, x.have / x.need) or 1

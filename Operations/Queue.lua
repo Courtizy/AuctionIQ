@@ -45,6 +45,9 @@ function Q.FromRow(result, r)
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
 		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item,
+		-- Ingenuity: the chance a Concentration craft refunds, and how many points it gives back
+		ingenuity = r.concentration and r.ingenuity or nil,
+		refund = r.concentration and r.concentration * ((CH.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
 		reagents = reagents, shop = shop, qty = 0,
 	}
 end
@@ -98,6 +101,7 @@ function Q.FromScan(charKey, char, row, conc)
 	return { char = charKey, charName = char.name, class = char.class, recipeID = row.recipeID, name = row.name,
 		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = conc and row.concentration or nil,
 		profit = conc and row.concProfit or row.profit, cost = acc.cost, item = conc and (row.concItem or row.item) or row.item,
+		avgConcentration = conc and (row.avgConcentration or acc.avgConcentration) or nil,
 		reagents = acc.queue, shop = shop, qty = 0 }
 end
 
@@ -354,9 +358,9 @@ function Q.FillPlan(profID, opts)
 end
 
 --- Reagents for the whole queue: need, have, buy and what buying costs, walking the listings. Sorted by cost, biggest first.
-function Q.ShoppingList()
+function Q.ShoppingList(entries)
 	local need, rank, tiers = {}, {}, {}
-	for _, e in ipairs(list()) do
+	for _, e in ipairs(entries or list()) do
 		for _, s in ipairs(e.shop) do
 			need[s.itemID] = (need[s.itemID] or 0) + s.n * e.qty
 			rank[s.itemID] = s.rank
@@ -421,7 +425,15 @@ function Q.Budget()
 		out.reagents.have = out.reagents.have + math.min(s.have, s.need) * u
 	end
 	-- walk the queue craft by craft: reagents on hand first, then buying, then Concentration
-	local stock, gold, points, seen = {}, out.gold.have, {}, {}
+	local stock, gold, points, seen, seq, start = {}, out.gold.have, {}, {}, {}, {}
+	-- Ingenuity on an entry: saved with it, else worked out from the average cost its scan kept
+	local function refundOf(e) return e.refund or (e.concentration or 0) * (CH.Stats.REFUND or 0.5) end
+	local function ingOf(e)
+		if e.ingenuity then return e.ingenuity end
+		local avg = e.avgConcentration
+		if not avg or not e.concentration or e.concentration <= 0 then return 0 end
+		return math.max(0, math.min(1, (1 - avg / e.concentration) / (CH.Stats.REFUND or 0.5)))
+	end
 	local function first(kind, e, n, extra)
 		if not out[kind].stop then out[kind].stop = { entry = e, n = n, why = kind, extra = extra } end
 		if not out.stop and kind ~= "reagents" then out.stop = out[kind].stop end
@@ -433,6 +445,7 @@ function Q.Budget()
 		if pk and not seen[pk] then
 			seen[pk] = true
 			points[pk] = CH.ConcentrationNow(p) or 0
+			start[pk] = points[pk]
 			out.conc.have = out.conc.have + points[pk]
 		end
 		if e.concentration then out.conc.need = out.conc.need + e.concentration * e.qty end
@@ -451,6 +464,24 @@ function Q.Budget()
 			if e.concentration then
 				if pk then
 					if points[pk] < e.concentration then first("conc", e, n) else points[pk] = points[pk] - e.concentration end
+					seq[pk] = seq[pk] or {}
+					table.insert(seq[pk], { cost = e.concentration, ing = ingOf(e), refund = refundOf(e), entry = e, n = n })
+				end
+			end
+		end
+	end
+	-- refund upside: the chance Ingenuity refunds earlier in the queue let the blocked craft start
+	local st = out.conc.stop
+	if st and CH.Decide then
+		for pk, list in pairs(seq) do
+			local reach = CH.Decide.ConcSequence(start[pk], list)
+			for k, c in ipairs(list) do
+				if c.entry == st.entry and c.n == st.n then
+					st.upside = reach[k]
+					-- crafts beyond the points you have that refunds cover on average
+					local extra = 0
+					for j = k, #list do extra = extra + (reach[j] or 0) end
+					st.extra = extra
 				end
 			end
 		end
