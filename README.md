@@ -89,9 +89,11 @@ See the [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 <details>
 <summary>Code layout, tests and releases</summary>
 
-Plain Lua, no libraries. Folders `Dashboard`, `Operations` and `Accounting` follow the tabs; `Research`
-holds the crafting advisor, scans, specializations and the views that fill Operations › Professions and
-Markets and Accounting › Performance. `Core` and `Data` sit underneath them. The look is described in [THEME.md](THEME.md).
+Plain Lua, no libraries. The folders follow the tabs: `Dashboard`; `Operations` with `Craft` (advisor,
+scans, specializations, plans), `Trade` (posting, groups, markets) and `Queue` (queue, work orders,
+shopping, cooldowns); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
+settings, theme, windows, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
+statistics) sit underneath them. The look is described in [THEME.md](THEME.md).
 
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.

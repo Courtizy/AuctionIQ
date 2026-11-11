@@ -399,7 +399,7 @@ TUI.MOVING = {
 	rules = { label = "Groups and rules", noTime = true, cols = {}, go = function() CH.UI.Go("settings", "groups") end },
 }
 
--- (Research/Views.lua files these under Operations: Trade for what you hold, Queue for the work.)
+-- (Core/Views.lua files these under Operations: Trade for what you hold, Queue for the work.)
 -- Manage rules opens Settings' groups and posting rules, from Trade.
 TUI.MOVING.rules.label = "Manage rules"
 LUI.Register("operations", TUI.PRODUCTION, {})

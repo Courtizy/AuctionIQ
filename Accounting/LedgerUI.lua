@@ -1,6 +1,6 @@
 -- Ledger page of the main window, like TSM's, with sub-tabs: Overview (Report, Inventory); Revenue
 -- (Sales, Other, Resale); Expenses (Purchases, Other, Expired, Cancelled); Profit (Product P&L,
--- Holdings, Overhead); Performance (Research/Views.lua: where forecasts missed). Filter by name, character and
+-- Holdings, Overhead); Performance (Core/Views.lua: where forecasts missed). Filter by name, character and
 -- time frame, sort by any column, hover an item for its tooltip. Data comes from CH.Ledger, which
 -- reads TSM's saved accounting and never writes to it.
 local _, CH = ...

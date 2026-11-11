@@ -1,5 +1,5 @@
 -- Specialization trees: reads the ranks you have, works out what each node gives a recipe (from the
--- node data in Research/Specs/Spec*.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
+-- node data in Operations/Craft/Specs/Spec*.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
 local _, CH = ...
 
 local S = {}

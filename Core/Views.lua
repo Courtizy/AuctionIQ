@@ -7,7 +7,7 @@
 --   Crafting efficiency  gold per Concentration point and per crafting hour, procs against expected
 --   Scenarios            what reagent or selling price changes would do to each craft
 --   Gold per hour        LedgerUI's "time"
---   Craft results        Research/Log.lua
+--   Craft results        Accounting/Log.lua
 --   Batch results        each batch you queued: forecast against actual, and which of sale price,
 --                        sell-through, reagent cost or yield made the difference (Forecast.Explain)
 -- Profit here is crafted items' real sales after the cut, less reagents at what you paid for them

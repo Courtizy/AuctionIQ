@@ -143,7 +143,7 @@ local function planRows(ctx)
 	return out, table.concat(notes, "   ") .. T.Color("muted", "   Estimated from your scans. Spend points in the game's Specializations panel.")
 end
 
--- Operations, Professions: Knowledge and Paths beside the nav, and each plan's payoff (Research/Views.lua
+-- Operations, Professions: Knowledge and Paths beside the nav, and each plan's payoff (Core/Views.lua
 -- puts them in the nav, after Compare crafts)
 CH.LedgerUI.Register("operations", {
 	professions = { label = "Weekly checklist", page = "plan", noTime = true, cols = {} },

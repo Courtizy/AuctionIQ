@@ -1,6 +1,6 @@
 -- Enchanting: each enchant's scroll item per quality, keyed by the recipe's craftingDataID
 -- (C_TradeSkillUI.GetCraftingOperationInfo). The game gives no output item for an enchant, so this
--- comes from CraftSim's Data/EnchantData.lua (MIT licence, see Research/Specs/README.md).
+-- comes from CraftSim's Data/EnchantData.lua (MIT licence, see Operations/Craft/Specs/README.md).
 local _, CH = ...
 CH.EnchantScrolls = {
 [632]={198677,198678,198679},

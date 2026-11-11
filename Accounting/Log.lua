@@ -398,7 +398,7 @@ local function resultRows(ctx)
 		.. T.Color("muted", "  Hover a row for the gap. Unsold items aren't realized. /aiq results clear empties this character's log.")
 end
 
--- (Research/Views.lua puts it in Accounting, under Performance)
+-- (Core/Views.lua puts it in Accounting, under Performance)
 CH.LedgerUI.Register("ledger", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
 	cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 }, { "Crafts", 258, 44 }, { "Forecast", 306, 80 }, { "Actual", 390, 84 },
 		{ "Yield", 478, 66 }, { "Realized", 548, 96 }, { "Sold", 648, 76 } } } }, {})

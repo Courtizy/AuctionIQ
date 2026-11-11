@@ -4,7 +4,7 @@
 
 # the real data files, loaded fresh: earlier tests swap in small fixture trees
 fresh = L.eval("{ }")
-for f in sorted((ROOT / "Research" / "Specs").glob("Spec*.lua")):
+for f in sorted((ROOT / "Operations" / "Craft" / "Specs").glob("Spec*.lua")):
     L.eval("function(src, name) return assert(loadstring(src, name)) end")(f.read_text(), f.name)("AuctionIQ", fresh)
 L.globals().STUB.freshSpec = fresh.SpecData
 pf = L.eval("""(function()
