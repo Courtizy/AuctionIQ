@@ -118,6 +118,7 @@ CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
 	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
 	CH.db = AuctionIQDB
+	CH.db.mail = nil -- the mail feature (routes, Open all, Send) was removed
 end)
 
 CH.On("PLAYER_LOGIN", function()

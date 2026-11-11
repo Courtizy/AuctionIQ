@@ -812,10 +812,10 @@ AV.VIEWS.scenarios.action = {
 -- and opens each one from its charts and links.
 LUI.Register("ledger", AV.VIEWS, {})
 -- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
--- the market) and Queue (the work planned: crafts, shopping, mail and what's blocking it).
+-- the market) and Queue (the work planned: crafts, shopping and what's blocking it).
 LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")
 -- Plan payoff by recipe opens from Specialization, so it sits in Craft without its own nav line
 if LUI.ViewDef("plans") then LUI.ViewDef("plans").parent = "Craft" end
 LUI.Register("operations", {}, { "post", "market", "compare", "when", "rivals", "par", "dead", "rules" }, "Trade")
-LUI.Register("operations", {}, { "ready", "work", "queue", "shopping", "restock", "mail" }, "Queue")
+LUI.Register("operations", {}, { "ready", "work", "queue", "shopping", "restock" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })

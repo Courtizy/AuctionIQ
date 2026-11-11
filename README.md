@@ -30,7 +30,7 @@ makes you a better goblin.
 - **Analyze a batch**: the chance a week's sales pay back 10, 30 or 100 crafts, the cash that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
 - **A plan for every knowledge point**, drawn right on your profession trees
-- **Plan crafting, shopping, auctions and mail** across your warband
+- **Plan crafting, shopping and auctions** across your warband
 - **Compare price sources**: your own AH scans side by side with TSM and Oribos Exchange
 - **Track sales, costs and estimated profit**, with 7, 30 and 90 day reports
 

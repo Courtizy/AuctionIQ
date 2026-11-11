@@ -1447,16 +1447,10 @@ if r302.ah:
     want = min(max(r302.ah - (gp.undercut or 1), gp.min or 0), gp.max or 10**12)
     want = max(want, gp.min or 0)
     check("trading: planned price undercuts the AH within min and max, as posting does", r302.price == want)
-run("AuctionIQ.Mail.Route('Crafted', 'Luxaren')")
-mp = list(CH.TradingUI.MailPlan().values())
-check("trading: to mail lists items on a character other than their route", any(r.id == 302 and r["from"] == "Courtizy" and r.to == "Luxaren" for r in mp))
-run("AuctionIQ.Mail.Route('Crafted', nil)")
 run("AuctionIQ.UI.Page('trading', 'post')")
 check("old trading tab opens Operations on Ready to post", CH.LedgerUI.View() == "post" and CH.LedgerUI.Section() == "operations")
-run("AuctionIQ.Mail.Route('Crafted', 'Luxaren')")
 pr, pf = L.eval("AuctionIQ.LedgerUI.Rows('post', {})")
-mr, mf = L.eval("AuctionIQ.LedgerUI.Rows('mail', {})")
-check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf) and len(list(mr.values())) > 0 and "to send" in plain(mf))
+check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf))
 # Posting advice: post now, post fewer or wait, inside the TSM operation's limits
 D = CH.Decide
 pa = lambda r, o="{}": D.PostAdvice(L.eval(r), L.eval(o))
@@ -1500,9 +1494,8 @@ if prow:
           "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels
           and any(plain(a.label) == "Review at Auction House" for a in det.actions.values()))
 wk = list(CH.TradingUI.WorkPlan().values())
-check("execution plan: a mail trip per sender and receiver, and posts from Ready to post", any(w.kind == "mail" and w.char == "Courtizy" and w.task == "Mail to Luxaren" and w.where == "Mailbox" for w in wk)
+check("execution plan: crafts and posts only, posts from Ready to post", all(w.kind in ("craft", "post") for w in wk)
       and all(w.kind != "post" or w.where == "Auction House" for w in wk))
-run("AuctionIQ.Mail.Route('Crafted', nil)")
 check("auction panel builds", CH.AuctionUI.Build() is not None)
 # Posting waits for the AH's answer
 run("""
@@ -1550,10 +1543,6 @@ bef = L.eval("(function() local be, row = AuctionIQ.BreakEvenFor(302); return { 
 check("tooltip: a crafted item shows its break-even, each, and the auction side can ask for it",
       bef.has and bef.be is not None and "Break-even, each" in tl)
 
-run("AuctionIQ.Mail.Route('Crafted', 'Luxaren')")
-check("mail: a group's route reaches its sub-groups", CH.Mail.Destination(302)[0] == "Luxaren" and CH.Mail.Destination(201) is None)
-check("mail panel builds", CH.MailUI.Build() is not None)
-run("AuctionIQ.Mail.Route('Crafted', nil)")
 st = {e.id: e for e in LG.SaleTimes(-1e12).values()}
 check("when it sells: weekday and 4-hour window per item", st[301].sold == 5 and 1 <= st[301].bestDay <= 7 and st[302].share == 1)
 comp = {e.id: e for e in LG.Competition(-1e12).values()}
@@ -1581,12 +1570,6 @@ tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
 check("gold per hour: two windows open together count the time once", abs(tm.hours - 1.0) < 1e-9 and abs(tm.kinds["Crafting"] - 0.5) < 1e-9)
 run("AuctionIQ.UI.Page('plan')")
 check("plan page draws", CH.UI.IsShown() and len(list(CH.PlanUI.Refresh().values())) == 1)
-run("""function GetInboxNumItems() return 3 end
-function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', ({ 5000000, 0, 7000000 })[i], ({ 0, 0, 100 })[i], 1, i == 2 end""")
-w = CH.Mail.Waiting()
-check("mail: gold waiting before opening, cash on delivery left out", w.gold == 5000000 and w.mails == 3 and w["items"] == 1 and w.cod == 1)
-check("mail: waiting gold adds up across characters for the briefing", CH.Mail.WaitingAll()[0] == 5000000 and "Waiting in mail" in plain(CH.UI.BriefingText()))
-run("GetInboxNumItems = nil; GetInboxHeaderInfo = nil; AuctionIQ.Mail.Store().waiting = {}")
 n7 = CH.ReportUI.Numbers(7)
 check("report: 7 days of sales after cut, purchases, overhead", abs(n7.sales - 7000000 * 0.95) < 1 and n7.buys == 1000000 and n7.overhead == 20000)
 run("AuctionIQ.UI.Page('briefing')")
@@ -1710,9 +1693,9 @@ check("Trade: what you hold, the market and the rules, in one sub-tab", LUI.Grou
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
-run("AuctionIQ.UI.Page('operations', 'mail')")
+run("AuctionIQ.UI.Page('operations', 'shopping')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Queue: execution plan, production queue, shopping list, restock plans, to mail", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "Restock plans", "To mail"])
+check("Queue: execution plan, production queue, shopping list, restock plans", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "Restock plans"])
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
@@ -1870,13 +1853,13 @@ run("""STUB.oldNextList = AuctionIQ.Next.List
 AuctionIQ.Next.List = function() local out = {}
   for i = 1, 9 do table.insert(out, { title = 'Repost', detail = 'Item ' .. i .. ' x1 came back unsold', gold = i * 10000, tier = 2, risk = 'it expired once',
     go = { 'operations', 'post', { name = 'Item ' .. i, title = 'Repost' } } }) end
-  for _, t in ipairs({ 'Collect mail', 'Cooldown ready', 'Weekly knowledge', 'Rethink' }) do table.insert(out, { title = t, detail = t, tier = t == 'Collect mail' and 1 or 3, gold = 5 }) end
+  for _, t in ipairs({ 'Relist', 'Cooldown ready', 'Weekly knowledge', 'Rethink' }) do table.insert(out, { title = t, detail = t, tier = t == 'Relist' and 1 or 3, gold = 5 }) end
   return out end""")
 rk, allk = L.eval("AuctionIQ.Next.Ranked()")
 rk = list(rk.values())
 rep = [e for e in rk if e.title.startswith("Repost")]
 check("Do next: nine reposts become one card with their gold summed, four cards at most, urgent first",
-      len(rk) == 4 and allk == 5 and rk[0].title == "Collect mail" and len(rep) == 1 and rep[0].title == "Repost 9 items"
+      len(rk) == 4 and allk == 5 and rk[0].title == "Relist" and len(rep) == 1 and rep[0].title == "Repost 9 items"
       and rep[0].gold == 450000 and rep[0].risk == "it expired once" and rep[0].go[3].name is None and "and 6 more" in rep[0].detail)
 run("AuctionIQ.UI.Page('today')")
 c2who = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].who:GetText()")
@@ -2338,7 +2321,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
@@ -2395,23 +2378,6 @@ lad2, at2 = L.eval("AuctionIQ.Scans.Depth(950)")
 check("scans: a browse at the same price keeps the ladder with its own, older time", lad2 is not None and L.eval("time()") - at2 >= 7200)
 run("AuctionIQ.Scans.RecordBrowse(950, 90000, 50)")
 check("scans: a browse at a different cheapest price drops the stale ladder", L.eval("AuctionIQ.Scans.Depth(950)") is None)
-# 2. Open all stops when the inbox stops changing (bags full) instead of looping, and says why
-run("""STUB.loots = 0; STUB.openDone = nil
-function GetInboxNumItems() return 1 end
-function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', 0, 0, 1, 1 end
-function AutoLootMailItem() STUB.loots = STUB.loots + 1 end
-AuctionIQ.Mail.OpenAll(function(n, gold, why) STUB.openDone = { n = n, why = why } end)
-for i = 1, 20 do STUB.RunTimers() end""")
-check("mail: Open all gives up on a mail it can't take, and says why", L.eval("STUB.openDone") is not None and L.eval("STUB.loots") <= 4
-      and "bags" in str(L.eval("STUB.openDone.why")) and L.eval("STUB.openDone.n") == 0)
-run("""STUB.loots = 0; STUB.openDone = nil; STUB.mails = 2
-function GetInboxNumItems() return STUB.mails end
-function GetInboxHeaderInfo(i) return nil, nil, 'x', 's', 100, 0, 1, nil end
-function AutoLootMailItem() STUB.loots = STUB.loots + 1; STUB.mails = STUB.mails - 1 end
-AuctionIQ.Mail.OpenAll(function(n, gold, why) STUB.openDone = { n = n, why = why } end)
-for i = 1, 20 do STUB.RunTimers() end""")
-check("mail: Open all counts the mails it really took", L.eval("STUB.openDone.n") == 2 and L.eval("STUB.openDone.why") is None)
-run("GetInboxNumItems = nil; GetInboxHeaderInfo = nil; AutoLootMailItem = nil")
 # 3. the same name on two realms: separate sellers, and only this realm counts
 run("""AuctionIQ.db.auctions = {}
 AuctionIQ.Auction.RecordOwned({ { id = 951, qty = 3 } })
@@ -2461,69 +2427,12 @@ run("""AuctionIQ.Queue.ShoppingList = STUB.oldSL; AuctionIQ.Auction.Search = STU
 local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
 C_AuctionHouse.StartCommoditiesPurchase = nil; C_AuctionHouse.ConfirmCommoditiesPurchase = nil; AuctionIQ.Depth.Forget()""")
 
-# UI pass: visible scroll position, and mail says Sent only once the game confirms it
+# UI pass: visible scroll position
 run("""STUB.sb = AuctionIQ.Window.ScrollBar(UIParent, 100, -10, 100)
 STUB.sb:Set(17, 17, 83)""")
 check("scroll bar: says which rows are showing", L.eval("STUB.sb.text") == "18-34 of 83")
 run("STUB.sb:Set(0, 17, 10)")
 check("scroll bar: hides when everything fits", L.eval("STUB.sb.text") is None)
-run("""STUB.oldNextTo = AuctionIQ.Mail.NextTo; STUB.oldSendNext = AuctionIQ.Mail.SendNext
-AuctionIQ.Mail.NextTo = function() return 'Luxaren', { { id = 302, count = 1 } } end
-AuctionIQ.Mail.SendNext = function() return 'Luxaren', 1 end
-STUB.oldOutbox = AuctionIQ.Mail.Outbox; AuctionIQ.Mail.Outbox = function() return { Luxaren = { { id = 302, count = 1 } } } end
-AuctionIQ.MailUI.Build(); AuctionIQ.MailUI.Refresh()""")
-check("mail: the button names who the next mail goes to", plain(L.eval("AuctionIQ.MailUI.Build().sendButton.label")) == "Send: Luxaren")
-run("AuctionIQ.MailUI.Build().sendButton.scripts.OnClick()")
-check("mail: sending, not sent, until the game says so", L.eval("AuctionIQ.MailUI.sending ~= nil") is True)
-run("STUB.Fire('MAIL_SEND_SUCCESS')")
-check("mail: sent once the game confirms it", L.eval("AuctionIQ.MailUI.sending") is None and "Sent 1 to Luxaren" in plain(L.eval("AuctionIQ.MailUI.Build().status:GetText()")))
-run("AuctionIQ.Mail.NextTo = STUB.oldNextTo; AuctionIQ.Mail.SendNext = STUB.oldSendNext; AuctionIQ.Mail.Outbox = STUB.oldOutbox")
-
-# Mail: reagents a queued crafter on another character is short of, only as many as they need
-run("""AuctionIQ.Queue.Clear()
-table.insert(AuctionIQ.db.queue, { char = 'Alt-Emerald Dream', charName = 'Alt', recipeID = 10, qty = 3, shop = { { itemID = 991, n = 4 } }, reagents = {} })
-table.insert(AuctionIQ.db.queue, { char = 'Far-Other Realm', charName = 'Far', recipeID = 10, qty = 3, shop = { { itemID = 991, n = 4 } }, reagents = {} })
-STUB.oldInv = AuctionIQ.Ledger.Inventory; STUB.oldAvail = AuctionIQ.Ledger.Available
-AuctionIQ.Ledger.Available = function() return true end
-AuctionIQ.Ledger.Inventory = function(_, name)
-  if name == 'Alt' then return { { id = 991, bags = 2, bank = 0, mail = 0, warband = 0 } } end
-  if name == nil then return { { id = 991, bags = 0, bank = 0, mail = 0, warband = 3 } } end
-  return {}
-end""")
-need = L.eval("AuctionIQ.Mail.ReagentNeeds()")[0]
-check("mail: a queued crafter is short what their crafts need less what they and the Warband bank hold",
-      need["Alt"] is not None and need["Alt"][991] == 7 and need["Far"] is None)
-run("""STUB.oldCC = C_Container
-C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
-  GetContainerItemInfo = function(bag, slot) return { itemID = 991, stackCount = 20 } end,
-  PickupContainerItem = function() STUB.mailPick = true end,
-  SplitContainerItem = function(bag, slot, n) STUB.mailSplit = n end }
-STUB.oldSend = SendMail; SendMail = function(to) STUB.mailTo = to end
-STUB.oldCSMIB = ClickSendMailItemButton; ClickSendMailItemButton = function() end""")
-box = L.eval("AuctionIQ.Mail.Outbox()")
-check("mail: the outbox sends a crafter only the reagents they're short", box["Alt"][1].send == 7 and box["Alt"][1].reagent)
-run("AuctionIQ.Mail.SendNext()")
-check("mail: a part stack is split off, not the whole stack sent", L.eval("STUB.mailSplit") == 7 and L.eval("STUB.mailTo") == "Alt")
-# Mail: the Warband bank is one stock. Your own queued crafts take from it first, then each crafter
-# takes what's left, and one bag stack is never handed out twice.
-run("""AuctionIQ.Queue.Clear()
-table.insert(AuctionIQ.db.queue, { char = AuctionIQ.CharacterKey(), recipeID = 10, qty = 1, shop = { { itemID = 991, n = 1 } }, reagents = {} })
-table.insert(AuctionIQ.db.queue, { char = 'Alt-Emerald Dream', charName = 'Alt', recipeID = 10, qty = 1, shop = { { itemID = 991, n = 4 } }, reagents = {} })
-table.insert(AuctionIQ.db.queue, { char = 'Bee-Emerald Dream', charName = 'Bee', recipeID = 10, qty = 1, shop = { { itemID = 991, n = 4 } }, reagents = {} })
-AuctionIQ.Ledger.Inventory = function(_, name)
-  if name == nil then return { { id = 991, bags = 0, bank = 0, mail = 0, warband = 4 } } end
-  return {}
-end
-C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end,
-  GetContainerItemInfo = function(bag, slot) return { itemID = 991, stackCount = 6 } end }""")
-need = L.eval("AuctionIQ.Mail.ReagentNeeds()")[0]
-check("mail: the Warband bank isn't counted for more than one crafter",
-      need["Alt"][991] == 1 and need["Bee"][991] == 4)
-box = L.eval("AuctionIQ.Mail.Outbox()")
-sends = [it.send for to in ("Alt", "Bee") if box[to] for it in box[to].values()]
-check("mail: one stack is shared out, never sent twice", sends == [1, 4] and sum(sends) <= 6)
-run("""C_Container = STUB.oldCC; SendMail = STUB.oldSend; ClickSendMailItemButton = STUB.oldCSMIB
-AuctionIQ.Ledger.Inventory = STUB.oldInv; AuctionIQ.Ledger.Available = STUB.oldAvail; AuctionIQ.Queue.Clear()""")
 
 # Craft results live in Analytics, for every character
 run("""AuctionIQ.db.characters['Alt-Realm'] = { name = 'Alt', professions = {}, log = { [10] = { name = 'Test Flask', crafts = 4, items = 4,
@@ -2792,8 +2701,8 @@ run("STUB.sellThrough = {}")
 
 # One theme across the addon: every window's main action is the filled button, and the main blocks
 # carry the accent line or a shaded card
-run('AuctionIQ.AuctionUI.Build(); AuctionIQ.MailUI.Build()')
-check("theme: Auction and Mail windows build with their main buttons filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil and AuctionIQ.MailUI.Build() ~= nil"))
+run('AuctionIQ.AuctionUI.Build()')
+check("theme: the Auction window builds with its main button filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil"))
 check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2, AuctionIQ.Theme.Card(CreateFrame('Frame'), 0, 0, 10, 10, true)) ~= nil"))
 check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
 

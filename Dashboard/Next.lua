@@ -108,8 +108,6 @@ function Next.List(now)
 		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1,
 			go = { "operations", "professions", { char = cd.char, title = "Cooldown ready" } } }) end
 	end
-	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
-	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
 	-- the queue's shopping list: what still has to be bought before queued crafts can start
 	if CH.Queue and CH.Queue.ShoppingList then
 		local ok, list, total = pcall(CH.Queue.ShoppingList)

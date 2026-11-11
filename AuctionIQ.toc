@@ -45,8 +45,6 @@ Operations\Auction.lua
 Operations\AuctionUI.lua
 Operations\GroupsUI.lua
 Operations\TradingUI.lua
-Operations\Mail.lua
-Operations\MailUI.lua
 Core\Settings.lua
 Core\SettingsUI.lua
 Core\Alerts.lua

@@ -1,12 +1,11 @@
 -- Operations tab: the work planned or underway, worked out before you get to the auction house,
--- the profession window or the mailbox. The AH, profession and mailbox windows carry it out.
+-- or the profession window. The AH and profession windows carry it out.
 --   Production queue: every queued craft on every character, and what holds it up.
 --   Shopping list: the reagents the queue still needs to buy (Shopping at the AH buys them).
 --   Ready to post: each item in a posting group, what you hold on every character and the warband
 --     bank, what's already up, how many to post under the group's cap and what they're worth, and
 --     whether the AH's last price is under your minimum (hold) or not (post).
---   To mail: items sitting on a character other than the one their group's mail route sends them to.
--- Setting up groups, operations and routes lives in Settings (Groups and items).
+-- Setting up groups and operations lives in Settings (Groups and items).
 local _, CH = ...
 
 local TUI = {}
@@ -53,42 +52,6 @@ function TUI.PostPlan()
 	end
 	return out
 end
-
---- What to mail: { id, from, to, n, value } for grouped items held by a character other than
---- the one their route sends them to (bags and bank; the warband bank is everyone's).
-function TUI.MailPlan()
-	local out = {}
-	if not (CH.Ledger and CH.Ledger.Available() and CH.Mail) then return out end
-	local held = {} -- [name] = { [id] = bags + bank }
-	for _, c in ipairs(CH.Ledger.Characters()) do
-		held[c.name] = {}
-		for _, e in ipairs(CH.Ledger.Inventory(nil, c.name)) do
-			local n = e.bags + e.bank
-			if e.id then held[c.name][e.id] = n end
-			local to = n > 0 and e.id and not e.bound and CH.Mail.Destination(e.id)
-			if to and to ~= c.name then
-				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
-				table.insert(out, { id = e.id, from = c.name, to = to, n = n, bags = e.bags, value = unit and unit * n or 0 })
-			end
-		end
-	end
-	-- reagents a queued crafter is short of, from whoever holds them
-	for to, items in pairs(CH.Mail.ReagentNeeds and CH.Mail.ReagentNeeds() or {}) do
-		for id, short in pairs(items) do
-			for from, h in pairs(held) do
-				if short <= 0 then break end
-				local n = from ~= to and math.min(h[id] or 0, short) or 0
-				if n > 0 then
-					short = short - n
-					local unit = CH.Prices.Get("chmat", "i:" .. id)
-					table.insert(out, { id = id, from = from, to = to, n = n, value = unit and unit * n or 0, reagent = true })
-				end
-			end
-		end
-	end
-	return out
-end
-
 
 --- Posting advice for every Ready to post row, saved once an item a day: { [id] = advice }.
 function TUI.Advice(plan, now)
@@ -221,34 +184,10 @@ local function postRows(ctx)
 		.. T.Color("muted", string.format("   Enough up is %d days of sales. Select a row for why; the AH panel posts with the same rules.", CH.Decide.POST_DAYS))
 end
 
-local function mailRows(ctx)
-	local T = CH.Theme
-	local out, worth, sends = {}, 0, {}
-	for _, r in ipairs(TUI.MailPlan()) do
-		local text, name = LUI.ItemText(r.id)
-		if ctx.keepName(name) then
-			worth = worth + r.value
-			sends[r.from .. ">" .. r.to] = true
-			table.insert(out, { id = r.id, cells = { text, r.from, r.to, r.n, money(r.value),
-				r.reagent and T.Color("accent", "reagents to craft") or r.bags < r.n and T.Color("muted", "some in the bank") or "" },
-				sort = { name, r.from, r.to, r.n, r.value, r.bags or 0 } })
-		end
-	end
-	if not out[1] then
-		return out, T.Color("muted", "Nothing to mail. Queued crafts on another character get their reagents here, and routes send a group to one character: set them in Settings, Edit groups (right-click a group), or with Routes at the mailbox.")
-	end
-	local k = 0
-	for _ in pairs(sends) do k = k + 1 end
-	return out, string.format("%d items to send in %d trips, worth %s", #out, k, money(worth))
-		.. T.Color("muted", "   At the mailbox, Send mails them by route from the character you're on.")
-end
-
 TUI.VIEWS = {
 	post = { label = "Ready to post", detail = function(d) return TUI.PostDetail(d) end, sort = 6, asc = true, noTime = true, rows = postRows,
 		cols = { { "Item", 0, 220 }, { "Held", 224, 44 }, { "Up / cap", 272, 74 }, { "Price", 350, 110 }, { "AH now", 464, 110 },
 		{ "Advice", 578, 146 } } },
-	mail = { label = "To mail", sort = 5, noTime = true, rows = mailRows, cols = { { "Item", 0, 200 }, { "From", 204, 100 }, { "To", 308, 100 },
-		{ "Qty", 412, 50 }, { "Worth", 466, 100 }, { "", 570, 154 } } },
 }
 
 -- Production ----------------------------------------------------------------------------------
@@ -299,24 +238,16 @@ local function queueRows(ctx)
 end
 
 --- The queue as work for the character you're on: what you can craft now first, then what's blocked,
---- grouped by what unlocks it. { e, short, group (1 ready .. 4 another character), unlock, from }.
-TUI.UNLOCK = { "Ready now", "Buy reagents", "Mail reagents", "Log in as another character" }
+--- grouped by what unlocks it. { e, short, group (1 ready .. 3 another character), unlock }.
+TUI.UNLOCK = { "Ready now", "Buy reagents", "Log in as another character" }
 function TUI.ReadyPlan()
 	local out = {}
 	local here = CH.CharacterKey and CH.CharacterKey()
-	-- reagents another character holds for this one (To mail's reagent trips)
-	local mailFrom = {}
-	for _, r in ipairs(TUI.MailPlan()) do
-		if r.reagent then mailFrom[r.to] = mailFrom[r.to] or r.from end
-	end
-	local me = UnitName and UnitName("player")
 	for _, x in ipairs(TUI.QueuePlan()) do
 		local e = x.e
 		local group, unlock
 		if e.char ~= here then
-			group, unlock = 4, "log in as " .. (e.charName or tostring(e.char or "?"):match("^[^-]+") or "?")
-		elseif x.short > 0 and mailFrom[me or ""] then
-			group, unlock = 3, "mail from " .. mailFrom[me]
+			group, unlock = 3, "log in as " .. (e.charName or tostring(e.char or "?"):match("^[^-]+") or "?")
 		elseif x.short > 0 then
 			group, unlock = 2, string.format("buy %d reagent%s", x.short, x.short == 1 and "" or "s")
 		else
@@ -329,7 +260,7 @@ end
 
 local function readyRows(ctx)
 	local T = CH.Theme
-	local out, n, profit = {}, { 0, 0, 0, 0 }, 0
+	local out, n, profit = {}, { 0, 0, 0 }, 0
 	for _, x in ipairs(TUI.ReadyPlan()) do
 		local e = x.e
 		if ctx.keepName(e.name) then
@@ -347,11 +278,11 @@ local function readyRows(ctx)
 		return out, T.Color("muted", "Nothing queued. Queue crafts from Compare crafts, Scan or the advisor at a profession window.")
 	end
 	return out, string.format("%s ready on this character, %s expected craft profit.", T.Color("ok", n[1]), money(profit))
-		.. T.Color("muted", string.format("   Blocked: %d need reagents bought, %d need reagents mailed, %d are on other characters.", n[2], n[3], n[4]))
+		.. T.Color("muted", string.format("   Blocked: %d need reagents bought, %d are on other characters.", n[2], n[3]))
 end
 
---- Every task waiting, in one list: crafts from the queue, posts from Ready to post, and mail trips
---- from To mail. { kind = "craft"|"post"|"mail", task, char, qty, worth, status, where, tone }.
+--- Every task waiting, in one list: crafts from the queue and posts from Ready to post.
+--- { kind = "craft"|"post", task, char, qty, worth, status, where, tone }.
 function TUI.WorkPlan()
 	local out = {}
 	for _, x in ipairs(TUI.QueuePlan()) do
@@ -375,28 +306,14 @@ function TUI.WorkPlan()
 				where = "Auction House", tone = "ok" })
 		end
 	end
-	local trips = {}
-	for _, r in ipairs(TUI.MailPlan()) do
-		local k = r.from .. ">" .. r.to
-		local t = trips[k]
-		if not t then
-			t = { kind = "mail", task = "Mail to " .. r.to, char = r.from, qty = 0, worth = 0, status = "mailbox needed",
-				where = "Mailbox", tone = "fg" }
-			trips[k] = t
-			table.insert(out, t)
-		end
-		t.qty = t.qty + r.n
-		t.worth = t.worth + (r.value or 0)
-		if r.reagent then t.status, t.tone = "reagents to craft", "accent" end
-	end
 	return out
 end
 
-local KIND = { craft = 1, post = 2, mail = 3 }
+local KIND = { craft = 1, post = 2 }
 
 local function workRows(ctx)
 	local T = CH.Theme
-	local out, n = {}, { craft = 0, post = 0, mail = 0 }
+	local out, n = {}, { craft = 0, post = 0 }
 	for _, w in ipairs(TUI.WorkPlan()) do
 		if ctx.keepName(w.task) then
 			n[w.kind] = n[w.kind] + 1
@@ -410,9 +327,9 @@ local function workRows(ctx)
 		end
 	end
 	if not out[1] then
-		return out, T.Color("muted", "Nothing to do: no crafts queued, nothing ready to post, nothing to mail.")
+		return out, T.Color("muted", "Nothing to do: no crafts queued, nothing ready to post.")
 	end
-	return out, string.format("%d crafts, %d posts, %d mail trips.", n.craft, n.post, n.mail)
+	return out, string.format("%d crafts, %d posts.", n.craft, n.post)
 		.. T.Color("muted", "   Craft profit is expected profit; sale proceeds are what posts would bring after the cut. Both are estimates.")
 end
 

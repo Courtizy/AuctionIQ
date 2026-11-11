@@ -119,14 +119,6 @@ function UI.BriefingText(now)
 			table.insert(out, T.Color("accent", "Last 24 hours") .. T.Color("muted", "  from TSM's accounting"))
 			table.insert(out, string.format("   Sold %d for %s, bought %d for %s, cash %s", r.sold, CH.FormatMoney(r.earned), r.bought,
 				CH.FormatMoney(r.spent), T.Color(r.earned - r.spent >= 0 and "ok" or "bad", CH.FormatMoney(r.earned - r.spent))))
-			local mailGold = CH.Mail and CH.Mail.WaitingAll() or 0
-			if mailGold > 0 then
-				local _, by = CH.Mail.WaitingAll()
-				local parts = {}
-				for name, g in pairs(by) do table.insert(parts, name .. " " .. CH.FormatMoney(g)) end
-				table.sort(parts)
-				table.insert(out, "   Waiting in mail " .. CH.FormatMoney(mailGold) .. T.Color("muted", "  " .. table.concat(parts, ", ")))
-			end
 			if r.worth then
 				local tk = CH.Alerts and CH.Alerts.InTokens(math.abs(r.worth))
 				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth))
