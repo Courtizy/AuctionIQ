@@ -1341,30 +1341,45 @@ function AUI.Card(n, scan)
 	local maxQ = result.model and result.model.maxQ
 	local r = AUI.SelectedRow()
 	local m = r and AUI.NextMove()
-	-- which quality: every row the advisor found, a click picks one
-	local qrows = {}
-	for i, x in ipairs(result.rows) do
-		if i > 5 then break end
-		local on = AUI.IsSelected(x)
-		local label = W.QualityIcon(x.quality, 13, maxQ)
-			.. (x.concentration and ("  " .. W.ConcIcon(11) .. " " .. x.concentration) or mut("  no Conc."))
-			.. (x.fromBags and mut("  yours") or "")
-			.. (x.short and T.Color("bad", "  too low") or "")
+	-- which quality: a row per rank, highest at the top, as the profession window's check mark has
+	-- it; on each, the plain craft and the craft with Concentration, a click on either picks it
+	local function cellFor(i, x)
+		if not x then return nil end
 		local tip = AUI.BreakdownLines(result, x, 5)
 		local gpp = x.gain and x.gain.perPoint or x.perPoint
 		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
-		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix above needs a rank you don't have.") }) end
+		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix needs a rank you don't have.") }) end
 		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
-		qrows[#qrows + 1] = { label, money(x.profit), tip = tip, on = on,
+		local v = money(x.profit)
+		if x.concentration then v = mut(x.concentration .. (x.fromBags and "*" or "")) .. "  " .. v end
+		return { v, tip = tip, on = AUI.IsSelected(x),
 			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
 	end
-	-- the ranks above what you can reach, so you see what's missing
+	local plainAt, concAt = {}, {}
 	local top = 0
-	for _, x in ipairs(result.rows) do top = math.max(top, x.quality or 0) end
-	for q = top + 1, (maxQ or top) do
+	for i, x in ipairs(result.rows) do
+		local q = x.quality or 0
+		top = math.max(top, q)
+		local slot = x.concentration and concAt or plainAt
+		local had = slot[q] and result.rows[slot[q]]
+		-- one per rank: the selected one, else yours (only there when the mix can't be made), else the better
+		if not had or AUI.IsSelected(x) or (not AUI.IsSelected(had) and (x.fromBags or (not had.fromBags and (x.profit or 0) > (had.profit or 0)))) then
+			slot[q] = i
+		end
+	end
+	local qrows = {}
+	for q = math.max(top, maxQ or top), 1, -1 do
 		if #qrows >= 5 then break end
-		qrows[#qrows + 1] = { W.QualityIcon(q, 13, maxQ) .. mut("  out of reach"), mut("-"),
-			tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
+		local pi, ci = plainAt[q], concAt[q]
+		local px, cx = pi and result.rows[pi], ci and result.rows[ci]
+		local label = W.QualityIcon(q, 13, maxQ) .. ((px and px.short or cx and cx.short) and T.Color("bad", " low") or "")
+		if px or cx then
+			qrows[#qrows + 1] = { label, cells = { cellFor(pi, px) or { mut("-") }, cellFor(ci, cx) or { mut("-") } },
+				tip = { { "Rank " .. q }, { mut("Plain: the cheapest reagents that reach it. Concentration: the points it costs, then the profit (* with the reagents you hold).") } } }
+		elseif q > top then
+			qrows[#qrows + 1] = { label, cells = { { mut("out of reach") }, { mut("-") } },
+				tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
+		end
 	end
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
 	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
@@ -1445,7 +1460,7 @@ function AUI.Card(n, scan)
 	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
-		section = { head = "QUALITY", rows = qrows },
+		section = { head = "QUALITY", cols = { "PLAIN", "CONCENTRATION" }, rows = qrows },
 		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
 		actions = actions, live = true }
 end

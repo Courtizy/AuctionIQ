@@ -778,7 +778,17 @@ lc = L.eval("AuctionIQ.ScanUI.lastPanel")
 qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
       lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "COST", "MARGIN"]
-      and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None and r.run is not None for r in qr))
+      and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.cells is not None for r in qr)
+      and all(c.tip is not None and c.run is not None for r in qr for c in r.cells.values() if c.run is not None)
+      and any(c.run is not None for r in qr for c in r.cells.values()))
+check("Craft card: a row per rank, highest at the top, plain and with Concentration side by side",
+      [plain(c) for c in lc.section.cols.values()] == ["PLAIN", "CONCENTRATION"]
+      and "◆" not in plain(qr[0][1]) and qr[0].cells[2].run is not None and qr[0].cells[1].run is not None)
+def qcell(panel, row):
+    for r in panel.section.rows.values():
+        for c in r.cells.values():
+            if c.run is not None and c.on: return c
+    return None
 check("Craft card: every row explains itself on hover, break-even first",
       all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
 check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
@@ -787,10 +797,11 @@ fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = 
 fr = {plain(r[1]): r for r in fl.rows.values()}
 check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
       fr.get("Gold a day") is not None and fr["Gold a day"].tip is not None and fr.get("Buy & relist") is not None)
-qr[1].run()
+qr[0].cells[2].run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
-check("Craft card: clicking a quality picks it, and its row is highlighted", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2])
-      and lc2.section.rows[2].on is True and not lc2.section.rows[1].on)
+ons = [c for r in lc2.section.rows.values() for c in r.cells.values() if c.on]
+check("Craft card: clicking a quality picks it, and only its cell is highlighted", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2])
+      and len(ons) == 1 and lc2.section.rows[1].cells[2].on is True)
 run("AuctionIQ.ScanUI.SetQty(3)")
 lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))
