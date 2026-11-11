@@ -2319,6 +2319,8 @@ run("AuctionIQ.Window.ToggleQueuePop(); AuctionIQ.ScanUI.Open(); AuctionIQ.ScanU
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
 nohave = list(CH.Orders.List().values())
 check("orders: each says whether you hold the reagents, and which are missing", not nohave[0].have and len(list(nohave[0].missing.values())) > 0)
+rc = [plain(L.eval("AuctionIQ.ScanUI.ReagentsCell")(L.eval("{ reagentsHave = %d, reagentsNeed = %d }" % hn))) for hn in [(3, 10), (10, 10), (0, 0)]]
+check("orders: the Reagents cell reads simply Need or Have", rc == ["Need", "Have", "Have"])
 check("orders: a Reagents column reads have/need in units, for the reagent you're shortest on", nohave[0].reagentsNeed > 0 and nohave[0].reagentsHave < nohave[0].reagentsNeed and nohave[0].reagentsLow is not None)
 CH.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the reagents for", CH.ScanUI.QueueAll() == 0)
 tipm = [plain(l[1]) for l in CH.ScanUI.OrderLines(nohave[0]).values()]
