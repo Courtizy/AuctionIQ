@@ -1390,7 +1390,7 @@ function AUI.Card(n, scan)
 		local label = W.QualityIcon(q, 13, maxQ) .. "  " .. name .. (x and x.short and T.Color("bad", "  too low") or "")
 		if x then
 			local row = line(i, x, label)
-			if x.concentration then row[2] = T.Color("gold", W.ConcIcon(11) .. " " .. x.concentration) .. "  " .. row[2] end
+			if x.concentration then row[2] = T.Color("accent", W.ConcIcon(11) .. " " .. x.concentration) .. "  " .. row[2] end
 			qrows[#qrows + 1] = row
 		else
 			qrows[#qrows + 1] = { label, mut("-"),

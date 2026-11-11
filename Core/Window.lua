@@ -669,7 +669,7 @@ function W.DrawSidePanel(det, d, said)
 	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
 	local tg = sec and sec.toggle
 	at(det.toggle, det.width - 132, y - 6)
-	det.toggle:SetText(tg and T.Color(tg.on and "gold" or "muted", "CONCENTRATE") or "")
+	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE") or "")
 	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 136, y - 2); det.toggleHit:SetSize(128, 16)
 	det.toggleHit.tip = tg and tg.tip or false
 	det.toggleHit.run = tg and tg.run or false
