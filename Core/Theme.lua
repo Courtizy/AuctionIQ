@@ -376,7 +376,7 @@ end
 function T.Px(region, n)
 	n = n or 1
 	local scale = region and region.GetEffectiveScale and region:GetEffectiveScale()
-	local _, h = GetPhysicalScreenSize and GetPhysicalScreenSize()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
 	if type(scale) ~= "number" or scale <= 0 or type(h) ~= "number" or h <= 0 then return n end
 	return n * 768 / h / scale
 end

@@ -34,6 +34,63 @@ function W.CloseOnEscape(f, name)
 	end)
 end
 
+-- Pixel-perfect windows. A window is scaled so one of its units is a whole number of screen pixels
+-- (k, the nearest whole number to what the UI's own scale gives, at least 1), and its top-left
+-- corner is nudged onto a whole pixel. With every card, row and line laid out on whole units, each
+-- edge then lands on a pixel: no blurred borders, and no 1 px gaps or overlaps where neighbours round
+-- differently. On a pixel-perfect ElvUI scale k is 1 and nothing changes size.
+local scaled = {}
+
+--- Screen pixels per UI unit at UIParent's scale, and the physical screen height (nil without them).
+local function pixelRatio()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	local parent = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()
+	if type(h) ~= "number" or h <= 0 or type(parent) ~= "number" or parent <= 0 then return nil end
+	return parent * h / 768, h, parent
+end
+
+--- The scale that makes a window's unit a whole number of pixels (1 without screen info).
+function W.PixelScale()
+	local ratio, h, parent = pixelRatio()
+	if not ratio then return 1 end
+	return math.max(1, math.floor(ratio + 0.5)) * 768 / h / parent
+end
+
+--- Scale a window to whole pixels, times user (the main window's size setting, which is pixel-perfect
+--- at 1), and keep it so when the UI scale or the screen changes.
+function W.Pixel(f, user)
+	if not (f and f.SetScale) then return f end
+	f.aiqUserScale = user
+	f:SetScale(W.PixelScale() * (user or 1))
+	scaled[f] = true
+	return f
+end
+
+--- Nudge a window by under a pixel so its top-left corner sits on a whole screen pixel.
+function W.Snap(f)
+	if not f then return end
+	local l, t = f.GetLeft and f:GetLeft(), f.GetTop and f:GetTop()
+	local s = f.GetEffectiveScale and f:GetEffectiveScale()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	if type(l) ~= "number" or type(t) ~= "number" or type(s) ~= "number" or s <= 0 or type(h) ~= "number" or h <= 0 then return end
+	local ppu = s * h / 768
+	local dx = (math.floor(l * ppu + 0.5) - l * ppu) / ppu
+	local dy = (math.floor(t * ppu + 0.5) - t * ppu) / ppu
+	if math.abs(dx) < 1e-3 and math.abs(dy) < 1e-3 then return end
+	local p, rel, rp, x, y = f:GetPoint(1)
+	if not p then return end
+	f:SetPoint(p, rel, rp, (x or 0) + dx, (y or 0) + dy)
+end
+
+local function rescale()
+	for f in pairs(scaled) do f:SetScale(W.PixelScale() * (f.aiqUserScale or 1)); if f:IsShown() then W.Snap(f) end end
+	if W.Arrange then W.Arrange() end
+end
+if CH.On then
+	CH.On("UI_SCALE_CHANGED", rescale)
+	CH.On("DISPLAY_SIZE_CHANGED", rescale)
+end
+
 function W.New(name, title, width, height)
 	local T = CH.Theme
 	T.Sync()
@@ -46,8 +103,10 @@ function W.New(name, title, width, height)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
-	f:SetScript("OnDragStop", f.StopMovingOrSizing)
+	f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); W.Snap(self) end)
 	f:SetPoint("CENTER")
+	W.Pixel(f)
+	f:HookScript("OnShow", function(self) W.Snap(self) end)
 	f:Hide()
 	W.CloseOnEscape(f, name)
 
@@ -192,9 +251,9 @@ function W.ScrollBar(parent, x, y, h, noCount)
 		track:SetShown(scrolls)
 		thumb:SetShown(scrolls)
 		if not scrolls then count:SetText(""); bar.text = nil; return end
-		local th = math.max(12, h * shown / total)
+		local th = math.floor(math.max(12, h * shown / total) + 0.5)
 		local room = h - th
-		local at = total > shown and room * offset / (total - shown) or 0
+		local at = total > shown and math.floor(room * offset / (total - shown) + 0.5) or 0
 		thumb:ClearAllPoints()
 		thumb:SetPoint("TOPLEFT", x, y - at)
 		thumb:SetHeight(th)
@@ -340,6 +399,7 @@ end
 local function buildStrip()
 	local T = CH.Theme
 	strip = CreateFrame("Frame", "AuctionIQTabs", UIParent)
+	W.Pixel(strip)
 	strip:SetFrameStrata("HIGH")
 	strip:SetSize(10, 22)
 	strip:Hide()
@@ -369,6 +429,7 @@ function W.Arrange()
 	local labels = {}
 	if f and f:IsShown() then
 		W.Place(f)
+		W.Snap(f)
 		if not strip then buildStrip() end
 		strip:ClearAllPoints()
 		strip:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -1)
@@ -411,6 +472,7 @@ function W.Arrange()
 		else
 			q:SetPoint("CENTER", 0, 80)
 		end
+		W.Snap(q)
 	end
 	return labels
 end
@@ -665,7 +727,7 @@ function W.DrawSidePanel(det, d, said)
 	det.track:ClearAllPoints(); det.track:SetPoint("TOPLEFT", 12, y)
 	det.fill:ClearAllPoints(); det.fill:SetPoint("TOPLEFT", 12, y)
 	det.track:SetShown(bar ~= nil); det.fill:SetShown(bar ~= nil and bar > 0)
-	if bar then det.fill:SetWidth(math.max(1, det.IW * bar)); y = y - 12 end
+	if bar then det.fill:SetWidth(math.max(1, math.floor(det.IW * bar + 0.5))); y = y - 12 end
 	local shown = 0
 	for k, r in ipairs(det.rows) do
 		local x = d.rows and d.rows[k]

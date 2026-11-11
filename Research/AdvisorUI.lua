@@ -528,7 +528,7 @@ local function drawChart(chart, data)
 		local c = T[color] or T.fg or { 1, 1, 1 }
 		t:SetColorTexture(c[1], c[2], c[3], a or 1)
 		t:ClearAllPoints()
-		t:SetPoint("TOPLEFT", chart, "TOPLEFT", x0 + px, -(y0 + py))
+		t:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(x0 + px + 0.5), -math.floor(y0 + py + 0.5)) -- whole pixels
 		t:SetSize(sw, sh)
 		t:Show()
 	end
@@ -545,8 +545,8 @@ local function drawChart(chart, data)
 	local function label(i, text, x, y, wd, just)
 		local fs = L[i]
 		fs:ClearAllPoints()
-		fs:SetPoint("TOPLEFT", chart, "TOPLEFT", x, y)
-		fs:SetWidth(wd)
+		fs:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(x + 0.5), math.floor(y + 0.5))
+		fs:SetWidth(math.floor(wd + 0.5))
 		fs:SetJustifyH(just or "LEFT")
 		fs:SetText(T.Color("muted", text))
 		fs:Show()
@@ -638,8 +638,8 @@ local function drawBatch(chart, b)
 		local c = T[color] or { 1, 1, 1 }
 		t:SetColorTexture(c[1], c[2], c[3], a or 1)
 		t:ClearAllPoints()
-		t:SetPoint("TOPLEFT", chart, "TOPLEFT", x0 + px, py)
-		t:SetSize(math.max(1, sw), sh)
+		t:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(x0 + px + 0.5), math.floor(py + 0.5)) -- whole pixels
+		t:SetSize(math.max(1, math.floor(sw + 0.5)), math.floor(sh + 0.5))
 		t:Show()
 	end
 	local L = chart.labels

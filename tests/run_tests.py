@@ -87,7 +87,8 @@ check("tab icons: Settings is the gear alone", "Tab-Settings" in tabs.settings.l
 run('AuctionIQ.UI.Go("operations")')
 check("tab icons: the active tab follows the page", ":63:199:235|t Operations" in tabs.operations.label and ":163:163:171|t Dashboard" in tabs.today.label)
 glyph = btn.glyph
-check("minimap: IQ monogram tinted with the theme colour", glyph.vc is not None and abs(glyph.vc[1] - 63/255) < 0.01 and abs(glyph.vc[3] - 235/255) < 0.01)
+check("minimap: AIQ monogram, A in white and IQ in the theme colour, no bar on top",
+      glyph.t.endswith("A|r|cff3fc7ebIQ|r") and L.eval("rawget(AuctionIQMinimapButton, 'rule')") is None)
 
 res = CH.Advisor.Analyze(10)
 rows = list(CH.AdvisorUI.Render(res).values())
@@ -2884,5 +2885,29 @@ for a in sorted(set(audit_all)):
     print("LAYOUT " + a)
 check("layout: nothing spills out of its panel or gets cut off", len(set(audit_all)) == 0)
 
+px = L.eval("""(function()
+  local W = AuctionIQ.Window
+  local oldP, oldE = GetPhysicalScreenSize, UIParent.GetEffectiveScale
+  GetPhysicalScreenSize = function() return 2560, 1440 end
+  UIParent.GetEffectiveScale = function() return 0.71 end
+  local k1 = W.PixelScale() * 0.71 * 1440 / 768          -- pixels per unit: the nearest whole number
+  UIParent.GetEffectiveScale = function() return 768 / 1440 end
+  local k2 = W.PixelScale()                              -- ElvUI pixel-perfect: no change
+  local f = { pt = { "TOPLEFT", UIParent, "BOTTOMLEFT", 100, 500 } }
+  function f:GetLeft() return self.pt[4] + 0.3 end
+  function f:GetTop() return self.pt[5] - 0.4 end
+  function f:GetEffectiveScale() return 768 / 1440 end
+  function f:GetPoint() return unpack(self.pt) end
+  function f:SetPoint(p, r, rp, x, y) self.pt = { p, r, rp, x, y } end
+  W.Snap(f)
+  local l, t = f:GetLeft(), f:GetTop()
+  GetPhysicalScreenSize, UIParent.GetEffectiveScale = oldP, oldE
+  return { k1 = k1, k2 = k2, l = l, t = t }
+end)()""")
+check("pixel-perfect: a window's unit is a whole number of screen pixels; on ElvUI's pixel scale nothing changes",
+      abs(px.k1 - 1) < 1e-9 and abs(px.k2 - 1) < 1e-9)
+check("pixel-perfect: a window's corner is nudged onto a whole pixel", abs(px.l - round(px.l)) < 1e-9 and abs(px.t - round(px.t)) < 1e-9)
+frac = [f"{k} {v}" for k, v in L.eval("STUB.frac").items()]
+check("pixel-perfect: every offset and size on a whole unit" + (": " + "; ".join(frac) if frac else ""), not frac)
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

@@ -741,8 +741,9 @@ function UI.SetScale(scale)
 	settings().scale = scale
 	if frame then
 		local old = frame:GetScale() or 1
-		pin(old, scale)
-		frame:SetScale(scale)
+		local new = CH.Window.PixelScale() * scale -- whole screen pixels per unit at size 1
+		pin(old, new)
+		CH.Window.Pixel(frame, scale)
 	end
 	return scale
 end
@@ -795,11 +796,12 @@ function UI.AddSizer(f)
 	end
 	grip:SetScript("OnMouseDown", function(self)
 		local x, y = GetCursorPosition()
-		self.fromX, self.fromY, self.fromScale, self.fromW, self.fromH = x, y, f:GetScale() or 1, W, H
+		self.fromX, self.fromY, self.fromScale, self.fromW, self.fromH = x, y, settings().scale or 1, W, H
+		self.fromPx = f:GetEffectiveScale() or 1 -- screen pixels per window unit, as the drag starts
 		self.scaling = IsShiftKeyDown and IsShiftKeyDown()
 		self:SetScript("OnUpdate", function(g)
 			local cx, cy = GetCursorPosition()
-			local px = (UIParent:GetEffectiveScale() or 1) * g.fromScale -- screen pixels per window unit
+			local px = g.fromPx
 			if g.scaling then
 				UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / px / W))
 			else
@@ -819,7 +821,7 @@ function UI.AddSizer(f)
 	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.sizer = grip
 	local saved = CH.db and CH.db.settings.window
-	if saved and saved.scale and saved.scale ~= 1 then f:SetScale(saved.scale) end
+	CH.Window.Pixel(f, saved and saved.scale or 1)
 	return grip
 end
 
@@ -914,7 +916,8 @@ function build()
 		frame.conc[i] = s
 		prev = s
 	end
-	frame:SetScript("OnShow", function()
+	frame:SetScript("OnShow", function(self)
+		CH.Window.Snap(self)
 		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
 		UI.Refresh()
@@ -938,7 +941,7 @@ local function drawChart(d, data)
 	local plotW = cw - left - 12
 	for i, g in ipairs(d.grid) do
 		local frac = (i - 1) / (#d.grid - 1)
-		local y = top - ch * frac
+		local y = math.floor(top - ch * frac + 0.5) -- on a whole pixel, so the gridlines stay crisp
 		g:ClearAllPoints()
 		g:SetPoint("TOPLEFT", chart, "TOPLEFT", left, y)
 		g:SetPoint("TOPRIGHT", chart, "TOPRIGHT", -12, y)
@@ -989,7 +992,7 @@ function UI.ChartHover(x)
 	if d.hoverIndex ~= best then
 		d.hoverIndex = best
 		d.mark:ClearAllPoints()
-		d.mark:SetPoint("CENTER", d.chart, "TOPLEFT", p[1], p[2])
+		d.mark:SetPoint("CENTER", d.chart, "TOPLEFT", math.floor(p[1] + 0.5), math.floor(p[2] + 0.5))
 		d.mark:Show()
 		d.vline:ClearAllPoints()
 		d.vline:SetPoint("TOPLEFT", d.chart, "TOPLEFT", p[1], d.chartTop)
@@ -1102,7 +1105,7 @@ function UI.RenderConcFooter()
 			local share = math.max(0, math.min(1, b.cur / b.max))
 			s.name:SetText(classColor(b.class) .. b.char .. "|r")
 			T.Gradient(s.fill)
-			s.fill:SetWidth(math.max(1, 60 * share))
+			s.fill:SetWidth(math.max(1, math.floor(60 * share + 0.5)))
 			s.fill:SetShown(share > 0)
 			s.value:SetText(b.cur >= b.max and T.Color("bad", tostring(b.cur)) or tostring(b.cur))
 			s.tip = { { (b.char or "?") .. "  " .. T.Color("muted", b.prof or "") }, { string.format("%d/%d Concentration", b.cur, b.max) },

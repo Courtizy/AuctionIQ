@@ -30,18 +30,38 @@ local function textWidth(t, font)
 end
 STUB.TextWidth = textWidth
 
+-- Geometry off the whole-unit grid: where a SetPoint offset or a size isn't a whole number, by
+-- the addon's file and line. A window scaled to whole pixels per unit is pixel-perfect only when
+-- everything on it sits on whole units.
+STUB.frac = {}
+local function whole(...)
+	for i = 1, select("#", ...) do
+		local v = select(i, ...)
+		if type(v) == "number" and math.abs(v - math.floor(v + 0.5)) > 1e-6 then
+			local where = "?"
+			for lvl = 3, 8 do
+				local info = debug.getinfo(lvl, "Sl")
+				if info and info.short_src and not info.short_src:find("stub") and not info.short_src:find("audit") then where = info.short_src .. ":" .. (info.currentline or 0); break end
+			end
+			STUB.frac[where] = v
+			return
+		end
+	end
+end
+STUB.whole = whole
+
 local function newFrame(parent, kind, template)
 	local f = { shown = false, scripts = {}, parent = parent, kind = kind, xmlTemplate = template, kids = {}, texts = {}, w = 0, h = 0, points = {} }
 	if type(parent) == "table" and type(rawget(parent, "kids")) == "table" then table.insert(parent.kids, f) end
 	table.insert(STUB.frames, f)
 	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
-	function f:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+	function f:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 	function f:ClearAllPoints() self.point = nil; self.points = {} end
 	function f:SetAllPoints() self.fill = true end
-	function f:SetSize(w, h) self.w, self.h = w or self.w, h or self.h end
-	function f:SetWidth(w) self.w = w end
-	function f:SetHeight(h) self.h = h end
+	function f:SetSize(w, h) whole(w, h); self.w, self.h = w or self.w, h or self.h end
+	function f:SetWidth(w) whole(w); self.w = w end
+	function f:SetHeight(h) whole(h); self.h = h end
 	function f:GetWidth() return self.w end
 	function f:GetHeight() return self.h end
 	function f:GetParent() return self.parent end
@@ -61,8 +81,8 @@ local function newFrame(parent, kind, template)
 		function fs:GetStringHeight() return 100 end
 		function fs:GetStringWidth() return textWidth(self.t, self.font) end
 		function fs:GetParent() return f end
-		function fs:SetWidth(w) self.w = w end
-		function fs:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+		function fs:SetWidth(w) whole(w); self.w = w end
+		function fs:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 		function fs:ClearAllPoints() self.point = nil; self.points = {} end
 		function fs:SetFontObject(o) self.font = o end
 		function fs:SetWordWrap(v) self.wrap = v end
@@ -77,6 +97,10 @@ local function newFrame(parent, kind, template)
 	function f:CreateTexture()
 		local t = {}
 		function t:SetVertexColor(r, g, b) self.vc = { r, g, b } end
+		function t:SetPoint(...) whole(select(2, ...)) end
+		function t:SetSize(w, h) whole(w, h) end
+		function t:SetWidth(w) whole(w) end
+		function t:SetHeight(h) whole(h) end
 		return setmetatable(t, { __index = function() return function() end end })
 	end
 	f.TitleText = f:CreateFontString()
