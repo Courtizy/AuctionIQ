@@ -218,31 +218,6 @@ function TUI.QueuePlan()
 	return out
 end
 
-local STATUS = { ["ready to craft"] = "ok", ["turn in"] = "ok", ["buy reagents"] = "bad" }
-
-local function queueRows(ctx)
-	local T = CH.Theme
-	local out, profit, ready, blocked = {}, 0, 0, 0
-	for _, x in ipairs(TUI.QueuePlan()) do
-		local e = x.e
-		if ctx.keepName(e.name) then
-			local p = (e.profit or 0) * e.qty
-			profit = profit + p
-			if x.status == "buy reagents" then blocked = blocked + 1 else ready = ready + 1 end
-			local name = (e.item and CH.Window.ItemIcon(e.item, 14) or "") .. (e.name or "?") .. (e.quality and T.Color("muted", " Q" .. e.quality) or "")
-			table.insert(out, { id = e.item, cells = { name, e.charName or "?", e.qty, e.profit and LUI.Signed(e.profit) or "-", LUI.Signed(p),
-				e.concentration and T.Color("accent", "yes") or T.Color("muted", "-"), x.short > 0 and x.short or T.Color("muted", "-"),
-				T.Color(STATUS[x.status] or "fg", x.status) },
-				sort = { e.name or "", e.charName or "", e.qty, e.profit or 0, p, e.concentration and 1 or 0, x.short, x.status } })
-		end
-	end
-	if not out[1] then
-		return out, T.Color("muted", "Nothing queued. Queue crafts from the advisor, Scan or Paths at a profession window.")
-	end
-	return out, string.format("%d queued, %s expected profit (estimated, not yet realized). %d ready, %d waiting on reagents.",
-		#out, money(profit), ready, blocked)
-		.. T.Color("muted", "   Craft them at the profession window: Queue and shopping.")
-end
 
 --- The queue as work for the character you're on: what you can craft now first, then what's blocked,
 --- grouped by what unlocks it. { e, short, group (1 ready .. 3 another character), unlock }.
@@ -265,7 +240,9 @@ function TUI.ReadyPlan()
 	return out
 end
 
-local function readyRows(ctx)
+-- The Queue: every queued craft in one list, what you can make here first, each with what's
+-- blocking it, and the shopping it needs in the footer.
+local function queueRows(ctx)
 	local T = CH.Theme
 	local out, n, profit = {}, { 0, 0, 0 }, 0
 	for _, x in ipairs(TUI.ReadyPlan()) do
@@ -273,71 +250,23 @@ local function readyRows(ctx)
 		if ctx.keepName(e.name) then
 			n[x.group] = n[x.group] + 1
 			local p = (e.profit or 0) * e.qty
-			if x.group == 1 then profit = profit + p end
+			profit = profit + p
 			local name = (e.item and CH.Window.ItemIcon(e.item, 14) or "") .. (e.name or "?") .. (e.quality and T.Color("muted", " Q" .. e.quality) or "")
-			table.insert(out, { id = e.item, cells = { name, T.Color(x.group == 1 and "ok" or "muted", TUI.UNLOCK[x.group]), e.qty,
+			table.insert(out, { id = e.item, cells = { name, e.charName or "?", e.qty, e.profit and LUI.Signed(e.profit) or T.Color("muted", "-"),
 				e.profit and LUI.Signed(p) or T.Color("muted", "-"), e.concentration and T.Color("accent", "yes") or T.Color("muted", "-"),
 				T.Color(x.group == 1 and "ok" or x.group == 2 and "bad" or "fg", x.unlock) },
-				sort = { e.name or "", x.group, e.qty, p, e.concentration and 1 or 0, x.group * 1e15 - p } })
+				sort = { e.name or "", e.charName or "", e.qty, e.profit or 0, p, e.concentration and 1 or 0, x.group * 1e15 - p } })
 		end
 	end
 	if not out[1] then
-		return out, T.Color("muted", "Nothing queued. Queue crafts from Compare crafts, Scan or the advisor at a profession window.")
+		return out, T.Color("muted", "Nothing queued. Queue crafts from Compare crafts or the advisor at a profession window.")
 	end
-	return out, string.format("%s ready on this character, %s expected craft profit.", T.Color("ok", n[1]), money(profit))
-		.. T.Color("muted", string.format("   Blocked: %d need reagents bought, %d are on other characters.", n[2], n[3]))
-end
-
---- Every task waiting, in one list: crafts from the queue and posts from Ready to post.
---- { kind = "craft"|"post", task, char, qty, worth, status, where, tone }.
-function TUI.WorkPlan()
-	local out = {}
-	for _, x in ipairs(TUI.QueuePlan()) do
-		local e = x.e
-		local status = x.status
-		if e.char ~= (CH.CharacterKey and CH.CharacterKey()) and status ~= "buy reagents" then status = "switch character" end
-		table.insert(out, { kind = "craft", task = "Craft " .. (e.name or "?") .. (e.quality and (" Q" .. e.quality) or ""), id = e.item,
-			char = e.charName or "?", qty = e.qty, worth = (e.profit or 0) * e.qty, status = status, where = "Professions",
-			tone = STATUS[status] or "fg" })
-	end
-	-- posts follow the posting advice: how many it says, not just what TSM would put up
-	local plan = TUI.PostPlan()
-	local advice = TUI.Advice(plan)
-	for _, r in ipairs(plan) do
-		local a = advice[r.id]
-		local qty = a and a.action ~= "wait" and a.qty or 0
-		if r.verdict == "post" and qty > 0 then
-			local _, name = LUI.ItemText(r.id)
-			table.insert(out, { kind = "post", task = "Post " .. name, id = r.id, char = "any", qty = qty,
-				worth = (r.price or 0) * qty * CH.AH_CUT, status = a.action == "fewer" and "post fewer" or "ready to post",
-				where = "Auction House", tone = "ok" })
-		end
-	end
-	return out
-end
-
-local KIND = { craft = 1, post = 2 }
-
-local function workRows(ctx)
-	local T = CH.Theme
-	local out, n = {}, { craft = 0, post = 0 }
-	for _, w in ipairs(TUI.WorkPlan()) do
-		if ctx.keepName(w.task) then
-			n[w.kind] = n[w.kind] + 1
-			-- a craft's figure is its expected profit; a post's is what the sale brings in: kept apart
-			local craft = w.kind == "craft" and w.worth or nil
-			local sale = w.kind ~= "craft" and w.worth or nil
-			table.insert(out, { id = w.id, cells = { (w.id and CH.Window.ItemIcon(w.id, 14) or "") .. w.task, w.char, w.qty,
-				craft and craft ~= 0 and LUI.Signed(craft) or T.Color("muted", "-"), sale and sale ~= 0 and money(sale) or T.Color("muted", "-"),
-				T.Color(w.tone, w.status), T.Color("muted", w.where) },
-				sort = { w.task, w.char, w.qty, craft or 0, sale or 0, w.status, KIND[w.kind] * 1e15 - w.worth } })
-		end
-	end
-	if not out[1] then
-		return out, T.Color("muted", "Nothing to do: no crafts queued, nothing ready to post.")
-	end
-	return out, string.format("%d crafts, %d posts.", n.craft, n.post)
-		.. T.Color("muted", "   Craft profit is expected profit; sale proceeds are what posts would bring after the cut. Both are estimates.")
+	local list, total = CH.Queue.ShoppingList()
+	local buys = 0
+	for _, r in ipairs(list) do if r.buy > 0 then buys = buys + 1 end end
+	local shop = buys > 0 and string.format("%d reagents to buy, about %s (Shopping list).", buys, money(total)) or T.Color("ok", "Nothing to buy.")
+	return out, string.format("%s ready here, %d need reagents, %d on other characters. %s expected profit (an estimate). %s",
+		T.Color("ok", n[1]), n[2], n[3], money(profit), shop)
 end
 
 local function shoppingRows(ctx)
@@ -386,12 +315,8 @@ end
 TUI.PRODUCTION = {
 	restock = { label = "Restock plans", noTime = true, rows = function() return TUI.PlanRows() end, cols = { { "Plan", 0, 140 }, { "Crafts", 144, 44 },
 		{ "Gold up front", 192, 92 }, { "Gold back, day 7", 288, 108 }, { "Middle 80%", 400, 136 }, { "Covers reagents", 540, 96 }, { "Stock left", 640, 84 } } },
-	ready = { label = "Ready here", sort = 6, asc = true, noTime = true, rows = readyRows, cols = { { "Craft", 0, 220 },
-		{ "Group", 224, 150 }, { "Qty", 378, 40 }, { "Expected craft profit", 422, 130 }, { "Conc.", 556, 44 }, { "Unlocks by", 604, 120 } } },
-	work = { label = "Execution plan", sort = 7, asc = true, noTime = true, rows = workRows, cols = { { "Task", 0, 220 }, { "Character", 224, 86 },
-		{ "Qty", 314, 36 }, { "Craft profit", 354, 86 }, { "Sale proceeds", 444, 90 }, { "Status", 538, 110 }, { "Where", 652, 72 } } },
-	queue = { label = "Production queue", sort = 5, noTime = true, rows = queueRows, cols = { { "Craft", 0, 190 }, { "Character", 194, 90 },
-		{ "Qty", 288, 36 }, { "Per craft", 328, 82 }, { "Est. profit", 414, 86 }, { "Conc.", 504, 44 }, { "To buy", 552, 50 }, { "Status", 606, 118 } } },
+	queue = { label = "Queue", sort = 7, asc = true, noTime = true, rows = queueRows, cols = { { "Craft", 0, 200 }, { "Character", 204, 90 },
+		{ "Qty", 298, 36 }, { "Per craft", 338, 80 }, { "Est. profit", 422, 86 }, { "Conc.", 512, 40 }, { "Next step", 556, 168 } } },
 	shopping = { label = "Shopping list", sort = 6, noTime = true, rows = shoppingRows, cols = { { "Reagent", 0, 200 }, { "Need", 204, 54 },
 		{ "Have", 262, 54 }, { "Buy", 320, 60 }, { "Each", 384, 84 }, { "Cost", 472, 96 }, { "", 572, 152 } } },
 }

@@ -1698,9 +1698,6 @@ if prow:
     check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
           "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels
           and any(plain(a.label) == "Review at Auction House" for a in det.actions.values()))
-wk = list(CH.TradingUI.WorkPlan().values())
-check("execution plan: crafts and posts only, posts from Ready to post", all(w.kind in ("craft", "post") for w in wk)
-      and all(w.kind != "post" or w.where == "Auction House" for w in wk))
 check("auction panel builds", CH.AuctionUI.Build() is not None)
 # Posting waits for the AH's answer
 run("""
@@ -1861,16 +1858,12 @@ nb = [e for e in CH.Next.List().values() if e.title == "Buy reagents"]
 check("do next: the queue's shopping list is a card that opens it", len(nb) == 1 and nb[0].go[2] == "shopping" and "for your queue" in nb[0].detail)
 fig = CH.UI.DashboardFigures()
 check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
-work = list(CH.TradingUI.WorkPlan().values())
-crafts = {w.task: w for w in work if w.kind == "craft"}
-check("execution plan: crafts with their status, another character's marked switch", crafts["Craft A"].status == "ready to craft"
-      and crafts["Craft B"].status == "buy reagents" and crafts["Craft C"].status == "switch character" and crafts["Craft A"].where == "Professions")
-wrows, wfoot = L.eval("AuctionIQ.LedgerUI.Rows('work', {})")
-check("execution plan view: a row per task and a count by kind", len(list(wrows.values())) == len(work) and "3 crafts" in plain(wfoot))
-rrows, rfoot = L.eval("AuctionIQ.LedgerUI.Rows('ready', {})")
-rr = {plain(r.cells[1]): plain(r.cells[6]) for r in rrows.values()}
-check("Queue opens on Ready on this character: ready first, blocked grouped by what unlocks it",
-      rr.get("A") == "craft" and rr.get("B", "").startswith("buy 10") and rr.get("C") == "log in as Other" and rr.get("C", "").startswith("log in as") and "1 ready on this character" in plain(rfoot))
+qrows, qfoot = L.eval("AuctionIQ.LedgerUI.Rows('queue', {})")
+qr = {plain(r.cells[1]): plain(r.cells[7]) for r in qrows.values()}
+check("Queue: one list, each craft with its next step (craft, what to buy, which character)",
+      qr.get("A") == "craft" and qr.get("B", "").startswith("buy 10") and qr.get("C") == "log in as Other")
+check("Queue footer: ready here, blocked, and the shopping total", "1 ready here, 1 need reagents, 1 on other characters" in plain(qfoot)
+      and "reagents to buy" in plain(qfoot))
 run("AuctionIQ.UI.Page('today')")
 qf = L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
@@ -1888,7 +1881,7 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
 run("AuctionIQ.UI.Page('operations', 'shopping')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Queue: execution plan, production queue, shopping list, restock plans", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "Restock plans"])
+check("Queue: the queue, its shopping list and restock plans", LUI.Group() == "Queue" and navshown == ["Queue", "Shopping list", "Restock plans"])
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
@@ -2568,7 +2561,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
+for v in ["compare", "inventory", "sales", "income", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "plans", "overview", "statement", "balance", "cashflow"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
