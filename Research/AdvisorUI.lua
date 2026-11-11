@@ -1315,7 +1315,6 @@ function AUI.Card(n, scan)
 		sub = r.profit and r.profit >= 0 and T.Color("ok", "Craft it: " .. M(r.profit) .. " a craft.")
 			or T.Color("bad", "Each craft loses " .. M(-(r.profit or 0)) .. " at today's prices.")
 	end
-	if m and m.sub then sub = (sub and (sub .. " ") or "") .. mut(m.sub:sub(1, 1):upper() .. m.sub:sub(2) .. ".") end
 	-- the whole notes, and craft or sell's numbers, on the sentence's hover
 	local tip = cs and CH.CraftOrSellBook(acc) or { { "Notes" } }
 	local notes = AUI.SummaryLines(result)
@@ -1323,14 +1322,13 @@ function AUI.Card(n, scan)
 	local src = AUI.SourceLine(result)
 	if src then table.insert(notes, src) end
 	for _, l in ipairs(notes) do table.insert(tip, { l }) end
-	local pp = r and r.parts
-	local proceeds = r and r.value and (r.value + (pp and pp.mcGold or 0))
-	local margin = r and r.profit and proceeds and proceeds > 0 and not result.order and r.profit / proceeds
+	-- margin as the scan list has it: profit over what the reagents cost
+	local margin = r and r.profit and r.cost and r.cost > 0 and r.profit / r.cost
 	local figures = {
 		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
 		{ "REAGENTS", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
 		{ "MARGIN", margin and T.Color(margin >= 0 and "ok" or "bad", pctText(margin)) or mut("-"),
-			tip = { { "Margin" }, { mut("Profit as a share of what the craft sells for, after the cut and deposits.") } } } }
+			tip = { { "Margin" }, { mut("Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
 	local rows = {}
 	if r then
 		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }

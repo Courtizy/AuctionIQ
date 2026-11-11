@@ -389,7 +389,8 @@ function W.Arrange()
 		strip.dock:SetShown(undocked)
 		if undocked then strip.dock:ClearAllPoints(); strip.dock:SetPoint("TOPLEFT", x + 8, 0); x = x + 58 end
 		strip:SetWidth(math.max(10, x))
-		strip:Show()
+		-- one tab (the queue popped out) is no choice: no row
+		strip:SetShown(#labels > 1 or undocked)
 	elseif strip then
 		strip:Hide()
 	end

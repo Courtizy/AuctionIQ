@@ -923,7 +923,7 @@ function SUI.RecipePanel(r, n, v)
 		figure("REAGENTS", rcost, rbook),
 		-- craft or sell is the sentence above: its numbers are on that sentence's hover
 		{ "MARGIN", r.pct and T.Color(r.pct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(r.pct * 100 + 0.5))) or T.Color("muted", "-"),
-			tip = { { "Margin" }, { T.Color("muted", "Profit as a share of what the crafts sell for, after the cut.") } } } }
+			tip = { { "Margin" }, { T.Color("muted", "Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
 	local rows = {
 		{ "Can make now", r.canMake and tostring(r.canMake) or T.Color("muted", "-") },
 		{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") },
@@ -1175,7 +1175,8 @@ function SUI.Refresh()
 			r.cells[1]:SetText(CH.Window.ItemIcon(view == "conc" and (d.concItem or d.item) or (d.item or d.concItem), 15)
 				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			if view == "craft" then
-				r.cells[2]:SetText(d.sellInstead and T.Color("bad", "sell reagents") or money(d.profit))
+				-- the number; whether to sell the reagents instead is the card's sentence
+				r.cells[2]:SetText(money(d.profit))
 				r.cells[3]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
 				r.cells[4]:SetText(money(d.perDay))
 				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
