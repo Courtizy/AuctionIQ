@@ -60,7 +60,7 @@ function W.New(name, title, width, height)
 	T.AccentTexture(rule)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(2) -- ToxiUI's accent line under the title bar
+	rule:SetHeight(T.Px(f, 2)) -- ToxiUI's accent line under the title bar
 	f.rule = rule
 	-- the brand alone, no icon: AUCTIONIQ with IQ in the theme colour
 	f.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")

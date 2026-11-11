@@ -105,7 +105,7 @@ end
 local function hairline(parent, y, w)
 	local line = parent:CreateTexture(nil, "BACKGROUND", nil, 3)
 	line:SetPoint("TOPLEFT", 7, y)
-	line:SetSize(w, 1)
+	line:SetSize(w, CH.Theme.Px(parent))
 	line:SetColorTexture(0, 0, 0, 0.6)
 	return line
 end

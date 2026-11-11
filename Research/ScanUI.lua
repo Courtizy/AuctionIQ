@@ -475,7 +475,7 @@ local function build()
 			local ry = -54 - i * H
 			local line = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
 			line:SetPoint("TOPLEFT", 7, ry + 3 - H)
-			line:SetSize(TWR + 8, 1)
+			line:SetSize(TWR + 8, T.Px(frame))
 			line:SetColorTexture(0, 0, 0, 0.6)
 			r.line = line
 			local mark = frame:CreateTexture(nil, "ARTWORK")
