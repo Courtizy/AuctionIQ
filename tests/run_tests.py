@@ -3158,6 +3158,27 @@ check("/aiq mem: memory after clearing garbage, then what's held", mp[0].startsw
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))
+# Cleanup: browse-only scans of items nothing uses aren't saved; searched, crafted and listed ones are
+run("""STUB.oldScans = AuctionIQ.db.scans
+AuctionIQ.db.scans = { [990001] = { at = time(), min = 5, market = 5, qty = 3, full = false },
+  [990002] = { at = time(), min = 5, market = 5, qty = 3, full = true },
+  [990003] = { at = time(), min = 5, market = 5, qty = 3, full = false } }
+AuctionIQ.db.postAdvice = AuctionIQ.db.postAdvice or {}
+table.insert(AuctionIQ.db.postAdvice, { id = 990003, action = 'post' })
+AuctionIQ.Me().professions[999] = { name = 'Midnight Tailoring', parent = 'Tailoring' }
+STUB.noProfs = AuctionIQ.Cleanup.Professions()
+GetProfessions = function() return 1, 2, nil, nil, 3 end
+GetProfessionInfo = function(i) return ({ "Alchemy", "Enchanting", "Cooking" })[i] end
+STUB.cleanup = AuctionIQ.Cleanup.Run()
+GetProfessions, GetProfessionInfo = nil, nil""")
+sc = L.eval("AuctionIQ.db.scans")
+check("cleanup: a browse-only scan nothing uses goes; a full search and an item with post advice stay",
+      sc[990001] is None and sc[990002] is not None and sc[990003] is not None and L.eval("STUB.cleanup.scans") >= 1)
+check("cleanup: saved data for a profession the character dropped goes (Tailoring), the ones it has stay",
+      L.eval("AuctionIQ.Me().professions[999]") is None and L.eval("AuctionIQ.Me().professions[2906]") is not None
+      and list(L.eval("STUB.cleanup.professions").values()) == ["Midnight Tailoring"])
+check("cleanup: when the game can't list your professions, nothing is dropped", len(L.eval("STUB.noProfs")) == 0)
+run("table.remove(AuctionIQ.db.postAdvice); AuctionIQ.db.scans = STUB.oldScans")
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
 print(f"\n{len(fails)} failed" if fails else "\nall passed")

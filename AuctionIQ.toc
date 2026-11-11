@@ -39,6 +39,7 @@ Operations\Trade\TradingUI.lua
 Core\Settings.lua
 Core\SettingsUI.lua
 Core\Alerts.lua
+Core\Cleanup.lua
 Operations\Craft\Planner.lua
 Operations\Craft\PlanUI.lua
 Accounting\Export.lua

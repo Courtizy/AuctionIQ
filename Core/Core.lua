@@ -335,8 +335,10 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	elseif msg == "settings" then CH.UI.Page("settings")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
+	elseif msg == "cleanup" then
+		CH.Cleanup.Report()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup drops saved data nothing uses (it also runs at logout).")
 	else
 		CH.UI.Toggle()
 	end
