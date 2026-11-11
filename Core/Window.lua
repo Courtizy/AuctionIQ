@@ -294,6 +294,8 @@ end
 --- Is this window one of the tabs right now (the queue isn't, when popped out)?
 function W.InTabs(key)
 	if key == "queue" then return not ws().popQueue end
+	-- two windows, Craft and Queue: the old Advisor window only when Settings turns it back on
+	if key == "advisor" then return deck().classic == true end
 	return byKey[key] ~= nil
 end
 
@@ -472,7 +474,7 @@ function W.ToggleQueuePop()
 end
 
 W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
-W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
+W.AddTab("scan", "Craft", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked, and the one you pick.")
 W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
 
 --- A side panel beside a table, as the design draws it (the Craft page's Next Move panel): a card
@@ -499,6 +501,8 @@ function W.SidePanel(parent, width, height, opts)
 		local hit = CreateFrame("Button", nil, det)
 		hit:SetScript("OnEnter", function(self) if self.tip and self.tip[1] then W.Tooltip(self, self.tip) end end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		-- a row can also do something when clicked (pick a quality)
+		hit:SetScript("OnClick", function(self) if self.run then self.run() end end)
 		hit:Hide()
 		return hit
 	end
@@ -538,7 +542,7 @@ function W.SidePanel(parent, width, height, opts)
 		return r
 	end
 	det.rows = {}
-	for k = 1, nRows do det.rows[k] = pair() end
+	for k = 1, nRows do local r = pair(); r.hit = tipHit(); det.rows[k] = r end
 	det.head = text(IW, "LEFT", "GameFontNormalSmall")
 	T.TitleFont(det.head, 10, "bold")
 	det.srows = {}
@@ -637,6 +641,9 @@ function W.DrawSidePanel(det, d, said)
 		local x = d.rows and d.rows[k]
 		at(r.label, 12, y); at(r.value, det.width - 122, y)
 		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
+		r.hit.tip = x and x.tip or false
+		r.hit:SetShown(x ~= nil and x.tip ~= nil)
 		if x then y = y - 14; shown = shown + 1 end
 	end
 	y = y - 4
@@ -654,7 +661,8 @@ function W.DrawSidePanel(det, d, said)
 		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
 		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
 		r.hit.tip = x and x.tip or false
-		r.hit:SetShown(x ~= nil and x.tip ~= nil)
+		r.hit.run = x and x.run or false
+		r.hit:SetShown(x ~= nil and (x.tip ~= nil or x.run ~= nil))
 		if x then y = y - 14 end
 	end
 	if sec then

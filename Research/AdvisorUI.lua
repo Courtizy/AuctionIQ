@@ -1010,8 +1010,17 @@ function AUI.Show(recipeID, force)
 	else
 		AUI.Render(nil)
 	end
-	if force or not CH.Window.Busy("advisor") then panel:Show() end
+	if settings().classic then
+		if force or not CH.Window.Busy("advisor") then panel:Show() end
+	else
+		-- two windows, Craft and Queue: the recipe shows in the Craft window's card
+		panel:Hide()
+		if CH.ScanUI and CH.ScanUI.ShowRecipe then CH.ScanUI.ShowRecipe(current, force) end
+	end
 end
+
+--- Is the old standalone Advisor window on (Settings), instead of the Craft window's card?
+function AUI.Classic() return settings().classic == true end
 
 --- The Advisor tab: bring it to the front (turning it back on if it was closed).
 function AUI.Open()
@@ -1265,6 +1274,91 @@ function AUI.NextTip(which)
 	if m.mc then table.insert(tip, { mut(string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
 	table.insert(tip, { mut("Hover Profit, Break-even or Recover for how each was reached.") })
 	return tip
+end
+
+--- The Craft window's card for the recipe on screen: craft or sell, profit, reagents and margin,
+--- which quality (each with its Concentration and profit, a click picks it), break-even and the
+--- chance to recover in a week, and the Queue button. n is how many to queue. scan is the recipe's
+--- scan row, for its craft-or-sell verdict and gold a day. nil when no recipe is worked out.
+function AUI.Card(n, scan)
+	local result = shown
+	if not result then return nil end
+	local T, M, W = CH.Theme, CH.FormatMoney, CH.Window
+	local mut = function(t) return T.Color("muted", t) end
+	if n then selQty = math.max(1, math.min(999, math.floor(n))) end
+	local maxQ = result.model and result.model.maxQ
+	local r = AUI.SelectedRow()
+	local m = r and AUI.NextMove()
+	-- which quality: every row the advisor found, a click picks one
+	local qrows = {}
+	for i, x in ipairs(result.rows) do
+		if i > 5 then break end
+		local on = AUI.IsSelected(x)
+		local label = (on and T.Color("accent", "> ") or "   ") .. W.QualityIcon(x.quality, 13, maxQ)
+			.. (x.concentration and ("  " .. W.ConcIcon(11) .. " " .. x.concentration) or mut("  no Conc."))
+			.. (x.short and T.Color("bad", "  too low") or "")
+		qrows[#qrows + 1] = { label, money(x.profit), tip = AUI.BreakdownLines(result, x, 5),
+			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
+	end
+	-- craft or sell, from today's prices of what you hold (the scan's reagents)
+	local acc = scan and (r and r.concentration and scan.concAccounts or scan.accounts)
+	local cs = acc and CH.CraftOrSell(acc)
+	local sub
+	if cs then
+		sub = cs.verdict == "even" and T.Color("fg", "About even: craft it, or sell the reagents for about the same.")
+			or cs.gain >= 0 and T.Color("ok", "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.")
+			or T.Color("bad", "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.")
+		if cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
+			sub = sub .. mut(" Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
+		end
+	elseif r then
+		sub = r.profit and r.profit >= 0 and T.Color("ok", "Craft it: " .. M(r.profit) .. " a craft.")
+			or T.Color("bad", "Each craft loses " .. M(-(r.profit or 0)) .. " at today's prices.")
+	end
+	if m and m.sub then sub = (sub and (sub .. " ") or "") .. mut(m.sub:sub(1, 1):upper() .. m.sub:sub(2) .. ".") end
+	-- the whole notes, and craft or sell's numbers, on the sentence's hover
+	local tip = cs and CH.CraftOrSellBook(acc) or { { "Notes" } }
+	local notes = AUI.SummaryLines(result)
+	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(notes, l) end
+	local src = AUI.SourceLine(result)
+	if src then table.insert(notes, src) end
+	for _, l in ipairs(notes) do table.insert(tip, { l }) end
+	local pp = r and r.parts
+	local proceeds = r and r.value and (r.value + (pp and pp.mcGold or 0))
+	local margin = r and r.profit and proceeds and proceeds > 0 and not result.order and r.profit / proceeds
+	local figures = {
+		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
+		{ "REAGENTS", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
+		{ "MARGIN", margin and T.Color(margin >= 0 and "ok" or "bad", pctText(margin)) or mut("-"),
+			tip = { { "Margin" }, { mut("Profit as a share of what the craft sells for, after the cut and deposits.") } } } }
+	local rows = {}
+	if r then
+		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
+		rows[#rows + 1] = { "Recover in a week", m and m.recover and pctText(m.recover) or mut("-"), tip = AUI.NextTip("recover") }
+		rows[#rows + 1] = { "Can make now", r.max and tostring(r.max) or mut("-") }
+		if scan and scan.perDay then rows[#rows + 1] = { "Gold a day", money(scan.perDay) } end
+		if cs and cs.paid then rows[#rows + 1] = { "You paid for yours", M(cs.paid) } end
+	end
+	local label, off = AUI.QueueAction()
+	if r and not off and r.max and r.max < selQty then
+		label = string.format("Queue %d · %d craftable now", selQty, r.max)
+	end
+	local actions = { { label = label, off = off, tip = "Adds the picked quality, with the advisor's reagents.",
+		run = function() return AUI.QueueSelected() end } }
+	local g = gearPick
+	if g and g.set and not result.sim then
+		actions[2] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
+			run = function() local ok, why = CH.Gear.Equip(g.set); if not ok then CH.Print("can't change gear " .. (why or "")) end
+				if C_Timer then C_Timer.After(1, function() AUI.Show() end) end end }
+	end
+	local warn = AUI.PostLines(result)
+	local itemID = (r and r.item) or (result.model and result.model.output)
+	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
+		sub = sub, subTip = tip, figures = figures, rows = rows,
+		bar = m and m.recover or nil,
+		section = { head = "WHICH QUALITY?", rows = qrows },
+		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
+		actions = actions, live = true }
 end
 
 --- Set how many of the selected craft to queue (1 to 999).

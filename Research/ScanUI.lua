@@ -390,7 +390,7 @@ end
 
 local function build()
 	local Wd, T = CH.Window, CH.Theme
-	frame = Wd.New("AuctionIQScan", "Recipe scan", W, 92 + N * H + DETAIL)
+	frame = Wd.New("AuctionIQScan", "Crafting", W, 92 + N * H + DETAIL)
 	local x = -26
 	local function barButton(label, width, fn)
 		local b = T.Button(frame.bar, label, width, 18)
@@ -902,6 +902,9 @@ function SUI.RecipePanel(r, n, v)
 	if v == "conc" then return SUI.ConcPanel(r, n) elseif v == "buy" then return SUI.BuyPanel(r, n) end
 	local T, M = CH.Theme, CH.FormatMoney
 	n = n or qty
+	-- the recipe open in the profession window: the advisor's live card, with its qualities
+	local live = SUI.LiveCard(r.recipeID, n, r)
+	if live then return live end
 	local acc = r.accounts or r.concAccounts
 	local book, profit = acc and CH.CraftBook(acc)
 	local rbook, rcost
@@ -1055,13 +1058,24 @@ function SUI.FirstPanel(d)
 			{ label = "Open recipe", tip = "Show it in the profession window.", run = function() if C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(d.recipeID) end end } } }
 end
 
+--- The advisor's card for a recipe, when it's the one worked out live (open in the profession
+--- window, not as an order) and the old Advisor window is off. nil otherwise.
+function SUI.LiveCard(recipeID, n, scanRow)
+	local A = CH.AdvisorUI
+	if not (A and A.Card and recipeID) or A.Classic() then return nil end
+	local cur = A.Current()
+	if not cur or cur.recipeID ~= recipeID or cur.order then return nil end
+	return A.Card(n or qty, scanRow)
+end
+
 -- The selected row's card, for the list showing.
 local function renderDetail()
 	if not detail then return end
 	local T = CH.Theme
 	local d
 	if mode == "recipes" then
-		d = SUI.RecipePanel(selectedRow())
+		local sr = selectedRow()
+		d = sr and SUI.RecipePanel(sr) or (view == "craft" and SUI.LiveCard(selected, qty))
 	else
 		for _, x in ipairs(data) do if SUI.RowKey(x) == SUI.selRow then d = x; break end end
 		d = d and (mode == "orders" and SUI.OrderPanel(d) or SUI.FirstPanel(d))
@@ -1209,3 +1223,31 @@ function SUI.Open()
 end
 
 function SUI.IsShown() return frame ~= nil and frame:IsShown() end
+
+--- A recipe picked in the profession window: select it in the list (scrolled into view) and show
+--- its card. Comes to the front unless the Queue tab is showing, or force.
+function SUI.ShowRecipe(recipeID, force)
+	if not frame then build() end
+	SUI.prof = CH.OpenProfessionID() or SUI.prof
+	if recipeID then
+		if mode ~= "recipes" and force then mode = "recipes" end
+		if mode == "recipes" then
+			if recipeID ~= selected then qty = 1 end
+			selected = recipeID
+		end
+	end
+	if force or not CH.Window.Busy("scan") then frame:Show() end
+	SUI.Refresh()
+	-- scroll the picked recipe into view
+	if mode == "recipes" and selected then
+		for i, d in ipairs(data) do
+			if not d.header and d.recipeID == selected then
+				if i <= offset or i > offset + N then
+					offset = math.max(0, math.min(math.max(0, #data - N), i - math.floor(N / 2)))
+					SUI.Refresh()
+				end
+				break
+			end
+		end
+	end
+end
