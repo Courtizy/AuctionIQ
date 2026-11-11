@@ -974,8 +974,38 @@ function Q.Craft(e, amount)
 		return true
 	end
 	crafting = e
-	C_TradeSkillUI.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
+	local ui = C_TradeSkillUI
+	if Q.IsEnchant(e.recipeID) then
+		-- an enchant for the AH goes on Enchanting Vellum: CraftEnchant with the vellum as its target
+		local bag, slot = Q.FindVellum()
+		if not bag then crafting = nil; return false, "no Enchanting Vellum in your bags" end
+		local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
+		if not (loc and ui.CraftEnchant) then crafting = nil; return false, "the game can't target the vellum" end
+		ui.CraftEnchant(e.recipeID, amount or 1, reagents, loc, e.concentration ~= nil)
+		return true
+	end
+	ui.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
+end
+
+Q.VELLUM = 38682
+--- Whether a recipe is an enchant (cast on an item: for the AH, onto Enchanting Vellum).
+function Q.IsEnchant(recipeID)
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetRecipeInfo and recipeID and ui.GetRecipeInfo(recipeID)
+	return info and info.isEnchantingRecipe and true or false
+end
+
+--- The bag and slot of an Enchanting Vellum in your bags, or nil.
+function Q.FindVellum()
+	local C = C_Container
+	if not (C and C.GetContainerNumSlots and C.GetContainerItemID) then return nil end
+	local last = math.max(NUM_TOTAL_EQUIPPED_BAG_SLOTS or 0, Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or 0, 5)
+	for bag = 0, last do
+		for slot = 1, (C.GetContainerNumSlots(bag) or 0) do
+			if C.GetContainerItemID(bag, slot) == Q.VELLUM then return bag, slot end
+		end
+	end
 end
 
 -- A recipe ID is its spell ID: each successful cast is one craft done.

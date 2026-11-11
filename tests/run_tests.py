@@ -241,6 +241,42 @@ c = L.eval("STUB.crafted")
 check("craft uses the queued reagents and Concentration", ok and c.id == 10 and c.conc == True and c.reagents[1].reagent.itemID == 201 and c.reagents[1].quantity == 4)
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
 check("a finished craft comes off the queue", CH.Queue.Count() == 2 and len(list(CH.db.queue.values())) == 1)
+# enchants: the scroll each quality makes, and the craft goes onto Enchanting Vellum
+en = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldInfo, oldOut, oldC, oldCR = ui.GetRecipeInfo, ui.GetRecipeOutputItemData, C_Container, ui.CraftRecipe
+  local r = {}
+  ui.GetRecipeOutputItemData = function(id, reagents, guid, q) local m = { [1001] = 9101, [1002] = 9102 }; return m[q] and { itemID = m[q] } or nil end
+  local outs = AuctionIQ.Advisor.ScrollOutputs(30, { qualityIDs = { 1001, 1002 }, maxQuality = 2 })
+  r.q1, r.q2 = outs[1], outs[2]
+  ui.GetRecipeInfo = function(id) local i = oldInfo(id); if id == 10 and i then i.isEnchantingRecipe = true end; return i end
+  C_Container = { GetContainerNumSlots = function(bag) return bag == 1 and 4 or 0 end,
+    GetContainerItemID = function(bag, slot) return (bag == 1 and slot == 3) and 38682 or nil end }
+  local loc0 = ItemLocation
+  ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
+  ui.CraftEnchant = function(id, n, reagents, target, conc) r.enchant = { id = id, n = n, bag = target.bag, slot = target.slot, k = #reagents } end
+  ui.CraftRecipe = function() r.recipe = true end
+  local e = AuctionIQ.Queue.AddEntry({ char = AuctionIQ.Me().key or 'Me-Realm', recipeID = 10, name = 'Test Enchant', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = {} }, 1)
+  r.ok = AuctionIQ.Queue.Craft(e, 1)
+  AuctionIQ.Queue.Clear()
+  ui.GetRecipeInfo, ui.GetRecipeOutputItemData, C_Container, ui.CraftRecipe, ui.CraftEnchant, ItemLocation = oldInfo, oldOut, oldC, oldCR, nil, loc0
+  return r
+end)()""")
+ea = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldInfo, oldSch, oldOut = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData
+  ui.GetRecipeInfo = function(id) local i = oldInfo(id); if id == 10 and i then local c = {}; for k, v in pairs(i) do c[k] = v end
+    c.qualityItemIDs = nil; c.isEnchantingRecipe = true; c.qualityIDs = { 1001, 1002 }; return c end; return i end
+  ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
+  ui.GetRecipeOutputItemData = function(id, reagents, guid, q) local m = { [1001] = 100, [1002] = 101 }; return m[q] and { itemID = m[q] } or nil end
+  local res = AuctionIQ.Advisor.Analyze(10, { professionID = AuctionIQ.OpenProfessionID() })
+  ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
+  return { best = res and res.best and res.best.profit ~= nil, out1 = res and res.model.outputs[1] }
+end)()""")
+check("enchant: with no output item on the recipe, the scroll is priced and a ranked option comes back", ea.best and ea.out1 == 100)
+check("enchant: each quality's scroll comes from the game's output data", en.q1 == 9101 and en.q2 == 9102)
+check("enchant: the queue crafts it onto Enchanting Vellum (CraftEnchant), not CraftRecipe",
+      en.enchant is not None and en.enchant.id == 10 and en.enchant.bag == 1 and en.enchant.slot == 3 and en.recipe is None)
 run('AuctionIQ.Queue.Clear()')
 check("clear empties it", CH.Queue.Count() == 0)
 

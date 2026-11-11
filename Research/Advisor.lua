@@ -106,6 +106,37 @@ function A.Slots(schematic, provided)
 	return qual, fixed, finishing
 end
 
+--- The scroll item each quality of an enchant makes: { [quality] = itemID }, or {} when the game
+--- doesn't say. Tries the recipe's quality IDs (what the game's own page passes), then plain ranks.
+function A.ScrollOutputs(recipeID, info)
+	local ui = C_TradeSkillUI
+	local out = {}
+	if not (ui and ui.GetRecipeOutputItemData) then return out end
+	local function ask(q)
+		local ok, data = pcall(ui.GetRecipeOutputItemData, recipeID, {}, nil, q)
+		if not (ok and data) then return nil end
+		if data.itemID then return data.itemID end
+		local link = data.hyperlink
+		return link and tonumber(link:match("item:(%d+)")) or nil
+	end
+	local ids = info and info.qualityIDs
+	if type(ids) == "table" and #ids > 0 then
+		for q, qid in ipairs(ids) do out[q] = ask(qid) end
+	end
+	if not out[1] then
+		local n = info and info.maxQuality or 1
+		for q = 1, math.max(1, n) do out[q] = ask(q) end
+	end
+	if not out[1] then out = {} end
+	-- one ID for every quality is no quality split at all
+	if #out > 1 then
+		local same = true
+		for q = 2, #out do if out[q] ~= out[1] then same = false end end
+		if same then out = { out[1] } end
+	end
+	return out
+end
+
 -- picks[i][q] = units of quality q in quality slot i
 local function reagentInfos(model, picks, fin, ownOnly)
 	local t = {}
@@ -253,6 +284,9 @@ function A.Measure(recipeID, opts)
 		end
 	end
 	local outputs = info.qualityItemIDs or {}
+	-- An enchant has no item of its own (it's cast on gear), so neither field names one: what it
+	-- makes for the AH is the scroll on Enchanting Vellum. Ask the game what each quality's scroll is.
+	if #outputs == 0 and not schematic.outputItemID then outputs = A.ScrollOutputs(recipeID, info) end
 	-- Gear (rods, tools, armour) keeps one item ID for every quality: the quality is its item level,
 	-- so each quality is priced by the item at that level (TSM's "i:ID::iLEVEL").
 	local keys, maxQ = {}, math.max(1, #outputs)
