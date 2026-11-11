@@ -77,55 +77,62 @@ local function text(parent, x, y, w, justify, template)
 	return fs
 end
 
-local function build()
-	local T = CH.Theme
-	T.Sync()
-	panel = CreateFrame("Frame", "AuctionIQQueue", UIParent, "BackdropTemplate")
-	T.Panel(panel, "bg", 0.95)
-	panel:SetSize(W, 74 + 16 + (QROWS + SROWS) * 18 + 40 + BUDGET_H)
-	panel:SetFrameStrata("HIGH")
-	panel:SetMovable(true)
-	panel:SetClampedToScreen(true)
-	panel:EnableMouse(true)
-	panel:RegisterForDrag("LeftButton")
-	panel:Hide()
-	CH.Window.CloseOnEscape(panel, "AuctionIQQueue")
+local H = 18 -- a row, as the Craft window's
+-- The cards, top down: the queue, the shopping list, the budget. Each card's y and height.
+local QY, SY, BY = -48, nil, nil
+local QH = 22 + QROWS * H + 6
+SY = QY - QH - 6
+local SH = 38 + SROWS * H + 6
+BY = SY - SH - 6
+local BH = 84
 
-	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-	T.Panel(bar, "panel", 1)
-	bar:SetPoint("TOPLEFT")
-	bar:SetPoint("TOPRIGHT")
-	bar:SetHeight(26)
-	local rule = bar:CreateTexture(nil, "ARTWORK")
-	T.AccentTexture(rule)
-	rule:SetPoint("BOTTOMLEFT", 1, 0)
-	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(2)
-	panel.rule = rule
-	local badge = bar:CreateTexture(nil, "ARTWORK")
-	badge:SetTexture(CH.ICON)
-	badge:SetSize(18, 18)
-	badge:SetPoint("LEFT", 5, 0)
-	panel.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	panel.title:SetPoint("LEFT", badge, "RIGHT", 6, 0)
-	local close = T.Button(bar, "x", 18, 18)
-	close:SetPoint("RIGHT", -4, 0)
-	close:SetScript("OnClick", function() panel:Hide() end)
-	local clear = T.Button(bar, "Clear", 46, 18)
-	clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
-	clear:SetScript("OnClick", function() CH.Queue.Clear() end)
-	local pop = T.Button(bar, "Pop out", 70, 18)
-	pop:SetPoint("RIGHT", clear, "LEFT", -4, 0)
-	pop:SetScript("OnClick", function() CH.Window.ToggleQueuePop(); updatePop() end)
-	pop:SetScript("OnEnter", function(self)
-		CH.Window.Tooltip(self, { { CH.Window.InTabs("queue") and "Take the queue out of the tabs so it sits beside the Craft window."
-			or "Put the queue back in the tabs, behind the Craft window." } })
-	end)
-	pop:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	panel.pop = pop
-	local fill = T.Button(bar, "Fill", 40, 18)
-	fill:SetPoint("RIGHT", pop, "LEFT", -4, 0)
-	fill:SetScript("OnClick", function()
+-- A card's heading, as the Craft window's side panel draws QUALITY: small, bold, the theme colour.
+local function head(parent, x, y, w)
+	local fs = CH.Window.OneLine(text(parent, x, y, w, "LEFT", "GameFontNormalSmall"))
+	CH.Theme.TitleFont(fs, 10, "bold")
+	return fs
+end
+
+-- Column heads, as the Craft list has them: muted capitals.
+local function colHeads(parent, y, cols)
+	for _, c in ipairs(cols) do
+		local h = CH.Window.OneLine(text(parent, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall"))
+		h:SetText(c[1]:upper())
+	end
+end
+
+-- A hairline under each row, as the Craft list has.
+local function hairline(parent, y, w)
+	local line = parent:CreateTexture(nil, "BACKGROUND", nil, 3)
+	line:SetPoint("TOPLEFT", 7, y)
+	line:SetSize(w, 1)
+	line:SetColorTexture(0, 0, 0, 0.6)
+	return line
+end
+
+local function build()
+	local T, Wd = CH.Theme, CH.Window
+	panel = Wd.New("AuctionIQQueue", "Queue", W, -BY + BH + 8)
+	panel:SetScript("OnDragStart", nil); panel:SetScript("OnDragStop", nil) -- Attach moves it with the tabs
+	local bar = panel.bar
+	local x = -26
+	local function barButton(label, width, tip, fn)
+		local b = T.Button(bar, label, width, 18)
+		b:SetPoint("RIGHT", x, 0)
+		b:SetScript("OnClick", fn)
+		if tip then
+			b:SetScript("OnEnter", function(self) Wd.Tooltip(self, type(tip) == "function" and tip() or { { label }, { T.Color("muted", tip) } }) end)
+			b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		end
+		x = x - width - 4
+		return b
+	end
+	barButton("Clear", 46, "Empty the queue.", function() CH.Queue.Clear() end)
+	panel.pop = barButton("Pop out", 70, function()
+		return { { CH.Window.InTabs("queue") and "Pop out" or "Join tabs" }, { T.Color("muted", CH.Window.InTabs("queue")
+			and "Take the queue out of the tabs so it sits beside the Craft window." or "Put the queue back in the tabs, behind the Craft window.") } }
+	end, function() CH.Window.ToggleQueuePop(); updatePop() end)
+	barButton("Fill", 40, "Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/aiq cap), less what you own.", function()
 		local prof = CH.OpenProfessionID()
 		local plan, why
 		if prof then plan, why = CH.Queue.FillPlan(prof) end
@@ -136,77 +143,61 @@ local function build()
 			CH.Print(why or "open a profession to fill the queue from its scan.")
 		end
 	end)
-	fill:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_TOP")
-		GameTooltip:AddLine("Fill from the scan: Concentration crafts first, best gold per point, only as many as your Concentration covers. Then crafts that profit without it. Each up to what sells in a day (/aiq cap), less what you own.", 1, 1, 1, true)
-		GameTooltip:Show()
-	end)
-	fill:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-	local function fillButton(label, anchor, tip, fn)
-		local b = T.Button(bar, label, label:len() * 7 + 16, 18)
-		b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
-		b:SetScript("OnClick", fn)
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { tip } }) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		return b
-	end
-	local orders = fillButton("Orders", fill, "Queue the crafting orders worth doing: those whose commission and rewards cover the reagents, or that reward knowledge or Acuity. Open the Crafting Orders tab first so the game lists them. Each order's button goes Claim, Craft, Turn in; Next step in the Scan tab's Work orders does them in order.", function()
+	barButton("Orders", 58, "Queue the crafting orders worth doing: those whose commission and rewards cover the reagents, or that reward knowledge or Acuity. Open the Crafting Orders tab first so the game lists them.", function()
 		local n, profit = CH.Queue.FillOrders()
 		CH.Print(n > 0 and string.format("queued %d orders, about %s profit.", n, CH.FormatMoney(profit))
 			or "no orders worth doing. Open the Crafting Orders tab so the game lists them.")
 	end)
-	fillButton("1st crafts", orders, "Queue every recipe you haven't made yet, once each at its cheapest, for the first-craft knowledge point.", function()
+	barButton("First crafts", 86, "Queue every recipe you haven't made yet, once each at its cheapest, for the first-craft knowledge point.", function()
 		local n, cost = CH.Queue.FillFirstCrafts()
 		CH.Print(n > 0 and string.format("queued %d first crafts for %s of reagents: %d knowledge points.", n, CH.FormatMoney(cost), n)
 			or "no first crafts left in this profession (or open it first).")
 	end)
+	-- a status line under the bar, as the Craft window's
+	panel.status = Wd.OneLine(text(panel, 12, -32, W - 24, "LEFT"))
 
-	local y = -32
-	-- column heads over the queue
-	for _, c in ipairs({ { "Recipe", 12, 250, "LEFT" }, { "Crafter", 266, 90, "LEFT" }, { "Profit", 360, 86, "RIGHT" } }) do
-		local h = text(panel, c[2], y, c[3], c[4], "GameFontDisableSmall")
-		h:SetText(c[1])
-	end
+	-- the queue, on its card
+	T.BorderCard(panel, 6, QY, W - 12, QH)
+	local y = QY - 6
+	colHeads(panel, y, { { "Recipe", 12, 250, "LEFT" }, { "Crafter", 266, 90, "LEFT" }, { "Profit", 360, 86, "RIGHT" } })
 	y = y - 16
-	empty = text(panel, 12, y, W - 24, "LEFT")
+	empty = text(panel, 12, y - 2, W - 24, "LEFT")
 	qrows = {}
 	for i = 1, QROWS do
 		local r = {}
-		local ry = y - (i - 1) * 18
-		r.name = CH.Window.OneLine(text(panel, 12, ry, 250))
+		local ry = y - (i - 1) * H
+		r.name = Wd.OneLine(text(panel, 12, ry, 250))
 		r.hit = itemHover(panel, 12, ry, 250)
-		r.who = CH.Window.OneLine(text(panel, 266, ry, 90))
-		r.profit = CH.Window.OneLine(text(panel, 360, ry, 86, "RIGHT"))
+		r.who = Wd.OneLine(text(panel, 266, ry, 90))
+		r.profit = Wd.OneLine(text(panel, 360, ry, 86, "RIGHT"))
 		r.craft = T.Primary(T.Button(panel, "Turn in", 58, 16))
 		r.craft:SetPoint("TOPLEFT", 454, ry + 2)
 		r.minus = T.Button(panel, "-", 18, 16)
 		r.minus:SetPoint("TOPLEFT", 516, ry + 2)
+		r.line = hairline(panel, ry - H + 3, W - 14)
 		qrows[i] = r
 	end
-
 	local qwheel = CreateFrame("Frame", nil, panel)
 	qwheel:SetPoint("TOPLEFT", 0, y + 2)
-	qwheel:SetSize(W, QROWS * 18)
-	qBar = CH.Window.ScrollBar(panel, W - 5, y + 2, QROWS * 18, true)
-	CH.Window.Wheel(qwheel, QROWS, function() return qOffset end, function(v) qOffset = v end, function() return #CH.db.queue end, QUI.Refresh, qBar)
-	y = y - QROWS * 18 - 8
-	shopHead = text(panel, 12, y, W - 24, "LEFT", "GameFontNormalSmall")
+	qwheel:SetSize(W, QROWS * H)
+	qBar = Wd.ScrollBar(panel, W - 9, y + 2, QROWS * H, true)
+	Wd.Wheel(qwheel, QROWS, function() return qOffset end, function(v) qOffset = v end, function() return #CH.db.queue end, QUI.Refresh, qBar)
+
+	-- the shopping list, on its card
+	T.BorderCard(panel, 6, SY, W - 12, SH)
+	shopHead = head(panel, 12, SY - 8, W - 24)
 	local cols = { { "Reagent", 12, 250, "LEFT" }, { "Need", 264, 54 }, { "Have", 320, 54 }, { "Buy", 376, 54 }, { "Cost", 432, 96 } }
-	y = y - 16
-	for _, c in ipairs(cols) do
-		local h = text(panel, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall")
-		h:SetText(c[1])
-	end
+	y = SY - 24
+	colHeads(panel, y, cols)
 	srows = {}
 	for i = 1, SROWS do
-		local ry = y - i * 18
+		local ry = y - i * H
 		local r = {}
-		for j, c in ipairs(cols) do r[j] = CH.Window.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
+		for j, c in ipairs(cols) do r[j] = Wd.OneLine(text(panel, c[2], ry, c[3], c[4] or "RIGHT")) end
 		r.hit = itemHover(panel, 12, ry, 250)
 		r.costHit = CreateFrame("Button", nil, panel)
 		r.costHit:SetPoint("TOPLEFT", 432, ry + 2)
-		r.costHit:SetSize(96, 18)
+		r.costHit:SetSize(96, H)
 		r.costHit:SetScript("OnEnter", function(self)
 			local lines = QUI.CostLines(self.row)
 			if not lines[1] then return end
@@ -215,42 +206,45 @@ local function build()
 			GameTooltip:Show()
 		end)
 		r.costHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		r.line = hairline(panel, ry - H + 3, W - 14)
 		srows[i] = r
 	end
 	local swheel = CreateFrame("Frame", nil, panel)
 	swheel:SetPoint("TOPLEFT", 0, y - 16)
-	swheel:SetSize(W, SROWS * 18)
-	sBar = CH.Window.ScrollBar(panel, W - 5, y - 16, SROWS * 18, true)
-	CH.Window.Wheel(swheel, SROWS, function() return sOffset end, function(v) sOffset = v end, function() return #(CH.Queue.ShoppingList()) end, QUI.Refresh, sBar)
+	swheel:SetSize(W, SROWS * H)
+	sBar = Wd.ScrollBar(panel, W - 9, y - 16, SROWS * H, true)
+	Wd.Wheel(swheel, SROWS, function() return sOffset end, function(v) sOffset = v end, function() return #(CH.Queue.ShoppingList()) end, QUI.Refresh, sBar)
 
 	-- Budget: gold, reagents and Concentration, on hand against still needed, and what stops the queue
-	y = y - SROWS * 18 - 22
-	budget = { head = CH.Window.OneLine(text(panel, 12, y, W - 24 - 110, "LEFT", "GameFontNormalSmall")), bars = {} }
+	T.BorderCard(panel, 6, BY, W - 12, BH)
+	y = BY - 8
+	budget = { head = head(panel, 12, y, W - 24 - 110), bars = {} }
 	local plans = T.Button(panel, "Compare plans", 100, 16)
 	plans:SetPoint("TOPRIGHT", -12, y + 2)
-	plans:SetScript("OnClick", function(self) CH.Window.Tooltip(self, QUI.PlanLines()) end)
-	plans:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Compare restock plans" },
+	plans:SetScript("OnClick", function(self) Wd.Tooltip(self, QUI.PlanLines()) end)
+	plans:SetScript("OnEnter", function(self) Wd.Tooltip(self, { { "Compare restock plans" },
 		{ T.Color("muted", "The queue as it is against a lean plan of a few days' sales: gold up front, gold back in a week, and stock left. Click to run it.") } }) end)
 	plans:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	budget.plans = plans
 	for i, name in ipairs({ "Gold", "Reagents", "Concentration" }) do
 		local by = y - 4 - i * 14
-		local b = { label = CH.Window.OneLine(text(panel, 12, by, 100)) }
+		local b = { label = Wd.OneLine(text(panel, 12, by, 100)) }
 		b.label:SetText(name)
-		b.track = panel:CreateTexture(nil, "BACKGROUND")
-		b.track:SetPoint("TOPLEFT", 116, by - 1)
-		b.track:SetSize(250, 9)
-		b.track:SetColorTexture(T.bad[1], T.bad[2], T.bad[3], 0.35)
-		b.fill = panel:CreateTexture(nil, "ARTWORK")
-		b.fill:SetPoint("TOPLEFT", 116, by - 1)
-		b.fill:SetSize(1, 9)
-		b.fill:SetColorTexture(T.ok[1], T.ok[2], T.ok[3], 0.8)
-		b.text = CH.Window.OneLine(text(panel, 372, by, W - 372 - 12, "RIGHT"))
+		b.label:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
+		b.track = panel:CreateTexture(nil, "ARTWORK")
+		b.track:SetPoint("TOPLEFT", 116, by - 3)
+		b.track:SetSize(250, 6)
+		b.track:SetColorTexture(0.067, 0.067, 0.067, 1)
+		b.fill = panel:CreateTexture(nil, "OVERLAY")
+		b.fill:SetPoint("TOPLEFT", 116, by - 3)
+		b.fill:SetSize(1, 6)
+		T.Gradient(b.fill)
+		b.text = Wd.OneLine(text(panel, 372, by, W - 372 - 12, "RIGHT"))
 		budget.bars[i] = b
 	end
-	budget.stop = CH.Window.OneLine(text(panel, 12, y - 4 - 4 * 14, W - 24))
+	budget.stop = Wd.OneLine(text(panel, 12, y - 4 - 4 * 14, W - 24))
 	T.Fonts(panel)
-	CH.Window.Attach("queue", panel)
+	Wd.Attach("queue", panel)
 end
 
 --- Redraw. Returns the queue and shopping lines it wrote, for the tests.
@@ -258,8 +252,12 @@ function QUI.Refresh()
 	if not panel or not panel:IsShown() then return end
 	local T = CH.Theme
 	local q = CH.db.queue
-	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Queue (" .. CH.Queue.Count() .. ")"
-		.. (#q > QROWS and string.format(", rows %d-%d of %d, scroll", qOffset + 1, math.min(#q, qOffset + QROWS), #q) or "")))
+	-- the status line: how many crafts and what they earn, as the Craft window says how many recipes
+	local n, sum = CH.Queue.Count(), 0
+	for _, e in ipairs(q) do sum = sum + (e.profit or 0) * (e.qty or 0) end
+	panel.status:SetText(T.Color("muted", n == 0 and "Nothing queued." or string.format("%d %s queued, ", n, n == 1 and "craft" or "crafts"))
+		.. (n > 0 and T.Color(sum >= 0 and "ok" or "bad", CH.FormatMoney(sum)) .. T.Color("muted", " profit") or "")
+		.. (#q > QROWS and T.Color("muted", string.format(". Rows %d-%d of %d, scroll.", qOffset + 1, math.min(#q, qOffset + QROWS), #q)) or ""))
 	empty:SetText(#q == 0 and T.Color("muted", "Empty. Pick a recipe in the Craft window and press Queue, or fill it from the buttons above.") or "")
 	local lines = { queue = {}, shop = {} }
 	qOffset = math.max(0, math.min(qOffset, #q - QROWS))
@@ -270,6 +268,7 @@ function QUI.Refresh()
 		local show = e ~= nil
 		r.craft:SetShown(show)
 		r.minus:SetShown(show)
+		r.line:SetShown(show)
 		if show then
 			local tag = (e.concentration and (" " .. CH.Window.ConcIcon(13)) or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
 				.. (e.orderID and T.Color("accent", " order") or "") .. (e.special and T.Color("accent", " reward") or "")
@@ -298,7 +297,7 @@ function QUI.Refresh()
 		end
 	end
 	local shop, total = CH.Queue.ShoppingList()
-	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", (total or 0) >= 1
+	shopHead:SetText(T.Color("accent", "SHOPPING LIST") .. (#shop > 0 and T.Color("muted", (total or 0) >= 1
 		and ("  buy for " .. CH.FormatMoney(total) .. ", Shop queue at the AH") or "  nothing to buy: you have it all") or ""))
 	sOffset = math.max(0, math.min(sOffset, #shop - SROWS))
 	sBar:Set(sOffset, SROWS, #shop)
@@ -307,6 +306,7 @@ function QUI.Refresh()
 		local s = shop[i + sOffset]
 		r.hit.id = s and s.itemID
 		r.costHit.row = s
+		r.line:SetShown(s ~= nil)
 		if s then
 			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
@@ -386,12 +386,13 @@ function QUI.RenderBudget()
 	local T = CH.Theme
 	local b = CH.Queue.Budget()
 	local lines = QUI.BudgetLines(b)
-	budget.head:SetText(T.Color("accent", "Budget") .. T.Color("muted", "  green on hand, red still needed"))
+	budget.head:SetText(T.Color("accent", "BUDGET") .. T.Color("muted", "  the bar fills as you have what the queue needs"))
 	for i, k in ipairs({ "gold", "reagents", "conc" }) do
 		local x, bar = b[k], budget.bars[i]
 		local share = x.need > 0 and math.min(1, x.have / x.need) or 1
 		bar.fill:SetSize(math.max(1, 250 * share), 9)
 		bar.track:SetAlpha(x.need > 0 and 1 or 0.3)
+		bar.fill:SetAlpha(x.need > 0 and 1 or 0.3)
 		bar.text:SetText(lines[i])
 	end
 	budget.stop:SetText(lines[4])
