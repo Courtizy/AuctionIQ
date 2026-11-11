@@ -557,9 +557,81 @@ local function drawChart(chart, data)
 	label(4, "estimate", x0 + X(1) - 30, -(y0 + h + 2), 60, "CENTER")
 	label(5, pctText(data.hi), x0 + w - 60, -(y0 + h + 2), 60, "RIGHT")
 	for i = 6, #L do L[i]:Hide() end
+	-- hover, as the Dashboard's gold chart: a line at the nearest price step, a dot on each series
+	-- and a tooltip with the price and what each craft makes there
+	chart.plot = { x0 = x0, y0 = y0, w = w, h = h, data = data, X = X, Y = Y }
+	if not rawget(chart, "hover") then
+		local hv = CreateFrame("Frame", nil, chart)
+		hv:SetAllPoints()
+		hv:EnableMouse(true)
+		chart.vline = chart:CreateTexture(nil, "OVERLAY")
+		chart.vline:SetColorTexture(T.muted[1], T.muted[2], T.muted[3], 0.5)
+		chart.vline:Hide()
+		chart.marks = {}
+		hv:SetScript("OnEnter", function(self)
+			self:SetScript("OnUpdate", function(f)
+				local left = f.GetLeft and f:GetLeft()
+				if not left or not GetCursorPosition then return end
+				AUI.ChartHover(chart, GetCursorPosition() / (f:GetEffectiveScale() or 1) - left)
+			end)
+		end)
+		hv:SetScript("OnLeave", function(self)
+			self:SetScript("OnUpdate", nil)
+			chart.vline:Hide()
+			for _, m in ipairs(chart.marks) do m:Hide() end
+			chart.hoverIndex = nil
+			GameTooltip:Hide()
+		end)
+		chart.hover = hv
+	end
+	chart.hoverIndex = nil
 end
 
 AUI.DrawChart = drawChart
+
+--- The break-even chart's hover at x (pixels from the chart's left): the nearest price step, marked
+--- on the chart, and the tooltip's lines: the price against the estimate and each craft's profit
+--- there. Returns the lines, for tests.
+function AUI.ChartHover(chart, x)
+	local pl = chart and chart.plot
+	local data = pl and pl.data
+	local s1 = data and data.series[1]
+	if not (s1 and s1.points[1]) then return nil end
+	local best, bestD
+	for i, p in ipairs(s1.points) do
+		local d = math.abs(pl.x0 + pl.X(p[1]) - x)
+		if not bestD or d < bestD then best, bestD = i, d end
+	end
+	local T, M = CH.Theme, CH.FormatMoney
+	local f = s1.points[best][1]
+	local lines = { { string.format("Sale price at %s of the estimate", pctText(f)), "" } }
+	for k, s in ipairs(data.series) do
+		local p = s.points[best]
+		local y = p and p[2] or 0
+		table.insert(lines, { T.Color(s.color, s.label) .. T.Color("muted", "  sells for " .. M(math.floor(f * s.estimate + 0.5)) .. " each"), "" })
+		table.insert(lines, { "  Profit a craft", T.Color(y >= 0 and "ok" or "bad", (y < 0 and "-" or "") .. M(math.abs(math.floor(y + 0.5)))) })
+		if s.be then table.insert(lines, { "  Breaks even at", M(s.be.price) .. " each", "muted", "fg" }) end
+		if chart.vline and p then
+			local m = chart.marks[k]
+			if not m then m = chart:CreateTexture(nil, "OVERLAY"); chart.marks[k] = m end
+			local c = T[s.color] or T.fg
+			m:SetColorTexture(c[1], c[2], c[3], 1)
+			m:ClearAllPoints()
+			m:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(pl.x0 + pl.X(f) + 0.5) - 3, -math.floor(pl.y0 + pl.Y(y) + 0.5) + 3)
+			m:SetSize(7, 7)
+			m:Show()
+		end
+	end
+	if chart.vline and chart.hoverIndex ~= best then
+		chart.hoverIndex = best
+		chart.vline:ClearAllPoints()
+		chart.vline:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(pl.x0 + pl.X(f) + 0.5), -pl.y0)
+		chart.vline:SetSize(1, math.floor(pl.h + 0.5))
+		chart.vline:Show()
+		CH.Window.Tooltip(chart.hover or chart, lines)
+	end
+	return lines
+end
 
 -- Batch analysis ----------------------------------------------------------------------------------
 

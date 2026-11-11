@@ -1472,6 +1472,8 @@ function SUI.HeldMax(recipeID, concNow)
 end
 CH.On("BAG_UPDATE_DELAYED", function() heldCache = {} end)
 
+function SUI.DetailsChart() return details and details.chart end
+
 function SUI.IsShown() return frame ~= nil and frame:IsShown() end
 
 --- A recipe picked in the profession window: select it in the list (scrolled into view) and show

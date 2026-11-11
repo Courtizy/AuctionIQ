@@ -2377,6 +2377,10 @@ check("details: break-even chart, price check, will it sell and what drives the 
       and len(list(dd.sell.rows.values())) >= 3 and len(list(dd.cost.rows.values())) >= 1 and "%" in plain(dd.cost.verdict))
 check("details: the reagents are ranked by their share of the cost", all("%" in plain(r[2]) for r in dd.cost.rows.values()))
 check("details: showing while on", CH.ScanUI.DetailsShown())
+hov = L.eval("(function() local ch = AuctionIQ.ScanUI.DetailsChart(); local pl = ch.plot; return AuctionIQ.AdvisorUI.ChartHover(ch, pl.x0 + pl.X(1)) end)()")
+hl = [plain(l[1]) for l in hov.values()]
+check("break-even chart hover: the price step under the mouse, and each craft's profit and break-even there",
+      hl[0] in ("Sale price at 99% of the estimate", "Sale price at 100% of the estimate", "Sale price at 101% of the estimate") and "  Profit a craft" in hl and "  Breaks even at" in hl)
 audit("craft details")
 run("AuctionIQ.ScanUI.SetDetails(false)")
 check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False and not CH.ScanUI.DetailsShown())
