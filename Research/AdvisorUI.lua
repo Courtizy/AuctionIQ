@@ -327,7 +327,9 @@ function AUI.Render(result, reason)
 	local rkey = tostring(result.recipeID) .. (result.order and ":order" or "")
 	if rkey ~= selRecipe then
 		selRecipe, selQty = rkey, 1
-		local pick = result.best or result.bestConc
+		-- the pick that earns the most a craft, as the Craft list's Best column has it
+		local b, c = result.best, result.bestConc
+		local pick = (c and c.profit and (not b or not b.profit or c.profit > b.profit)) and c or b or c
 		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil } or nil
 	end
 	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
@@ -1344,7 +1346,7 @@ function AUI.Card(n, scan)
 	local margin = r and r.profit and r.cost and r.cost > 0 and r.profit / r.cost
 	local figures = {
 		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
-		{ "REAGENTS", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
+		{ "COST", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
 		{ "MARGIN", margin and T.Color(margin >= 0 and "ok" or "bad", pctText(margin)) or mut("-"),
 			tip = { { "Margin" }, { mut("Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
 	local rows = {}

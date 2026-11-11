@@ -1062,7 +1062,7 @@ function SUI.RecipePanel(r, n, v)
 		verdict = verdict .. T.Color("muted", " Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
 	end
 	local figures = { figure("PROFIT", profit or r.profit, book, (profit or r.profit or 0) >= 0 and "ok" or "bad"),
-		figure("REAGENTS", rcost, rbook),
+		figure("COST", rcost, rbook),
 		-- craft or sell is the sentence above: its numbers are on that sentence's hover
 		{ "MARGIN", r.pct and T.Color(r.pct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(r.pct * 100 + 0.5))) or T.Color("muted", "-"),
 			tip = { { "Margin" }, { T.Color("muted", "Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
@@ -1325,8 +1325,8 @@ function SUI.Refresh()
 				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			if view == "craft" then
 				-- the best pick: its rank (and Concentration), profit, cost, margin, how many now
-				r.cells[2]:SetText(CH.Window.QualityIcon(d.bestQ, 13, d.tiers)
-					.. (d.bestConc and (" " .. CH.Window.ConcIcon(11) .. (d.concentration and math.floor(d.concentration + 0.5) or "")) or ""))
+				-- rank, and the Concentration mark when the best pick uses it (its points are on the card)
+				r.cells[2]:SetText(CH.Window.QualityIcon(d.bestQ, 13, d.tiers) .. (d.bestConc and (" " .. CH.Window.ConcIcon(11)) or ""))
 				r.cells[3]:SetText(money(d.bestProfit))
 				r.cells[4]:SetText(d.bestCost and CH.FormatMoney(d.bestCost) or T.Color("muted", "-"))
 				r.cells[5]:SetText(d.bestPct and T.Color(d.bestPct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(d.bestPct * 100 + 0.5))) or T.Color("muted", "-"))

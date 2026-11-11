@@ -133,7 +133,9 @@ check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
 
 # Craft queue and shopping list
 run('AuctionIQ.db.settings.advisor.hide = false; AuctionIQ.AdvisorUI.Show(10)')
-check("advisor: a new recipe selects its recommended craft", CH.AdvisorUI.SelectedRow() is not None and CH.AdvisorUI.SelectedRow().recommended)
+check("advisor: a new recipe selects the pick that earns the most a craft, as the Craft list's Best",
+      CH.AdvisorUI.SelectedRow() is not None and CH.AdvisorUI.SelectedRow().profit == max(r.profit for r in CH.AdvisorUI.Current().rows.values() if r.profit is not None))
+run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
 run('AuctionIQ.AdvisorUI.RowClick(1)')            # Q1 without Concentration: selects, queues nothing
 check("advisor: a row click selects it and queues nothing", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 1
       and CH.AdvisorUI.SelectedRow().concentration is None)
@@ -675,6 +677,7 @@ check("batch: a big one can't sell in a week: cash back stays under spend, stock
 bo2 = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
 check("batch: the same batch gives the same answer each time", bo2[1].net.p50 == bo[1].net.p50)
 CH.AdvisorUI.Render(res)
+run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
 check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
       and any("Plain Q2: breaks even at 223g per item, 26% under the estimate of 300g" in plain(x) for x in CH.AdvisorUI.RenderPane().values()))
 bl = [plain(x) for x in CH.AdvisorUI.SetPane("batch") and CH.AdvisorUI.RenderPane().values()]
@@ -774,7 +777,7 @@ check("tabs: a recipe click selects it in the Craft window", CH.ScanUI.IsShown()
 lc = L.eval("AuctionIQ.ScanUI.lastPanel")
 qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
-      lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "REAGENTS", "MARGIN"]
+      lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "COST", "MARGIN"]
       and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None and r.run is not None for r in qr))
 check("Craft card: break-even and the week's recovery explain themselves on hover",
       all(r.tip is not None for r in list(lc.rows.values())[:2]) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
@@ -1269,10 +1272,10 @@ check("scan list at live prices: the columns match the hovers, the saved scan st
 rp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
 check("scan side panel: craft or sell with profit and reagents, the reagents each with a hover, and Queue n",
       rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "x" and plain(rp.figures[1][1]) == "PROFIT"
-      and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
+      and plain(rp.figures[2][1]) == "COST" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
       and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
 check("scan side card: figures are profit, reagents and margin; craft or sell's numbers hover on its sentence",
-      [plain(f[1]) for f in rp.figures.values()] == ["PROFIT", "REAGENTS", "MARGIN"] and plain(rp.figures[3][2]) == "50%" and rp.subTip is not None
+      [plain(f[1]) for f in rp.figures.values()] == ["PROFIT", "COST", "MARGIN"] and plain(rp.figures[3][2]) == "50%" and rp.subTip is not None
       and not any(plain(r[1]) == "Margin" for r in rp.rows.values()))
 rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
