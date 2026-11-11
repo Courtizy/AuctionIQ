@@ -1367,7 +1367,8 @@ function AUI.Card(n, scan)
 			tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
 	end
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
-	local acc = scan and (r and r.concentration and scan.concAccounts or scan.accounts)
+	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
+	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
 	local cs = acc and CH.CraftOrSell(acc)
 	local sub
 	if cs then
