@@ -747,6 +747,6 @@ end
 
 CH.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
-		if Lg.Available() then pcall(Lg.Archive); pcall(Lg.Snapshot) end
+		if Lg.Available() then CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end
 	end)
 end)

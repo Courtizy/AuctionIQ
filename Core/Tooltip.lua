@@ -300,6 +300,6 @@ end
 if TooltipDataProcessor and Enum and Enum.TooltipDataType then
 	-- A price lookup must never break someone's tooltip, so errors are swallowed here.
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
-		pcall(onItemTooltip, tooltip)
+		CH.Measure("item tooltip", pcall, onItemTooltip, tooltip)
 	end)
 end

@@ -2833,5 +2833,8 @@ check("pixel-perfect: a window's unit is a whole number of screen pixels; on Elv
 check("pixel-perfect: a window's corner is nudged onto a whole pixel", abs(px.l - round(px.l)) < 1e-9 and abs(px.t - round(px.t)) < 1e-9)
 frac = [f"{k} {v}" for k, v in L.eval("STUB.frac").items()]
 check("pixel-perfect: every offset and size on a whole unit" + (": " + "; ".join(frac) if frac else ""), not frac)
+run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
+pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
+check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

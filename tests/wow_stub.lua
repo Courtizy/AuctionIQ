@@ -125,6 +125,7 @@ function Minimap:GetCenter() return 100, 100 end
 function Minimap:GetEffectiveScale() return 1 end
 function GetCursorPosition() return 200, 100 end
 BackdropTemplateMixin = {}
+function debugprofilestop() return os.clock() * 1000 end
 
 function STUB.Fire(event, ...)
 	for _, f in ipairs(events[event] or {}) do f.scripts.OnEvent(f, event, ...) end

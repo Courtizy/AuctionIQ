@@ -108,11 +108,52 @@ function CH.On(event, fn)
 	pcall(frame.RegisterEvent, frame, event) -- an event this game version doesn't have is skipped, not an error
 end
 
-frame:SetScript("OnEvent", function(_, event, ...)
+-- What AuctionIQ spends its time on, for /aiq perf: per event (and the tooltip hook), calls and
+-- milliseconds, since login or the last /aiq perf reset.
+local perf = { since = time and time() or 0, by = {} }
+CH.perf = perf
+local clock = debugprofilestop
+function CH.Measure(name, fn, ...)
+	if not clock then return fn(...) end
+	local t0 = clock()
+	local a, b, c = fn(...)
+	local p = perf.by[name]
+	if not p then p = { calls = 0, ms = 0, max = 0 }; perf.by[name] = p end
+	local dt = clock() - t0
+	p.calls, p.ms, p.max = p.calls + 1, p.ms + dt, math.max(p.max, dt)
+	return a, b, c
+end
+
+local function dispatch(event, ...)
 	for _, fn in ipairs(handlers[event] or {}) do
 		fn(event, ...)
 	end
+end
+frame:SetScript("OnEvent", function(_, event, ...)
+	CH.Measure(event, dispatch, event, ...)
 end)
+
+--- The /aiq perf report lines: AuctionIQ's memory and its costliest events since login or reset.
+function CH.PerfLines()
+	local out = {}
+	local name = addonName
+	if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+	local getMem = (C_AddOns and C_AddOns.GetAddOnMemoryUsage) or GetAddOnMemoryUsage
+	local kb = getMem and getMem(name)
+	local secs = time() - (perf.since or time())
+	table.insert(out, string.format("AuctionIQ over the last %d min: %s memory", math.floor(secs / 60 + 0.5), kb and string.format("%.1f MB", kb / 1024) or "?"))
+	local list = {}
+	for ev, p in pairs(perf.by) do list[#list + 1] = { ev = ev, p = p } end
+	table.sort(list, function(a, b) return a.p.ms > b.p.ms end)
+	for i = 1, math.min(8, #list) do
+		local x = list[i]
+		table.insert(out, string.format("  %s: %d calls, %.0f ms total, %.1f ms each, slowest %.0f ms", x.ev, x.p.calls, x.p.ms, x.p.ms / x.p.calls, x.p.max))
+	end
+	if not list[1] then table.insert(out, "  nothing measured yet") end
+	return out
+end
+
+function CH.PerfReset() perf.by, perf.since = {}, time() end
 
 CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
@@ -133,7 +174,13 @@ SLASH_AUCTIONIQ1 = "/aiq"
 SLASH_AUCTIONIQ2 = "/auctioniq"
 SlashCmdList.AUCTIONIQ = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
-	if msg == "tooltip" then
+	if msg == "perf" then
+		for _, l in ipairs(CH.PerfLines()) do CH.Print(l) end
+		return
+	elseif msg == "perf reset" then
+		CH.PerfReset(); CH.Print("perf counters reset.")
+		return
+	elseif msg == "tooltip" then
 		CH.db.settings.tooltip = not CH.db.settings.tooltip
 		CH.Print("tooltip lines " .. (CH.db.settings.tooltip and "on" or "off"))
 	elseif msg == "coins" then
