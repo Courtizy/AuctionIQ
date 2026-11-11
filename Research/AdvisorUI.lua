@@ -1364,13 +1364,20 @@ function AUI.Card(n, scan)
 			slot[q] = i
 		end
 	end
-	local lo, hi, best
-	for q in pairs(plainAt) do lo = math.min(lo or q, q) end
-	for q in pairs(plainAt) do hi = math.max(hi or q, q) end
-	for q in pairs(concAt) do hi = math.max(hi or q, q); lo = lo or q end
-	for q, i in pairs(plainAt) do
-		if not best or (result.rows[i].profit or 0) > (result.rows[plainAt[best]].profit or 0) then best = q end
+	-- Concentrate on or off, as the pick is; the toggle picks the best craft on the other side
+	local concMode = r ~= nil and r.concentration ~= nil
+	local slot = concMode and concAt or plainAt
+	local function bestOf(t)
+		local bq
+		for q, i in pairs(t) do
+			if not bq or (result.rows[i].profit or 0) > (result.rows[t[bq]].profit or 0) then bq = q end
+		end
+		return bq
 	end
+	local lo, hi
+	for q in pairs(plainAt) do lo = math.min(lo or q, q); hi = math.max(hi or q, q) end
+	for q in pairs(concAt) do hi = math.max(hi or q, q); lo = lo or q end
+	local best = bestOf(slot)
 	local qrows = {}
 	if hi and maxQ and maxQ > hi then
 		qrows[#qrows + 1] = { W.QualityIcon(maxQ, 13, maxQ) .. mut("  out of reach"), mut("-"),
@@ -1378,23 +1385,31 @@ function AUI.Card(n, scan)
 	end
 	local function rank(q, name)
 		if not q then return end
-		local pi, ci = plainAt[q], concAt[q]
-		local px, cx = pi and result.rows[pi], ci and result.rows[ci]
-		local label = W.QualityIcon(q, 13, maxQ) .. "  " .. name .. ((px and px.short or cx and cx.short) and T.Color("bad", "  too low") or "")
-		if px then
-			qrows[#qrows + 1] = line(pi, px, label)
+		local i = slot[q]
+		local x = i and result.rows[i]
+		local label = W.QualityIcon(q, 13, maxQ) .. "  " .. name .. (x and x.short and T.Color("bad", "  too low") or "")
+		if x then
+			local row = line(i, x, label)
+			if x.concentration then row[2] = T.Color("gold", W.ConcIcon(11) .. " " .. x.concentration) .. "  " .. row[2] end
+			qrows[#qrows + 1] = row
 		else
-			qrows[#qrows + 1] = { label, mut("-"), tip = { { "Rank " .. q }, { mut("Only Concentration reaches it: pick the Concentrate line under it.") } } }
-		end
-		if cx then
-			-- (with your own reagents: said on its hover)
-			qrows[#qrows + 1] = line(ci, cx, "    " .. W.ConcIcon(11) .. " " .. T.Color("gold", cx.concentration .. " Concentrate"))
+			qrows[#qrows + 1] = { label, mut(concMode and "not needed" or "Concentrate only"),
+				tip = { { "Rank " .. q }, { mut(concMode and "Concentration doesn't help here: turn Concentrate off to pick it."
+					or "Only Concentration reaches it: turn Concentrate on to pick it.") } } }
 		end
 	end
 	local tagBest = best and (best == hi or best == lo)
 	rank(hi, "Highest" .. ((tagBest and best == hi) and mut(" · Best") or ""))
 	if best and not tagBest then rank(best, "Best") end
 	if lo and lo ~= hi then rank(lo, "Lowest" .. ((tagBest and best == lo) and mut(" · Best") or "")) end
+	local other = concMode and plainAt or concAt
+	local ob = bestOf(other)
+	local toggle = next(concAt) ~= nil and {
+		on = concMode,
+		tip = { { "Concentrate" }, { mut(concMode and "On: each rank shows its Concentration craft. Click to see the plain crafts."
+			or "Off: each rank shows its plain craft. Click to see what Concentration does at each.") } },
+		run = ob and function() AUI.RowClick(other[ob]); if CH.ScanUI then CH.ScanUI.Refresh() end end or nil,
+	} or nil
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
 	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
 	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
@@ -1474,7 +1489,7 @@ function AUI.Card(n, scan)
 	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
-		section = { head = "QUALITY", rows = qrows },
+		section = { head = "QUALITY", rows = qrows, toggle = toggle },
 		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
 		actions = actions, live = true }
 end

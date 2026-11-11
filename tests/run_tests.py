@@ -781,9 +781,9 @@ check("Craft card: the open recipe's live card: profit, reagents, margin, and wh
       and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None for r in qr)
       and any(r.run is not None for r in qr))
 ql = [plain(r[1]) for r in qr]
-check("Craft card: Highest at the top, a Concentrate line under its rank, Lowest at the bottom, Best as a tag when it's one of them",
-      "Highest" in ql[0] and any("Concentrate" in l for l in ql) and "Lowest" in ql[-1] and sum("Best" in l for l in ql) == 1
-      and not any(l.strip().startswith("Best") for l in ql))
+check("Craft card: Highest at the top, Lowest at the bottom, Best on the craft that earns the most, Concentrate on for it",
+      "Highest" in ql[0] and "Best" in ql[0] and "Lowest" in ql[-1] and lc.section.toggle is not None and lc.section.toggle.on is True
+      and "\u25c6" not in ql[0] and plain(qr[-1][2]) == "not needed")
 check("Craft card: every row explains itself on hover, break-even first",
       all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
 check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
@@ -792,12 +792,20 @@ fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = 
 fr = {plain(r[1]): r for r in fl.rows.values()}
 check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
       fr.get("Gold a day") is not None and fr["Gold a day"].tip is not None and fr.get("Buy & relist") is not None)
-ci = next(i for i, l in enumerate(ql) if "Concentrate" in l)
-qr[ci].run()
+lc.section.toggle.run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
+ql2 = [plain(r[1]) for r in lc2.section.rows.values()]
 ons = [r for r in lc2.section.rows.values() if r.on]
-check("Craft card: clicking the Concentrate line picks it, and only that line is highlighted", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2])
-      and len(ons) == 1 and lc2.section.rows[ci + 1].on is True)
+check("Craft card: Concentrate off shows the plain crafts and picks the best of them",
+      lc2.section.toggle.on is False and not CH.AdvisorUI.SelectedRow().concentration and len(ons) == 1 and sum("Best" in l for l in ql2) == 1)
+qr2 = list(lc2.section.rows.values())
+qr2[-1].run()
+check("Craft card: clicking a rank picks it, and only that line is highlighted",
+      sum(1 for r in L.eval("AuctionIQ.ScanUI.lastPanel").section.rows.values() if r.on) == 1)
+lc2.section.toggle.run()
+lc3 = L.eval("AuctionIQ.ScanUI.lastPanel")
+check("Craft card: Concentrate back on picks the best Concentration craft", L.eval("AuctionIQ.ScanUI.lastPanel").section.toggle.on is True
+      and CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2]))
 run("AuctionIQ.ScanUI.SetQty(3)")
 lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))
