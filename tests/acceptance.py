@@ -247,6 +247,41 @@ end)()""")
 check("ledger: records TSM appends are parsed on their own into a new list, same as a full parse; a rewrite parses in full",
       inc.n1 == 2 and inc.n2 == 3 and inc.newList and inc.last == 303 and inc.q == 3 and inc.first == 301 and inc.rewritten)
 
+# Ledger: the background parse after login spreads the work over frames and gives the same records
+bg = L.eval("""(function()
+  local key = "r@" .. GetRealmName() .. "@internalData@csvSales"
+  local old = TradeSkillMasterDB
+  local t = { "itemString,stackSize,quantity,price,otherPlayer,player,time,source" }
+  for i = 1, 2500 do t[#t + 1] = "i:" .. (300 + i % 40) .. ",1," .. (1 + i % 3) .. "," .. (i * 10) .. ",B,Courtizy," .. (1000 + i) .. ",Auction" end
+  t[#t + 1] = "i:999,1,1,5,B,Courtizy,1" -- a short line still parses
+  local text = table.concat(t, "\\n")
+  TradeSkillMasterDB = { [key] = text }
+  AuctionIQ.Ledger.ClearStats()
+  local sync = AuctionIQ.Ledger.Records("Sales")
+  local ref = {}
+  for i, r in ipairs(sync) do ref[i] = r.id .. ":" .. r.quantity .. ":" .. r.time end
+  AuctionIQ.Ledger.ClearStats()
+  local frames, finished = 0, false
+  AuctionIQ.Ledger.Warm({ "Sales" }, function() finished = true end, 1000)
+  while not finished and frames < 50 do frames = frames + 1; STUB.RunTimers() end
+  local rows = AuctionIQ.Ledger.Records("Sales")
+  local same = #rows == #ref
+  for i, r in ipairs(rows) do if ref[i] ~= r.id .. ":" .. r.quantity .. ":" .. r.time then same = false end end
+  -- a caller that needs the records mid-parse finishes it then and there
+  AuctionIQ.Ledger.ClearStats()
+  AuctionIQ.Ledger.Warm({ "Sales" }, nil, 1000)
+  local mid = AuctionIQ.Ledger.Records("Sales")
+  STUB.RunTimers(); STUB.RunTimers(); STUB.RunTimers()
+  local after = AuctionIQ.Ledger.Records("Sales")
+  TradeSkillMasterDB = old
+  AuctionIQ.Ledger.ClearStats()
+  return { frames = frames, finished = finished, same = same, n = #rows, mid = #mid, stable = mid == after }
+end)()""")
+check("ledger: the login parse runs 1,000 lines a frame over several frames, with the same records as parsing at once",
+      bg.finished and bg.frames >= 2 and bg.same and bg.n == 2501)
+check("ledger: asking for the records mid-parse finishes the parse right away; the background parse then leaves it alone",
+      bg.mid == 2501 and bg.stable)
+
 # SavedVariables: older and incomplete data loads without errors
 sv = L.eval("""(function()
   local Q = AuctionIQ.Queue

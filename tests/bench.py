@@ -134,6 +134,11 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       local m0 = BENCH_MEM()
       local out = {{ bytes = #sales }}
       local t0 = os.clock(); AuctionIQ.Ledger.Records("Sales"); out.parseCold = (os.clock() - t0) * 1000
+      AuctionIQ.Ledger.ClearStats()
+      local worst, frames, fin = 0, 0, false
+      local t1 = os.clock(); AuctionIQ.Ledger.Warm({{ "Sales" }}, function() fin = true end); worst = (os.clock() - t1) * 1000; frames = 1
+      while not fin do t1 = os.clock(); STUB.RunTimers(); worst = math.max(worst, (os.clock() - t1) * 1000); frames = frames + 1 end
+      out.bgWorst, out.bgFrames = worst, frames
       t0 = os.clock(); AuctionIQ.Ledger.Records("Sales"); out.parseWarm = (os.clock() - t0) * 1000
       out.mem = BENCH_MEM() - m0
       t0 = os.clock(); AuctionIQ.Prices.RecentSales(now, true); out.recent = (os.clock() - t0) * 1000
@@ -151,6 +156,8 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     end)()""")
     size = f"{n} sales, 5 chars, {r.bytes // 1024} KB csv"
     rec("ledger", name, size, "parse cold", r.parseCold)
+    rec("ledger", name, size, "login background parse, worst frame", r.bgWorst)
+    rec("ledger", name, size, "login background parse, frames", r.bgFrames, "frames")
     rec("ledger", name, size, "parse warm (cached)", r.parseWarm)
     rec("ledger", name, size, "parsed records memory", r.mem, "MB")
     rec("ledger", name, size, "recent sales totals", r.recent)

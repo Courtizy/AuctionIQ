@@ -90,6 +90,70 @@ end
 --- Rows of the CSV under key, each built by build(field, col) where col maps a header name to its
 --- position: one pass over the text, nothing kept but what build returns.
 Lg.NONE = {}
+local work = {} -- [key] = a parse in progress: { text, rows, col, pos, nr, build, pat }
+
+-- Parses up to limit lines of a parse in progress (all of them when limit is nil), stopping early
+-- once budget milliseconds have gone. True when done.
+local function step(w, limit, budget)
+	local text, rows, build, col, pat = w.text, w.rows, w.build, w.col, w.pat
+	local find, sub, match = string.find, string.sub, string.match
+	local pos, nr, len, done = w.pos, w.nr, #text, 0
+	local f, n = {}, 0
+	local clock = budget and debugprofilestop
+	local stop = clock and clock() + budget
+	while pos <= len do
+		if limit and done >= limit then break end
+		if stop and done % 250 == 249 and clock() > stop then break end
+		local e = find(text, "\n", pos, true) or (len + 1)
+		if e > pos then
+			local line = sub(text, pos, e - 1)
+			-- the usual line has exactly the header's columns: one match pulls them all out at once
+			local g = pat and { match(line, pat) }
+			if g and g[1] then
+				nr = nr + 1; rows[nr] = build(g, col)
+			else
+				local k = 0
+				for v in string.gmatch(line .. ",", "([^,]*),") do k = k + 1; f[k] = v end
+				for i = k + 1, n do f[i] = nil end
+				n = k
+				if not col then
+					col = {}
+					for i = 1, k do col[f[i]] = i end
+					pat = "^" .. string.rep("([^,]*),", k - 1) .. "([^,]*)$"
+				else
+					nr = nr + 1; rows[nr] = build(f, col)
+				end
+			end
+			done = done + 1
+		end
+		pos = e + 1
+	end
+	w.pos, w.nr, w.col, w.pat = pos, nr, col, pat
+	return pos > len
+end
+
+local function begin(key, text, build)
+	local c = parsed[key]
+	local w = { text = text, rows = {}, build = build, pos = 1, nr = 0 }
+	-- TSM adds new records at the end: when the old text is the start of the new, only the added
+	-- lines are parsed (a new list, so callers caching by identity see the change)
+	if c and c.col and #text > #c.text and (text:sub(#c.text, #c.text) == "\n" or text:sub(#c.text + 1, #c.text + 1) == "\n")
+		and text:sub(1, #c.text) == c.text then
+		for i = 1, #c.rows do w.rows[i] = c.rows[i] end
+		w.col, w.pos, w.nr = c.col, #c.text + 1, #c.rows
+		w.pat = "^" .. string.rep("([^,]*),", #c.cols - 1) .. "([^,]*)$"
+	end
+	return w
+end
+
+local function finish(key, w)
+	local cols = {}
+	for name, i in pairs(w.col or {}) do cols[i] = name end
+	parsed[key] = { text = w.text, rows = w.rows, col = w.col, cols = cols }
+	work[key] = nil
+	return w.rows
+end
+
 local function csv(key, build)
 	local db = tsm()
 	local text = db and db[key]
@@ -97,31 +161,43 @@ local function csv(key, build)
 	if type(text) ~= "string" then return Lg.NONE end
 	local c = parsed[key]
 	if c and c.text == text then return c.rows end
-	local rows, col = {}, nil
-	local body = text
-	-- TSM adds new records at the end: when the old text is the start of the new, only the added
-	-- lines are parsed (a new list, so callers caching by identity see the change)
-	if c and c.col and #text > #c.text and (text:sub(#c.text, #c.text) == "\n" or text:sub(#c.text + 1, #c.text + 1) == "\n")
-		and text:sub(1, #c.text) == c.text then
-		for i = 1, #c.rows do rows[i] = c.rows[i] end
-		col, body = c.col, text:sub(#c.text + 1)
-	end
-	local f, n = {}, 0 -- one scratch table for every line: parsing makes no garbage per row
-	for line in string.gmatch(body, "[^\n]+") do
-		local k = 0
-		for v in string.gmatch(line .. ",", "([^,]*),") do k = k + 1; f[k] = v end
-		for i = k + 1, n do f[i] = nil end
-		n = k
-		if not col then
-			col = {}
-			for i = 1, k do col[f[i]] = i end
-		else
-			rows[#rows + 1] = build(f, col)
-		end
-	end
-	parsed[key] = { text = text, rows = rows, col = col }
-	return rows
+	-- a background parse of this same text is under way: finish it here
+	local w = work[key]
+	if not (w and w.text == text and w.build == build) then w = begin(key, text, build) end
+	step(w)
+	return finish(key, w)
 end
+
+--- Parses TSM's records a few thousand lines a frame, so the first window or report after login
+--- doesn't stall the game; then calls done. Anything that needs the records sooner finishes the
+--- parse itself.
+function Lg.Warm(kinds, done, perFrame)
+	local budget = not perFrame and 6 or nil -- milliseconds a frame, when no line count is given
+	perFrame = perFrame or 20000
+	local keys = {}
+	local i = 1
+	local function tick()
+		local db = tsm()
+		while i <= #kinds do
+			local kind = kinds[i]
+			local key = kind == "goldLog" and nil or ("r@" .. realm() .. "@internalData@csv" .. kind)
+			local text = key and db and db[key]
+			local c = key and parsed[key]
+			if type(text) ~= "string" or (c and c.text == text) then
+				i = i + 1
+			else
+				local w = work[key]
+				if not (w and w.text == text) then w = begin(key, text, Lg.Build); work[key] = w end
+				if step(w, perFrame, budget) then finish(key, w); i = i + 1 end
+				C_Timer.After(0, tick)
+				return
+			end
+		end
+		if done then done() end
+	end
+	tick()
+end
+Lg.KINDS = { "Sales", "Buys", "Income", "Expense", "Expired", "Cancelled" }
 
 -- A record: { time, player, other, item, id, quantity, price, amount, source } by position.
 local REC = { time = 1, player = 2, other = 3, item = 4, id = 5, quantity = 6, price = 7, amount = 8, source = 9 }
@@ -146,6 +222,7 @@ local function logEntry(f, col) return setmetatable({ num(f[col.minute]) * 60, n
 function Lg.Records(kind)
 	return csv("r@" .. realm() .. "@internalData@csv" .. kind, record)
 end
+Lg.Build = record
 
 --- The gold a sale put in your bags: an auction sale after the AH cut, a vendor or trade sale as is.
 function Lg.Net(s)
@@ -582,7 +659,7 @@ local function itemStats()
 	end
 	return stats
 end
-function Lg.ClearStats() stats = nil; parsed = {} end
+function Lg.ClearStats() stats = nil; parsed = {}; work = {} end
 
 --- How many times an item expired since it last sold (TSM's numexpires).
 function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
@@ -781,6 +858,10 @@ end
 
 CH.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
-		if Lg.Available() then CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end
+		if not Lg.Available() then return end
+		-- parse in the background first, so the archive and the first report find it ready
+		Lg.Warm(Lg.KINDS, function()
+			CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot)
+		end)
 	end)
 end)
