@@ -331,8 +331,9 @@ function QUI.BudgetLines(b)
 	local function line(x, fmt, unitFmt)
 		if x.need <= 0 then return T.Color("muted", "none needed") end
 		local short = math.max(0, x.need - x.have)
-		return string.format("%s of %s on hand", unitFmt(math.min(x.have, x.need)), unitFmt(x.need))
-			.. (short > 0 and T.Color("bad", ", " .. unitFmt(short) .. " short") or T.Color("ok", ", covered"))
+		-- one short line: what's still needed, or that it's covered (the bar shows the share)
+		return short > 0 and T.Color("bad", unitFmt(short) .. " short") .. T.Color("muted", " of " .. unitFmt(x.need))
+			or T.Color("ok", unitFmt(x.need) .. " covered")
 	end
 	out[1] = line(b.gold, nil, M)
 	out[2] = line(b.reagents, nil, M)
@@ -397,6 +398,7 @@ function QUI.RenderBudget()
 end
 
 function QUI.Show()
+	if CH.Window.ResetQueueSpot then CH.Window.ResetQueueSpot() end
 	if not panel then build() end
 	updatePop()
 	panel:Show()

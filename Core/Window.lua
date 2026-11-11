@@ -401,8 +401,13 @@ function W.Arrange()
 		if p then
 			q:SetPoint(p[1], UIParent, p[3], p[4], p[5])
 		elseif f and f:IsShown() then
-			-- beside the Craft window: the two windows side by side
-			q:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+			-- beside the Craft window, the two side by side; under it when the screen has no room
+			local right, sw, qw = f.GetRight and f:GetRight(), UIParent.GetWidth and UIParent:GetWidth(), q.GetWidth and q:GetWidth()
+			if type(right) == "number" and type(sw) == "number" and type(qw) == "number" and right + 4 + qw > sw then
+				q:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -4)
+			else
+				q:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+			end
 		else
 			q:SetPoint("CENTER", 0, 80)
 		end
@@ -459,6 +464,12 @@ function W.CloseTabs()
 end
 
 --- Pop the queue out of the tabs, or put it back.
+--- Once: forget where the popped-out queue was dragged, so it opens beside the Craft window.
+function W.ResetQueueSpot()
+	local s = ws()
+	if s and not s.queueBeside then s.queueBeside = true; s.queuePoint = nil end
+end
+
 function W.ToggleQueuePop()
 	local s = ws()
 	s.popQueue = not s.popQueue
