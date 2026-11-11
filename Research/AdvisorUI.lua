@@ -1227,10 +1227,24 @@ function AUI.Compute(recipeID)
 		local c = gearCache[key]
 		if c and c.gen == gearGen and time() - c.at < AUI.GEAR_AGE then
 			gearPick = c.pick or nil
-		else
-			local ok, g = M("advisor: gear", pcall, CH.Gear.Best, model, mode, nil, live.finishingPicks)
-			if ok then gearPick = g end
-			gearCache[key] = { gen = gearGen, at = time(), pick = gearPick or false }
+		elseif not (c and c.pending) then
+			-- trying every set can take a while on a big recipe: do it in the background, a few
+			-- milliseconds a frame, and show the answer when it's in
+			local fin, gen, t0 = live.finishingPicks, gearGen, debugprofilestop and debugprofilestop()
+			gearCache[key] = { pending = true, gen = gen, at = time() }
+			CH.Scan.Background(function() return CH.Gear.Best(model, mode, nil, fin) end, function(ok, g)
+				if t0 and CH.MeasureAdd then CH.MeasureAdd("advisor: gear (background, wall time)", debugprofilestop() - t0) end
+				if gen ~= gearGen then return end
+				gearCache[key] = { gen = gen, at = time(), pick = ok and g or false }
+				if current == recipeID and not order then
+					gearPick = ok and g or nil
+					if shown and shown.recipeID == recipeID then
+						AUI.Render(shown)
+						if CH.ScanUI and CH.ScanUI.IsShown and CH.ScanUI.IsShown() then CH.ScanUI.Refresh() end
+					end
+				end
+			end)
+			if gearCache[key] and not gearCache[key].pending then gearPick = gearCache[key].pick or nil end
 		end
 	end
 	return result

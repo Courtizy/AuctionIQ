@@ -131,8 +131,11 @@ function G.Best(model, mode, c, finishing)
 	local best, bestScore, bestResult = nil, baseScore, base
 	for _, set in ipairs(sets) do
 		if not isWorn(set) then
+			if CH.Scan and CH.Scan.Yield then CH.Scan.Yield() end -- in the background: a set at a time
 			local delta = CH.Stats.Diff(sum(setItems(set)), now)
+			local t0 = debugprofilestop and debugprofilestop()
 			local r = CH.Advisor.Evaluate(model, { sim = delta, finishing = finishing })
+			if t0 and CH.MeasureAdd then CH.MeasureAdd("advisor: gear, one set", debugprofilestop() - t0) end
 			local s = score(r)
 			if s and s > bestScore + 1 then best, bestScore, bestResult = set, s, r end
 		end

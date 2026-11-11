@@ -249,14 +249,39 @@ end
 
 -- The recipe being worked out, as a coroutine, and when this frame's share of work began.
 local work, frameStart
+local bg -- the background job (Sc.Background), if one is running
 local clock = debugprofilestop
 
 --- Called from inside the advisor's longer loops: when the scan has used this frame's budget, pause
 --- the recipe there and carry on next frame. Does nothing outside a scan.
 function Sc.Yield()
-	if work and clock and coroutine.running() == work and clock() - frameStart >= BUDGET_MS then
+	local co = coroutine.running()
+	if co and clock and ((work and co == work) or (bg and co == bg.co)) and clock() - frameStart >= BUDGET_MS then
 		coroutine.yield()
 	end
+end
+
+--- Run fn() in the background, a few milliseconds a frame (pausing wherever the advisor calls
+--- Sc.Yield), then onDone(ok, result). One job at a time: a new one replaces the one running.
+--- Without timers (tests) it runs at once.
+function Sc.Background(fn, onDone)
+	if not (C_Timer and clock) then
+		local ok, r = pcall(fn)
+		if onDone then onDone(ok, r) end
+		return
+	end
+	local job = { co = coroutine.create(fn), onDone = onDone }
+	bg = job
+	local function step()
+		if bg ~= job then return end -- replaced
+		if work then return C_Timer.After(0, step) end -- the scan has the frame
+		frameStart = clock()
+		local ok, r = coroutine.resume(job.co)
+		if coroutine.status(job.co) ~= "dead" then return C_Timer.After(0, step) end
+		bg = nil
+		if job.onDone then job.onDone(ok, r) end
+	end
+	C_Timer.After(0, step)
 end
 
 --- Stop a scan that's running; what it has found so far isn't saved.
