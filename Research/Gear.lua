@@ -116,18 +116,58 @@ end
 
 --- Best set for a recipe model. mode "conc" ranks by gold per Concentration point, else by profit.
 --- Returns { set, gain, result, current } or nil when there's nothing to compare.
+-- Items with the same stats are the same choice: keep one (the worn one when one is worn).
+local function statKey(it)
+	local st, parts = it.stats or {}, {}
+	for _, k in ipairs({ "skill", "multicraft", "resourcefulness", "ingenuity", "speed" }) do parts[#parts + 1] = tostring(st[k] or 0) end
+	return it.itemID .. ":" .. table.concat(parts, ",")
+end
+local function dedupe(list)
+	local seen, out = {}, {}
+	for _, it in ipairs(list) do if it.worn then seen[statKey(it)] = true; out[#out + 1] = it end end
+	for _, it in ipairs(list) do
+		local k = statKey(it)
+		if not it.worn and not seen[k] then seen[k] = true; out[#out + 1] = it end
+	end
+	return out
+end
+
+-- With a bag full of profession gear every pairing runs to hundreds of sets (900 for one recipe,
+-- 16 ms each). Rank each item alone first (what its stats add to what you wear, for this recipe),
+-- then pair only the best few: the worn ones always stay in.
+G.KEEP_TOOLS, G.KEEP_GEAR, G.FULL_UP_TO = 3, 5, 30
+local function shortlist(c, model, finishing, score, baseScore)
+	local function rank(list, keep)
+		if #list <= keep then return list end
+		local scored = {}
+		for _, it in ipairs(list) do
+			if CH.Scan and CH.Scan.Yield then CH.Scan.Yield() end
+			local r = it.worn and baseScore or score(CH.Advisor.Evaluate(model, { sim = it.stats or CH.Stats.New(), finishing = finishing }))
+			scored[#scored + 1] = { it = it, s = it.worn and math.huge or (r or -math.huge) }
+		end
+		table.sort(scored, function(a, b) return a.s > b.s end)
+		local out = {}
+		for i = 1, math.min(keep, #scored) do out[i] = scored[i].it end
+		for i = keep + 1, #scored do if scored[i].it.worn then out[#out + 1] = scored[i].it end end
+		return out
+	end
+	return { tools = rank(c.tools, G.KEEP_TOOLS), gear = rank(c.gear, G.KEEP_GEAR), slots = c.slots }
+end
+
 function G.Best(model, mode, c, finishing)
 	c = c or G.Candidates()
-	local sets = G.Sets(c)
-	if #sets <= 1 then return nil end
-	local now = sum(worn(c))
+	c = { tools = dedupe(c.tools), gear = dedupe(c.gear), slots = c.slots }
 	local function score(r)
 		if mode == "conc" then return r.bestConc and r.bestConc.perPoint end
 		return r.best and r.best.profit
 	end
+	if #G.Sets(c) <= 1 then return nil end
+	local now = sum(worn(c))
 	local base = CH.Advisor.Evaluate(model, { sim = CH.Stats.New(), finishing = finishing })
 	local baseScore = score(base)
 	if not baseScore then return nil end
+	if #G.Sets(c) > G.FULL_UP_TO then c = shortlist(c, model, finishing, score, baseScore) end
+	local sets = G.Sets(c)
 	local best, bestScore, bestResult = nil, baseScore, base
 	for _, set in ipairs(sets) do
 		if not isWorn(set) then

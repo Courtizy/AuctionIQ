@@ -457,6 +457,20 @@ c = CH.Gear.Candidates()
 check("gear: worn and bag items found", len(list(c.tools.values())) == 2 and len(list(c.gear.values())) == 2)
 g = CH.Gear.Best(m10, None, c)
 check("gear: the better tool wins for the flask", g.set is not None and g.gain > 0 and "404" in CH.Gear.SwapText(g.set))
+# a bag full of gear: the best few are paired, not every pair (900 sets froze the game)
+gb = L.eval("""(function(m, c)
+  local big = { tools = {}, gear = {}, slots = c.slots }
+  for _, t in ipairs(c.tools) do table.insert(big.tools, t) end
+  for _, g in ipairs(c.gear) do table.insert(big.gear, g) end
+  for k = 1, 6 do table.insert(big.tools, { link = 'item:' .. (700 + k), itemID = 700 + k, stats = AuctionIQ.Stats.New(), bag = 1, bagSlot = k }) end
+  for k = 1, 24 do table.insert(big.gear, { link = 'item:' .. (800 + k), itemID = 800 + k, stats = AuctionIQ.Stats.New(), bag = 2, bagSlot = k }) end
+  local n, f = 0, AuctionIQ.Advisor.Evaluate
+  AuctionIQ.Advisor.Evaluate = function(...) n = n + 1; return f(...) end
+  local g = AuctionIQ.Gear.Best(m, nil, big)
+  AuctionIQ.Advisor.Evaluate = f
+  return { n = n, text = g and g.set and AuctionIQ.Gear.SwapText(g.set) or "" }
+end)""")(m10, c)
+check("gear: a bag full of gear tries a short list, and the better tool still wins", gb.n <= 80 and "404" in gb.text)
 CH.Gear.Equip(g.set, c)
 check("gear: equip puts the bag tool in the tool slot", L.eval("STUB.equipped[20]") == "item:404")
 
