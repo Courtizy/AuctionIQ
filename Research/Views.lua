@@ -778,11 +778,13 @@ local lastRefresh = 0
 AV.VIEWS.scenarios.action = {
 	label = function()
 		local all = CH.Scan.all
-		if all and all.waiting then return "Open " .. (all.waiting.name or "next") end
+		if all and all.waiting then return "Open" end -- the status line names which: "Open Enchanting" overflowed the button
 		return all and "Stop" or "Scan"
 	end,
 	status = function() return CH.Scan.AllStatus and CH.Scan.AllStatus() end,
 	tip = function()
+		local w = CH.Scan.all and CH.Scan.all.waiting
+		if w then return { { "Open " .. (w.name or "the next profession") }, { CH.Theme.Color("muted", "Opens it and scans it, then goes on to the next.") } } end
 		local names = {}
 		for _, p in ipairs(CH.Scan.MyProfessions()) do table.insert(names, p.name) end
 		return { { CH.Scan.all and "Stop scanning" or "Scan my professions" },

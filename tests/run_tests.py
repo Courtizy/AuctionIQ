@@ -169,8 +169,8 @@ waits = 0
 for _ in range(400):
     if CH.Scan.all is None: break
     if CH.Scan.all.waiting is not None:
-        # the game only lets a click open a profession: the button reads Open <name> and waits for one
-        if L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()').startswith("Open "): waits += 1
+        # the game only lets a click open a profession: the button reads Open (the status line names it) and waits for one
+        if L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()') == "Open" and "to scan" in (L.eval("AuctionIQ.Scan.AllStatus()") or ""): waits += 1
         run('AuctionIQ.LedgerUI.ViewDef("scenarios").action.click()')
     run('STUB.RunTimers()')
 check("scan all: each profession after the first waits for a click to open it (the game blocks it otherwise)", waits >= 1)
@@ -282,6 +282,7 @@ ec = L.eval("""(function()
   ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
   ui.GetRecipeOutputItemData = function() return { hyperlink = "|cffffffff|Henchant:1234|h[Enchant]|h|r" } end
   STUB.craftingDataID = 3837
+  STUB.prices["i:244030"] = { formula_value = 500 * 10000, sold = 5 }; STUB.prices["i:244031"] = { formula_value = 900 * 10000, sold = 5 }
   local res = AuctionIQ.Advisor.Analyze(10, { professionID = AuctionIQ.OpenProfessionID() })
   STUB.craftingDataID = nil
   ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
@@ -289,7 +290,95 @@ ec = L.eval("""(function()
   return { o[1], o[2], #o }
 end)()""")
 check("enchant: the scroll per quality comes from the enchant table by craftingDataID, as CraftSim does (the game's output is an enchant link)", ec[1] == 244030 and ec[2] == 244031 and ec[3] == 2)
+e5 = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local old = ui.GetRecipeOutputItemData
+  ui.GetRecipeOutputItemData = function(id, reagents, guid, q) if q == 2 then return { itemID = 102 } end end
+  local out = AuctionIQ.Advisor.ScrollOutputs(10, { maxQuality = 2 })
+  ui.GetRecipeOutputItemData = old
+  return { out[1], out[2], #out }
+end)()""")
+e5b = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldInfo, oldSch, oldOut = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData
+  ui.GetRecipeInfo = function(id) local i = oldInfo(id); if id == 10 and i then local c = {}; for k, v in pairs(i) do c[k] = v end
+    c.qualityItemIDs = nil; c.isEnchantingRecipe = true; c.maxQuality = 2; return c end; return i end
+  ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
+  ui.GetRecipeOutputItemData = function(id, reagents, guid, q) if q == 2 then return { itemID = 101 } end end
+  local ok, res = pcall(AuctionIQ.Advisor.Analyze, 10, { professionID = AuctionIQ.OpenProfessionID() })
+  ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
+  return { ok = ok, err = not ok and tostring(res) or nil }
+end)()""")
+print(e5b.err or ""); check("enchant: analysing a recipe whose rank 1 scroll is unknown doesn't error", e5b.ok)
+check("enchant: with no table entry, a rank-2 scroll the game names is kept when rank 1 is missing (rank 1 left unpriced)", e5[1] is False and e5[2] == 102 and e5[3] == 2)
 check("enchant: each quality's scroll comes from the game's output data", en.q1 == 9101 and en.q2 == 9102)
+qb = L.eval("""(function()
+  local ui, Q = C_TradeSkillUI, AuctionIQ.Queue
+  local oldCR, oldCount = ui.CraftRecipe, C_Item.GetItemCount
+  local r, calls = {}, 0
+  ui.CraftRecipe = function() calls = calls + 1 end
+  Q.Clear(); wipe(Q.inflight)
+  -- AIQ-01: a batch with none of a required reagent is stopped, named, before the game is asked
+  local stock = { [201] = 0, [202] = 7 }
+  C_Item.GetItemCount = function(id) return stock[id] or 0 end
+  local e1 = Q.AddEntry({ char = AuctionIQ.CharacterKey(), recipeID = 11, name = 'Mix A', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = { { itemID = 201, n = 2 }, { itemID = 202, n = 3 } } }, 2)
+  local ok, why = Q.Craft(e1, 2)
+  r.blocked, r.why, r.calls0 = not ok, why, calls
+  -- partial: enough for 2 of 3 says so
+  stock[201] = 4; stock[202] = 7
+  ok, why = Q.Craft(e1, 3)
+  r.partialWhy = why
+  -- AIQ-02: two mixes of one recipe sent back to back; the first success debits the first one
+  stock[201], stock[202] = 99, 99
+  local e2 = Q.AddEntry({ char = AuctionIQ.CharacterKey(), recipeID = 11, name = 'Mix B', reagents = { { itemID = 202, slot = 1, n = 2 } }, shop = { { itemID = 202, n = 2 } } }, 2)
+  r.sent1 = Q.Craft(e1, 1)
+  r.repeatBlocked = not Q.Craft(e1, 1)  -- a fast second press of the same entry
+  r.sent2, r.why2 = Q.Craft(e2, 1)
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+  r.q1, r.q2 = e1.qty, e2.qty
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+  r.q1b, r.q2b = e1.qty, e2.qty
+  -- a duplicate late success with nothing in flight changes nothing
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+  r.q1c, r.q2c = e1.qty, e2.qty
+  -- AIQ-07: a saved step stamped after the current clock (client restarted) has lapsed
+  local e3 = { pending = "craft", pendingAt = (GetTime and GetTime() or time()) + 5000 }
+  r.stale = Q.Pending(e3)
+  Q.Clear(); wipe(Q.inflight)
+  ui.CraftRecipe, C_Item.GetItemCount = oldCR, oldCount
+  return r
+end)()""")
+check("queue: Craft with none of a required reagent stops before the game, naming it (AIQ-01)", qb.blocked and qb.calls0 == 0 and "need 4" in qb.why and "have 0" in qb.why)
+check("queue: short for the whole batch, Craft says how many you can make now", "can make 2 now" in (qb.partialWhy or ""))
+check("queue: two mixes of one recipe sent back to back each lose only their own craft (AIQ-02)",
+      qb.sent1 and qb.sent2 and qb.q1 == 1 and qb.q2 == 2 and qb.q2b == 1)
+check("queue: a fast second press of the same entry isn't sent again, and a late duplicate success debits nothing",
+      qb.repeatBlocked and qb.q1c == qb.q1b and qb.q2c == qb.q2b)
+check("queue: a saved pending step from a previous session (clock reset) has lapsed (AIQ-07)", qb.stale is None)
+ev = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldInfo, oldSch, oldOut = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData
+  ui.GetRecipeInfo = function(id) local i = oldInfo(id); if id == 10 and i then local c = {}; for k, v in pairs(i) do c[k] = v end
+    c.qualityItemIDs = nil; c.isEnchantingRecipe = true; return c end; return i end
+  ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
+  STUB.craftingDataID = 3837
+  STUB.prices["i:244030"] = { formula_value = 500 * 10000, sold = 5 }; STUB.prices["i:244031"] = { formula_value = 900 * 10000, sold = 5 }
+  local res = AuctionIQ.Advisor.Analyze(10, { professionID = AuctionIQ.OpenProfessionID() })
+  STUB.craftingDataID = nil
+  ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
+  if not (res and res.best) then return { err = tostring(res and res.model and res.model.unpriced) } end
+  local e = AuctionIQ.Queue.FromRow(res, res.best)
+  local v, sent = 0, false
+  for _, s in ipairs(e.shop) do if s.itemID == 38682 then v = v + s.n end end
+  for _, r in ipairs(e.reagents) do if r.itemID == 38682 then sent = true end end
+  e.qty = 3
+  local list = AuctionIQ.Queue.ShoppingList({ e })
+  local need = 0
+  for _, x in ipairs(list) do if x.itemID == 38682 then need = x.need end end
+  return { v = v, sent = sent, need = need }
+end)()""")
+check("enchant: each scroll's shopping list and cost include one Enchanting Vellum, which isn't sent as a reagent (AIQ-04)",
+      ev.v == 1 and not ev.sent and ev.need == 3)
 check("enchant: the queue crafts it onto Enchanting Vellum (CraftEnchant), not CraftRecipe",
       en.enchant is not None and en.enchant.id == 10 and en.enchant.bag == 1 and en.enchant.slot == 3 and en.recipe is None)
 run('AuctionIQ.Queue.Clear()')
@@ -608,6 +697,31 @@ debugprofilestop = nil""")
 after = sorted((r.name, r.profit) for r in CH.Scan.Results(2906).rows.values())
 check("scan: a slow frame pauses part-way through a recipe and the results come out the same",
       not CH.Scan.IsRunning() and after == before and L.eval("STUB.scanSteps") > len(before))
+sf = L.eval("""(function()
+  local A = AuctionIQ.Advisor
+  local oldM, oldK = A.Measure, AuctionIQ.AdvisorUI.KNOWN_AGE
+  local out = {}
+  -- one recipe errors: it keeps its last row, the others are rescanned, and the scan says so
+  A.Measure = function(id, ...) if AuctionIQ.Scan.Results(2906) and id == 11 then error("boom") end return oldM(id, ...) end
+  AuctionIQ.Scan.Run(nil, function(rows, why, report) out.why1, out.failed1 = why, report and report.failed end)
+  for i = 1, 40 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end
+  local names = {}
+  for _, r in ipairs(AuctionIQ.Scan.Results(2906).rows) do names[r.name] = r.stale and "stale" or "fresh" end
+  out.potion, out.flask = names["Test Potion"], names["Test Flask"]
+  -- every recipe errors: nothing is saved over the last scan, and the callback says it failed
+  local before = #AuctionIQ.Scan.Results(2906).rows
+  A.Measure = function() error("boom") end
+  AuctionIQ.Scan.Run(nil, function(rows, why) out.why2 = why end)
+  for i = 1, 40 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end
+  out.kept = #AuctionIQ.Scan.Results(2906).rows == before
+  A.Measure = oldM
+  return out
+end)()""")
+check("scan: a recipe that errors keeps its last row (marked stale), the rest rescan, and the scan reports it",
+      sf.why1 is None and sf.failed1 == 1 and sf.potion == "stale" and sf.flask == "fresh")
+check("scan: when every recipe errors the last good scan is kept and the callback names the failure",
+      sf.kept and sf.why2 is not None and "boom" in sf.why2)
+run("""AuctionIQ.Scan.Run(); for i = 1, 40 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end""")
 run("""AuctionIQ.Scan.Run(); AuctionIQ.Scan.Stop(); for i = 1, 20 do STUB.RunTimers() end""")
 check("scan: Stop ends a running scan", not CH.Scan.IsRunning())
 # a craft makes its base 2 plus Multicraft's average extra, as the profit per craft counts them
@@ -847,6 +961,21 @@ AuctionIQ.Ledger.Records = function() return { { id = AuctionIQ.db.batchForecast
 cal = L.eval("AuctionIQ.Decide.Calibration()")
 run("AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records = STUB.oldLA, STUB.oldLR")
 check("batch forecast: a week on, checked against what the item really sold for", cal is not None and cal.checked == 1 and cal.under + cal.over == 1)
+ov = L.eval("""(function()
+  local oldLA, oldLR, oldNet = AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Net
+  AuctionIQ.Ledger.Available = function() return true end
+  local t = time()
+  AuctionIQ.db.batchForecasts = { { at = t - 10 * 86400, item = 777, p10 = 50, p50 = 90, p90 = 150 },
+                                  { at = t - 9 * 86400, item = 777, p10 = 50, p50 = 90, p90 = 150 } }
+  AuctionIQ.Ledger.Records = function() return { { id = 777, time = t - 8 * 86400, quantity = 1, price = 100 } } end
+  AuctionIQ.Ledger.Net = function(s) return s.price end
+  local c = AuctionIQ.Decide.Calibration(t)
+  AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Net = oldLA, oldLR, oldNet
+  AuctionIQ.db.batchForecasts = nil
+  return c
+end)()""")
+check("batch forecast: one sale in two overlapping forecasts' windows counts once, toward the newer (AIQ-08)",
+      ov.checked == 2 and ov.inside == 1 and ov.under == 1)
 run("AuctionIQ.db.batchForecasts = nil")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.SetQty(1)')
 run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [1] = { name = 'Alchemy', conc = 500, concMax = 1000, concAt = time(),
@@ -918,10 +1047,12 @@ run("AuctionIQ.ScanUI.SetQty(3)")
 lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))
 check("Craft card: Craft first, then Queue, then Details", [plain(a.label).split(" ")[0] for a in lp3.actions.values()][:3] == ["Craft", "Queue", "Details"])
-cn = L.eval("""(function() local old = C_TradeSkillUI.CraftRecipe; local got
+cn = L.eval("""(function() local old, oldCount = C_TradeSkillUI.CraftRecipe, C_Item.GetItemCount; local got
   C_TradeSkillUI.CraftRecipe = function(id, n, reagents, _, _, conc) got = { id = id, n = n, conc = conc, k = #reagents } end
+  C_Item.GetItemCount = function() return 999 end -- every reagent on hand: Craft checks first now
   local res = AuctionIQ.AdvisorUI.Current(); local ok, why = AuctionIQ.Queue.CraftNow(res, res.rows[2], 2)
-  C_TradeSkillUI.CraftRecipe = old; return { ok = ok, why = why, got = got, q = AuctionIQ.Queue.Count() } end)()""")
+  wipe(AuctionIQ.Queue.inflight)
+  C_TradeSkillUI.CraftRecipe, C_Item.GetItemCount = old, oldCount; return { ok = ok, why = why, got = got, q = AuctionIQ.Queue.Count() } end)()""")
 check("Craft card: Craft crafts the picked rank now, with its reagents and Concentration, without queueing it",
       cn.ok and cn.got.id == 10 and cn.got.n == 2 and cn.got.conc == (L.eval("AuctionIQ.AdvisorUI.Current().rows[2].concentration ~= nil")) and cn.got.k > 0)
 run('STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)')
@@ -2288,6 +2419,14 @@ rp = L.eval("""(function()
   return { ok = ok, conc = e.concentration, n = #e.reagents }
 end)()""")
 check("orders: Craft works the order out again from the live order (a stale plan's Concentration is dropped)", rp.ok and rp.conc is None and rp.n > 0)
+rp2 = L.eval("""(function()
+  local e = { orderID = '77', recipeID = 10, reagents = {}, cost = 1, profit = 1, shop = { { itemID = 999, n = 9 } } }
+  local ok = AuctionIQ.Queue.Replan(e)
+  local stale = false
+  for _, s in ipairs(e.shop) do if s.itemID == 999 then stale = true end end
+  return { ok = ok, stale = stale, cost = e.cost, n = #e.shop }
+end)()""")
+check("orders: replanning replaces the cost and shopping list too, not only the reagents (AIQ-06)", rp2.ok and not rp2.stale and rp2.cost != 1 and rp2.n > 0)
 check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
 run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
 check("orders: while the craft is casting, the button reads Crafting... and won't press again",

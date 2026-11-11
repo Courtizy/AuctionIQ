@@ -798,13 +798,27 @@ function D.Calibration(now)
 			l[#l + 1] = s
 		end
 	end
+	-- each sale counts once: toward the newest forecast for its item whose window it falls in, so
+	-- two overlapping batches of one item never both claim the same sale
+	local span = D.HORIZON * 86400
+	local fsByItem, got = {}, {}
 	for _, f in ipairs(forecasts()) do
-		local to = f.at + D.HORIZON * 86400
-		if to <= now then
-			local got = 0
-			for _, s in ipairs(byItem[f.item] or {}) do
-				if s.time >= f.at and s.time < to then got = got + CH.Ledger.Net(s) end
+		if f.item then fsByItem[f.item] = fsByItem[f.item] or {}; table.insert(fsByItem[f.item], f) end
+	end
+	for id, fs in pairs(fsByItem) do
+		table.sort(fs, function(a, b) return a.at < b.at end)
+		for _, s in ipairs(byItem[id] or {}) do
+			local t = s.time
+			for k = #fs, 1, -1 do
+				local f = fs[k]
+				if f.at <= t and t < f.at + span then got[f] = (got[f] or 0) + CH.Ledger.Net(s); break end
 			end
+		end
+	end
+	for _, f in ipairs(forecasts()) do
+		local to = f.at + span
+		if to <= now then
+			local got = got[f] or 0
 			out.checked = out.checked + 1
 			if got >= (f.p10 or 0) and got <= (f.p90 or math.huge) then out.inside = out.inside + 1 end
 			if got < (f.p50 or 0) then out.under = out.under + 1 else out.over = out.over + 1 end

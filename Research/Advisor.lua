@@ -108,6 +108,8 @@ end
 
 --- The scroll item each quality of an enchant makes: { [quality] = itemID }, or {} when the game
 --- doesn't say. Tries the recipe's quality IDs (what the game's own page passes), then plain ranks.
+A.VELLUM = 38682 -- Enchanting Vellum
+
 function A.ScrollOutputs(recipeID, info)
 	local ui = C_TradeSkillUI
 	local out = {}
@@ -130,11 +132,19 @@ function A.ScrollOutputs(recipeID, info)
 	if type(ids) == "table" and #ids > 0 then
 		for q, qid in ipairs(ids) do out[q] = ask(qid) end
 	end
-	if not out[1] then
-		local n = info and info.maxQuality or 1
-		for q = 1, math.max(1, n) do out[q] = ask(q) end
+	local n = math.max(1, info and info.maxQuality or 1, type(ids) == "table" and #ids or 0)
+	local found = 0
+	for q = 1, n do if out[q] then found = found + 1 end end
+	if found == 0 then
+		for q = 1, n do out[q] = ask(q); if out[q] then found = found + 1 end end
 	end
-	if not out[1] then out = {} end
+	if found == 0 then return {} end
+	-- a rank the game didn't name stays in its place as false (unpriced, shown as such), so a known
+	-- rank 2 is kept even when rank 1 is missing
+	local last = 0
+	for q = 1, n do if out[q] then last = q end end
+	for q = 1, last do if not out[q] then out[q] = false end end
+	for q = last + 1, n do out[q] = nil end
 	-- one ID for every quality is no quality split at all
 	if #out > 1 then
 		local same = true
@@ -295,7 +305,12 @@ function A.Measure(recipeID, opts)
 	-- makes for the AH is the scroll on Enchanting Vellum. Ask the game what each quality's scroll is.
 	if info.isEnchantingRecipe or (#outputs == 0 and not schematic.outputItemID) then
 		local scrolls = A.ScrollOutputs(recipeID, info)
-		if #scrolls > 0 then outputs = scrolls end
+		if #scrolls > 0 then
+			outputs = scrolls
+			-- each scroll is cast onto one Enchanting Vellum: it costs like a reagent and goes on the
+			-- shopping list, though the game takes it as the craft's target, not in a reagent slot
+			if info.isEnchantingRecipe and not order then table.insert(fixed, { qty = 1, items = { A.VELLUM }, vellum = true }) end
+		end
 	end
 	-- Gear (rods, tools, armour) keeps one item ID for every quality: the quality is its item level,
 	-- so each quality is priced by the item at that level (TSM's "i:ID::iLEVEL").

@@ -1494,9 +1494,12 @@ function SUI.Start()
 	mode = "recipes"
 	local ok = CH.Scan.Run(function(done, total)
 		status:SetText(CH.Theme.Color("accent", string.format("Scanning %d / %d ...", done, total)))
-	end, function(_, why)
+	end, function(_, why, report)
 		SUI.Refresh()
-		if why then status:SetText(CH.Theme.Color("muted", "Scan " .. why .. ". Scan again for this one.")) end
+		if why then status:SetText(CH.Theme.Color("muted", "Scan " .. why .. ". Scan again for this one."))
+		elseif report then
+			status:SetText(CH.Theme.Color("bad", string.format("%d of %d recipes errored; %d kept their last numbers.", report.failed, report.total, report.kept)))
+		end
 	end)
 	if not ok then status:SetText(CH.Theme.Color("muted", "Open one of your professions (with TSM loaded) to scan it.")) end
 end

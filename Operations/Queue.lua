@@ -24,7 +24,8 @@ end
 Q.MixOf = mixOf
 
 local function keyOf(e)
-	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and tostring(e.concentration) or "", e.orderID and tostring(e.orderID) or "", mixOf(e) }, ":")
+	-- every part as text: a nil (an item without qualities) would end the list there and drop the mix
+	return table.concat({ tostring(e.char), tostring(e.recipeID), tostring(e.quality or ""), e.concentration and tostring(e.concentration) or "", e.orderID and tostring(e.orderID) or "", mixOf(e) }, ":")
 end
 
 --- Turn an advisor row into a queue entry for this character.
@@ -269,8 +270,12 @@ function Q.Replan(e)
 	if not (ok and result) then return false end
 	local r = result.best or result.bestConc
 	if not r then return false end
+	-- the whole plan moves together: reagents, what the customer gives, Concentration, and what the
+	-- queue shows and shops for (cost, profit, the shopping list), never just the reagents
 	local f = Q.FromRow(result, r)
-	e.reagents, e.given, e.concentration, e.quality = f.reagents, f.given, f.concentration, f.quality
+	for _, k in ipairs({ "reagents", "given", "concentration", "quality", "tiers", "shop", "cost", "profit", "item", "ingenuity", "refund" }) do e[k] = f[k] end
+	e.replannedAt = time and time() or nil
+	Q.Changed()
 	return true
 end
 
@@ -743,7 +748,33 @@ function Q.CanCraftHere(e)
 	return true
 end
 
-local crafting -- the entry being crafted, to count finished crafts off it
+-- Crafts sent to the game and not yet finished, oldest first: { e, recipeID, left }. Each success
+-- the game reports is counted off the oldest request for that recipe, so two mixes of one recipe
+-- crafted back to back each lose only their own crafts.
+local inflight = {}
+Q.inflight = inflight
+local function track(e, n)
+	table.insert(inflight, { e = e, recipeID = e.recipeID, left = n or 1 })
+end
+local function oldestFor(spellID)
+	for i, f in ipairs(inflight) do if f.recipeID == spellID then return i, f end end
+end
+local function newestFor(spellID)
+	for i = #inflight, 1, -1 do if inflight[i].recipeID == spellID then return i, inflight[i] end end
+end
+local function casting()
+	if not UnitCastingInfo then return nil end
+	return UnitCastingInfo("player") ~= nil or (UnitChannelInfo and UnitChannelInfo("player") ~= nil)
+end
+--- Whether a craft of this entry is still on its way: a second press then does nothing.
+function Q.InFlight(e)
+	for _, f in ipairs(inflight) do
+		if f.e == e then return true end
+		-- the Craft window's button makes a fresh entry each press: the same craft counts as this one
+		if e.direct and f.e.direct and f.recipeID == e.recipeID and mixOf(f.e) == mixOf(e) then return true end
+	end
+	return false
+end
 local PENDING_FOR = 15 -- seconds to wait for the game to answer a step before letting you retry
 
 local function okResult(result)
@@ -758,12 +789,14 @@ local function claimedOrder(id)
 end
 
 local function now() return GetTime and GetTime() or time() end
+Q.Now = now
 
 --- A step sent to the game and not yet answered: "claim", "craft" or "turnin", or nil. A step
 --- unanswered for PENDING_FOR seconds lapses, so it can be tried again.
 function Q.Pending(e)
 	if not (e and e.pending) then return nil end
-	if e.pendingAt and now() - e.pendingAt > PENDING_FOR then e.pending, e.pendingAt = nil, nil; return nil end
+	-- GetTime restarts with the client, so a saved step "from the future" is from an earlier session
+	if not e.pendingAt or now() - e.pendingAt > PENDING_FOR or e.pendingAt > now() then e.pending, e.pendingAt = nil, nil; return nil end
 	return e.pending
 end
 local function setPending(e, what) e.pending, e.pendingAt = what, what and now() or nil; Q.Changed() end
@@ -901,8 +934,15 @@ function Q.Craft(e, amount)
 	if not ok then return false, why end
 	local waiting = Q.Pending(e)
 	if waiting then return false, "waiting for the game to confirm: " .. Q.PENDING_LABEL[waiting]:lower() end
+	-- nothing is casting: any craft still listed as on its way was dropped by the game, unseen
+	if #inflight > 0 and casting() == false then wipe(inflight) end
+	if Q.InFlight(e) then return false, "already crafting this: wait for it to finish" end
 	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
-	if e.orderID and Q.OrderStep(e) == "Craft" then Q.Replan(e) end
+	local replanned
+	if e.orderID and Q.OrderStep(e) == "Craft" then
+		local mix0, cost0 = mixOf(e), e.cost
+		if Q.Replan(e) and mixOf(e) ~= mix0 then replanned = { cost0 = cost0, cost = e.cost } end
+	end
 	local reagents = {}
 	for _, r in ipairs(e.reagents) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
@@ -949,6 +989,10 @@ function Q.Craft(e, amount)
 		end
 		-- 3. a craft that differs from the plan waits for a second press, after saying how
 		local changes = {}
+		if replanned then
+			changes[#changes + 1] = string.format("uses different reagents than queued (your cost %s, was %s)",
+				replanned.cost and CH.FormatMoney(replanned.cost) or "?", replanned.cost0 and CH.FormatMoney(replanned.cost0) or "?")
+		end
 		if #alloc.dropped > 0 then changes[#changes + 1] = "leaves out " .. table.concat(alloc.dropped, ", ") end
 		if conc and e.concentration == nil then
 			changes[#changes + 1] = string.format("uses Concentration (%s points) to reach rank %d", points and tostring(math.floor(points + 0.5)) or "?", need)
@@ -961,7 +1005,7 @@ function Q.Craft(e, amount)
 		end
 		e.confirmed = nil
 		setPending(e, "craft")
-		crafting = e
+		track(e, 1)
 		CH.Print(string.format("crafting %s into the order with %s, Concentration %s%s",
 			e.name or "?", #alloc.names > 0 and table.concat(alloc.names, ", ") or "only the customer's reagents",
 			conc and "on" or "off", points and conc and string.format(" (%d points)", math.floor(points + 0.5)) or ""))
@@ -973,22 +1017,48 @@ function Q.Craft(e, amount)
 		end
 		return true
 	end
-	crafting = e
+	local can, short = Q.Preflight(e, amount or 1)
+	if not can then return false, short end
 	local ui = C_TradeSkillUI
 	if Q.IsEnchant(e.recipeID) then
 		-- an enchant for the AH goes on Enchanting Vellum: CraftEnchant with the vellum as its target
 		local bag, slot = Q.FindVellum()
-		if not bag then crafting = nil; return false, "no Enchanting Vellum in your bags" end
+		if not bag then return false, "no Enchanting Vellum in your bags" end
 		local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
-		if not (loc and ui.CraftEnchant) then crafting = nil; return false, "the game can't target the vellum" end
+		if not (loc and ui.CraftEnchant) then return false, "the game can't target the vellum" end
+		track(e, amount or 1)
 		ui.CraftEnchant(e.recipeID, amount or 1, reagents, loc, e.concentration ~= nil)
 		return true
 	end
+	track(e, amount or 1)
 	ui.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
 end
 
 Q.VELLUM = 38682
+
+--- Before an ordinary craft: is everything it takes on hand for amount crafts? Every reagent on its
+--- shopping list (the fixed ones the game takes on its own too), and for an enchant one vellum per
+--- scroll in your bags. Returns true, or false and what's short with how many you can make now.
+function Q.Preflight(e, amount)
+	amount = amount or 1
+	local can, worst = math.huge, nil
+	for _, s in ipairs(e.shop or {}) do
+		local bagsOnly = s.itemID == Q.VELLUM
+		local h = bagsOnly and (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(s.itemID, false) or 0) or have(s.itemID)
+		local per = s.n or 1
+		if per > 0 then
+			local fit = math.floor(h / per)
+			if fit < can then can = fit end
+			if h < per * amount and not worst then worst = { id = s.itemID, need = per * amount, have = h, bags = bagsOnly } end
+		end
+	end
+	if not worst then return true end
+	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(worst.id) or ("item " .. worst.id)
+	local why = string.format("you need %d %s%s and have %d", worst.need, name, worst.bags and " in your bags" or "", worst.have)
+	if can >= 1 then why = why .. string.format(": you can make %d now", can) end
+	return false, why, can
+end
 --- Whether a recipe is an enchant (cast on an item: for the AH, onto Enchanting Vellum).
 function Q.IsEnchant(recipeID)
 	local ui = C_TradeSkillUI
@@ -1010,11 +1080,15 @@ end
 
 -- A recipe ID is its spell ID: each successful cast is one craft done.
 CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
-	if unit ~= "player" or not crafting or crafting.recipeID ~= spellID then return end
-	if crafting.orderID then
+	if unit ~= "player" then return end
+	local i, f = oldestFor(spellID)
+	if not f then return end
+	local e = f.e
+	f.left = f.left - 1
+	if f.left <= 0 then table.remove(inflight, i) end
+	if e.orderID then
 		-- crafted for the order only if the game now says it can be turned in
-		local e, co = crafting, C_CraftingOrders
-		crafting = nil
+		local co = C_CraftingOrders
 		local function settle()
 			setPending(e, nil)
 			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
@@ -1029,15 +1103,18 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 		return
 	end
 	-- a craft straight from the Craft window isn't in the queue: just count it down
-	if crafting.direct then crafting.qty = crafting.qty - 1 else Q.Remove(crafting, 1) end
-	if crafting.qty <= 0 then crafting = nil end
+	if e.direct then e.qty = e.qty - 1 else Q.Remove(e, 1) end
 end)
 -- a craft the game stopped: the order's step is free to try again
-for _, ev in ipairs({ "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED" }) do
+-- FAILED is a request the game refused to start (the newest); INTERRUPTED stops the one casting
+-- (the oldest). Either way the rest of that request's batch won't come.
+for ev, pick in pairs({ UNIT_SPELLCAST_FAILED = newestFor, UNIT_SPELLCAST_INTERRUPTED = oldestFor }) do
 	CH.On(ev, function(_, unit, _, spellID)
-		if unit ~= "player" or not crafting or crafting.recipeID ~= spellID then return end
-		if crafting.orderID then setPending(crafting, nil) end
-		crafting = nil
+		if unit ~= "player" then return end
+		local i, f = pick(spellID)
+		if not f then return end
+		table.remove(inflight, i)
+		if f.e.orderID then setPending(f.e, nil) end
 	end)
 end
 

@@ -299,15 +299,34 @@ function Sc.Run(onStep, onDone)
 	local i, rows = 0, {}
 	Sc.models[profID] = Sc.models[profID] or {}
 	running, clock = true, debugprofilestop
+	-- recipes that errored: they keep their row from the last good scan, so a failure never wipes it
+	local failed, firstError = {}, nil
 	local function finish(why)
 		running, work = false, nil
+		local report
+		local p = CH.Me().professions[profID]
+		if not why and #failed > 0 then
+			local old = {}
+			for _, r in ipairs(p and p.scan and p.scan.rows or {}) do if r.recipeID then old[r.recipeID] = r end end
+			local kept = 0
+			-- nothing scanned at all: keep the last scan as it was
+			if #rows == 0 or #failed >= #ids then
+				why = "failed: every recipe errored (" .. tostring(firstError) .. "), so the last scan is kept"
+				CH.Print("scan " .. why .. ".")
+			else
+				for _, id in ipairs(failed) do
+					if old[id] then old[id].stale = true; table.insert(rows, old[id]); kept = kept + 1 end
+				end
+				CH.Print(string.format("scan: %d of %d recipes errored (%s); %d kept their last scan's numbers.", #failed, #ids, tostring(firstError), kept))
+			end
+			report = { failed = #failed, kept = kept, total = #ids, error = firstError }
+		end
 		if not why then
 			table.sort(rows, function(a, b) return (a.profit or -math.huge) > (b.profit or -math.huge) end)
-			local p = CH.Me().professions[profID]
-			if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows) } end
+			if p then p.scan = { at = time(), rows = rows, currentLine = Sc.CurrentLine(rows), failed = report and report.failed or nil } end
 			Sc.ClearCrafted()
 		end
-		if onDone then onDone(rows, why) end
+		if onDone then onDone(rows, why, report) end
 	end
 	local function begin(id)
 		return coroutine.create(function()
@@ -336,11 +355,14 @@ function Sc.Run(onStep, onDone)
 				if not id then return finish() end
 				work, n = begin(id), n + 1
 			end
-			local ok, _, result = coroutine.resume(work)
+			local ok, err, result = coroutine.resume(work)
 			if coroutine.status(work) ~= "dead" then break end -- paused: out of time this frame
 			work = nil
-			-- a recipe that errors is skipped, as before
-			if ok and result and (result.best or result.bestConc) then
+			-- a recipe that errors keeps its last good row, and the scan says how many did
+			if not ok then
+				table.insert(failed, ids[i])
+				firstError = firstError or tostring(err):gsub("^.-:%d+: ", "")
+			elseif result and (result.best or result.bestConc) then
 				local row = summary(result)
 				row.line, row.expansion = Sc.Expansion(ids[i])
 				table.insert(rows, row)
@@ -457,7 +479,7 @@ end
 function Sc.AllStatus()
 	local a = Sc.all
 	if not a then return nil end
-	if a.waiting then return string.format("Press Open %s to scan it (%d of %d)", a.waiting.name or "?", a.i, #a.list) end
+	if a.waiting then return string.format("Press Open to scan %s (%d of %d)", a.waiting.name or "?", a.i, #a.list) end
 	return string.format("Scanning %s (%d of %d)%s", a.name or "?", a.i, #a.list,
 		a.total and string.format(" %d/%d", a.done or 0, a.total) or "")
 end

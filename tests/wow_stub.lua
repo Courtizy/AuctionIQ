@@ -54,7 +54,8 @@ local function newFrame(parent, kind, template)
 	local f = { shown = false, scripts = {}, parent = parent, kind = kind, xmlTemplate = template, kids = {}, texts = {}, w = 0, h = 0, points = {} }
 	if type(parent) == "table" and type(rawget(parent, "kids")) == "table" then table.insert(parent.kids, f) end
 	table.insert(STUB.frames, f)
-	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
+	-- as in WoW, registering an event a frame already has does nothing (it fires once per frame)
+	function f:RegisterEvent(e) events[e] = events[e] or {}; for _, x in ipairs(events[e]) do if x == self then return end end; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
 	function f:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 	function f:ClearAllPoints() self.point = nil; self.points = {} end
@@ -135,6 +136,7 @@ end
 -- so AuctionIQ must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
 for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1, [211] = 2, [212] = 6, [221] = 3, [222] = 8 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
+STUB.prices["i:38682"] = { mat = 1 * 10000 } -- Enchanting Vellum
 STUB.prices["i:301"] = { formula_value = 100 * 10000 }
 STUB.prices["i:302"] = { formula_value = 300 * 10000, sold = 5 }
 STUB.prices["i:301"].sold = 5
