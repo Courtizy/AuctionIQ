@@ -5,7 +5,10 @@ import re
 import sys
 from pathlib import Path
 
-from lupa import LuaRuntime
+try:
+    from lupa.lua51 import LuaRuntime  # WoW runs Lua 5.1: test on the same language
+except ImportError:
+    from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
 files = [l.strip().replace("\\", "/") for l in (ROOT / "AuctionIQ.toc").read_text().splitlines() if l.strip().endswith(".lua")]
@@ -3166,5 +3169,6 @@ check("/aiq mem: memory after clearing garbage, then what's held", mp[0].startsw
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))
+exec(open(ROOT / "tests" / "acceptance.py").read())
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

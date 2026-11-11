@@ -8,7 +8,7 @@ CH.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 CH.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 1, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
+local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -162,11 +162,61 @@ end
 
 function CH.PerfReset() perf.by, perf.since = {}, time() end
 
+-- SavedVariables versions. Each step brings data saved by an older build up to the next version;
+-- CH.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
+CH.DB_VERSION = 2
+CH.MIGRATIONS = {
+	-- 1 -> 2: the mail feature was removed; craft records (batches) get a bounded history
+	[2] = function(db)
+		db.mail = nil
+	end,
+}
+CH.BATCHES_KEEP_DAYS, CH.BATCHES_MAX = 180, 5000
+
+function CH.Migrate(db)
+	local v = tonumber(db.version) or 1
+	for to = v + 1, CH.DB_VERSION do
+		local step = CH.MIGRATIONS[to]
+		if step then
+			local ok, err = pcall(step, db)
+			if not ok then CH.Print("couldn't update saved data to version " .. to .. ": " .. tostring(err)); return db end
+		end
+		db.version = to
+	end
+	return db
+end
+
+--- Every load: queue entries from older builds get the fields the queue relies on (an entry that
+--- names no recipe is dropped), steps waiting on the game from an earlier session are cleared
+--- (GetTime restarts with the client), and old craft records are trimmed.
+function CH.Tidy(db, now)
+	now = now or (time and time()) or 0
+	local keep = {}
+	for _, e in ipairs(db.queue or {}) do
+		if type(e) == "table" and e.recipeID then
+			e.reagents, e.shop = e.reagents or {}, e.shop or {}
+			e.qty = tonumber(e.qty) or 1
+			e.char = e.char or "?"
+			if e.orderID then e.orderID = tostring(e.orderID) end
+			e.pending, e.pendingAt, e.confirmed = nil, nil, nil
+			if e.qty > 0 then keep[#keep + 1] = e end
+		end
+	end
+	db.queue = keep
+	local b = db.batches
+	if type(b) == "table" then
+		local cut, out = now - CH.BATCHES_KEEP_DAYS * 86400, {}
+		for _, x in ipairs(b) do if (x.at or now) >= cut then out[#out + 1] = x end end
+		while #out > CH.BATCHES_MAX do table.remove(out, 1) end
+		db.batches = out
+	end
+	return db
+end
+
 CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
 	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
-	CH.db = AuctionIQDB
-	CH.db.mail = nil -- the mail feature (routes, Open all, Send) was removed
+	CH.db = CH.Tidy(CH.Migrate(AuctionIQDB))
 end)
 
 CH.On("PLAYER_LOGIN", function()

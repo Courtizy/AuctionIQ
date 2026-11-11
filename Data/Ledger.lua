@@ -89,15 +89,25 @@ end
 
 --- Rows of the CSV under key, each built by build(field, col) where col maps a header name to its
 --- position: one pass over the text, nothing kept but what build returns.
+Lg.NONE = {}
 local function csv(key, build)
 	local db = tsm()
 	local text = db and db[key]
-	if type(text) ~= "string" then return {} end
+	-- no data: one shared empty list, so callers that cache by the list's identity still hit
+	if type(text) ~= "string" then return Lg.NONE end
 	local c = parsed[key]
 	if c and c.text == text then return c.rows end
 	local rows, col = {}, nil
+	local body = text
+	-- TSM adds new records at the end: when the old text is the start of the new, only the added
+	-- lines are parsed (a new list, so callers caching by identity see the change)
+	if c and c.col and #text > #c.text and (text:sub(#c.text, #c.text) == "\n" or text:sub(#c.text + 1, #c.text + 1) == "\n")
+		and text:sub(1, #c.text) == c.text then
+		for i = 1, #c.rows do rows[i] = c.rows[i] end
+		col, body = c.col, text:sub(#c.text + 1)
+	end
 	local f, n = {}, 0 -- one scratch table for every line: parsing makes no garbage per row
-	for line in string.gmatch(text, "[^\n]+") do
+	for line in string.gmatch(body, "[^\n]+") do
 		local k = 0
 		for v in string.gmatch(line .. ",", "([^,]*),") do k = k + 1; f[k] = v end
 		for i = k + 1, n do f[i] = nil end
@@ -109,7 +119,7 @@ local function csv(key, build)
 			rows[#rows + 1] = build(f, col)
 		end
 	end
-	parsed[key] = { text = text, rows = rows }
+	parsed[key] = { text = text, rows = rows, col = col }
 	return rows
 end
 
@@ -267,7 +277,19 @@ function Lg.Summary(since)
 end
 
 -- Activity: one entry per character per mailbox visit (an hour), like TSM's log ----------------
+-- The grouping walks every record (all history), so it's kept until TSM's records change: the
+-- Records tables are replaced only when their text changes. A dashboard refresh then costs nothing.
+local activityCache
 function Lg.Activity(limit)
+	local sales, expired, buys = Lg.Records("Sales"), Lg.Records("Expired"), Lg.Records("Buys")
+	local c = activityCache
+	if c and c.sales == sales and c.expired == expired and c.buys == buys and c.limit == (limit or 50) then return c.out end
+	local out = Lg.ActivityNow(limit, sales, expired, buys)
+	activityCache = { sales = sales, expired = expired, buys = buys, limit = limit or 50, out = out }
+	return out
+end
+
+function Lg.ActivityNow(limit, sales, expired, buys)
 	local groups, order = {}, {}
 	local function g(r)
 		local k = (r.player or "?") .. "@" .. math.floor(r.time / 3600)
@@ -279,11 +301,11 @@ function Lg.Activity(limit)
 		if r.time > e.time then e.time = r.time end
 		return e
 	end
-	for _, r in ipairs(Lg.Records("Sales")) do
+	for _, r in ipairs(sales or Lg.Records("Sales")) do
 		if r.source == "Auction" then local e = g(r); e.sold, e.gold = e.sold + r.quantity, e.gold + r.amount end
 	end
-	for _, r in ipairs(Lg.Records("Expired")) do local e = g(r); e.expired = e.expired + r.quantity end
-	for _, r in ipairs(Lg.Records("Buys")) do
+	for _, r in ipairs(expired or Lg.Records("Expired")) do local e = g(r); e.expired = e.expired + r.quantity end
+	for _, r in ipairs(buys or Lg.Records("Buys")) do
 		if r.source == "Auction" then local e = g(r); e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end
 	end
 	table.sort(order, function(a, b) return a.time > b.time end)

@@ -43,7 +43,10 @@ function TUI.PostPlan()
 				local vals = CH.Prices.Values and CH.Prices.Values(e.id) or {}
 				local price = ev.price or p.normal
 				local post = ev.action == "post" and ev.qty or 0
-				table.insert(out, { id = e.id, path = path, held = held, up = up, cap = p.cap, post = post, price = price,
+				-- what's in this character's bags can go up now; the rest (bank, warband bank, other
+				-- characters) has to be fetched first
+				local here = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(e.id, false) or 0
+				table.insert(out, { id = e.id, path = path, held = held, here = here, fetch = math.max(0, held - here), up = up, cap = p.cap, post = post, price = price,
 					ah = ah or ahNow(e.id), source = source, age = age, why = ev.why, op = p.op,
 					check = source == nil and not vals.realized or nil,
 					min = p.min, value = verdict == "post" and price and price * post * CH.AH_CUT or 0, verdict = verdict, mail = e.mail })
@@ -86,11 +89,15 @@ function TUI.PostLines(r, a)
 		B.Text("Recommended", tostring(qty)),
 		B.Text("Allowed by your rules", tostring(r.post or 0)),
 		B.Sub("Up / cap", string.format("%d / %d", r.up or 0, r.cap or 0)),
+		B.Sub("In your bags now", tostring(r.here or 0)),
 		B.Head("Price"),
 		B.Text("Post at", r.price and M(r.price) or "-"),
 		B.Sub("Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
 			or T.Color("bad", "no AH scan")),
 	}
+	if qty > (r.here or 0) then
+		lines[#lines + 1] = { T.Color("bad", string.format("Fetch %d first: only %d of them are in this character's bags (the rest are in a bank or on another character).", qty - (r.here or 0), r.here or 0)) }
+	end
 	if r.min then lines[#lines + 1] = B.Sub("Your min", M(r.min)) end
 	if r.why then lines[#lines + 1] = B.Sub("Rule check", r.why) end
 	if r.price and qty > 0 then

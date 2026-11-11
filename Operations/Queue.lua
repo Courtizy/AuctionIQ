@@ -545,8 +545,8 @@ end
 function Q.ShoppingList(entries)
 	local need, rank, tiers = {}, {}, {}
 	for _, e in ipairs(entries or list()) do
-		for _, s in ipairs(e.shop) do
-			need[s.itemID] = (need[s.itemID] or 0) + s.n * e.qty
+		for _, s in ipairs(e.shop or {}) do
+			need[s.itemID] = (need[s.itemID] or 0) + s.n * (e.qty or 1)
 			rank[s.itemID] = s.rank
 			tiers[s.itemID] = s.tiers
 		end
@@ -740,7 +740,7 @@ end
 
 --- Whether this character can craft an entry now: theirs, profession open, recipe known.
 function Q.CanCraftHere(e)
-	if e.char ~= CH.CharacterKey() then return false, "on " .. (e.charName or e.char) end
+	if e.char ~= CH.CharacterKey() then return false, "on " .. tostring(e.charName or e.char or "another character") end
 	local ui = C_TradeSkillUI
 	local info = ui and ui.GetRecipeInfo and ui.GetRecipeInfo(e.recipeID)
 	if not info or not info.learned then return false, "open its profession" end
@@ -944,7 +944,7 @@ function Q.Craft(e, amount)
 		if Q.Replan(e) and mixOf(e) ~= mix0 then replanned = { cost0 = cost0, cost = e.cost } end
 	end
 	local reagents = {}
-	for _, r in ipairs(e.reagents) do
+	for _, r in ipairs(e.reagents or {}) do
 		table.insert(reagents, { reagent = { itemID = r.itemID }, itemID = r.itemID, dataSlotIndex = r.slot, quantity = r.n })
 	end
 	if e.orderID then
@@ -1027,10 +1027,12 @@ function Q.Craft(e, amount)
 		local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
 		if not (loc and ui.CraftEnchant) then return false, "the game can't target the vellum" end
 		track(e, amount or 1)
+		if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
 		ui.CraftEnchant(e.recipeID, amount or 1, reagents, loc, e.concentration ~= nil)
 		return true
 	end
 	track(e, amount or 1)
+	if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
 	ui.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
 end

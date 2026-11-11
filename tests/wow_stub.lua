@@ -261,7 +261,7 @@ end
 function hooksecurefunc(t, name, fn)
 	if type(t) == "string" then t, name, fn = _G, t, name end
 	local orig = t[name]
-	t[name] = function(...) local r = { orig(...) }; fn(...); return table.unpack(r) end
+	t[name] = function(...) local r = { orig(...) }; fn(...); return (table.unpack or unpack)(r) end
 end
 unpack = unpack or table.unpack
 

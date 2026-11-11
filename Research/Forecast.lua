@@ -46,7 +46,10 @@ function Fc.Record(itemID, qty, f)
 		d.paid = (d.paid or 0) + (cost or 0)
 		d.first = d.first or b.at
 	end
-	table.insert(store(), b)
+	local list = store()
+	table.insert(list, b)
+	-- bounded: the record only reads the last Fc.WINDOW, so the oldest past the cap can go
+	while #list > (CH.BATCHES_MAX or 5000) do table.remove(list, 1) end
 	Fc.Clear()
 	return b
 end

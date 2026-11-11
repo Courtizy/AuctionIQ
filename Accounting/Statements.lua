@@ -66,7 +66,13 @@ local function mine()
 	return set
 end
 
-local function within(r, from, to, char) return r.time >= from and r.time < to + 1 and (not char or r.player == char) end
+-- In range and in scope: one character, or (none named) the characters the Dashboard includes, so
+-- the statement and the gold series it explains always cover the same characters
+local function within(r, from, to, char)
+	if r.time < from or r.time >= to + 1 then return false end
+	if char then return r.player == char end
+	return not r.player or CH.Ledger.Included(r.player)
+end
 local function isAuction(r) return r.source == nil or r.source == "Auction" end
 
 -- What one unit of an item cost you at time t: crafted at the reagent prices you paid, bought at

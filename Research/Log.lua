@@ -84,9 +84,21 @@ end
 --- Called when a craft starts (any craft, ours or the game's Craft button), with the reagents and
 --- order the game was given. The expected figures come from the advisor row with those exact
 --- reagents; when none matches, the cost is worked out from the reagents and nothing is expected.
+--- The queue says what it's about to craft, so the log has its forecast even when the Craft card
+--- shows another recipe: the entry's cost and profit per craft.
+local expect
+function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, profit = e.profit, name = e.name, item = e.item } or nil end
+
 function Lg.Started(recipeID, count, concentrate, reagents, orderID)
+	local q = expect
+	expect = nil
 	local r = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
 	if r and r.recipeID ~= recipeID then r = nil end
+	-- a queued craft brings its own forecast: the card may be on another recipe, or on another mix
+	if q and q.recipeID == recipeID and not orderID then
+		pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate, expected = q.profit, cost = q.cost, name = q.name or (r and r.name) }
+		return
+	end
 	local row
 	if r then
 		if type(reagents) == "table" and #reagents > 0 then row = matchRow(r, reagents, concentrate)
@@ -202,6 +214,12 @@ function Lg.Clear() wipe(log()); if Lg.Changed then Lg.Changed() end end
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
 	hooksecurefunc(C_TradeSkillUI, "CraftRecipe", function(recipeID, count, reagents, _, orderID, concentrate)
 		Lg.Started(recipeID, count, concentrate, reagents, orderID)
+	end)
+end
+-- an enchant onto vellum is a craft too (CraftEnchant(recipeID, count, reagents, target, concentrate))
+if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftEnchant then
+	hooksecurefunc(C_TradeSkillUI, "CraftEnchant", function(recipeID, count, reagents, _, concentrate)
+		Lg.Started(recipeID, count, concentrate, reagents, nil)
 	end)
 end
 CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
