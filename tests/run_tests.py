@@ -782,7 +782,16 @@ qr[1].run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: clicking a quality picks it", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2]) and plain(lc2.section.rows[2][1]).startswith(">"))
 run("AuctionIQ.ScanUI.SetQty(3)")
-check("Craft card: the stepper sets how many the Queue button adds", plain(L.eval("AuctionIQ.ScanUI.lastPanel").actions[1].label).startswith("Queue 3"))
+lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
+check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))
+check("Craft card: Craft first, then Queue, then Details", [plain(a.label).split(" ")[0] for a in lp3.actions.values()][:3] == ["Craft", "Queue", "Details"])
+cn = L.eval("""(function() local old = C_TradeSkillUI.CraftRecipe; local got
+  C_TradeSkillUI.CraftRecipe = function(id, n, reagents, _, _, conc) got = { id = id, n = n, conc = conc, k = #reagents } end
+  local res = AuctionIQ.AdvisorUI.Current(); local ok, why = AuctionIQ.Queue.CraftNow(res, res.rows[2], 2)
+  C_TradeSkillUI.CraftRecipe = old; return { ok = ok, why = why, got = got, q = AuctionIQ.Queue.Count() } end)()""")
+check("Craft card: Craft crafts the picked rank now, with its reagents and Concentration, without queueing it",
+      cn.ok and cn.got.id == 10 and cn.got.n == 2 and cn.got.conc == (L.eval("AuctionIQ.AdvisorUI.Current().rows[2].concentration ~= nil")) and cn.got.k > 0)
+run('STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)')
 run("AuctionIQ.ScanUI.SetQty(1); AuctionIQ.AdvisorUI.Show(10)")
 run('AuctionIQ.QueueUI.Show(); AuctionIQ.AdvisorUI.Show(10)')
 check("tabs: a recipe click while the Queue shows updates quietly", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown())
@@ -2272,9 +2281,10 @@ check("details: break-even chart, price check, will it sell and what drives the 
       dd is not None and dd.chart is not None and len(list(dd.chartLines.values())) >= 1 and dd.price.verdict and dd.sell.verdict
       and len(list(dd.sell.rows.values())) >= 3 and len(list(dd.cost.rows.values())) >= 1 and "%" in plain(dd.cost.verdict))
 check("details: the reagents are ranked by their share of the cost", all("%" in plain(r[2]) for r in dd.cost.rows.values()))
+check("details: showing while on", CH.ScanUI.DetailsShown())
 audit("craft details")
 run("AuctionIQ.ScanUI.SetDetails(false)")
-check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False)
+check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False and not CH.ScanUI.DetailsShown())
 # Review fixes ---------------------------------------------------------------------------------
 # 1. a browse doesn't make an old buying ladder look fresh, and a browse at a different price drops it
 run("""AuctionIQ.db.scans = AuctionIQ.db.scans or {}

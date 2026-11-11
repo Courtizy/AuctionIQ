@@ -1303,8 +1303,20 @@ function AUI.Card(n, scan)
 		local label = (on and T.Color("accent", "> ") or "   ") .. W.QualityIcon(x.quality, 13, maxQ)
 			.. (x.concentration and ("  " .. W.ConcIcon(11) .. " " .. x.concentration) or mut("  no Conc."))
 			.. (x.short and T.Color("bad", "  too low") or "")
-		qrows[#qrows + 1] = { label, money(x.profit), tip = AUI.BreakdownLines(result, x, 5),
+		local tip = AUI.BreakdownLines(result, x, 5)
+		local gpp = x.gain and x.gain.perPoint or x.perPoint
+		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
+		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
+		qrows[#qrows + 1] = { label, money(x.profit), tip = tip,
 			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
+	end
+	-- the ranks above what you can reach, so you see what's missing
+	local top = 0
+	for _, x in ipairs(result.rows) do top = math.max(top, x.quality or 0) end
+	for q = top + 1, (maxQ or top) do
+		if #qrows >= 5 then break end
+		qrows[#qrows + 1] = { "   " .. W.QualityIcon(q, 13, maxQ) .. mut("  out of reach"), mut("-"),
+			tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
 	end
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
 	local acc = scan and (r and r.concentration and scan.concAccounts or scan.accounts)
@@ -1342,18 +1354,37 @@ function AUI.Card(n, scan)
 		rows[#rows + 1] = { "Can make now", r.max and tostring(r.max) or mut("-") }
 		if scan and scan.perDay then rows[#rows + 1] = { "Gold a day", money(scan.perDay) } end
 		if cs and cs.paid then rows[#rows + 1] = { "You paid for yours", M(cs.paid) } end
+		-- buy it instead: the cheapest listing against what one costs to make
+		local bc = scan and scan.bc
+		if bc and bc.buy and #rows < 5 then
+			rows[#rows + 1] = { "Buy one instead", bc.save and bc.save > 0 and T.Color("ok", M(bc.buy)) or M(bc.buy),
+				tip = { { "Buy it or make it?" }, { "Cheapest listing", M(bc.buy) }, { "Costs to make one", M(bc.craft or 0) },
+					{ bc.save and bc.save > 0 and T.Color("ok", "Buying saves " .. M(bc.save)) or mut("Making it is cheaper.") } } }
+		end
 	end
 	local label, off = AUI.QueueAction()
 	if r and not off and r.max and r.max < selQty then
 		label = string.format("Queue %d · %d craftable now", selQty, r.max)
 	end
-	local actions = { { label = label, off = off, tip = "Adds the picked quality, with the advisor's reagents.",
+	-- Craft the pick now, as many as the stepper says (up to what you can make)
+	local can = r and math.min(selQty, r.max or 0) or 0
+	local craftOff = not r and "Pick a quality first." or result.sim and "Turn the simulation off to craft."
+		or r.short and "This rank is below what the order asks for." or can < 1 and "You don't have the reagents (or Concentration) for one."
+		or nil
+	local actions = { { label = string.format("Craft %d", math.max(1, can)), off = craftOff,
+		tip = "Crafts the picked rank now, with these reagents" .. (r and r.concentration and " and Concentration" or "") .. ".",
+		run = function()
+			local ok, why = CH.Queue.CraftNow(result, r, can)
+			if not ok then CH.Print("can't craft that: " .. tostring(why)) end
+			return ok
+		end },
+		{ label = label, off = off, tip = "Adds the picked rank to the queue, with these reagents.",
 		run = function() return AUI.QueueSelected() end } }
-	actions[2] = { label = "Details", tip = "Break-even, a price check, whether it will sell and what drives the cost.",
+	actions[3] = { label = "Details", tip = "Break-even, a price check, whether it will sell and what drives the cost.",
 		run = function() if CH.ScanUI then CH.ScanUI.SetDetails(true) end end }
 	local g = gearPick
 	if g and g.set and not result.sim then
-		actions[3] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
+		actions[4] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
 			run = function() local ok, why = CH.Gear.Equip(g.set); if not ok then CH.Print("can't change gear " .. (why or "")) end
 				if C_Timer then C_Timer.After(1, function() AUI.Show() end) end end }
 	end
@@ -1386,11 +1417,12 @@ function AUI.Details(n, scan)
 	local scanned = item and CH.Scans and CH.Scans.Get(item)
 	local pr = {}
 	if mk and mk.market then pr[#pr + 1] = { "Today, your realm", M(mk.market) } end
-	if mk and mk.hist then pr[#pr + 1] = { "Normal (60 days)", M(mk.hist) } end
+	if mk and mk.avg7 then pr[#pr + 1] = { string.format("Normal, %d-day average", mk.avgDays or 7), M(mk.avg7) } end
 	if mk and mk.region then pr[#pr + 1] = { "Region average", M(mk.region) } end
-	if scanned and scanned.min then pr[#pr + 1] = { "Lowest listing (your scan)", M(scanned.min) } end
+	if scanned and scanned.min then pr[#pr + 1] = { "Lowest listing", M(scanned.min),
+		tip = { { "Lowest listing" }, { mut("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.") } } } end
 	local ch = mk and mk.change7
-	local pv = not ch and mut("No 60-day price to compare against yet.")
+	local pv = not ch and mut("No average price to compare against yet.")
 		or ch >= 0.1 and T.Color("ok", string.format("%d%% above normal: a good time to sell.", math.floor(ch * 100 + 0.5)))
 		or ch <= -0.1 and T.Color("bad", string.format("%d%% below normal: crafting now locks in a low price.", math.floor(-ch * 100 + 0.5)))
 		or T.Color("fg", "About its normal price.")

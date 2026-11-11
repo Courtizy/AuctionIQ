@@ -484,7 +484,7 @@ local function build()
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 3,
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 4,
 		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
 	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
 	SUI.BuildDetails()
@@ -594,13 +594,14 @@ function SUI.SetDetails(on)
 	return SUI.Refresh()
 end
 function SUI.DetailsOn() return detailsOn end
+function SUI.DetailsShown() return details ~= nil and details:IsShown() end
 
 local function renderDetails()
 	if not details then return nil end
 	local A = CH.AdvisorUI
 	local cur = A and A.Current()
 	local live = mode == "recipes" and detailsOn and cur and cur.recipeID == selected and not cur.order and not A.Classic()
-	local d = live and A.Details(qty, selectedRow())
+	local d = live and A.Details(qty, selectedRow()) or nil
 	details:SetShown(d ~= nil)
 	if scrollBar and scrollBar.SetShown then scrollBar:SetShown(d == nil) end
 	if not d then return nil end
@@ -658,6 +659,8 @@ local function showTable()
 	end
 	for _, b in ipairs(SUI.viewButtons or {}) do
 		T.SetTab(b, mode == "recipes" and view == b.view)
+		-- one list: the card's Which quality? answers Concentration and buy or make
+		b:SetShown(SUI.ShowViews == true)
 	end
 	if scrollBar and scrollBar.SetX then scrollBar:SetX(TWR + 4) end
 	if SUI.tableCard then SUI.tableCard:Place(6, -48, TWR + 10, N * H + 28) end
@@ -1235,7 +1238,7 @@ local INVIEW = {
 function SUI.Refresh()
 	if not frame then return {} end
 	if mode ~= "recipes" then status:SetWidth(W - 24); renderDetails(); return refreshLists() end
-	status:SetWidth(W - 24 - (SUI.viewsWidth or 0))
+	status:SetWidth(W - 24 - (SUI.ShowViews and SUI.viewsWidth or 0))
 	local rows = showTable()
 	local T = CH.Theme
 	local profID = CH.OpenProfessionID() or SUI.prof

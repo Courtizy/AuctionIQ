@@ -903,7 +903,8 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 		if co and co.GetClaimedOrder and C_Timer then C_Timer.After(0.5, settle) else settle() end
 		return
 	end
-	Q.Remove(crafting, 1)
+	-- a craft straight from the Craft window isn't in the queue: just count it down
+	if crafting.direct then crafting.qty = crafting.qty - 1 else Q.Remove(crafting, 1) end
 	if crafting.qty <= 0 then crafting = nil end
 end)
 -- a craft the game stopped: the order's step is free to try again
@@ -913,6 +914,15 @@ for _, ev in ipairs({ "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED" }) d
 		if crafting.orderID then setPending(crafting, nil) end
 		crafting = nil
 	end)
+end
+
+--- Craft an advisor row now, without queueing it: the Craft window's Craft button. n crafts with
+--- the row's reagents and Concentration. Returns true, or false and why.
+function Q.CraftNow(result, r, n)
+	if not (result and r) then return false, "pick a quality first" end
+	local e = Q.FromRow(result, r)
+	e.direct, e.qty = true, math.max(1, math.floor(n or 1))
+	return Q.Craft(e, e.qty)
 end
 
 -- UI hook; QueueUI replaces it.
