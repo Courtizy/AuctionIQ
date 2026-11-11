@@ -784,7 +784,7 @@ check("tabs: a recipe click selects it in the Craft window", CH.ScanUI.IsShown()
 lc = L.eval("AuctionIQ.ScanUI.lastPanel")
 qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
-      lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "COST", "MARGIN"]
+      lc is not None and lc.live and [plain(f[1]).split(" ")[0] for f in lc.figures.values()] == ["PROFIT", "COST", "MARGIN"]
       and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None for r in qr)
       and any(r.run is not None for r in qr))
 ql = [plain(r[1]) for r in qr]
@@ -792,7 +792,7 @@ check("Craft card: Highest at the top, Lowest at the bottom, Best on the craft t
       "Highest" in ql[0] and "Best" in ql[0] and "Lowest" in ql[-1] and lc.section.toggle is not None and lc.section.toggle.on is True
       and "\u25c6" not in ql[0] and plain(qr[-1][2]) == "-")
 check("Craft card: every row explains itself on hover, break-even first",
-      all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
+      all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even, each" and lc.subTip is not None)
 check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
       not any(plain(r[1]) in ("Recover in a week", "Can make now", "Buy one instead") for r in lc.rows.values()))
 fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = { buy = 1000, resell = 5000, flip = 4000 } })")

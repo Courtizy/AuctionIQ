@@ -1441,12 +1441,17 @@ function AUI.Card(n, scan)
 	local margin = r and r.profit and r.cost and r.cost > 0 and r.profit / r.cost
 	local figures = {
 		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
-		{ "COST", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
+		-- per craft, as the list counts it; how many items a craft makes, so break-even (each) adds up
+		{ (function()
+			local items = r and CH.Decide.Items(result.made, r.parts)
+			if not items or math.abs(items - 1) < 0.05 then return "COST" end
+			return string.format(math.abs(items - math.floor(items + 0.5)) < 0.05 and "COST · MAKES %d" or "COST · MAKES %.1f", items)
+		end)(), r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
 		{ "MARGIN", margin and T.Color(margin >= 0 and "ok" or "bad", pctText(margin)) or mut("-"),
 			tip = { { "Margin" }, { mut("Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
 	local rows = {}
 	if r then
-		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
+		rows[#rows + 1] = { "Break-even, each", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
 		-- Max is a list column now; its reagent-by-reagent hover lives there
 		if scan and scan.perDay then
 			rows[#rows + 1] = { "Gold a day", money(scan.perDay), tip = AUI.PerDayTip(scan) }
