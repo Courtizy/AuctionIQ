@@ -626,7 +626,8 @@ function W.DrawSidePanel(det, d, said)
 	y = y - height(det.title, 17) - 2
 	at(det.sub, 12, y)
 	det.sub:SetText(d.sub or "")
-	local subH = (d.sub and d.sub ~= "") and height(det.sub, 12) or 0
+	-- the sub line always takes its two lines, so what's under it stays put as it changes
+	local subH = (d.sub and d.sub ~= "") and 24 or 0
 	det.subHit:ClearAllPoints(); det.subHit:SetPoint("TOPLEFT", 10, y + 2); det.subHit:SetSize(det.IW, subH + 2)
 	det.subHit.tip = d.subTip or false
 	det.subHit:SetShown(d.subTip ~= nil and subH > 0)
@@ -668,7 +669,7 @@ function W.DrawSidePanel(det, d, said)
 	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
 	local tg = sec and sec.toggle
 	at(det.toggle, det.width - 132, y - 6)
-	det.toggle:SetText(tg and (tg.on and T.Color("gold", "CONCENTRATE  ON") or T.Color("muted", "CONCENTRATE  OFF")) or "")
+	det.toggle:SetText(tg and T.Color(tg.on and "gold" or "muted", "CONCENTRATE") or "")
 	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 136, y - 2); det.toggleHit:SetSize(128, 16)
 	det.toggleHit.tip = tg and tg.tip or false
 	det.toggleHit.run = tg and tg.run or false

@@ -1393,7 +1393,7 @@ function AUI.Card(n, scan)
 			if x.concentration then row[2] = T.Color("gold", W.ConcIcon(11) .. " " .. x.concentration) .. "  " .. row[2] end
 			qrows[#qrows + 1] = row
 		else
-			qrows[#qrows + 1] = { label, mut(concMode and "not needed" or "Concentrate only"),
+			qrows[#qrows + 1] = { label, mut("-"),
 				tip = { { "Rank " .. q }, { mut(concMode and "Concentration doesn't help here: turn Concentrate off to pick it."
 					or "Only Concentration reaches it: turn Concentrate on to pick it.") } } }
 		end

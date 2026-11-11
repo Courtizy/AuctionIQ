@@ -783,7 +783,7 @@ check("Craft card: the open recipe's live card: profit, reagents, margin, and wh
 ql = [plain(r[1]) for r in qr]
 check("Craft card: Highest at the top, Lowest at the bottom, Best on the craft that earns the most, Concentrate on for it",
       "Highest" in ql[0] and "Best" in ql[0] and "Lowest" in ql[-1] and lc.section.toggle is not None and lc.section.toggle.on is True
-      and "\u25c6" not in ql[0] and plain(qr[-1][2]) == "not needed")
+      and "\u25c6" not in ql[0] and plain(qr[-1][2]) == "-")
 check("Craft card: every row explains itself on hover, break-even first",
       all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
 check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
