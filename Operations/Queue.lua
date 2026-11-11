@@ -344,33 +344,58 @@ function Q.ShatterCandidates()
 	return ids
 end
 
-function Q.ShatterItem()
-	local ids = Q.ShatterCandidates()
-	local best, bestPrice
-	for _, id in ipairs(ids) do
-		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id) or 0
-		if n > 0 then
-			local p = CH.Prices.Get("chmat", "i:" .. id) or math.huge
-			if not best or p < bestPrice then best, bestPrice = id, p end
-		end
-	end
-	if not best then return nil end
-	local C = C_Container
-	-- the four bags and the reagent bag (5), where motes usually sit
+-- Where to look for a mote: your bags and reagent bag first, then the bank, reagent bank and
+-- warband bank tabs (the game salvages from those too, as CraftSim does, while it knows their contents).
+local function containers()
+	local out = {}
 	local last = math.max(NUM_TOTAL_EQUIPPED_BAG_SLOTS or 0, Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or 0, 5)
-	for bag = 0, last do
-		for slot = 1, (C and C.GetContainerNumSlots and C.GetContainerNumSlots(bag) or 0) do
-			if C.GetContainerItemID(bag, slot) == best then return best, bag, slot end
+	for bag = 0, last do out[#out + 1] = bag end
+	local B = Enum and Enum.BagIndex or {}
+	for _, k in ipairs({ "Bank", "Reagentbank", "ReagentBank" }) do if B[k] then out[#out + 1] = B[k] end end
+	for i = 1, 8 do
+		if B["CharacterBankTab_" .. i] then out[#out + 1] = B["CharacterBankTab_" .. i] end
+	end
+	for i = 1, 8 do
+		if B["AccountBankTab_" .. i] then out[#out + 1] = B["AccountBankTab_" .. i] end
+	end
+	return out
+end
+Q.ShatterContainers = containers
+
+local function find(id)
+	local C = C_Container
+	if not (C and C.GetContainerNumSlots and C.GetContainerItemID) then return nil end
+	for _, bag in ipairs(containers()) do
+		local ok, n = pcall(C.GetContainerNumSlots, bag)
+		for slot = 1, (ok and n or 0) do
+			if C.GetContainerItemID(bag, slot) == id then return bag, slot end
 		end
 	end
-	return best -- in a bank, not your bags
+end
+
+--- What Shatter would use: the cheapest mote you own that the game can reach (bags first, then
+--- bank and warband bank). Returns itemID, bag, slot; or itemID alone when you own it but its slot
+--- can't be found (a bank the game hasn't shown this session); or nil when you own none.
+function Q.ShatterItem()
+	local owned = {}
+	for _, id in ipairs(Q.ShatterCandidates()) do
+		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
+		if n > 0 then owned[#owned + 1] = { id = id, p = CH.Prices.Get("chmat", "i:" .. id) or math.huge } end
+	end
+	if not owned[1] then return nil end
+	table.sort(owned, function(a, b) return a.p < b.p end)
+	for _, o in ipairs(owned) do
+		local bag, slot = find(o.id)
+		if bag then return o.id, bag, slot end
+	end
+	return owned[1].id
 end
 
 --- Cast Shatter on the cheapest mote in your bags. Must be called from a click. true, or false and why.
 function Q.Shatter()
 	local id, bag, slot = Q.ShatterItem()
-	if not id then return false, "no mote to Shatter in your bags" end
-	if not bag then return false, "your motes for Shatter are in the bank: take one out first" end
+	if not id then return false, "you have no motes Shatter can take" end
+	if not bag then return false, "your motes are in a bank the game hasn't shown yet: open your bank (or take a mote out to your bags) and try again" end
 	local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
 	if not loc then return false, "can't find the mote in your bags" end
 	C_TradeSkillUI.CraftSalvage(Q.SHATTER.recipe, 1, loc, {}, false)

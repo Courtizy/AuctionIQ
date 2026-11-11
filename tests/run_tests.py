@@ -2178,6 +2178,20 @@ sc = L.eval("""(function()
   return { id = id, bag = bag }
 end)()""")
 check("shatter: finds motes from the recipe's slot when the salvage list is empty (reagent bag too)", sc.id == 602 and sc.bag == 5)
+# motes only in the warband bank: Shatter takes one from there
+wb = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldS, oldC, oldCount, oldE = ui.GetSalvagableItemIDs, C_Container, C_Item.GetItemCount, Enum.BagIndex
+  ui.GetSalvagableItemIDs = function() return { 701 } end
+  Enum.BagIndex = { ReagentBag = 5, AccountBankTab_1 = 12, AccountBankTab_2 = 13 }
+  C_Item.GetItemCount = function(id, bank, uses, reagentBank, account) return (id == 701 and account) and 40 or 0 end
+  C_Container = { GetContainerNumSlots = function(bag) return bag == 13 and 3 or 2 end,
+    GetContainerItemID = function(bag, slot) return (bag == 13 and slot == 3) and 701 or nil end }
+  local id, bag, slot = AuctionIQ.Queue.ShatterItem()
+  ui.GetSalvagableItemIDs, C_Container, C_Item.GetItemCount, Enum.BagIndex = oldS, oldC, oldCount, oldE
+  return { id = id, bag = bag, slot = slot }
+end)()""")
+check("shatter: motes only in the warband bank are found there", wb.id == 701 and wb.bag == 13 and wb.slot == 3)
 check("shatter: the advisor counts Shattering Essence before it's cast (as CraftSim), and not twice once it's on",
       sh.shatterModel and not sh.shatter2 and sh.ing1 == sh.ing2 + 5)
 check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
