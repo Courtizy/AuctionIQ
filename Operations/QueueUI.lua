@@ -1,4 +1,4 @@
--- Craft queue and shopping list panel. Docks under the crafting advisor; /ch queue opens it anywhere
+-- Craft queue and shopping list panel. A tab beside Craft, or popped out beside it; /aiq queue opens it anywhere
 -- (at the auction house, say) on its own.
 local _, CH = ...
 
@@ -65,7 +65,7 @@ end
 local function updatePop()
 	local popped = not CH.Window.InTabs("queue")
 	local b = panel.pop
-	local t = popped and "Tab" or "Pop out"
+	local t = popped and "Join tabs" or "Pop out"
 	if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end
 end
 
@@ -82,7 +82,7 @@ local function build()
 	T.Sync()
 	panel = CreateFrame("Frame", "AuctionIQQueue", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
-	panel:SetSize(W, 74 + (QROWS + SROWS) * 18 + 40 + BUDGET_H)
+	panel:SetSize(W, 74 + 16 + (QROWS + SROWS) * 18 + 40 + BUDGET_H)
 	panel:SetFrameStrata("HIGH")
 	panel:SetMovable(true)
 	panel:SetClampedToScreen(true)
@@ -114,12 +114,12 @@ local function build()
 	local clear = T.Button(bar, "Clear", 46, 18)
 	clear:SetPoint("RIGHT", close, "LEFT", -4, 0)
 	clear:SetScript("OnClick", function() CH.Queue.Clear() end)
-	local pop = T.Button(bar, "Pop out", 60, 18)
+	local pop = T.Button(bar, "Pop out", 70, 18)
 	pop:SetPoint("RIGHT", clear, "LEFT", -4, 0)
 	pop:SetScript("OnClick", function() CH.Window.ToggleQueuePop(); updatePop() end)
 	pop:SetScript("OnEnter", function(self)
-		CH.Window.Tooltip(self, { { CH.Window.InTabs("queue") and "Take the queue out of the tabs so it sits under them, next to the advisor."
-			or "Put the queue back in the tabs." } })
+		CH.Window.Tooltip(self, { { CH.Window.InTabs("queue") and "Take the queue out of the tabs so it sits beside the Craft window."
+			or "Put the queue back in the tabs, behind the Craft window." } })
 	end)
 	pop:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	panel.pop = pop
@@ -162,7 +162,13 @@ local function build()
 			or "no first crafts left in this profession (or open it first).")
 	end)
 
-	local y = -34
+	local y = -32
+	-- column heads over the queue
+	for _, c in ipairs({ { "Recipe", 12, 250, "LEFT" }, { "Crafter", 266, 90, "LEFT" }, { "Profit", 360, 86, "RIGHT" } }) do
+		local h = text(panel, c[2], y, c[3], c[4], "GameFontDisableSmall")
+		h:SetText(c[1])
+	end
+	y = y - 16
 	empty = text(panel, 12, y, W - 24, "LEFT")
 	qrows = {}
 	for i = 1, QROWS do
@@ -229,14 +235,14 @@ local function build()
 	budget.plans = plans
 	for i, name in ipairs({ "Gold", "Reagents", "Concentration" }) do
 		local by = y - 4 - i * 14
-		local b = { label = CH.Window.OneLine(text(panel, 12, by, 90)) }
+		local b = { label = CH.Window.OneLine(text(panel, 12, by, 100)) }
 		b.label:SetText(name)
 		b.track = panel:CreateTexture(nil, "BACKGROUND")
-		b.track:SetPoint("TOPLEFT", 106, by - 1)
-		b.track:SetSize(260, 9)
+		b.track:SetPoint("TOPLEFT", 116, by - 1)
+		b.track:SetSize(250, 9)
 		b.track:SetColorTexture(T.bad[1], T.bad[2], T.bad[3], 0.35)
 		b.fill = panel:CreateTexture(nil, "ARTWORK")
-		b.fill:SetPoint("TOPLEFT", 106, by - 1)
+		b.fill:SetPoint("TOPLEFT", 116, by - 1)
 		b.fill:SetSize(1, 9)
 		b.fill:SetColorTexture(T.ok[1], T.ok[2], T.ok[3], 0.8)
 		b.text = CH.Window.OneLine(text(panel, 372, by, W - 372 - 12, "RIGHT"))
@@ -254,7 +260,7 @@ function QUI.Refresh()
 	local q = CH.db.queue
 	panel.title:SetText(T.Color("accent", "AuctionIQ") .. "  " .. T.Color("muted", "Queue (" .. CH.Queue.Count() .. ")"
 		.. (#q > QROWS and string.format(", rows %d-%d of %d, scroll", qOffset + 1, math.min(#q, qOffset + QROWS), #q) or "")))
-	empty:SetText(#q == 0 and T.Color("muted", "Empty. Click a row in the crafting advisor to queue one, shift-click to queue as many as you can make.") or "")
+	empty:SetText(#q == 0 and T.Color("muted", "Empty. Pick a recipe in the Craft window and press Queue, or fill it from the buttons above.") or "")
 	local lines = { queue = {}, shop = {} }
 	qOffset = math.max(0, math.min(qOffset, #q - QROWS))
 	qBar:Set(qOffset, QROWS, #q)
@@ -382,7 +388,7 @@ function QUI.RenderBudget()
 	for i, k in ipairs({ "gold", "reagents", "conc" }) do
 		local x, bar = b[k], budget.bars[i]
 		local share = x.need > 0 and math.min(1, x.have / x.need) or 1
-		bar.fill:SetSize(math.max(1, 260 * share), 9)
+		bar.fill:SetSize(math.max(1, 250 * share), 9)
 		bar.track:SetAlpha(x.need > 0 and 1 or 0.3)
 		bar.text:SetText(lines[i])
 	end

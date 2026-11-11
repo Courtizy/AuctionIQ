@@ -400,8 +400,9 @@ function W.Arrange()
 		q:ClearAllPoints()
 		if p then
 			q:SetPoint(p[1], UIParent, p[3], p[4], p[5])
-		elseif strip and strip:IsShown() then
-			q:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -4)
+		elseif f and f:IsShown() then
+			-- beside the Craft window: the two windows side by side
+			q:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
 		else
 			q:SetPoint("CENTER", 0, 80)
 		end
