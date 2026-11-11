@@ -26,6 +26,7 @@ run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().AuctionIQ
 CH.ScanUI.ROW_AGE = -1
+CH.Prices.background = False # sales added up at once, not over the next frames
 CH.AdvisorUI.GEAR_AGE = -1
 CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
 me = CH.db.characters["Seyko-Emerald Dream"]
@@ -2504,6 +2505,16 @@ TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = "itemString,stackS
 AuctionIQ.Ledger.ClearStats()""")
 vals = L.eval("AuctionIQ.Prices.Values(100)")
 check("values: realized is what you sold it for after the cut", vals.realized == 95000 and vals.n == 2 and vals.mv is not None and vals.ev is not None)
+bg = L.eval("""(function()
+  local P = AuctionIQ.Prices
+  P.background = true
+  local first = P.Values(100, time() + 700).realized
+  for _ = 1, 20 do STUB.RunTimers() end
+  local later = P.Values(100, time() + 700).realized
+  P.background = false
+  return { first = first or -1, later = later or -1 }
+end)()""")
+check("values: in a click the sales are added up over the next frames (the last totals meanwhile)", bg.first == 95000 and bg.later == 95000)
 vl = [plain(l[0+1]) for l in L.eval("AuctionIQ.Prices.ValueLines(100)").values()]
 check("values: short codes in the tooltip", vl[0] == "Values" and any(x.startswith("  MV") for x in vl) and any(x.startswith("  RZ  Realized, 2 sold, last 1d ago") for x in vl))
 check("values: each code has its full meaning for the hover", all(L.eval(f"AuctionIQ.GLOSSARY.{c} ~= nil") for c in ["MV", "RV", "EV", "RZ"]))

@@ -1794,11 +1794,25 @@ function AUI.ToggleSetting()
 end
 
 local hooked = false
+local pendingRecipe
 local function hook()
 	if hooked then return end
 	if EventRegistry and EventRegistry.RegisterCallback then
 		EventRegistry:RegisterCallback("ProfessionsRecipeListMixin.Event.OnRecipeSelected", function(_, info)
-			if info and info.recipeID then AUI.Show(info.recipeID) end
+			if not (info and info.recipeID) then return end
+			-- the game fires this in the middle of building its own recipe page: work the recipe out
+			-- on the next frame, so the two don't share one frame's time (the game stops a frame
+			-- that runs too long, and then neither finishes). Several picks in a row: the last wins.
+			if not C_Timer then return AUI.Show(info.recipeID) end
+			local first = pendingRecipe == nil
+			pendingRecipe = info.recipeID
+			if first then
+				C_Timer.After(0, function()
+					local id = pendingRecipe
+					pendingRecipe = nil
+					if id then AUI.Show(id) end
+				end)
+			end
 		end, AUI)
 		hooked = true
 	end
