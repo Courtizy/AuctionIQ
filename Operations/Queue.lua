@@ -409,7 +409,7 @@ function Q.FillPlan(profID, opts)
 	if not scan or #scan.rows == 0 then return nil, "scan the profession first (the Scan tab)" end
 	local p = CH.Me().professions[profID]
 	local budget = opts.budget or (p and CH.ConcentrationNow(p)) or 0
-	local out = { conc = 0, plain = 0, points = 0, budget = budget, profit = 0, recipes = 0 }
+	local out = { conc = 0, plain = 0, points = 0, budget = budget, profit = 0, recipes = 0, entries = {} } -- entries: a dry run's would-be crafts
 	local limit = opts.limit or 12
 	local results, queued, done = {}, {}, {}
 	local function analyze(id)
@@ -445,7 +445,11 @@ function Q.FillPlan(profID, opts)
 			done[r.recipeID] = true
 			out.recipes = out.recipes + 1
 		end
-		Q.Add(r.result, row, n)
+		if opts.dry then
+			table.insert(out.entries, { name = row.name or (r.result and r.result.name), item = row.item, n = n, conc = isConc, profit = (row.profit or 0) * n })
+		else
+			Q.Add(r.result, row, n)
+		end
 		queued[row.item or 0] = (queued[row.item or 0] or 0) + n * (r.made or 1)
 		out.profit = out.profit + (row.profit or 0) * n
 		if isConc then out.conc = out.conc + n else out.plain = out.plain + n end
@@ -564,8 +568,8 @@ Q.ProfessionOf = professionOf
 --- number within its entry and why is "gold", "reagents" or "concentration".
 function Q.Budget()
 	local shop, total = Q.ShoppingList()
-	local out = { gold = { need = total, have = GetMoney and GetMoney() or 0 }, reagents = { need = 0, have = 0 },
-		conc = { need = 0, have = 0 } }
+	local out = { shop = shop, gold = { need = total, have = GetMoney and GetMoney() or 0 }, reagents = { need = 0, have = 0 },
+		conc = { need = 0, have = 0, by = {} } } -- by: { char, prof, need, have } per character's profession
 	local unit = {}
 	for _, s in ipairs(shop) do
 		local u = s.unit or 0
@@ -592,12 +596,16 @@ function Q.Budget()
 		if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
 		local pk = p and (e.char .. ":" .. tostring(pid))
 		if pk and not seen[pk] then
-			seen[pk] = true
-			points[pk] = CH.ConcentrationNow(p) or 0
+			seen[pk] = { char = e.charName or e.char, prof = p.name, need = 0, have = CH.ConcentrationNow(p) or 0 }
+			table.insert(out.conc.by, seen[pk])
+			points[pk] = seen[pk].have
 			start[pk] = points[pk]
 			out.conc.have = out.conc.have + points[pk]
 		end
-		if e.concentration then out.conc.need = out.conc.need + e.concentration * e.qty end
+		if e.concentration then
+			out.conc.need = out.conc.need + e.concentration * e.qty
+			if pk then seen[pk].need = seen[pk].need + e.concentration * e.qty end
+		end
 		for n = 1, e.qty do
 			for _, s in ipairs(e.shop or {}) do
 				if stock[s.itemID] == nil then stock[s.itemID] = have(s.itemID) end
@@ -636,6 +644,52 @@ function Q.Budget()
 		end
 	end
 	return out
+end
+
+--- What each queued entry can do right now, walking the queue in order so earlier entries take the
+--- reagents and Concentration first. Per entry: { now, blocked, why, short = { [itemID] = n }, shortN,
+--- need (its Concentration), have (points left for it) }. why is nil (all ready), "switch" (another
+--- character's), "reagents" or "conc". Totals: { now, blocked }.
+function Q.Readiness()
+	local here = CH.CharacterKey and CH.CharacterKey()
+	local stock, points, out, tot = {}, {}, {}, { now = 0, blocked = 0 }
+	for _, e in ipairs(list()) do
+		local r = { now = 0, blocked = 0, short = {}, shortN = 0 }
+		out[e] = r
+		if e.char ~= here then
+			r.why, r.blocked = "switch", e.qty
+		else
+			local p, pid
+			if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
+			local pk = p and (e.char .. ":" .. tostring(pid))
+			if pk and points[pk] == nil then points[pk] = CH.ConcentrationNow(p) or 0 end
+			for _ = 1, e.qty do
+				local ok = true
+				for _, s in ipairs(e.shop or {}) do
+					if stock[s.itemID] == nil then stock[s.itemID] = have(s.itemID) end
+					if stock[s.itemID] < s.n then ok = false end
+				end
+				local concOK = not (pk and points[pk] < e.concentration)
+				if ok and concOK then
+					for _, s in ipairs(e.shop or {}) do stock[s.itemID] = stock[s.itemID] - s.n end
+					if pk then points[pk] = points[pk] - e.concentration end
+					r.now = r.now + 1
+				else
+					-- a blocked craft takes what's left, so the shortfall adds up across crafts
+					for _, s in ipairs(e.shop or {}) do
+						local take = math.min(stock[s.itemID], s.n)
+						stock[s.itemID] = stock[s.itemID] - take
+						if s.n > take then r.short[s.itemID] = (r.short[s.itemID] or 0) + s.n - take; r.shortN = r.shortN + s.n - take end
+					end
+					r.blocked = r.blocked + 1
+					r.why = r.why or (not ok and "reagents" or "conc")
+					if not concOK then r.need, r.have = e.concentration, points[pk] end
+				end
+			end
+		end
+		tot.now, tot.blocked = tot.now + r.now, tot.blocked + r.blocked
+	end
+	return out, tot
 end
 
 --- Whether this character can craft an entry now: theirs, profession open, recipe known.

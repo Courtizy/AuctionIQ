@@ -437,7 +437,31 @@ local function shoppingRows(ctx)
 		.. T.Color("muted", "   At the AH, Auctioning's Shop queue buys them.")
 end
 
+--- Restock plans: the queue as it is against a lean plan of a few days' sales, each run through the
+--- price and sales simulation: gold up front, gold back by the horizon (median and the middle 80%),
+--- the chance sales cover the reagents, and the stock left. opts go to Decide.Plan (runs, for the tests).
+function TUI.PlanRows(opts)
+	local T = CH.Theme
+	local out = {}
+	if not (CH.db.queue and CH.db.queue[1]) then
+		return out, T.Color("muted", "The queue is empty. Queue crafts first, then compare plans here before you buy.")
+	end
+	local skipped = 0
+	for _, plan in ipairs(CH.Decide.Plans()) do
+		local r = CH.Decide.Plan(plan.entries, opts)
+		skipped = math.max(skipped, r.unpriced or 0)
+		table.insert(out, { cells = { T.Color("accent", plan.label), r.crafts, money(r.cash), money(r.back.p50 or 0),
+			T.Color("muted", money(r.back.p10 or 0) .. " to " .. money(r.back.p90 or 0)),
+			string.format("%d%%", math.floor(r.recover * 100 + 0.5)), money(r.left) },
+			sort = { plan.label, r.crafts, r.cash, r.back.p50 or 0, r.back.p10 or 0, r.recover, r.left }, plan = r })
+	end
+	return out, string.format("Gold back by day %d counts only what sells. Sales from region volume capped at your daily cap; price spread from Scenarios; prices share one market move.", CH.Decide.HORIZON)
+		.. (skipped > 0 and T.Color("muted", string.format("   %d entries left out: no scan or price for their item.", skipped)) or "")
+end
+
 TUI.PRODUCTION = {
+	restock = { label = "Restock plans", noTime = true, rows = function() return TUI.PlanRows() end, cols = { { "Plan", 0, 140 }, { "Crafts", 144, 44 },
+		{ "Gold up front", 192, 92 }, { "Gold back, day 7", 288, 108 }, { "Middle 80%", 400, 136 }, { "Covers reagents", 540, 96 }, { "Stock left", 640, 84 } } },
 	ready = { label = "Ready here", sort = 6, asc = true, noTime = true, rows = readyRows, cols = { { "Craft", 0, 220 },
 		{ "Group", 224, 150 }, { "Qty", 378, 40 }, { "Expected craft profit", 422, 130 }, { "Conc.", 556, 44 }, { "Unlocks by", 604, 120 } } },
 	work = { label = "Execution plan", sort = 7, asc = true, noTime = true, rows = workRows, cols = { { "Task", 0, 220 }, { "Character", 224, 86 },

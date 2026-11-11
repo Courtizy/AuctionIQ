@@ -407,7 +407,10 @@ local function build()
 		x = x - width - 4
 		return b
 	end
-	SUI.allButton = barButton("Queue all", 72, function() SUI.QueueAll() end)
+	-- Recipes: Fill queue from the scan, its plan shown on hover first. Orders and first crafts: queue them all.
+	SUI.allButton = barButton("Queue all", 72, function() if mode == "recipes" then SUI.Fill() else SUI.QueueAll() end end)
+	SUI.allButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.AllLines()) end)
+	SUI.allButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)
 	SUI.ordersButton = barButton("Work orders", 90, function() setMode("orders") end)
 	barButton("Scan", 50, function() SUI.Start() end)
@@ -660,7 +663,7 @@ local function showTable()
 		SUI.olderButton:SetShown(mode == "recipes" or mode == "orders")
 		SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	end
-	if SUI.allButton then SUI.allButton:SetShown(mode ~= "recipes") end
+	if SUI.allButton then SUI.allButton:SetText(mode == "recipes" and "Fill queue" or "Queue all") end
 	if SUI.nextButton then SUI.nextButton:SetShown(mode == "orders"); SUI.UpdateNext() end
 	for m, b in pairs({ orders = SUI.ordersButton, first = SUI.firstButton }) do
 		if b and b.SetAlpha then b:SetAlpha(mode == m and 1 or 0.65) end
@@ -683,6 +686,54 @@ local function showTable()
 		end
 	end
 	return tables[listKey()]
+end
+
+--- The bar's queue button, on hover: in Recipes, the restock plan Fill queue would add (a dry run);
+--- in Work orders and First crafts, what Queue all adds.
+function SUI.AllLines()
+	local T, M = CH.Theme, CH.FormatMoney
+	if mode == "orders" then
+		return { { "Queue eligible orders" }, { T.Color("muted", "Queue the listed orders that pay, or give knowledge, with reagents you have.") } }
+	elseif mode == "first" then
+		local n, cost = 0, 0
+		for _, d in ipairs(data) do n = n + 1; cost = cost + (d.cost or 0) end
+		local out = { { "Queue every first craft" }, { T.Color("muted", "Once each at its cheapest, for the first-craft knowledge point.") } }
+		if n > 0 then table.insert(out, { "  " .. n .. " knowledge points", M(cost) .. T.Color("muted", n > 0 and ("  " .. M(math.floor(cost / n + 0.5)) .. " a point") or "") }) end
+		return out
+	end
+	local out = { { "Review restock plan" } }
+	local prof = CH.OpenProfessionID and CH.OpenProfessionID()
+	local plan, why
+	if prof then plan, why = CH.Queue.FillPlan(prof, { dry = true }) end
+	if not plan then
+		table.insert(out, { T.Color("muted", why or "Open a profession to plan from its scan.") })
+		return out
+	end
+	if not plan.entries[1] then
+		table.insert(out, { T.Color("muted", "Nothing to add: no craft profits within what sells in a day, less what you own.") })
+		return out
+	end
+	for i, x in ipairs(plan.entries) do
+		if i > 10 then table.insert(out, { T.Color("muted", "  and " .. (#plan.entries - 10) .. " more") }); break end
+		table.insert(out, { "  " .. (x.name or "?") .. " x" .. x.n .. (x.conc and (" " .. CH.Window.ConcIcon(12)) or ""), T.Color(x.profit >= 0 and "ok" or "bad", M(x.profit)), "fg", "fg" })
+	end
+	table.insert(out, { string.format("%d Concentration crafts (%d of %d points), %d without", plan.conc, math.floor(plan.points + 0.5), plan.budget, plan.plain), M(plan.profit), "ok", "muted" })
+	table.insert(out, { T.Color("muted", "Concentration crafts first, best gold per point; then crafts that profit without it. Each up to what sells in a day (/aiq cap), less what you own. Click to queue them.") })
+	return out
+end
+
+--- Fill the queue from the open profession's scan (Queue.FillPlan).
+function SUI.Fill()
+	local prof = CH.OpenProfessionID and CH.OpenProfessionID()
+	local plan, why
+	if prof then plan, why = CH.Queue.FillPlan(prof) end
+	if plan then
+		CH.Print(string.format("queued %d Concentration crafts (%d of %d points) and %d without, about %s profit.",
+			plan.conc, math.floor(plan.points + 0.5), plan.budget, plan.plain, CH.FormatMoney(plan.profit)))
+	else
+		CH.Print(why or "open a profession to fill the queue from its scan.")
+	end
+	return plan
 end
 
 --- Queue every work order that pays or gives knowledge, or every first craft. Returns how many.

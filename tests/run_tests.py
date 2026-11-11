@@ -186,10 +186,17 @@ check("queue: Count adds up", CH.Queue.Count() == 3)
 check("queueing from the card keeps you on the Craft tab", CH.ScanUI.IsShown() and not CH.QueueUI.IsShown())
 lines = CH.QueueUI.Show()
 check("the Queue tab replaces Craft in the same spot", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown() and CH.Window.Active() == "queue")
-shop = list(lines.shop.values())
+shop = list(lines.shopAll.values())
 # 2x Q2 craft (4x202, 5x204, 2x205) + 1x conc craft (4x201, 5x203, 2x205)
 check("shopping list: need across the queue, less what you have",
       "item 202 need=8 have=8 buy=0" in shop and "item 204 need=10 have=12 buy=0" in shop and "item 205 need=6 have=3 buy=3" in shop)
+srows_ = [r for r in CH.QueueUI.ShopRows()[0].values()]
+check("shopping list card: what to buy first, covered reagents folded into one row",
+      srows_[0].itemID == 205 and srows_[-1].toggle and srows_[-1].n == len(shop) - 1)
+check("shopping list card: the covered row opens them", len(list(CH.QueueUI.SetShowCovered(True).shop.values())) >= 1
+      and len(list(CH.QueueUI.ShopRows()[0].values())) == len(shop) + 1)
+run("AuctionIQ.QueueUI.SetShowCovered(false)")
+check("queue popup: More holds plan comparison and Clear, nothing that adds", [m[1] for m in CH.QueueUI.MenuItems().values()] == ["Compare restock plans", "Clear queue"])
 # Order book: buying a quantity walks up the listings (Data/Depth.lua)
 D = CH.Depth
 d = D.Cost(205, 3)
@@ -558,6 +565,9 @@ check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.pro
 
 # Queue on a Concentration budget
 run('AuctionIQ.Queue.Clear()')
+dry = CH.Queue.FillPlan(2906, L.eval("{ budget = 100, dry = true }"))
+check("fill: a dry run lists the plan (Craft window's Fill queue hover) and queues nothing",
+      CH.Queue.Count() == 0 and dry.conc == 1 and sum(x.n for x in dry.entries.values()) == dry.conc + dry.plain and list(dry.entries.values())[0].conc)
 plan = CH.Queue.FillPlan(2906, L.eval("{ budget = 100 }"))
 qs = list(CH.db.queue.values())
 cq = [e for e in qs if e.concentration]
@@ -716,7 +726,20 @@ check("queue budget: gold, reagents and Concentration, on hand against needed", 
       and bg.conc.need == 720)
 check("queue budget: the first craft that hits a limit", bg.stop.why == "gold" and bg.stop.n == 5)
 bll = [plain(x) for x in CH.QueueUI.BudgetLines(bg).values()]
-check("queue budget: lines say what's short and where it stops", "short" in bll[0] and bll[3] == "Stops at the 5th Test Flask (Seyko): you run out of gold to buy its reagents.")
+check("queue budget: shopping cost against your gold, missing materials, Concentration by character and profession",
+      bll[0] == "410g, you have 123g: 286g short" and bll[1] == "67 reagents short (3 kinds)" and bll[2].startswith("Seyko ") and bll[2].endswith("720 of 400"))
+rd, rt = CH.Queue.Readiness()
+e9 = CH.db.queue[1]
+check("readiness: each craft takes what's on hand in queue order; the rest is blocked with its shortfall",
+      rt.now == 1 and rt.blocked == 8 and rd[e9].why == "reagents" and rd[e9].shortN == sum(rd[e9].short.values()))
+blk = plain(CH.QueueUI.BlockerLine(None, None, bg))
+check("next blocker: the batch, what's ready now, the exact shortfall and the gold", blk.startswith("Next blocker: Test Flask x9: craft 1 now · 8 blocked, short ")
+      and blk.endswith("Buying it all costs 410g, you have 123g"))
+st, tipl = CH.QueueUI.RowState(e9, rd[e9], True, None, "Craft", CH.Queue.ShoppingList()[0])
+check("row status: part ready says how many now and how many blocked", plain(st) == "1 now · 8 blocked"
+      and any(plain(l[1]).startswith("Short ") for l in tipl.values()))
+st2, _ = CH.QueueUI.RowState(L.eval("{ name = 'X', qty = 2, charName = 'Alt' }"), L.eval("{ now = 0, blocked = 2, why = 'switch', short = {} }"), False, "on Alt", "Craft", None)
+check("row status: another character's craft says to switch", plain(st2) == "Switch character")
 run('STUB.money = 999999999')
 bg2 = CH.Queue.Budget()
 run('STUB.money = 1234567')
@@ -724,11 +747,10 @@ check("queue budget: with gold, Concentration is next to block", bg2.stop is Non
 seq = list(D.ConcSequence(100, L.eval("{ { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 } }")).values())
 check("queue Concentration: exact chance each craft can start, refunds landing after the craft that earns them",
       seq[:3] == [1, 1, 1] and abs(seq[3] - 0.5) < 1e-12 and abs(seq[4] - 0.0625) < 1e-12)
-pll = [(plain(l[1]), plain(l[2]) if l[2] else "") for l in CH.QueueUI.PlanLines(L.eval("{ runs = 200 }")).values()]
-labels = [x[0] for x in pll]
-check("restock plans: as queued against lean, with gold up front, gold back by day 7 and stock left",
-      "As queued" in labels and any(x.startswith("Lean (") for x in labels) and labels.count("   Gold up front, to buy reagents") == 2
-      and any(x.startswith("   Gold back by day 7") for x in labels) and labels.count("   Stock left, estimated value") == 2)
+prows = list(L.eval("AuctionIQ.TradingUI.PlanRows({ runs = 200 })")[0].values())
+labels = [plain(r.cells[1]) for r in prows]
+check("restock plans (Operations, Queue): as queued against lean, with gold up front, gold back by day 7 and stock left",
+      "As queued" in labels and any(x.startswith("Lean (") for x in labels) and all(len(list(r.cells.values())) == 7 for r in prows))
 pq = L.eval("AuctionIQ.Decide.Plans()")
 check("restock plans: lean never queues more than the queue", sum(e.qty for e in pq[2].entries.values()) <= sum(e.qty for e in pq[1].entries.values()))
 run("AuctionIQ.db.batchForecasts = nil; AuctionIQ.AdvisorUI.SetQty(2); AuctionIQ.AdvisorUI.QueueSelected()")
@@ -1680,7 +1702,7 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
 run("AuctionIQ.UI.Page('operations', 'mail')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Queue: execution plan, production queue, shopping list, to mail", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "To mail"])
+check("Queue: execution plan, production queue, shopping list, restock plans, to mail", LUI.Group() == "Queue" and navshown == ["Ready here", "Execution plan", "Production queue", "Shopping list", "Restock plans", "To mail"])
 # Dashboard hand-offs: a recommendation opens its view on the item, character and quantity
 run("AuctionIQ.UI.Go('operations', 'scenarios', { name = 'Test Flask', char = 'Alt', qty = 20, title = 'Restock' })")
 foot = plain(L.eval("AuctionIQ.UI.Pages().ledger.footer:GetText()") or "")
@@ -2304,7 +2326,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
+for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "mail", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
