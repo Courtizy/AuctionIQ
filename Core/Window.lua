@@ -531,6 +531,7 @@ function W.SidePanel(parent, width, height, opts)
 	det.kicker = text(IW, "LEFT", "GameFontNormalSmall")
 	T.TitleFont(det.kicker, 10, "bold")
 	det.title = text(IW, "LEFT", "GameFontNormalLarge", 2)
+	det.title:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) -- the theme colour, not the game's gold
 	T.TitleFont(det.title, 15, "black")
 	det.sub = text(IW, "LEFT", "GameFontDisableSmall", 2)
 	det.subHit = tipHit()

@@ -568,6 +568,7 @@ function SUI.BuildDetails()
 	back:SetPoint("TOPLEFT", 0, 0)
 	back:SetScript("OnClick", function() SUI.SetDetails(false) end)
 	details.title = Wd.OneLine(Wd.Text(details, 72, -3, DW - 72, "LEFT", "GameFontNormal"))
+	details.title:SetTextColor(CH.Theme.accent[1], CH.Theme.accent[2], CH.Theme.accent[3])
 	-- the chart, full width
 	local cy = -18 - GAP
 	local CH_H = 150
