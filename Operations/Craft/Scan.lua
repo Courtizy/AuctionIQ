@@ -8,8 +8,8 @@ local Sc = {}
 CH.Scan = Sc
 Sc.models = {} -- [professionID][recipeID] = advisor model, for simulations this session
 
-local PER_FRAME = 2  -- at least this many recipes a frame...
-local BUDGET_MS = 8  -- ...and more while a frame has spent less than this
+local PER_FRAME = 2  -- at least this many recipes a frame without a clock...
+local BUDGET_MS = 6  -- ...and with one, more while the next recipe should still finish inside this
 local running
 
 local function settings() return CH.db.settings.scan end
@@ -258,6 +258,7 @@ end
 
 -- The recipe being worked out, as a coroutine, and when this frame's share of work began.
 local work, frameStart
+local work_t0 -- when the recipe being worked out started (it may span frames: then it isn't timed)
 local bg -- the background job (Sc.Background), if one is running
 local clock = debugprofilestop
 
@@ -358,14 +359,23 @@ function Sc.Run(onStep, onDone)
 		local n = 0
 		while true do
 			if not work then
-				if not (n < PER_FRAME or (clock and clock() - frameStart < BUDGET_MS)) then break end
+				-- start another recipe only when it should finish inside the budget (from how long
+				-- recipes have been taking), so a frame doesn't run long on its last one
+				if clock then
+					if n >= 1 and clock() - frameStart + (Sc.avgMs or 1) > BUDGET_MS then break end
+				elseif n >= PER_FRAME then break end
 				i = i + 1
 				local id = ids[i]
 				if not id then return finish() end
 				work, n = begin(id), n + 1
+				work_t0 = clock and clock()
 			end
 			local ok, err, result = coroutine.resume(work)
 			if coroutine.status(work) ~= "dead" then break end -- paused: out of time this frame
+			if clock and work_t0 and n >= 1 then
+				local took = clock() - work_t0
+				Sc.avgMs = Sc.avgMs and (Sc.avgMs * 0.8 + took * 0.2) or took
+			end
 			work = nil
 			-- a recipe that errors keeps its last good row, and the scan says how many did
 			if not ok then
@@ -380,7 +390,8 @@ function Sc.Run(onStep, onDone)
 		if onStep then onStep(i, #ids) end
 		C_Timer.After(0, step)
 	end
-	step()
+	-- the first recipes next frame: listing them is this frame's work
+	if C_Timer and clock then C_Timer.After(0, step) else step() end
 	return true
 end
 

@@ -632,14 +632,27 @@ function D.SaveAdvice(id, a, now)
 	now = now or time()
 	local day = math.floor(now / 86400)
 	local list = adviceLog()
-	for i = #list, math.max(1, #list - 200), -1 do
-		local e = list[i]
-		if e.id == id and e.day == day then return e end
+	-- today's entries by item, built once per day and log (a table of items asks for each)
+	local idx = D.adviceIndex
+	if not idx or idx.list ~= list or idx.day ~= day then
+		idx = { list = list, day = day, by = {} }
+		for i = #list, math.max(1, #list - 200), -1 do
+			local e = list[i]
+			if e.day == day and not idx.by[e.id] then idx.by[e.id] = e end
+		end
+		D.adviceIndex = idx
 	end
+	if idx.by[id] then return idx.by[id] end
 	local e = { at = now, day = day, id = id, action = a.action, qty = a.qty, price = a.price, daily = a.daily, up = a.up,
 		cap = a.cap, enough = a.enough, reason = a.reason }
 	list[#list + 1] = e
-	while #list > D.ADVICE_KEEP do table.remove(list, 1) end
+	idx.by[id] = e
+	-- trim the oldest in one move, not one table.remove (a full shift) per entry
+	if #list > D.ADVICE_KEEP + 100 then
+		local cut = #list - D.ADVICE_KEEP
+		for i = 1, D.ADVICE_KEEP do list[i] = list[i + cut] end
+		for i = #list, D.ADVICE_KEEP + 1, -1 do list[i] = nil end
+	end
 	return e
 end
 

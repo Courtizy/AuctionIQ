@@ -49,7 +49,7 @@ function TUI.PostPlan()
 				table.insert(out, { id = e.id, path = path, held = held, here = here, fetch = math.max(0, held - here), up = up, cap = p.cap, post = post, price = price,
 					ah = ah or ahNow(e.id), source = source, age = age, why = ev.why, op = p.op,
 					check = source == nil and not vals.realized or nil,
-					min = p.min, value = verdict == "post" and price and price * post * CH.AH_CUT or 0, verdict = verdict, mail = e.mail })
+					min = p.min, value = verdict == "post" and price and price * post * CH.AH_CUT or 0, verdict = verdict, mail = e.mail, vals = vals })
 			end
 		end
 	end
@@ -190,11 +190,26 @@ function TUI.PostDetail(d)
 		rows = rows, section = { head = "MARKET", rows = mk }, note = T.Color("muted", note), actions = actions }
 end
 
+-- The post plan and its advice, kept a few seconds: sorting, filtering or a redraw of the view
+-- needn't work out every item again. Bags, auctions or mail changing start it afresh.
+local planCache
+local function cachedPlan(now)
+	local t = GetTime and GetTime() or 0
+	if planCache and t - planCache.at < 5 then return planCache.plan, planCache.advice end
+	local plan = TUI.PostPlan()
+	local advice = TUI.Advice(plan, now)
+	planCache = { at = t, plan = plan, advice = advice }
+	return plan, advice
+end
+function TUI.ClearPlanCache() planCache = nil end
+for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "OWNED_AUCTIONS_UPDATED", "AUCTION_HOUSE_AUCTION_CREATED", "MAIL_INBOX_UPDATE", "PLAYER_MONEY" }) do
+	CH.On(ev, function() planCache = nil end)
+end
+
 local function postRows(ctx)
 	local T = CH.Theme
 	local out, n, worth, held, full, fewer, wait, checks = {}, 0, 0, 0, 0, 0, 0, 0
-	local plan = TUI.PostPlan()
-	local advice = TUI.Advice(plan, ctx.now)
+	local plan, advice = cachedPlan(ctx.now)
 	for _, r in ipairs(plan) do
 		local text, name = LUI.ItemText(r.id)
 		if ctx.keepName(name) then
@@ -204,7 +219,7 @@ local function postRows(ctx)
 			if a and a.action == "fewer" then fewer = fewer + 1 elseif a and a.action == "wait" then wait = wait + 1 end
 			if a and a.action == "check" then checks = checks + 1 end
 			-- EV: what one is worth to you at this price; RZ: what you've really sold it for
-			local vals = CH.Prices.Values(r.id)
+			local vals = r.vals or CH.Prices.Values(r.id)
 			local ev = r.price and CH.Expect and CH.Expect.Value(r.id, r.price)
 			local tip = a and TUI.PostLines(r, a)
 			table.insert(out, { id = r.id, key = r.id, x = { plan = r, advice = a, ev = ev, realized = vals.realized }, tip = tip,
