@@ -1,0 +1,10 @@
+## Interface: 120105
+## Title: AuctionIQ Tailoring
+## Notes: AuctionIQ's Tailoring data: its specialization tree. Loads only on characters with Tailoring.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Spec.lua

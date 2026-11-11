@@ -1,0 +1,10 @@
+## Interface: 120105
+## Title: AuctionIQ Alchemy
+## Notes: AuctionIQ's Alchemy data: its specialization tree. Loads only on characters with Alchemy.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Spec.lua

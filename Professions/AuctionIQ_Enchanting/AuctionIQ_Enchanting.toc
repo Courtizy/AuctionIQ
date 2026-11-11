@@ -1,0 +1,11 @@
+## Interface: 120105
+## Title: AuctionIQ Enchanting
+## Notes: AuctionIQ's Enchanting data: its specialization tree and enchant scrolls. Loads only on characters with Enchanting.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Spec.lua
+EnchantScrolls.lua

@@ -10,7 +10,16 @@ function UnitClass() return "Druid", "DRUID" end
 function GetRealmName() return "Emerald Dream" end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 SlashCmdList, UISpecialFrames, RAID_CLASS_COLORS = {}, {}, { DRUID = { colorStr = "ffff7c0a" } }
-C_AddOns = { GetAddOnMetadata = function() return "test" end }
+C_AddOns = { GetAddOnMetadata = function() return "test" end,
+	-- the profession data addons: the tests hand their sources in STUB.addonFiles
+	LoadAddOn = function(name)
+		local files = STUB.addonFiles and STUB.addonFiles[name]
+		if not files then return false, "MISSING" end
+		STUB.addonsLoaded = STUB.addonsLoaded or {}
+		STUB.addonsLoaded[name] = true
+		for _, f in ipairs(files) do assert(loadstring(f[2], f[1]))() end
+		return true
+	end }
 C_Timer = { After = function(_, fn) table.insert(timers, fn) end }
 function STUB.RunTimers() local t = timers; timers = {}; for _, fn in ipairs(t) do fn() end end
 

@@ -1,5 +1,5 @@
 -- Specialization trees: reads the ranks you have, works out what each node gives a recipe (from the
--- node data in Operations/Craft/Specs/Spec*.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
+-- node data in Professions/AuctionIQ_<Profession>/Spec.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
 local _, CH = ...
 
 local S = {}
@@ -12,6 +12,33 @@ local EXTRA_KEYS = { additionalitemscraftedwithmulticraft = "mcExtra", reagentss
 	ingenuityrefundincrease = "refundExtra", reduceconcentrationcost = "concReduce" }
 
 function S.Data(professionID) return CH.SpecData and CH.SpecData[professionID] end
+
+-- Each profession's tree (and Enchanting's scrolls) is its own addon, AuctionIQ_<Profession>, loaded
+-- on demand: only the professions this character has are loaded.
+S.ADDONS = { [171] = "Alchemy", [164] = "Blacksmithing", [333] = "Enchanting", [202] = "Engineering",
+	[773] = "Inscription", [755] = "Jewelcrafting", [165] = "Leatherworking", [197] = "Tailoring" }
+S.loaded = {}
+
+--- Load the data addons for this character's professions. Returns the names loaded now.
+function S.LoadData()
+	local load = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
+	if not (load and GetProfessions and GetProfessionInfo) then return {} end
+	local out = {}
+	local slots = { GetProfessions() }
+	for k = 1, select("#", GetProfessions()) do
+		local i = slots[k]
+		local line = i and select(7, GetProfessionInfo(i))
+		local name = line and S.ADDONS[line]
+		if name and not S.loaded[name] then
+			local ok, loaded = pcall(load, "AuctionIQ_" .. name)
+			if ok and loaded then S.loaded[name] = true; out[#out + 1] = name end
+		end
+	end
+	return out
+end
+CH.On("PLAYER_LOGIN", function() S.LoadData() end)
+CH.On("SKILL_LINES_CHANGED", function() S.LoadData() end)
+CH.On("TRADE_SKILL_SHOW", function() S.LoadData() end)
 
 local function nodeName(configID, nodeID)
 	local ok, info = pcall(C_Traits.GetNodeInfo, configID, nodeID)

@@ -22,16 +22,7 @@ Data\Compare.lua
 Data\Formula.lua
 Data\Stats.lua
 Data\Decide.lua
-Operations\Craft\Specs\ConcentrationCurves.lua
-Operations\Craft\Specs\EnchantScrolls.lua
-Operations\Craft\Specs\SpecAlchemy.lua
-Operations\Craft\Specs\SpecBlacksmithing.lua
-Operations\Craft\Specs\SpecEnchanting.lua
-Operations\Craft\Specs\SpecEngineering.lua
-Operations\Craft\Specs\SpecInscription.lua
-Operations\Craft\Specs\SpecJewelcrafting.lua
-Operations\Craft\Specs\SpecLeatherworking.lua
-Operations\Craft\Specs\SpecTailoring.lua
+Data\ConcentrationCurves.lua
 Operations\Craft\Spec.lua
 Core\Tooltip.lua
 Operations\Craft\Professions.lua

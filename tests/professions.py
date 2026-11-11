@@ -4,8 +4,8 @@
 
 # the real data files, loaded fresh: earlier tests swap in small fixture trees
 fresh = L.eval("{ }")
-for f in sorted((ROOT / "Operations" / "Craft" / "Specs").glob("Spec*.lua")):
-    L.eval("function(src, name) return assert(loadstring(src, name)) end")(f.read_text(), f.name)("AuctionIQ", fresh)
+for f in sorted((ROOT / "Professions").glob("AuctionIQ_*/Spec.lua")):
+    L.eval("function(src, name, ns) local old = AuctionIQ; AuctionIQ = ns; assert(loadstring(src, name))(); AuctionIQ = old end")(f.read_text(), f.parent.name, fresh)
 L.globals().STUB.freshSpec = fresh.SpecData
 pf = L.eval("""(function()
   local out = {}
@@ -169,3 +169,13 @@ for c in px.values():
 check("theme: at UI scales 0.53, 0.64, 0.71 and 1.0 (and a resized window) every panel border is exactly one screen pixel",
       all(c.panels > 0 and c.off == 0 for c in px.values()))
 check("theme: the advisor and the tab strip sit on whole screen pixels per unit at every UI scale", all(c.whole for c in px.values()))
+
+# Data addons: only this character's professions load (the stub character has Alchemy, Enchanting
+# and Cooking), each from its own AuctionIQ_<Profession> folder
+la = L.eval("STUB.addonsLoaded or {}")
+check("data addons: only the professions you have load (Alchemy and Enchanting here, not Tailoring)",
+      la["AuctionIQ_Alchemy"] and la["AuctionIQ_Enchanting"] and not la["AuctionIQ_Tailoring"] and not la["AuctionIQ_Blacksmithing"])
+check("data addons: each profession's TOC loads on demand, after AuctionIQ, and its files exist",
+      all("## LoadOnDemand: 1" in (d / (d.name + ".toc")).read_text() and "## Dependencies: AuctionIQ" in (d / (d.name + ".toc")).read_text()
+          and all((d / l.strip()).exists() for l in (d / (d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua"))
+          for d in (ROOT / "Professions").glob("AuctionIQ_*")))

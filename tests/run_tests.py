@@ -14,6 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 files = [l.strip().replace("\\", "/") for l in (ROOT / "AuctionIQ.toc").read_text().splitlines() if l.strip().endswith(".lua")]
 L = LuaRuntime(unpack_returned_tuples=True)
 L.execute((ROOT / "tests" / "wow_stub.lua").read_text())
+# the profession data addons (Professions/AuctionIQ_*), loaded on demand through C_AddOns.LoadAddOn
+_af = {}
+for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")):
+    _fs = [l.strip() for l in (_d / (_d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua")]
+    _af[_d.name] = L.table_from([L.table_from([_f, (_d / _f).read_text()]) for _f in _fs])
+L.globals().STUB.addonFiles = L.table_from(_af)
 ns = L.table()
 for f in files:
     chunk = L.eval("function(src, name) return assert(loadstring and loadstring(src, name) or load(src, name)) end")((ROOT / f).read_text(), f)
