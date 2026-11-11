@@ -999,6 +999,9 @@ end
 --- Update the advisor for a recipe (or the one on screen). It comes to the front unless another tab
 --- is open: then it updates quietly, ready for when you click its tab.
 function AUI.Show(recipeID, force)
+	-- the old Advisor window's X turned the advisor off for good; under the two windows that would
+	-- keep the Craft window from opening, so clear it once when the two windows first load
+	if CH.db and not settings().twoWindows then settings().twoWindows = true; settings().hide = nil end
 	if not CH.db or (settings().hide and not force) or not ownProfession() then
 		if panel then panel:Hide() end
 		return
