@@ -2115,6 +2115,9 @@ cl = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
 check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
 rl2 = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
 check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
+ph = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[78], 4).values()]
+hv = L.eval("AuctionIQ.ScanUI.ORDER_HOVER")
+check("orders: the Reagents column's hover is the reagents you supply, Profit's lists the rewards", hv[3] == 5 and hv[4] == 4 and any("Knowledge Notes" in x for x in ph))
 tw = L.eval("""(function()
   local f = CreateFrame('Frame'); STUB.entered = {}
   local rows = AuctionIQ.Window.Table(f, { { 'A', 12, 50 }, { 'B', 70, 50 } }, 3, 0, 18, nil, function(_, i) table.insert(STUB.entered, i) end, 200)

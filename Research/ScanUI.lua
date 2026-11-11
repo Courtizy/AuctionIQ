@@ -246,7 +246,11 @@ function SUI.OrderLines(d)
 	return lines
 end
 
---- A work order cell's own tooltip: rewards (3), profit (4) or crafting costs (5), laid out like a
+--- Which statement each Work orders column shows on hover: Reagents the reagents you supply with
+--- what you hold of each, Profit the statement with its rewards itemised. The others: the row's hover.
+SUI.ORDER_HOVER = { [3] = 5, [4] = 4 }
+
+--- A work order's statements: rewards (3), profit (4) or crafting costs (5), laid out like a
 --- statement (CH.Window.Book). nil for the rest.
 function SUI.OrderCellLines(d, col)
 	local T, M, B = CH.Theme, CH.FormatMoney, CH.Window.Book
@@ -265,7 +269,11 @@ function SUI.OrderCellLines(d, col)
 		local pays = (d.commission or 0) + (d.rewardValue or 0)
 		local procs = (d.profit or 0) - (pays - (d.cost or 0))
 		local lines = { B.Head("Revenue"), B.Line("Commission, after the consortium's cut", d.commission or 0) }
-		if (d.rewardValue or 0) > 0 then table.insert(lines, B.Line("Rewards you can sell", d.rewardValue)) end
+		for _, rw in ipairs(d.rewards or {}) do
+			local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rw.id)) or ("item " .. rw.id)
+			local label = CH.Window.ItemIcon(rw.id, 14) .. rw.count .. " x " .. name .. (rw.knowledge and T.Color("accent", "  knowledge") or "")
+			table.insert(lines, rw.value and B.Line(label, rw.value) or B.Text(label, T.Color("muted", "can't be sold"), "muted"))
+		end
 		table.insert(lines, B.Head("Costs"))
 		table.insert(lines, B.Line("Reagents you supply", -(d.cost or 0), true))
 		if math.abs(procs) >= 100 then table.insert(lines, B.Line("Resourcefulness, on average", procs)) end
@@ -319,7 +327,10 @@ end
 local function hover(owner, i, col)
 	local r = data[i + offset]
 	if not r then return end
-	if mode == "orders" then CH.Window.Tooltip(owner, SUI.OrderCellLines(r, col) or SUI.OrderLines(r)); return end
+	if mode == "orders" then
+		local part = SUI.ORDER_HOVER[col]
+		CH.Window.Tooltip(owner, part and SUI.OrderCellLines(r, part) or SUI.OrderLines(r)); return
+	end
 	if mode ~= "recipes" then CH.Window.Tooltip(owner, SUI.OrderLines(r)); return end
 	local T = CH.Theme
 	local cell = SUI.RecipeCellLines(r, col)
