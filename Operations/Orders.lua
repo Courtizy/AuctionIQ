@@ -292,8 +292,49 @@ end
 --- { order, orderID, recipeID, name, item, from, kind, minQuality, commission, rewards, rewardValue,
 ---   kp, cost, profit, quality, concentration, row, result, ok (some craft meets the minimum) }.
 --- Best profit first; orders you can't fill go last.
+-- Working an order out is the advisor's full search plus a bag count per reagent, so O.List keeps
+-- each order's row and only works it out again when something it depends on changes: your bags,
+-- Concentration or skill (O.Invalidate), the order itself, or after a minute (prices drift).
+-- Claim, Craft and Turn in redraw the list several times a click; without this each redraw
+-- re-ran the search for every order.
+local rows, gen = {}, 0
+O.MAX_AGE = 60
+function O.Invalidate() gen = gen + 1 end
+for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "CURRENCY_DISPLAY_UPDATE", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED", "PLAYERBANKSLOTS_CHANGED", "NEW_RECIPE_LEARNED" }) do
+	CH.On(ev, O.Invalidate)
+end
+
+local function signature(order)
+	return table.concat({ tostring(order.spellID), tostring(order.minQuality), tostring(order.tipAmount),
+		tostring(order.consortiumCut), tostring(#(order.reagents or {})), tostring(#(order.npcOrderRewards or {})), tostring(order.customerName), tostring(order.orderType) }, ":")
+end
+
 function O.List()
-	local co = C_CraftingOrders
+	local out = {}
+	local now = time()
+	local fresh = {}
+	for _, order in ipairs(O.All()) do
+		local k, sig = tostring(order.orderID), signature(order)
+		local c = rows[k]
+		if not (c and c.gen == gen and c.sig == sig and now - c.at < O.MAX_AGE) then
+			c = { gen = gen, sig = sig, at = now, entry = O.Row(order) }
+		end
+		c.entry.order = order -- the latest copy the game gave (claimed, fulfillable)
+		fresh[k] = c
+		table.insert(out, c.entry)
+	end
+	rows = fresh
+	table.sort(out, function(a, b)
+		if a.ok ~= b.ok then return a.ok end
+		if (a.have or false) ~= (b.have or false) then return a.have or false end
+		if a.kp ~= b.kp then return a.kp end
+		return (a.profit or -math.huge) > (b.profit or -math.huge)
+	end)
+	return out
+end
+
+--- One order worked out for the list (uncached; O.List keeps these).
+function O.Row(order)
 	local out = {}
 	local current = CH.Scan and CH.Scan.CurrentLine and CH.Scan.CurrentLine()
 	local ui = C_TradeSkillUI
@@ -301,7 +342,7 @@ function O.List()
 	local cid = child and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(child.professionID)
 	local cinfo = cid and cid ~= 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(cid)
 	local concNow = cinfo and cinfo.quantity
-	for _, order in ipairs(O.All()) do
+	do
 		local line, expansion
 		if CH.Scan and CH.Scan.Expansion then line, expansion = CH.Scan.Expansion(order.spellID) end
 		local ok, result = pcall(O.Analyze, order)
@@ -334,13 +375,7 @@ function O.List()
 			-- no row because a reagent you'd supply has no price, not because the quality is out of reach
 			unpriced = not r and result and result.model and result.model.unpriced or nil })
 	end
-	table.sort(out, function(a, b)
-		if a.ok ~= b.ok then return a.ok end
-		if (a.have or false) ~= (b.have or false) then return a.have or false end
-		if a.kp ~= b.kp then return a.kp end
-		return (a.profit or -math.huge) > (b.profit or -math.huge)
-	end)
-	return out
+	return out[1]
 end
 
 --- Print, for each listed order, what the advisor makes of it: the rank it needs, the ranks it

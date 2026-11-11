@@ -25,6 +25,7 @@ def check(name, cond):
 run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().AuctionIQ
+CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
 
@@ -2230,6 +2231,16 @@ check("orders: Older: hidden leaves older-expansion orders out", len(list(CH.Sca
 run("AuctionIQ.ScanUI.ToggleOlder()")
 check("orders: Older: shown brings them back", len(list(CH.ScanUI.Refresh().values())) == 3)
 run("C_TradeSkillUI.GetTradeSkillLineForRecipe = STUB.oldLine; C_TradeSkillUI.GetChildProfessionInfos = STUB.oldInfos")
+# the list keeps each order's row between redraws; the game's bag or Concentration events redo it
+run("""AuctionIQ.Orders.MAX_AGE = 60; STUB.analyses = 0; STUB.oldAnalyze = AuctionIQ.Orders.Analyze
+AuctionIQ.Orders.Analyze = function(o) STUB.analyses = STUB.analyses + 1; return STUB.oldAnalyze(o) end
+AuctionIQ.Orders.Invalidate(); AuctionIQ.Orders.List(); STUB.first = STUB.analyses
+AuctionIQ.Orders.List(); AuctionIQ.Orders.List(); STUB.again = STUB.analyses""")
+run("STUB.Fire('BAG_UPDATE_DELAYED'); AuctionIQ.Orders.List(); STUB.after = STUB.analyses")
+S = L.globals().STUB
+check("orders: a redraw reuses each order's row; a bag change works them out again",
+      S.first > 0 and S.again == S.first and S.after == 2 * S.first)
+run("AuctionIQ.Orders.Analyze = STUB.oldAnalyze; AuctionIQ.Orders.MAX_AGE = -1")
 run("AuctionIQ.ScanUI.SortBy('from')")
 srt = list(CH.ScanUI.Refresh().values())
 check("scan tab: clicking a header sorts by that column", srt[0].startswith("Test Flask from=Pat ") and "from=Patron" in srt[-1])

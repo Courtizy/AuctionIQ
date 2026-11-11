@@ -806,8 +806,18 @@ function SUI.Next()
 end
 
 -- Claiming an order from its row ---------------------------------------------------------------
+-- Several game events land for one click (claim, craft, turn in): draw once for all of them,
+-- on the next frame.
+local redrawSoon
 local function redraw()
-	if frame and frame:IsShown() and mode == "orders" then SUI.Refresh() end
+	if not (frame and frame:IsShown() and mode == "orders") then return end
+	if not C_Timer then return SUI.Refresh() end
+	if redrawSoon then return end
+	redrawSoon = true
+	C_Timer.After(0, function()
+		redrawSoon = false
+		if frame and frame:IsShown() and mode == "orders" then SUI.Refresh() end
+	end)
 end
 
 
