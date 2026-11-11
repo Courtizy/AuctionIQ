@@ -1307,7 +1307,7 @@ local function renderDetail()
 		d = { kicker = ask, title = T.Color("muted", mode == "recipes" and "Pick a recipe" or "Pick a row"),
 			note = T.Color("muted", "Click a row to see the numbers that answer it.") }
 	end
-	CH.Window.DrawSidePanel(detail, d)
+	CH.Measure("craft redraw: side card, draw", CH.Window.DrawSidePanel, detail, d)
 	SUI.lastPanel = d
 end
 SUI.RenderPanel = function() renderDetail() end

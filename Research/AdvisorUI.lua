@@ -1884,3 +1884,18 @@ end
 
 CH.On("TRADE_SKILL_SHOW", function() hook(); AUI.Show() end)
 CH.On("TRADE_SKILL_CLOSE", AUI.Hide)
+
+-- /aiq perf: what building the Craft card spends its time on
+for _, name in ipairs({ "Card", "SummaryLines", "BreakdownLines", "NextMove", "NextTip", "FinishingLines", "SourceLine", "PerDayTip" }) do
+	local f = AUI[name]
+	if f then
+		AUI[name] = function(...)
+			local t0 = debugprofilestop and debugprofilestop()
+			local out = { n = 0 }
+			local function keep(...) out.n = select("#", ...); for i = 1, out.n do out[i] = (select(i, ...)) end end
+			keep(f(...))
+			if t0 and CH.MeasureAdd then CH.MeasureAdd("card: " .. name, debugprofilestop() - t0) end
+			return unpack(out, 1, out.n)
+		end
+	end
+end
