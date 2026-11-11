@@ -483,7 +483,7 @@ local function build()
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 4, srows = 5, buttons = 2,
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 2,
 		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
 	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
 	frame:EnableMouseWheel(true)
@@ -878,17 +878,24 @@ function SUI.RecipePanel(r, n, v)
 	local cs = acc and CH.CraftOrSell(acc)
 	local csTip = cs and CH.CraftOrSellBook(acc) or { { "Craft or sell?" }, { T.Color("muted", "You hold none of this craft's reagents, so there's nothing to sell instead.") } }
 	local verdict = not cs and T.Color("muted", "You hold none of its reagents: crafting is the only use.")
+		or cs.verdict == "even" and T.Color("fg", "About even: craft it, or sell the reagents for about the same.")
 		or cs.gain >= 0 and T.Color("ok", "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.")
 		or T.Color("bad", "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.")
+	-- what you paid is sunk: say what the choice costs against it, when they've lost value
+	if cs and cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
+		verdict = verdict .. T.Color("muted", " Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
+	end
 	local figures = { figure("PROFIT", profit or r.profit, book, (profit or r.profit or 0) >= 0 and "ok" or "bad"),
 		figure("REAGENTS", rcost, rbook),
-		cs and { cs.gain >= 0 and "CRAFT WINS BY" or "SELL WINS BY", T.Color(cs.gain >= 0 and "ok" or "bad", M(math.abs(cs.gain))), tip = csTip }
+		cs and { cs.verdict == "even" and "ABOUT EVEN" or cs.gain >= 0 and "CRAFT WINS BY" or "SELL WINS BY",
+			T.Color(cs.verdict == "even" and "fg" or cs.gain >= 0 and "ok" or "bad", M(math.abs(cs.gain))), tip = csTip }
 			or { "CRAFT OR SELL", T.Color("muted", "none held"), tip = csTip } }
 	local rows = {
 		{ "Margin", r.pct and string.format("%d%%", math.floor(r.pct * 100 + 0.5)) or T.Color("muted", "-") },
 		{ "Can make now", r.canMake and tostring(r.canMake) or T.Color("muted", "-") },
-		{ "Sold a day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or T.Color("muted", "-") },
+		{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") },
 		{ "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-") } }
+	if cs and cs.paid then table.insert(rows, 1, { "You paid for yours", M(cs.paid) }) end
 	local srows = reagentRows(acc)
 	local function act(conc)
 		local ok, why = SUI.ScanEntry(r, conc)
@@ -952,7 +959,7 @@ function SUI.BuyPanel(r, n)
 			save and { save > 0 and "BUYING SAVES" or "MAKING SAVES", T.Color("ok", M(math.abs(save))) } or { "SAVES", T.Color("muted", "-") } },
 		rows = { { "Resells for, after cut", bc.resell and M(bc.resell) or T.Color("muted", "-") },
 			{ "Buy and relist", bc.flip and money(bc.flip) or T.Color("muted", "-") },
-			{ "Sold a day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or T.Color("muted", "-") } },
+			{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") } },
 		section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = (reagentRows(acc)) },
 		note = T.Color("muted", "The cheapest listing may be only a few items: check the AH before buying out."),
 		actions = { p.actions[1] } }

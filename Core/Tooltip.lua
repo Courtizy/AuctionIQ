@@ -77,10 +77,12 @@ end
 --- Craft or sell, live: crafting and selling the item (buying only the reagents you're short of)
 --- against selling the reagents you hold instead, at what they'd bring after the cut.
 --- { craft, sell, gain } or nil when you hold none of the craft's reagents.
+CH.CRAFT_OR_SELL_EVEN = 0.05 -- within 5% of what your reagents would bring, it's about even
+
 function CH.CraftOrSell(acc)
 	if not (acc and acc.reagents) then return nil end
 	local P = CH.Prices
-	local sell, buy = 0, 0
+	local sell, buy, paid, paidAll = 0, 0, 0, true
 	for _, rg in ipairs(acc.reagents) do
 		local n = rg.n or 0
 		local unit = n > 0 and rg.cost and rg.cost / n or 0
@@ -89,10 +91,19 @@ function CH.CraftOrSell(acc)
 		-- a reagent you hold with no sale price is only worth buying again: today's price
 		sell = sell + own * (v or unit)
 		buy = buy + (n - own) * unit
+		-- what you paid for yours: a sunk cost, shown for context, never in the decision
+		if own > 0 then
+			local pe = P.PaidEach and P.PaidEach(rg.itemID)
+			if pe then paid = paid + own * pe else paidAll = false end
+		end
 	end
 	if sell <= 0 then return nil end
 	local craft = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - buy
-	return { craft = craft, sell = sell, gain = craft - sell, buy = buy }
+	local gain = craft - sell
+	-- a small difference isn't worth acting on: about even, so crafting stays the plan
+	local verdict = math.abs(gain) <= CH.CRAFT_OR_SELL_EVEN * sell and "even" or gain > 0 and "craft" or "sell"
+	return { craft = craft, sell = sell, gain = gain, buy = buy, verdict = verdict,
+		paid = paidAll and paid > 0 and paid or nil }
 end
 
 local function reagentName(rg)
@@ -144,7 +155,20 @@ function CH.CraftOrSellBook(acc)
 	local out = { B.Head("Craft or sell?", "with the reagents you hold"), B.Line("Craft and sell the item", cs.craft) }
 	if cs.buy and cs.buy >= 1 then out[#out + 1] = B.Sub("after buying the rest for", M(cs.buy)) end
 	out[#out + 1] = B.Line("Sell your reagents instead", cs.sell)
-	out[#out + 1] = cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain)
+	if cs.verdict == "even" then
+		out[#out + 1] = B.Total("About even, crafting by", cs.gain)
+	else
+		out[#out + 1] = cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain)
+	end
+	-- what you paid: sunk, so it doesn't change the choice, but it says what the choice costs you
+	if cs.paid then
+		out[#out + 1] = B.Text("You paid for yours", M(cs.paid), "muted")
+		local best = math.max(cs.sell, cs.sell + cs.gain)
+		if best < cs.paid then
+			out[#out + 1] = B.Note("They're worth less than you paid: you lose " .. M(cs.paid - best)
+				.. " against that either way. The better choice just loses less.")
+		end
+	end
 	return out
 end
 

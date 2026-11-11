@@ -1250,6 +1250,21 @@ check("scan side card, Work orders: take this order, pays less reagents is profi
       plain(op.kicker) == "TAKE THIS ORDER?" and plain(op.figures[1][1]) == "PAYS" and plain(op.figures[3][1]) == "PROFIT" and "Take it" in plain(op.sub))
 fp = CH.ScanUI.FirstPanel(L.eval("{ name = 'f', recipeID = 2, cost = 5000, value = 3000, net = -2000 }"))
 check("scan side card, First crafts: worth the knowledge, what the point costs", plain(fp.kicker) == "WORTH THE KNOWLEDGE?" and plain(fp.figures[3][1]) == "POINT COSTS")
+ev = L.eval("""(function()
+  local oldH, oldS, oldP = AuctionIQ.Prices.Held, AuctionIQ.Prices.SellValue, AuctionIQ.Prices.PaidEach
+  AuctionIQ.Prices.Held = function(id) return 10 end
+  AuctionIQ.Prices.PaidEach = function(id) return 3000 end
+  AuctionIQ.Prices.SellValue = function(id) return 1000 end
+  local acc = { sales = 2050, reagents = { { itemID = 201, n = 2, cost = 2000 } } }
+  local even = AuctionIQ.CraftOrSell(acc)
+  acc.sales = 1500
+  local sell = AuctionIQ.CraftOrSell(acc)
+  local book = AuctionIQ.CraftOrSellBook(acc)
+  AuctionIQ.Prices.Held, AuctionIQ.Prices.SellValue, AuctionIQ.Prices.PaidEach = oldH, oldS, oldP
+  return { even = even.verdict, sell = sell.verdict, paid = sell.paid, book = book } end)()""")
+bl = [plain(l[1]).strip() for l in ev.book.values()]
+check("craft or sell: within 5% is about even, and what you paid shows as sunk, with the loss either way",
+      ev.even == "even" and ev.sell == "sell" and ev.paid == 6000 and "You paid for yours" in bl and any("either way" in x for x in bl))
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")

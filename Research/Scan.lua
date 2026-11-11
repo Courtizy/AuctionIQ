@@ -141,7 +141,7 @@ function Sc.Live(r)
 		v.profit, v.cost = p, c
 		v.pct = c and c > 0 and p / c or nil
 		local cs = CH.CraftOrSell(r.accounts)
-		v.sellInstead = cs and cs.gain < 0 and cs.sell or false
+		v.sellInstead = cs and cs.verdict == "sell" and cs.sell or false
 	end
 	local cp = live(r.concAccounts)
 	if cp then v.concProfit = cp end
