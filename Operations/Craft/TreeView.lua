@@ -101,6 +101,8 @@ function TV.New(parent, x, y, w, h)
 		b:EnableMouse(true)
 		b:SetScript("OnEnter", function(self) if self.tip then CH.Window.Tooltip(self, self.tip) end end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		-- the tree calculator: the page decides what a click does
+		b:SetScript("OnMouseUp", function(self, button) if self.nodeID and v.onClick then v.onClick(self.nodeID, button) end end)
 		v.nodes[i] = b
 		return b
 	end
@@ -140,6 +142,7 @@ function TV.New(parent, x, y, w, h)
 			local py = (sy > 0) and PAD + (xy.y - minY) * sy or self.h / 2
 			pos[id] = { px, py }
 			local b = nodeWidget(i)
+			b.nodeID = id
 			widgets[id] = b
 			b:ClearAllPoints()
 			b:SetPoint("CENTER", self, "TOPLEFT", px, -py)

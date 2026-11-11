@@ -38,6 +38,7 @@ CH.ScanUI.ROW_AGE = -1
 CH.AdvisorUI.KNOWN_AGE = -1 # tests change the stubs between clicks: work each recipe out again
 CH.Prices.background = False # sales added up at once, not over the next frames
 CH.AdvisorUI.GEAR_AGE = -1
+CH.db.settings.presetsAuto = False # presets are worked out on purpose in their tests, not in the background
 CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
@@ -543,6 +544,43 @@ check("paths picker: recipes in main groups", [g.name for g in groups] == ["Poti
 check("paths picker: each profession has its own groups", L.eval('AuctionIQ.Paths.MainGroup("Weapon Enchants", 2909)') == "Enchants"
       and L.eval('AuctionIQ.Paths.MainGroup("Armor Kits", 2915)') == "Armor Kits" and L.eval('AuctionIQ.Paths.MainGroup("Leather Armor", 2915)') == "Armor"
       and L.eval('AuctionIQ.Paths.MainGroup("Appendix II - Stats", 2913)') is None and L.eval('AuctionIQ.Paths.MainGroup("Powerful Peridots", 2914)') == "Gems")
+# Presets: a build per focus from your market, ranked by Monte Carlo
+run("STUB.oldOpenP = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return 2906 end")
+foc = [f.key for f in CH.Presets.Focuses(2906).values()]
+check("presets: one per main group with recipes (Other left out)", foc == ["Potions", "Flasks & Phials", "Oils"] or foc == ["Potions", "Flasks & Phials"])
+ok = L.eval("AuctionIQ.Presets.Build(2906, nil, true)")
+pl, stale = L.eval("AuctionIQ.Presets.List(2906)")
+pl = list(pl.values())
+check("presets: worked out and saved, fresh", ok is True and len(pl) >= 2 and stale is False and all(p.steps is not None for p in pl))
+check("presets: each has gold a day with a range from the simulations, and wins adding up to all of them",
+      all(p.p10 <= p.mean <= p.p90 for p in pl) and abs(sum(p.wins for p in pl) - 1) < 1e-9)
+fl = L.eval("AuctionIQ.Presets.Get(2906, 'Flasks & Phials')")
+check("presets: the flask build puts points in the flask node", fl is not None and len(fl.steps) > 0 and fl.steps[1].node == 900 and fl.final > fl.start)
+check("presets: the same draw for the same item and run (a fair head to head)",
+      L.eval("AuctionIQ.Presets.Draw(7, 10, 1, 0.2)") == L.eval("AuctionIQ.Presets.Draw(7, 10, 1, 0.2)")
+      and L.eval("AuctionIQ.Presets.Draw(7, 10, 1, 0.2)") != L.eval("AuctionIQ.Presets.Draw(8, 10, 1, 0.2)"))
+mean = L.eval("""(function() local s = 0 for r = 1, 4000 do s = s + AuctionIQ.Presets.Draw(r, 55, 1, 0.3) end return s / 4000 end)()""")
+check("presets: a price draw averages out to the price itself", abs(mean - 1) < 0.03)
+check("presets: a plan to show from a saved preset, without planning again", len(L.eval("AuctionIQ.Presets.AsPlan(2906, AuctionIQ.Presets.Get(2906, 'Flasks & Phials'))").steps) == len(fl.steps))
+check("presets: not worked out with the profession closed", L.eval("(AuctionIQ.Presets.Build(2909, nil, true))") is None)
+run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.PathsUI.Open(); AuctionIQ.PathsUI.Pick('Flasks & Phials', { 10 })")
+pt = [plain(l) for l in CH.PathsUI.Text().split("\n")]
+check("specialization: picking a group with a preset shows it at once, with its simulations",
+      pt[0].startswith("Preset: Flasks & Phials") and any("market simulations" in l for l in pt) and CH.Paths.Current(2906).preset is not None)
+run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.UI.Pages().paths.presets.scripts.OnClick()")
+pt = plain(CH.PathsUI.Text())
+check("specialization: the presets list, best on your market first", "Presets for your market" in pt and "1. " in pt and "best in" in pt)
+cp, spent = L.eval("AuctionIQ.PathsUI.NodeClick(900, 'LeftButton', true)")
+ct = plain(CH.PathsUI.Text())
+check("tree calculator: shift-click adds 5 points, marked on the tree, with gold a day for the focus",
+      spent == 5 and cp.steps[1].node == 900 and "Tree calculator: +5 points" in ct and "a day, now" in ct)
+cp, spent = L.eval("AuctionIQ.PathsUI.NodeClick(900, 'RightButton', false)")
+check("tree calculator: right-click takes one off", spent == 4)
+for _ in range(6): L.eval("AuctionIQ.PathsUI.NodeClick(900, 'RightButton', false)")
+cp, spent = L.eval("AuctionIQ.PathsUI.NodeClick(900, 'RightButton', false)")
+check("tree calculator: never below the points you've spent", spent == 0)
+run("AuctionIQ.Paths.ClearCurrent(2906)")
+run("AuctionIQ.OpenProfessionID = STUB.oldOpenP")
 # Disenchanting: a gathering path, valued by the share of rank 2 materials
 run("""STUB.oldTree = AuctionIQ.Spec.Tree
 AuctionIQ.SpecData[2909] = { name = "Enchanting", recipes = {}, nodes = {

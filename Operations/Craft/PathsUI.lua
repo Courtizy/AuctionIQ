@@ -15,6 +15,7 @@ local extra = 0
 local lastPlan
 local selectedTab
 local chosenProf, profButtons
+local calc, lastFocus -- the tree calculator's ranks, and the focus last picked (its gold a day)
 
 -- Each profession's Midnight skill line (the one with a specialization tree), by its base skill line
 local MIDNIGHT = { [171] = 2906, [164] = 2907, [333] = 2909, [202] = 2910, [773] = 2913, [755] = 2914, [165] = 2915, [197] = 2918 }
@@ -147,6 +148,8 @@ function PUI.Run(goal, recipes)
 		render({ CH.Theme.Color("muted", "Open " .. name .. " to plan for it: a plan needs its recipes. The tree above shows where your points are now.") })
 		return
 	end
+	calc = nil
+	lastFocus = lastFocus and lastFocus.label == goal and lastFocus or { label = goal }
 	render({ CH.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
 	local plan, why = CH.Paths.Plan({ goal = goal, recipes = recipes, label = recipes and goal or nil, points = extra, onDone = function(p)
 		lastPlan = p
@@ -174,9 +177,27 @@ function PUI.DefaultPoints(recipes)
 	return extra
 end
 
---- Pick a group (or one of its splits) and plan it.
+local presetLines
+
+--- Show a saved preset on the tree and under it (no planning needed).
+function PUI.ShowPreset(prof, p)
+	calc = nil
+	local plan = CH.Presets.AsPlan(prof, p)
+	lastPlan = plan
+	selectedTab = nil
+	render(presetLines(plan, p))
+	CH.Paths.SetCurrent(plan)
+	if PUI.simButton then PUI.simButton:SetEnabled(plan.ranks ~= nil) end
+	return plan
+end
+
+--- Pick a group (or one of its splits): its preset when there is one, else plan it.
 function PUI.Pick(label, recipes)
 	input:SetText(label)
+	lastFocus = { label = label, recipes = recipes }
+	local prof = PUI.Prof()
+	local p = prof and CH.Presets.Get(prof, label)
+	if p then return PUI.ShowPreset(prof, p) end
 	PUI.DefaultPoints(recipes)
 	PUI.Run(label, recipes)
 end
@@ -241,6 +262,15 @@ function PUI.Build(p)
 	local plus = T.Button(frame, "+5", 30, 18)
 	plus:SetPoint("TOPLEFT", 342, POINTS_Y)
 	plus:SetScript("OnClick", function() extra = extra + 5; updatePoints() end)
+	local presets = T.Button(frame, "Work out presets", 120, 18)
+	presets:SetPoint("TOPLEFT", 380, POINTS_Y)
+	presets:SetScript("OnClick", function()
+		local ok, why = CH.Presets.Build(PUI.Prof())
+		if not ok then render({ CH.Theme.Color("muted", why) }) else lastPlan = nil; PUI.Refresh() end
+	end)
+	presets:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "A build for each thing this profession sells, from your build now, tested in market simulations. Again once they're a day old." } }) end)
+	presets:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	frame.presets = presets
 	PUI.simButton = T.Button(frame, "Simulate", 90, 18)
 	PUI.simButton:SetPoint("TOPRIGHT", -66, POINTS_Y)
 	PUI.simButton:SetEnabled(lastPlan ~= nil and lastPlan.ranks ~= nil) -- kept when the window is resized
@@ -255,7 +285,7 @@ function PUI.Build(p)
 	clear:SetPoint("TOPRIGHT", 0, POINTS_Y)
 	clear:SetScript("OnClick", function()
 		CH.Paths.ClearCurrent(lastPlan and lastPlan.prof or PUI.Prof())
-		lastPlan = nil
+		lastPlan, calc = nil, nil
 		PUI.simButton:SetEnabled(false)
 		render({ CH.Theme.Color("muted", "Plan cleared.") })
 	end)
@@ -271,6 +301,7 @@ function PUI.Build(p)
 		tabButtons[i] = b -- widths and positions set from their names in DrawTree
 	end
 	view = CH.TreeView.New(frame, 0, TREE_Y, TREE_W, TREE_H)
+	view.onClick = function(id, button) PUI.NodeClick(id, button, IsShiftKeyDown and IsShiftKeyDown()) end
 	treeNote = CH.Window.OneLine(Wd.Text(frame, 0, TREE_Y - TREE_H - 4, TREE_W))
 
 	local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
@@ -420,6 +451,106 @@ function PUI.PayoffLine(prof)
 	return t
 end
 
+-- A preset in words: what it brings on your market and how sure that is, then its steps.
+presetLines = function(plan, p)
+	local T, M = CH.Theme, CH.FormatMoney
+	local L = {}
+	table.insert(L, T.Color("accent", "Preset: ") .. (p.group and (p.group .. " - ") or "") .. p.label
+		.. T.Color("muted", string.format("  worked out %s ago on your market", CH.Scans.Age(time() - (p.at or time())))))
+	table.insert(L, string.format("From your build now, %d point%s to finish it. %s a day now, %s once done.", p.points, p.points == 1 and "" or "s", M(p.start), M(p.final)))
+	if p.mean then
+		table.insert(L, string.format("Across %d market simulations: %s a day on average, %s to %s in 8 of 10, and the best preset in %d%% of them.",
+			CH.Presets.RUNS, M(p.mean), M(p.p10), M(p.p90), math.floor((p.wins or 0) * 100 + 0.5)))
+	end
+	table.insert(L, "")
+	for i, st in ipairs(plan.steps) do
+		local from = st.from < 0 and "unlock" or tostring(st.from)
+		table.insert(L, T.Color("accent", string.format("%d. %s", i, st.name or "?")) .. string.format("  %s to %d  (%d point%s)", from, st.to, st.cost, st.cost == 1 and "" or "s")
+			.. "  " .. T.Color((st.gain or 0) >= 0 and "ok" or "bad", ((st.gain or 0) >= 0 and "+" or "") .. M(st.gain or 0) .. " a day"))
+	end
+	if #plan.steps == 0 then table.insert(L, T.Color("muted", "Nothing to add: your build already has what this focus needs.")) end
+	table.insert(L, "")
+	table.insert(L, T.Color("muted", "A preset isn't applied: spend points in the game's Specializations tab. Click nodes on the tree to try your own (shift-click +5, right-click takes points off)."))
+	return L
+end
+
+--- The presets for a profession, as lines: best on your market first.
+function PUI.PresetsText(prof)
+	local T, M, Pr = CH.Theme, CH.FormatMoney, CH.Presets
+	local L = {}
+	local list, stale = Pr.List(prof)
+	if Pr.Running() then
+		local r = CH.Presets.Progress and CH.Presets.Progress() or {}
+		table.insert(L, T.Color("accent", "Working out presets") .. T.Color("muted", string.format("  %d of %d (%s)...", r.at or 0, r.of or 0, r.label or "")))
+	end
+	if #list == 0 then
+		if not Pr.Running() then
+			table.insert(L, T.Color("muted", canPlan() and "No presets yet. Press Work out presets: a build for each thing this profession sells, tested on your market."
+				or "No presets yet. They're worked out when this profession is open."))
+		end
+		return L
+	end
+	table.insert(L, T.Color("accent", "Presets for your market") .. T.Color("muted", string.format("  %d simulations each%s. Pick one above to see it on the tree.",
+		Pr.RUNS, stale and ", over a day old" or "")))
+	for i, p in ipairs(list) do
+		table.insert(L, string.format("%d. %s%s  %s  %s a day %s  %s", i, p.group and (p.group .. " - ") or "", p.label,
+			T.Color("muted", "+" .. p.points .. " pts"), M(p.mean or p.final), T.Color("muted", "(" .. M(p.p10 or 0) .. " to " .. M(p.p90 or 0) .. ")"),
+			T.Color((p.wins or 0) >= 0.5 and "ok" or "muted", string.format("best in %d%%", math.floor((p.wins or 0) * 100 + 0.5)))))
+	end
+	return L
+end
+
+--- Tree calculator: click a node to add a point (shift +5), right-click to take one off, never
+--- below what you've spent. The gold a day is for the focus last picked, else everything.
+function PUI.NodeClick(nodeID, button, shift)
+	local prof = PUI.Prof()
+	local tree = prof and CH.Spec.Tree(prof)
+	local n = tree and tree.nodes[nodeID]
+	if not n then return end
+	local now = CH.Spec.Ranks(tree)
+	if not calc or calc.prof ~= prof then calc = { prof = prof, ranks = CH.Spec.Ranks(tree) } end
+	local r = calc.ranks[nodeID] or -1
+	local step = shift and 5 or 1
+	if button == "RightButton" then r = math.max(now[nodeID] or -1, r - step)
+	else r = math.min(n.max, (r < 0 and -1 or r) + step) end
+	calc.ranks[nodeID] = r
+	-- the calculator's points as a plan, so the tree marks them
+	local plan = { prof = prof, label = "Your build", steps = {}, recipes = {}, ranks = calc.ranks, calc = true }
+	local spent = 0
+	for id, to in pairs(calc.ranks) do
+		local from = now[id] or -1
+		if to > from then
+			local cost = to - math.max(from, -1)
+			spent = spent + cost
+			table.insert(plan.steps, { node = id, name = tree.nodes[id].name, from = from, to = to, cost = cost, gain = 0, perks = {}, changes = {} })
+		end
+	end
+	table.sort(plan.steps, function(a, b) return a.node < b.node end)
+	lastPlan = plan
+	CH.Paths.current[prof] = plan
+	local T, M = CH.Theme, CH.FormatMoney
+	local L = { T.Color("accent", "Tree calculator: ") .. string.format("+%d point%s (%d unspent now)", spent, spent == 1 and "" or "s", tree.unspent or 0) }
+	if canPlan() then
+		local f = lastFocus or {}
+		local worth, before, label = CH.Paths.Worth({ prof = prof, recipes = f.recipes, goal = f.label or "gold", label = f.label }, calc.ranks)
+		if worth then
+			local gain = worth - before
+			table.insert(L, string.format("%s: %s a day, now %s ", label or f.label or "Everything", M(worth), M(before))
+				.. T.Color(gain >= 0 and "ok" or "bad", string.format("(%s%s)", gain >= 0 and "+" or "", M(gain))))
+		end
+	else
+		table.insert(L, T.Color("muted", "Open the profession to see what these points bring."))
+	end
+	for _, st in ipairs(plan.steps) do
+		table.insert(L, string.format("  %s  %s to %d", st.name or "?", st.from < 0 and "unlock" or tostring(st.from), st.to))
+	end
+	table.insert(L, T.Color("muted", "Clear takes these points off. Simulate shows the advisor's numbers with them."))
+	render(L)
+	if PUI.simButton then PUI.simButton:SetEnabled(spent > 0) end
+	PUI.DrawTree()
+	return plan, spent
+end
+
 --- Fill the page: the goal groups, the points and the tree. The main window calls it when the
 --- page shows.
 function PUI.Refresh()
@@ -436,8 +567,16 @@ function PUI.Refresh()
 	elseif not canPlan() then
 		if not lastPlan then render({ CH.Theme.Color("muted", "The tree shows where your knowledge points are now. To plan where the next ones go, open this profession and pick what you want to sell.") }) end
 	elseif not lastPlan then
-		render({ CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Points start at what finishing that path takes; change them with -5 and +5.") })
+		local L = PUI.PresetsText(prof)
+		table.insert(L, "")
+		table.insert(L, CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Click nodes on the tree to try points of your own."))
+		render(L)
 	end
+	if not lastPlan and PUI.Prof() and not canPlan() then
+		local L = PUI.PresetsText(prof)
+		if L[1] then table.insert(L, ""); table.insert(L, CH.Theme.Color("muted", "The tree shows where your knowledge points are now.")); render(L) end
+	end
+	if canPlan() and CH.db.settings.presetsAuto ~= false then CH.Presets.Auto(prof) end
 	return PUI.DrawTree()
 end
 
@@ -451,4 +590,5 @@ local function changed()
 	if CH.SpecOverlay then CH.SpecOverlay.Refresh() end
 end
 CH.Paths.Changed = changed
+CH.Presets.Changed = function() if PUI.IsShown() and not lastPlan then PUI.Refresh() end end
 CH.On("TRAIT_NODE_CHANGED", function() C_Timer.After(0.2, changed) end)

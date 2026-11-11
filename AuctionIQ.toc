@@ -57,6 +57,7 @@ Operations\Craft\ScanUI.lua
 Accounting\Log.lua
 Core\Views.lua
 Operations\Craft\Paths.lua
+Operations\Craft\Presets.lua
 Operations\Craft\TreeView.lua
 Operations\Craft\PathsUI.lua
 Operations\Craft\SpecOverlay.lua

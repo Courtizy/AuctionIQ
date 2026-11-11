@@ -404,7 +404,8 @@ local function yieldValue(ctx, ranks)
 		local g = 0
 		if p1 or p2 then g = n * ((1 - share) * (p1 or p2) + share * (p2 or p1)) end
 		total = total + g
-		per[line.key] = { name = line.label, share = share, skill = skill, perDay = g, profit = g, n = n, priced = (p1 and p2) and true or false }
+		per[line.key] = { name = line.label, share = share, skill = skill, perDay = g, profit = g, n = n, priced = (p1 and p2) and true or false,
+			item = line.items[2] or line.items[1] }
 	end
 	return total, per, 0, total
 end
@@ -432,7 +433,7 @@ local function value(ctx, ranks)
 				swaps[#swaps + 1] = { gain = (c.profit - plain) / pc, points = pc, crafts = crafts }
 			end
 			per[id] = { quality = b and b.quality, profit = b and b.profit, perPoint = c and c.perPoint, perDay = g, name = r.name,
-				conc = pc, concQ = c and c.quality }
+				conc = pc, concQ = c and c.quality, cost = b and b.cost, crafts = crafts, item = item }
 		end
 	end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
@@ -500,9 +501,8 @@ local function perksBetween(ctx, nodeID, from, to)
 	return out
 end
 
---- Builds a plan. opts: prof, goal (text) or recipes, points (extra beyond unspent), onDone(plan),
---- sync (run in one go, for tests). The work is spread over frames otherwise.
-function P.Plan(opts)
+-- What a plan or a worth check works on: the goal's recipes we can value (best first if many).
+local function makeCtx(opts)
 	local prof = opts.prof or CH.OpenProfessionID()
 	if not prof then return nil, "Open the profession you want a plan for." end
 	if not CH.Spec.Data(prof) then return nil, "No specialization data for this profession yet." end
@@ -512,8 +512,7 @@ function P.Plan(opts)
 	local y = not ids and P.Yield(prof, opts.goal)
 	if y then ids, label = {}, y.name end
 	if not ids then ids, label = P.Match(opts.goal) end
-	-- the goal's recipes we can value, best first if there are many
-	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil }
+	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil, label = label }
 	for _, id in ipairs(ids) do
 		local m = CH.Scan.Model(prof, id)
 		if m then ctx.models[id] = m; table.insert(ctx.recipes, id) end
@@ -526,6 +525,24 @@ function P.Plan(opts)
 		table.sort(ctx.recipes, function(a, b) return (rank[a] or 999) < (rank[b] or 999) end)
 		for i = #ctx.recipes, MAX_RECIPES + 1, -1 do ctx.recipes[i] = nil end
 	end
+	return ctx
+end
+
+--- Gold a day for a goal (opts as Plan's: prof, goal or recipes) at these ranks, and at the ranks
+--- you have now: the tree calculator's numbers. Returns worth, now (or nil and why).
+function P.Worth(opts, ranks)
+	local ctx, why = makeCtx(opts)
+	if not ctx then return nil, why end
+	local now = value(ctx, CH.Spec.Ranks(ctx.tree))
+	return value(ctx, ranks), now, ctx.label
+end
+
+--- Builds a plan. opts: prof, goal (text) or recipes, points (extra beyond unspent), onDone(plan),
+--- sync (run in one go, for tests). The work is spread over frames otherwise.
+function P.Plan(opts)
+	local ctx, why = makeCtx(opts)
+	if not ctx then return nil, why end
+	local prof, tree, label = ctx.prof, ctx.tree, ctx.label
 
 	local budget = (tree.unspent or 0) + (opts.points or 0)
 	local ranks = CH.Spec.Ranks(tree)
