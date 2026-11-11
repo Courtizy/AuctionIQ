@@ -3170,5 +3170,6 @@ run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDA
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))
 exec(open(ROOT / "tests" / "acceptance.py").read())
+exec(open(ROOT / "tests" / "professions.py").read())
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

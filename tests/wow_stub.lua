@@ -57,6 +57,17 @@ local function newFrame(parent, kind, template)
 	-- as in WoW, registering an event a frame already has does nothing (it fires once per frame)
 	function f:RegisterEvent(e) events[e] = events[e] or {}; for _, x in ipairs(events[e]) do if x == self then return end end; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
+	-- scale chain, as in WoW: a frame's effective scale is its own times its parent's; UIParent's is
+	-- the UI scale (STUB.uiScale)
+	function f:GetChildren() return unpack(rawget(self, "kids") or {}) end
+	function f:SetScale(v) self.scale = v end
+	function f:GetScale() return rawget(self, "scale") or 1 end
+	function f:GetEffectiveScale()
+		if self == UIParent then return STUB.uiScale or 1 end
+		local p = rawget(self, "parent")
+		local ps = (type(p) == "table" and p.GetEffectiveScale) and p:GetEffectiveScale() or (STUB.uiScale or 1)
+		return (rawget(self, "scale") or 1) * ps
+	end
 	function f:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 	function f:ClearAllPoints() self.point = nil; self.points = {} end
 	function f:SetAllPoints() self.fill = true end
@@ -116,6 +127,7 @@ local function newFrame(parent, kind, template)
 end
 function CreateFrame(kind, name, parent, template) local f = newFrame(parent, kind, template); if name then _G[name] = f end; return f end
 UIParent = newFrame()
+function GetPhysicalScreenSize() return STUB.screenW or 1920, STUB.screenH or 1080 end
 UIParent.w, UIParent.h = 1920, 1080
 function Mixin(t) return t end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end

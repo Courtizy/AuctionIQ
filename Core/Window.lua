@@ -63,6 +63,7 @@ function W.Pixel(f, user)
 	f.aiqUserScale = user
 	f:SetScale(W.PixelScale() * (user or 1))
 	scaled[f] = true
+	if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
 	return f
 end
 
@@ -83,7 +84,11 @@ function W.Snap(f)
 end
 
 local function rescale()
-	for f in pairs(scaled) do f:SetScale(W.PixelScale() * (f.aiqUserScale or 1)); if f:IsShown() then W.Snap(f) end end
+	for f in pairs(scaled) do
+		f:SetScale(W.PixelScale() * (tonumber(rawget(f, "aiqUserScale")) or 1))
+		if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
+		if f:IsShown() then W.Snap(f) end
+	end
 	if W.Arrange then W.Arrange() end
 end
 if CH.On then

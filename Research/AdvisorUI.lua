@@ -52,6 +52,8 @@ local function build()
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
 	CH.Window.CloseOnEscape(panel, "AuctionIQAdvisor")
+	-- whole screen pixels per unit, like the main window, so its borders and text are crisp
+	if CH.Window.Pixel then CH.Window.Pixel(panel) end
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)

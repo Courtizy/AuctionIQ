@@ -194,6 +194,35 @@ end
 local FLAT = "Interface\\Buttons\\WHITE8X8"
 local BACKDROP = { bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 }
 
+-- Pixel-perfect borders: a border is one SCREEN pixel, whatever the UI scale or the window's own size
+-- setting. In frame units that's 768 / (screen height x the frame's effective scale); a 1-unit edge
+-- would be 1.2 or 0.8 pixels at most scales and come out blurred or uneven.
+local edges = {}
+local function backdropFor(edge)
+	local k = math.floor(edge * 1000 + 0.5)
+	if not edges[k] then edges[k] = { bgFile = FLAT, edgeFile = FLAT, edgeSize = k / 1000 } end
+	return edges[k]
+end
+function T.PixelEdge(frame)
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	local s = frame and frame.GetEffectiveScale and frame:GetEffectiveScale()
+	if type(h) ~= "number" or h <= 0 or type(s) ~= "number" or s <= 0 then return 1 end
+	return 768 / (h * s)
+end
+
+--- Re-fit every plain-backdrop panel under a frame to one screen pixel (after its scale changed).
+function T.Edges(frame)
+	if not frame or T.Elv() then return end
+	local function walk(f)
+		if type(f.aiqBg) == "string" and type(f.aiqEdge) == "number" and f.SetBackdrop then
+			local e = T.PixelEdge(f)
+			if math.abs(e - f.aiqEdge) > 1e-3 then f.aiqEdge = e; f:SetBackdrop(backdropFor(e)); T.Tint(f) end
+		end
+		if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do walk(c) end end
+	end
+	walk(frame)
+end
+
 -- ElvUI, when it's loaded: its own templates, fonts and value colour, so AuctionIQ looks like
 -- the rest of the UI. ToxiUI hooks ElvUI's SetTemplate, so its shadows and noise come along too.
 function T.Elv()
@@ -243,7 +272,8 @@ function T.Panel(frame, bg, alpha)
 		return frame
 	end
 	if not frame.SetBackdrop then Mixin(frame, BackdropTemplateMixin) end
-	frame:SetBackdrop(BACKDROP)
+	frame.aiqEdge = T.PixelEdge(frame)
+	frame:SetBackdrop(backdropFor(frame.aiqEdge))
 	T.Tint(frame)
 	return frame
 end
