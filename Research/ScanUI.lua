@@ -491,7 +491,7 @@ local function build()
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 4,
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 7, buttons = 4,
 		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
 	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
 	SUI.BuildDetails()

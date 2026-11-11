@@ -486,7 +486,6 @@ W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue a
 --- stepper = function(delta) end (a - and + beside the main button) }.
 --- Fill it with W.DrawSidePanel(panel, d): d = { kicker, title, sub, figures = { { label, value, tip = lines } x3 },
 --- bar = 0..1, rows = { { label, value } }, section = { head, rows = { { label, value, tip = lines } } }, note,
---- (a section row can have cells = { { text, tip, run, on }, ... } under section.cols, two picks on one row)
 --- actions = { { label, run, tip, off } } }. The blocks stack from the top, each as tall as its text.
 function W.SidePanel(parent, width, height, opts)
 	opts = opts or {}
@@ -558,22 +557,8 @@ function W.SidePanel(parent, width, height, opts)
 		r.mark = det:CreateTexture(nil, "ARTWORK")
 		r.mark:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
 		r.mark:Hide()
-		-- or two picks on one row (a rank: plain, and with Concentration), each its own cell
-		r.cells = {}
-		for c = 1, 2 do
-			local cell = { value = text(c == 1 and 90 or 110, "RIGHT", "GameFontHighlightSmall"), hit = tipHit() }
-			cell.sel = det:CreateTexture(nil, "BORDER")
-			cell.sel:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.18)
-			cell.sel:Hide()
-			cell.mark = det:CreateTexture(nil, "ARTWORK")
-			cell.mark:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
-			cell.mark:Hide()
-			r.cells[c] = cell
-		end
 		det.srows[k] = r
 	end
-	det.cols = { text(90, "RIGHT", "GameFontNormalSmall"), text(110, "RIGHT", "GameFontNormalSmall") }
-	for _, c in ipairs(det.cols) do T.TitleFont(c, 9, "bold") end
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
 	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
 	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
@@ -677,39 +662,18 @@ function W.DrawSidePanel(det, d, said)
 	local secTop = y
 	at(det.head, 12, y - 6)
 	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
-	-- column heads over the cells, on the head's line
-	local CX = { det.width - 218, det.width - 122 }
-	for c, fs in ipairs(det.cols) do
-		at(fs, CX[c], y - 6)
-		fs:SetText(sec and sec.cols and sec.cols[c] and T.Color("muted", sec.cols[c]) or "")
-	end
 	if sec then y = y - 20 end
 	for k, r in ipairs(det.srows) do
 		local x = sec and sec.rows and sec.rows[k]
-		local split = x ~= nil and x.cells ~= nil
 		at(r.label, 12, y); at(r.value, det.width - 122, y)
-		r.label:SetText(x and x[1] or ""); r.value:SetText(x and not split and x[2] or "")
-		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(split and (CX[1] - 8) or (det.width - 8), 14)
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
 		r.hit.tip = x and x.tip or false
-		r.hit.run = x and not split and x.run or false
+		r.hit.run = x and x.run or false
 		r.sel:ClearAllPoints(); r.sel:SetPoint("TOPLEFT", 1, y + 1); r.sel:SetSize(det.width - 2, 14)
 		r.mark:ClearAllPoints(); r.mark:SetPoint("TOPLEFT", 1, y + 1); r.mark:SetSize(2, 14)
-		local on = x ~= nil and not split and x.on == true
-		r.sel:SetShown(on); r.mark:SetShown(on)
-		r.hit:SetShown(x ~= nil and (x.tip ~= nil or (not split and x.run ~= nil)))
-		for c, cell in ipairs(r.cells) do
-			local cx = split and x.cells[c]
-			at(cell.value, CX[c], y)
-			cell.value:SetText(cx and cx[1] or "")
-			cell.hit:ClearAllPoints(); cell.hit:SetPoint("TOPLEFT", CX[c] - 4, y + 1); cell.hit:SetSize((c == 1 and 90 or 110) + 8, 14)
-			cell.hit.tip = cx and cx.tip or false
-			cell.hit.run = cx and cx.run or false
-			cell.hit:SetShown(cx ~= nil and cx ~= false and (cx.tip ~= nil or cx.run ~= nil))
-			cell.sel:ClearAllPoints(); cell.sel:SetPoint("TOPLEFT", CX[c] - 4, y + 1); cell.sel:SetSize((c == 1 and 90 or 110) + 8, 14)
-			cell.mark:ClearAllPoints(); cell.mark:SetPoint("TOPLEFT", CX[c] - 4, y + 1); cell.mark:SetSize(2, 14)
-			local con = cx and cx.on == true or false
-			cell.sel:SetShown(con); cell.mark:SetShown(con)
-		end
+		r.sel:SetShown(x ~= nil and x.on == true); r.mark:SetShown(x ~= nil and x.on == true)
+		r.hit:SetShown(x ~= nil and (x.tip ~= nil or x.run ~= nil))
 		if x then y = y - 14 end
 	end
 	if sec then

@@ -1341,46 +1341,60 @@ function AUI.Card(n, scan)
 	local maxQ = result.model and result.model.maxQ
 	local r = AUI.SelectedRow()
 	local m = r and AUI.NextMove()
-	-- which quality: a row per rank, highest at the top, as the profession window's check mark has
-	-- it; on each, the plain craft and the craft with Concentration, a click on either picks it
-	local function cellFor(i, x)
-		if not x then return nil end
+	-- which quality: Highest at the top, Lowest at the bottom, and Best between them only when a
+	-- middle rank earns the most plainly (else Best is a tag on Highest or Lowest). Under a rank, a
+	-- Concentrate line when Concentration reaches it. A click on any line picks it.
+	local function line(i, x, label)
 		local tip = AUI.BreakdownLines(result, x, 5)
 		local gpp = x.gain and x.gain.perPoint or x.perPoint
 		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
 		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix needs a rank you don't have.") }) end
 		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
-		local v = money(x.profit)
-		if x.concentration then v = mut(x.concentration .. (x.fromBags and "*" or "")) .. "  " .. v end
-		return { v, tip = tip, on = AUI.IsSelected(x),
+		return { label, money(x.profit), tip = tip, on = AUI.IsSelected(x),
 			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
 	end
+	-- one plain and one Concentration craft per rank: the selected one, else yours (only there when
+	-- the cheaper mix can't be made), else the one that earns more
 	local plainAt, concAt = {}, {}
-	local top = 0
 	for i, x in ipairs(result.rows) do
 		local q = x.quality or 0
-		top = math.max(top, q)
 		local slot = x.concentration and concAt or plainAt
 		local had = slot[q] and result.rows[slot[q]]
-		-- one per rank: the selected one, else yours (only there when the mix can't be made), else the better
 		if not had or AUI.IsSelected(x) or (not AUI.IsSelected(had) and (x.fromBags or (not had.fromBags and (x.profit or 0) > (had.profit or 0)))) then
 			slot[q] = i
 		end
 	end
+	local lo, hi, best
+	for q in pairs(plainAt) do lo = math.min(lo or q, q) end
+	for q in pairs(plainAt) do hi = math.max(hi or q, q) end
+	for q in pairs(concAt) do hi = math.max(hi or q, q); lo = lo or q end
+	for q, i in pairs(plainAt) do
+		if not best or (result.rows[i].profit or 0) > (result.rows[plainAt[best]].profit or 0) then best = q end
+	end
 	local qrows = {}
-	for q = math.max(top, maxQ or top), 1, -1 do
-		if #qrows >= 5 then break end
+	if hi and maxQ and maxQ > hi then
+		qrows[#qrows + 1] = { W.QualityIcon(maxQ, 13, maxQ) .. mut("  out of reach"), mut("-"),
+			tip = { { "Rank " .. maxQ }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
+	end
+	local function rank(q, name)
+		if not q then return end
 		local pi, ci = plainAt[q], concAt[q]
 		local px, cx = pi and result.rows[pi], ci and result.rows[ci]
-		local label = W.QualityIcon(q, 13, maxQ) .. ((px and px.short or cx and cx.short) and T.Color("bad", " low") or "")
-		if px or cx then
-			qrows[#qrows + 1] = { label, cells = { cellFor(pi, px) or { mut("-") }, cellFor(ci, cx) or { mut("-") } },
-				tip = { { "Rank " .. q }, { mut("Plain: the cheapest reagents that reach it. Concentration: the points it costs, then the profit (* with the reagents you hold).") } } }
-		elseif q > top then
-			qrows[#qrows + 1] = { label, cells = { { mut("out of reach") }, { mut("-") } },
-				tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
+		local label = W.QualityIcon(q, 13, maxQ) .. "  " .. name .. ((px and px.short or cx and cx.short) and T.Color("bad", "  too low") or "")
+		if px then
+			qrows[#qrows + 1] = line(pi, px, label)
+		else
+			qrows[#qrows + 1] = { label, mut("-"), tip = { { "Rank " .. q }, { mut("Only Concentration reaches it: pick the Concentrate line under it.") } } }
+		end
+		if cx then
+			-- (with your own reagents: said on its hover)
+			qrows[#qrows + 1] = line(ci, cx, "    " .. W.ConcIcon(11) .. " " .. T.Color("gold", cx.concentration .. " Concentrate"))
 		end
 	end
+	local tagBest = best and (best == hi or best == lo)
+	rank(hi, "Highest" .. ((tagBest and best == hi) and mut(" · Best") or ""))
+	if best and not tagBest then rank(best, "Best") end
+	if lo and lo ~= hi then rank(lo, "Lowest" .. ((tagBest and best == lo) and mut(" · Best") or "")) end
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
 	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
 	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
@@ -1460,7 +1474,7 @@ function AUI.Card(n, scan)
 	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
-		section = { head = "QUALITY", cols = { "PLAIN", "CONCENTRATION" }, rows = qrows },
+		section = { head = "QUALITY", rows = qrows },
 		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
 		actions = actions, live = true }
 end
