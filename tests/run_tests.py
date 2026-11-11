@@ -1240,6 +1240,39 @@ check("scan side panel: craft or sell with profit and reagents, the reagents eac
       rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "x" and plain(rp.figures[1][1]) == "PROFIT"
       and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
       and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
+rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
+check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
+      plain(rq.actions[1].label) == "Queue 20 · 8 craftable now" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
+# the review's queue findings: two mixes for the same recipe and quality stay two entries
+mx2 = L.eval("""(function() local Q = AuctionIQ.Queue; Q.Clear()
+  local a = { char = 'Me-Realm', recipeID = 10, quality = 2, reagents = { { itemID = 201, slot = 1, n = 3 } }, shop = {} }
+  local b = { char = 'Me-Realm', recipeID = 10, quality = 2, reagents = { { itemID = 202, slot = 1, n = 3 } }, shop = {} }
+  local c = { char = 'Me-Realm', recipeID = 10, quality = 2, reagents = { { itemID = 201, slot = 1, n = 3 } }, shop = {} }
+  Q.AddEntry(a, 2); Q.AddEntry(b, 1); Q.AddEntry(c, 1)
+  local q = AuctionIQ.db.queue
+  local out = { n = #q, aq = q[1].qty, aid = q[1].reagents[1].itemID, bid = q[2] and q[2].reagents[1].itemID }
+  Q.Clear(); return out end)()""")
+check("queue: a second mix for the same recipe and quality is its own entry, the first batch's reagents untouched",
+      mx2.n == 2 and mx2.aq == 3 and mx2.aid == 201 and mx2.bid == 202)
+fs = L.eval("""(function() local Q = AuctionIQ.Queue
+  local row = { recipeID = 10, name = 'x', quality = 1, concQuality = 2, concentration = 40, accounts = { queue = { { itemID = 201, slot = 1, n = 3 } }, reagents = {} } }
+  return { conc = Q.FromScan('Me-Realm', { name = 'Me' }, row, true) == nil, plain = Q.FromScan('Me-Realm', { name = 'Me' }, row, false) ~= nil } end)()""")
+check("queue: a Concentration craft with no saved Concentration mix isn't queued with the plain one", fs.conc and fs.plain)
+oa = L.eval("""(function() local Q = AuctionIQ.Queue; local old = C_Item.GetItemCount; C_Item.GetItemCount = function() return 1 end
+  local old2 = C_TradeSkillUI.GetRecipeSchematic
+  C_TradeSkillUI.GetRecipeSchematic = function() return { reagentSlotSchematics = {
+    { dataSlotIndex = 1, required = true }, { dataSlotIndex = 2, required = false } } } end
+  local e = { recipeID = 10, reagents = { { itemID = 201, slot = 1, n = 3 } } }
+  local a, why = Q.OrderAllocation(e, { reagents = {} })
+  local f = { recipeID = 10, reagents = { { itemID = 201, slot = 1, n = 1 }, { itemID = 299, slot = 2, n = 2 } } }
+  local b = Q.OrderAllocation(f, { reagents = {} })
+  local g = { recipeID = 10, reagents = { { itemID = 201, slot = 1, n = 3 } } }
+  local c = Q.OrderAllocation(g, { reagents = { { reagentInfo = { reagent = { itemID = 201 }, quantity = 3 } } } })
+  C_Item.GetItemCount = old; C_TradeSkillUI.GetRecipeSchematic = old2
+  return { a = a == nil, why = why, bmine = b and #b.mine, bdrop = b and #b.dropped, cmine = c and #c.mine } end)()""")
+check("work order: a required reagent you're short of stops the craft and names it", oa.a and "need 3" in str(oa.why) and "item 201" in str(oa.why))
+check("work order: a finishing reagent you're short of is left out, and listed as changed", oa.bmine == 1 and oa.bdrop == 1)
+check("work order: what the customer supplies comes off yours", oa.cmine == 0)
 cp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, concProfit = 50000, concentration = 40, gainPerPoint = 750, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 2, "conc")
 check("scan side card, Concentration view: worth the Concentration, plain against with, extra a point",
       plain(cp.kicker) == "WORTH THE CONCENTRATION?" and plain(cp.figures[1][1]) == "PLAIN" and plain(cp.figures[2][1]) == "WITH CONC." and "Worth it" in plain(cp.sub))
@@ -1799,16 +1832,25 @@ n2 = L.eval("(AuctionIQ.Queue.FillOrders())")
 oq = list(CH.db.queue.values())
 check("orders: a paying order is queued with its order ID", n2 == 1 and oq[0].orderID == "77")
 check("orders: the button goes Claim first", CH.Queue.OrderStep(oq[0]) == "Claim")
+run("AuctionIQ.Queue.FillOrders()")
+check("orders: Queue all twice queues each order once", CH.Queue.Count() == 1 and CH.db.queue[1].qty == 1)
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
-check("orders: Claim claims it, then Craft", L.eval("STUB.claimed") == 77 and CH.Queue.OrderStep(oq[0]) == "Craft")
+check("orders: Claim asks the game and waits: Claiming... until it says yes", L.eval("STUB.claimed") == 77 and CH.Queue.OrderStep(oq[0]) == "Claiming..."
+      and L.eval("(AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1]))") is False)
+run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
+check("orders: Claim claims it, then Craft once the game confirms", CH.Queue.OrderStep(oq[0]) == "Craft")
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
-check("orders: crafting passes the claimed order's ID", L.eval("STUB.crafted.id") == 10 and L.eval("STUB.crafted.order") == 77)
+check("orders: crafting passes the claimed order's ID, and waits on the game", L.eval("STUB.crafted.id") == 10 and L.eval("STUB.crafted.order") == 77
+      and CH.Queue.OrderStep(oq[0]) == "Crafting...")
 run('STUB.claimedOrder.isFulfillable = true; STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("orders: after the craft it's Turn in", CH.Queue.OrderStep(oq[0]) == "Turn in")
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
-check("orders: Turn in fulfils it and it leaves the queue", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+check("orders: Turn in sends it and keeps it, Turning in..., until the game says yes", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 1
+      and CH.Queue.OrderStep(CH.db.queue[1]) == "Turning in...")
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
-check("orders: a turn-in the game refuses comes back to the top", CH.Queue.Count() == 1 and CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+check("orders: a turn-in the game refuses stays, ready to try again", CH.Queue.Count() == 1 and CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1]); STUB.Fire('CRAFTINGORDERS_FULFILL_ORDER_RESPONSE', 0, 77)")
+check("orders: the game taking it removes it from the queue", CH.Queue.Count() == 0)
 run("AuctionIQ.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.claimedOrder = nil; C_CraftingOrders.GetClaimedOrder = nil")
 # One button: Next step walks claim, craft, turn in
 run("AuctionIQ.Queue.FillOrders()")
@@ -1816,18 +1858,20 @@ st = L.eval("(AuctionIQ.Queue.DoNext())")
 check("next step: first click claims", st == "Claim" and L.eval("STUB.claimed") == 77)
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 3, 77)')
 check("next step: a refused claim goes back to Claim", CH.Queue.OrderStep(CH.db.queue[1]) == "Claim")
-run("AuctionIQ.Queue.DoNext()")
+run("AuctionIQ.Queue.DoNext(); STUB.Fire('CRAFTINGORDERS_CLAIM_ORDER_RESPONSE', 0, 77)")
 run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = false } end")
 st = L.eval("(AuctionIQ.Queue.DoNext())")
 check("next step: then crafts", st == "Craft" and L.eval("STUB.crafted.id") == 10)
 run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = true } end")
+run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("next step: the game saying it's done means Turn in", CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
 st = L.eval("(AuctionIQ.Queue.DoNext())")
+run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
 check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil")
 # Crafting an order crafts into the live claimed order, leaves out the customer's reagents, and only counts once the game says it's done
 run("""AuctionIQ.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.crafted = nil; STUB.created = nil; STUB.completed = nil
-AuctionIQ.Queue.FillOrders(); AuctionIQ.Queue.DoNext()
+AuctionIQ.Queue.FillOrders(); AuctionIQ.Queue.DoNext(); STUB.Fire('CRAFTINGORDERS_CLAIM_ORDER_RESPONSE', 0, 77)
 STUB.claimedOrder = { orderID = 77, isFulfillable = false, reagents = { { reagentInfo = { reagent = { itemID = 201 } } } } }
 C_CraftingOrders.GetClaimedOrder = function() return STUB.claimedOrder end
 ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
@@ -1838,9 +1882,15 @@ ProfessionsFrame.OrdersPage.OrderView = { order = { orderID = 77 }, IsShown = fu
 st = L.eval("(AuctionIQ.Queue.DoNext())")
 check("order craft: crafts into the claimed order", st == "Craft" and L.eval("STUB.crafted.order") == 77)
 check("order craft: the customer's reagents aren't sent as ours", L.eval("(function() for _, r in ipairs(STUB.crafted.reagents) do if r.itemID == 201 then return false end end return true end)()"))
-# an order needing rank 2 that these reagents only reach with Concentration: craft with it on
-run("""STUB.crafted = nil; STUB.claimedOrder.minQuality = 2; STUB.extraSkill = -1000; AuctionIQ.Queue.DoNext(); STUB.extraSkill = nil""")
+# an order needing rank 2 that these reagents only reach with Concentration: say so first, then craft with it on
+run('STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)')
+cw = L.eval("""(function() STUB.crafted = nil; STUB.claimedOrder.minQuality = 2; STUB.extraSkill = -1000
+  local a, b = AuctionIQ.Queue.DoNext(); local first = STUB.crafted; local c = AuctionIQ.Queue.DoNext(); STUB.extraSkill = nil
+  return { a = a, why = b, first = first } end)()""")
+check("order craft: a craft needing Concentration it didn't plan says so and waits for a second press",
+      cw.a is False and "Concentration" in str(cw.why) and "Press again" in str(cw.why) and cw.first is None)
 check("order craft: turns Concentration on when the order's rank needs it", L.eval("STUB.crafted.conc") is True and L.eval("STUB.crafted.order") == 77)
+run('STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)')
 run("STUB.claimedOrder.minQuality = 9; STUB.crafted = nil")
 st = L.eval("{ AuctionIQ.Queue.DoNext() }")
 check("order craft: refuses, and says why, when even Concentration can't reach the rank", L.eval("STUB.crafted") is None and "needs rank 9" in str(st[2]))
@@ -1849,7 +1899,10 @@ run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers
 check("order craft: a craft that didn't go into the order stays Craft", CH.Queue.OrderStep(CH.db.queue[1]) == "Craft")
 run('STUB.claimedOrder.isFulfillable = true')
 st = L.eval("(AuctionIQ.Queue.DoNext())")
-check("order craft: Turn in fulfils the claimed order", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+check("order craft: Turn in asks Blizzard to fulfil the claimed order and waits", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 1
+      and CH.Queue.OrderStep(CH.db.queue[1]) == "Turning in...")
+run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
+check("order craft: once Blizzard confirms the turn-in, the order leaves the queue", CH.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil; ProfessionsFrame.OrdersPage.OrderView = nil")
 run("STUB.claimed = nil; AuctionIQ.ScanUI.Open(); AuctionIQ.ScanUI.SetMode('orders'); AuctionIQ.ScanUI.Next()")
 check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
@@ -2009,6 +2062,7 @@ check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) 
 run("AuctionIQ.Queue.Clear()")
 check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77
       and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
+check("orders: until the game answers, the button reads Claiming...", CH.ScanUI.ClaimLabel(CH.ScanUI.ClaimState(by[77]), by[77]) == "Claiming...")
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
 check("orders: once claimed, the order opens and its button moves on to Craft",
       L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "craft" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
@@ -2022,7 +2076,17 @@ end)()""")
 check("orders: Craft works the order out again from the live order (a stale plan's Concentration is dropped)", rp.ok and rp.conc is None and rp.n > 0)
 check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
 run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
+check("orders: while the craft is casting, the button reads Crafting... and won't press again",
+      CH.ScanUI.ClaimState(by[77]) == "pending" and CH.ScanUI.ClaimLabel("pending", by[77]) == "Crafting..." and not CH.ScanUI.Claim(by[77]))
+run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
 check("orders: when crafted, the button reads Turn in and turns it in", CH.ScanUI.ClaimState(by[77]) == "turnin" and CH.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
+check("orders: until the game takes it, the button reads Turning in... and the order stays queued",
+      CH.ScanUI.ClaimLabel(CH.ScanUI.ClaimState(by[77]), by[77]) == "Turning in..." and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
+run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
+check("orders: a refused turn-in leaves the order queued with Turn in to try again",
+      L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil") and CH.ScanUI.ClaimState(by[77]) == "turnin")
+run('STUB.fulfilled = nil'); CH.ScanUI.Claim(by[77]); run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
+check("orders: once the game takes it, it leaves the queue", L.eval("STUB.fulfilled") == 77 and L.eval("AuctionIQ.Queue.ForOrder(77) == nil"))
 run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")

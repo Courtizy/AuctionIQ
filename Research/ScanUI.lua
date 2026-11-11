@@ -581,6 +581,8 @@ function SUI.NextLines()
 	return lines
 end
 
+local claimedID, claimedRow -- the order we asked the game to claim, to show it once the game says yes
+
 --- One click, one step through the work orders. Queues the worthwhile orders first if none are.
 function SUI.Next()
 	if not nextOrder() then
@@ -593,15 +595,12 @@ function SUI.Next()
 	end
 	local step, e = CH.Queue.DoNext()
 	if step == "Claim" then
-		-- show the claimed order, as the game does when you claim it yourself
-		local o = CH.Orders.Live(e.orderID)
-		if o then CH.Orders.Open(o, e.recipeID, e.concentration ~= nil) end
-	elseif step == "Turn in" and C_Timer then
-		-- the list changes once the game takes it: fetch again for the next order
-		C_Timer.After(1, SUI.FetchOrders)
+		-- show the claimed order once the game says yes, as it does when you claim it yourself
+		claimedID, claimedRow = e.orderID, { concentration = e.concentration }
 	end
 	if step then
-		CH.Print(string.format("%s: %s", step == "Turn in" and "turned in" or step == "Claim" and "claimed" or step == "Shatter" and "shattering a mote before" or "crafting", e.name or "?"))
+		-- claimed / turned in are said when the game confirms them
+		CH.Print(string.format("%s: %s", step == "Turn in" and "turning in" or step == "Claim" and "claiming" or step == "Shatter" and "shattering a mote before" or "crafting", e.name or "?"))
 	elseif e then
 		CH.Print(e)
 	end
@@ -609,7 +608,10 @@ function SUI.Next()
 end
 
 -- Claiming an order from its row ---------------------------------------------------------------
-local claimedID, claimedRow -- the order we asked the game to claim, to show it once the game says yes
+local function redraw()
+	if frame and frame:IsShown() and mode == "orders" then SUI.Refresh() end
+end
+
 
 local function claimedOrder()
 	local co = C_CraftingOrders
@@ -621,6 +623,9 @@ end
 --- claimed: the game allows one at a time).
 function SUI.ClaimState(d)
 	if not (d and d.orderID) then return nil end
+	-- asked the game and waiting for its answer: Claiming..., Crafting..., Turning in...
+	local qe = CH.Queue.ForOrder(d.orderID)
+	if qe and CH.Queue.Pending(qe) then return "pending" end
 	local c = claimedOrder()
 	if c and CH.Orders.Same(c.orderID, d.orderID) then
 		if c.isFulfillable then return "turnin" end
@@ -629,15 +634,25 @@ function SUI.ClaimState(d)
 	return c and "busy" or "claim"
 end
 
-local LABELS = { claim = "Claim", busy = "Claim", shatter = "Shatter", craft = "Craft", turnin = "Turn in" }
-function SUI.ClaimLabel(state) return LABELS[state] end
+local LABELS = { claim = "Claim", busy = "Claim", shatter = "Shatter", craft = "Craft", turnin = "Turn in", pending = "Waiting..." }
+--- The button's text; while the game is answering, what it's doing (Claiming..., Crafting..., Turning in...).
+function SUI.ClaimLabel(state, d)
+	if state == "pending" and d then
+		local qe = CH.Queue.ForOrder(d.orderID)
+		local w = qe and CH.Queue.Pending(qe)
+		if w then return CH.Queue.PENDING_LABEL[w] end
+	end
+	return LABELS[state]
+end
 
 function SUI.ClaimLines(d)
 	local T, M = CH.Theme, CH.FormatMoney
 	local state = SUI.ClaimState(d)
 	if not state then return { { "Claim" } } end
-	local lines = { { LABELS[state] .. " " .. (d.name or "the order"), d.customer or d.from or "" } }
-	if state == "shatter" then
+	local lines = { { SUI.ClaimLabel(state, d) .. " " .. (d.name or "the order"), d.customer or d.from or "" } }
+	if state == "pending" then
+		table.insert(lines, { T.Color("muted", "Waiting for the game to confirm. If it says no, the order stays queued so you can try again.") })
+	elseif state == "shatter" then
 		local id = CH.Queue.ShatterItem()
 		local name = id and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
 		table.insert(lines, { T.Color("muted", "Casts Shatter on " .. (id and (CH.Window.ItemIcon(id, 12) .. (name or "a mote")) .. " (your cheapest mote)" or "a mote")
@@ -674,13 +689,25 @@ function SUI.Claim(d)
 		CH.Print("you already have an order claimed: turn it in or release it before claiming another.")
 		return false
 	end
+	if state == "pending" then
+		CH.Print("still waiting for the game to confirm the last step on " .. (d.name or "that order") .. ".")
+		return false
+	end
 	if state == "claim" then
 		local o = CH.Orders.Live(d.orderID)
 		if not o then
 			CH.Print("that order isn't listed any more: click Work orders to fetch them again.")
 			return false
 		end
-		entryFor(d)
+		local qe = entryFor(d)
+		claimedID, claimedRow = o.orderID, d
+		if qe then
+			-- the queue claims it, marks it Claiming..., and moves on when the game says yes
+			local ok, why = CH.Queue.Craft(qe)
+			if not ok then claimedID, claimedRow = nil, nil; CH.Print("can't claim " .. (d.name or "that order") .. ": " .. tostring(why)) end
+			redraw()
+			return ok
+		end
 		local ui = C_TradeSkillUI
 		local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
 		claimedID, claimedRow = o.orderID, d
@@ -701,16 +728,10 @@ function SUI.Claim(d)
 		return false
 	end
 	local ok, why = CH.Queue.Craft(e)
-	if not ok then CH.Print("can't " .. LABELS[state]:lower() .. " " .. (d.name or "that order") .. ": " .. tostring(why)); return false end
-	if state == "turnin" then
-		CH.Print("turned in: " .. (d.name or "?"))
-		if C_Timer then C_Timer.After(1, SUI.FetchOrders) end
-	end
+	if not ok then CH.Print("can't " .. LABELS[state]:lower() .. " " .. (d.name or "that order") .. " yet: " .. tostring(why)); redraw(); return false end
+	-- "turned in" is said when the game confirms it, not here
+	redraw()
 	return true
-end
-
-local function redraw()
-	if frame and frame:IsShown() and mode == "orders" then SUI.Refresh() end
 end
 
 CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
@@ -718,7 +739,10 @@ CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 	claimedID = nil
 	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
 	if result ~= nil and result ~= ok then
-		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it.")
+		-- a queued order's refusal is told by the queue; only say it for one AuctionIQ couldn't queue
+		if not CH.Queue.ForOrder(orderID) then
+			CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it.")
+		end
 	else
 		local o = CH.Orders.Live(orderID)
 		if o then CH.Orders.Open(o, nil, claimedRow and claimedRow.concentration ~= nil) end
@@ -735,7 +759,11 @@ CH.On("UNIT_AURA", function(_, unit)
 	local has = CH.Queue.HasShatterBuff()
 	if has ~= hadShatter then hadShatter = has; redraw() end
 end)
-CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function() redraw() end)
+CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function()
+	redraw()
+	-- the list changes once the game takes it: fetch again for the next order
+	if C_Timer then C_Timer.After(1, SUI.FetchOrders) end
+end)
 CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit)
 	if unit == "player" and C_Timer then C_Timer.After(0.8, redraw) end
 end)
@@ -788,8 +816,8 @@ local function refreshLists()
 			local state = d and mode == "orders" and SUI.ClaimState(d)
 			r.claim:SetShown(state and true or false)
 			if state then
-				r.claim:SetText(SUI.ClaimLabel(state))
-				if r.claim.SetAlpha then r.claim:SetAlpha(state == "busy" and 0.45 or 1) end
+				r.claim:SetText(SUI.ClaimLabel(state, d))
+				if r.claim.SetAlpha then r.claim:SetAlpha((state == "busy" or state == "pending") and 0.45 or 1) end
 			end
 		end
 		if d and mode == "orders" then
@@ -900,8 +928,18 @@ function SUI.RecipePanel(r, n, v)
 	local function act(conc)
 		local ok, why = SUI.ScanEntry(r, conc)
 		local what = string.format("%d %s", n, n == 1 and "craft" or "crafts")
-		return { label = conc and ("Queue " .. what .. " with Conc.") or ("Queue " .. what),
-			tip = conc and "Adds the Concentration craft, with the reagents the scan picked." or "Adds the plain craft, with the reagents the scan picked.",
+		local label = conc and ("Queue " .. what .. " with Conc.") or ("Queue " .. what)
+		local tip = conc and "Adds the Concentration craft, with the reagents the scan picked." or "Adds the plain craft, with the reagents the scan picked."
+		-- more than your bags cover: say how many you can make now, and what runs short
+		local can, shortID = r.canMake, r.shortItem
+		if conc then can, shortID = r.canMakeConc, r.shortConc or r.shortItem end
+		if can and can < n then
+			label = string.format(conc and "Queue %d w/ Conc. · %d now" or "Queue %d · %d craftable now", n, can)
+			local nm = shortID and C_Item.GetItemNameByID and C_Item.GetItemNameByID(shortID)
+			tip = tip .. " You have the reagents for " .. can .. " of the " .. n .. " now"
+				.. (shortID and ("; " .. (nm or "a reagent") .. " runs short first") or "") .. ". The Shopping list has the rest."
+		end
+		return { label = label, tip = tip,
 			off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil,
 			run = function() return SUI.QueueSelected(conc, n, r) end }
 	end
@@ -983,7 +1021,9 @@ function SUI.OrderPanel(d)
 	if cs and cs.gain < 0 then rows[#rows + 1] = { "Selling yours instead", T.Color("bad", "+" .. M(-cs.gain)) } end
 	local actions = {}
 	if state then
-		actions[1] = { label = SUI.ClaimLabel(state) or "Claim", tip = "The next step for this order.", off = state == "busy" and "Busy: wait for the last step to finish." or nil,
+		actions[1] = { label = SUI.ClaimLabel(state, d) or "Claim", tip = "The next step for this order.",
+			off = state == "busy" and "Another order is claimed: turn it in or release it first."
+				or state == "pending" and "Waiting for the game to confirm the last step." or nil,
 			run = function() return SUI.Claim(d) end }
 	end
 	actions[#actions + 1] = { label = "Open order", tip = "Show it in the game's order window.", run = function() CH.Orders.Open(d.order, d.recipeID) end }
