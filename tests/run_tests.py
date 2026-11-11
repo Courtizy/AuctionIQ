@@ -894,6 +894,15 @@ hs = L.eval("""(function() local res = AuctionIQ.Advisor.Analyze(10)
   return { bags = A.SelectedRow() and A.SelectedRow().fromBags, n = n } end)()""")
 check("held Concentration: clicking the yours row picks it alone, not the mix of the same rank",
       hs is not None and hs.bags and hs.n == 1)
+hm = L.eval("""(function()
+  local A = AuctionIQ.AdvisorUI; local cur = A.Current; A.Current = function() return nil end -- not the card's recipe
+  local oldP = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return 2906 end
+  local res = AuctionIQ.Advisor.Analyze(10); local h = AuctionIQ.Advisor.HeldConcRow(res)
+  local want = h and AuctionIQ.Advisor.MaxCraftable(res, h, 1000) or nil
+  local got = AuctionIQ.ScanUI.HeldMax(10, 1000)
+  A.Current, AuctionIQ.OpenProfessionID = cur, oldP
+  return { want = want, got = got } end)()""")
+check("Max: any recipe's Concentration craft with your own reagents, not only the one on the card", hm.want == hm.got and hm.got == 1)
 
 # Dashboard and Ledger from TSM's saved data (read only)
 run(r"""

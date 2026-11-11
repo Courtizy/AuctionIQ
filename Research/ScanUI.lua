@@ -1328,10 +1328,14 @@ function SUI.Refresh()
 		r.bestCost = useConc and (r.concCost or r.cost) or r.cost
 		r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
 		r.bestCan = useConc and r.canMakeConc or r.canMake
-		-- the recipe open in the card knows about the Concentration craft with your own reagents
-		if useConc and r.bestCan == 0 then
-			local held = SUI.HeldMax and SUI.HeldMax(r.recipeID)
-			if held and held > 0 then r.bestCan = held end
+		-- the Concentration craft with your own reagents, when the best mix needs a rank you don't hold
+		-- (this expansion's recipes: each is worked out once until your bags or Concentration change)
+		if r.concProfit and r.current and (r.canMakeConc or 0) == 0 then
+			local held = SUI.HeldMax(r.recipeID, concNow)
+			if held and held > 0 then
+				r.canMakeConc = held
+				if useConc then r.bestCan = held end
+			end
 		end
 		if not INVIEW[view](r) then
 			-- not part of this view
@@ -1438,14 +1442,35 @@ end
 
 --- How many of the Concentration craft with your own reagents you can make, for the recipe open in
 --- the card (the scan doesn't price that mix), or nil.
-function SUI.HeldMax(recipeID)
+-- Held-reagent Concentration crafts per recipe, worked out once and kept until your bags or
+-- Concentration change: { [recipeID] = max }. false when there's none.
+local heldCache, heldConc = {}, nil
+
+--- How many of a recipe's Concentration craft with your own reagents you can make now (as the game
+--- fills the slots when you tick Concentrate): for the open recipe from its card, for the rest from
+--- the advisor on demand. nil when there's no such craft or no profession open.
+function SUI.HeldMax(recipeID, concNow)
 	local A = CH.AdvisorUI
 	local res = A and A.Current and A.Current()
-	if not (res and res.recipeID == recipeID and res.rows) then return nil end
-	for _, x in ipairs(res.rows) do
-		if x.fromBags then return x.max end
+	if res and res.recipeID == recipeID and res.rows then
+		for _, x in ipairs(res.rows) do
+			if x.fromBags then return x.max end
+		end
 	end
+	if concNow ~= heldConc then heldCache, heldConc = {}, concNow end
+	local hit = heldCache[recipeID]
+	if hit ~= nil then return hit or nil end
+	local Adv = CH.Advisor
+	local prof = CH.OpenProfessionID and CH.OpenProfessionID()
+	if not (prof and Adv and Adv.HeldConcRow and Adv.MaxCraftable) then return nil end
+	local ok, r = pcall(Adv.Analyze, recipeID, { professionID = prof })
+	local okH, h = false, nil
+	if ok and r then okH, h = pcall(Adv.HeldConcRow, r) end
+	local max = okH and h and Adv.MaxCraftable(r, h, concNow) or nil
+	heldCache[recipeID] = max or false
+	return max
 end
+CH.On("BAG_UPDATE_DELAYED", function() heldCache = {} end)
 
 function SUI.IsShown() return frame ~= nil and frame:IsShown() end
 
