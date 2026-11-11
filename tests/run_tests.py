@@ -77,6 +77,8 @@ check("minimap button opens the window", CH.UI.IsShown())
 run('local b = AuctionIQ.CreateMinimapButton(); b.scripts.OnDragStart(b); b.scripts.OnUpdate(b)')
 check("dragging moves it round the minimap", abs(CH.db.settings.minimap.angle) < 0.001 and btn.point[4] == 75)
 run('SlashCmdList.AUCTIONIQ("minimap")')
+run("STUB.shown = AuctionIQ.UI.IsShown and AuctionIQ.UI.IsShown(); STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('shatter'); AuctionIQ.Print = STUB.oldPrint")
+check("/aiq shatter lists what Shatter can take, without opening the main window", any("Shatter can take" in str(t) for t in L.globals().STUB.printed.values()))
 check("/ch minimap hides it", not btn.shown)
 
 # icons: white line icons tinted in the label, theme colour when active and grey otherwise
