@@ -645,6 +645,14 @@ function W.SidePanel(parent, width, height, opts)
 	-- a switch on the section's head line (Concentrate on or off)
 	det.toggle = text(120, "RIGHT", "GameFontNormalSmall")
 	T.TitleFont(det.toggle, 10, "bold")
+	-- the switch itself: a track that fills with the accent when on, and a knob that slides right
+	det.switch = CreateFrame("Frame", nil, det)
+	det.switch:SetSize(26, 12)
+	det.switch.track = det.switch:CreateTexture(nil, "ARTWORK")
+	det.switch.track:SetAllPoints()
+	det.switch.knob = det.switch:CreateTexture(nil, "OVERLAY")
+	det.switch.knob:SetSize(10, 10)
+	det.switch:Hide()
 	det.toggleHit = tipHit()
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
 	det.noteHit = tipHit()
@@ -752,9 +760,20 @@ function W.DrawSidePanel(det, d, said)
 	at(det.head, 12, y - 6)
 	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
 	local tg = sec and sec.toggle
-	at(det.toggle, det.width - 132, y - 6)
-	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE") or "")
-	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 136, y - 2); det.toggleHit:SetSize(128, 16)
+	at(det.toggle, det.width - 164, y - 6)
+	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE  " .. (tg.on and "ON" or "OFF")) or "")
+	local sw = det.switch
+	sw:ClearAllPoints(); sw:SetPoint("TOPLEFT", det.width - 38, y - 5)
+	if tg then
+		local c = tg.on and T.accent or T.line
+		sw.track:SetColorTexture(c[1], c[2], c[3], 1)
+		local k = tg.on and T.bg or T.muted
+		sw.knob:SetColorTexture(k[1], k[2], k[3], 1)
+		sw.knob:ClearAllPoints(); sw.knob:SetPoint(tg.on and "RIGHT" or "LEFT", sw, tg.on and "RIGHT" or "LEFT", tg.on and -1 or 1, 0)
+	end
+	sw:SetShown(tg ~= nil)
+	if tg then sw.isOn = tg.on == true else sw.isOn = nil end
+	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 168, y - 2); det.toggleHit:SetSize(160, 16)
 	det.toggleHit.tip = tg and tg.tip or false
 	det.toggleHit.run = tg and tg.run or false
 	det.toggleHit:SetShown(tg ~= nil)

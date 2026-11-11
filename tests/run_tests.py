@@ -1090,6 +1090,9 @@ lc.section.toggle.run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
 ql2 = [plain(r[1]) for r in lc2.section.rows.values()]
 ons = [r for r in lc2.section.rows.values() if r.on]
+sw = L.eval("AuctionIQ.ScanUI.lastDetail").switch
+check("Craft card: Concentrate is an on/off switch, off now (knob left, says OFF)", L.eval("AuctionIQ.ScanUI.lastDetail.switch:IsShown()") and sw.isOn is False
+      and L.eval("AuctionIQ.ScanUI.lastDetail.switch.knob.pt[1]") == "LEFT" and "CONCENTRATE  OFF" in plain(L.eval("AuctionIQ.ScanUI.lastDetail").toggle.t))
 check("Craft card: Concentrate off shows the plain crafts and picks the best of them",
       lc2.section.toggle.on is False and not CH.AdvisorUI.SelectedRow().concentration and len(ons) == 1 and sum("Best" in l for l in ql2) == 1)
 qr2 = list(lc2.section.rows.values())
@@ -1098,6 +1101,9 @@ check("Craft card: clicking a rank picks it, and only that line is highlighted",
       sum(1 for r in L.eval("AuctionIQ.ScanUI.lastPanel").section.rows.values() if r.on) == 1)
 lc2.section.toggle.run()
 lc3 = L.eval("AuctionIQ.ScanUI.lastPanel")
+sw = L.eval("AuctionIQ.ScanUI.lastDetail").switch
+check("Craft card: the switch flips on (knob right, says ON)", sw.isOn is True and L.eval("AuctionIQ.ScanUI.lastDetail.switch.knob.pt[1]") == "RIGHT"
+      and "CONCENTRATE  ON" in plain(L.eval("AuctionIQ.ScanUI.lastDetail").toggle.t))
 check("Craft card: Concentrate back on picks the best Concentration craft", L.eval("AuctionIQ.ScanUI.lastPanel").section.toggle.on is True
       and CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2]))
 run("AuctionIQ.ScanUI.SetQty(3)")

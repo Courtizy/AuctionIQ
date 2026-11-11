@@ -1321,6 +1321,7 @@ local function renderDetail()
 	end
 	CH.Measure("craft redraw: side card, draw", CH.Window.DrawSidePanel, detail, d)
 	SUI.lastPanel = d
+	SUI.lastDetail = detail
 end
 SUI.RenderPanel = function() renderDetail() end
 SUI.RenderDetail = renderDetail
