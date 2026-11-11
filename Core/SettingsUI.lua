@@ -203,7 +203,12 @@ function SUI.Build(p, fs, panel)
 			SUI.Refresh()
 		end)
 		r.del = T.Button(src, "x", 18, 18); r.del:SetPoint("TOPLEFT", 556, y)
-		r.del:SetScript("OnClick", function() if r.key then S.DeleteSource(r.key); say("Deleted " .. r.key .. "."); SUI.Refresh() end end)
+		r.del:SetScript("OnClick", function()
+			if not r.key then return end
+			local ok, why = S.DeleteSource(r.key)
+			if ok then say("Deleted " .. r.key .. ".") else say("Can't delete " .. r.key .. ": " .. tostring(why), true) end
+			SUI.Refresh()
+		end)
 		p.sources[i] = r
 	end
 	CH.Window.Wheel(src, SRC_ROWS, function() return srcOffset end, function(v) srcOffset = v end, function() return #S.Sources() end, SUI.Refresh)

@@ -282,6 +282,20 @@ check("ledger: the login parse runs 1,000 lines a frame over several frames, wit
 check("ledger: asking for the records mid-parse finishes the parse right away; the background parse then leaves it alone",
       bg.mid == 2501 and bg.stable)
 
+# Settings: a custom source another source or an operation uses can't be deleted out from under it
+dep = L.eval("""(function()
+  local S = AuctionIQ.Settings
+  S.SetSource("audit_one", "10g"); S.SetSource("audit_two", "audit_one * 2"); S.SetSource("audit_three", "audit_onex")
+  local ok1, why1 = S.DeleteSource("audit_one")
+  local still = AuctionIQ.Formula.Custom().audit_one ~= nil
+  S.DeleteSource("audit_two")
+  local ok2 = S.DeleteSource("audit_one")
+  S.DeleteSource("audit_three")
+  return { ok1 = ok1, why1 = why1 or "", still = still, ok2 = ok2 }
+end)()""")
+check("settings: deleting a source another source uses is refused and names the user; once unused it deletes",
+      dep.ok1 == False and "audit_two" in dep.why1 and "audit_three" not in dep.why1 and dep.still and dep.ok2)
+
 # SavedVariables: older and incomplete data loads without errors
 sv = L.eval("""(function()
   local Q = AuctionIQ.Queue
