@@ -69,52 +69,59 @@ function Lg.Holders()
 end
 
 -- CSV parsing ---------------------------------------------------------------------------------
-local parsed = {} -- [key] = { text, rows }: the text itself, so an edit of the same length is seen
+-- TSM keeps its records as CSV text. Parsed, they used to cost about twenty times the text's
+-- size (a table per row with a field per column, kept twice); on a realm with years of records
+-- that's tens of MB. Now each row is one small array read through a shared metatable (r.time,
+-- r.amount ... as before), built straight from the text and kept once per text.
+local function num(v) return tonumber(v) or 0 end
+local function itemID(s) return tonumber((s or ""):match("^i:(%d+)")) end
 
-local function csv(key)
+local parsed = {} -- [key] = { text, rows }: the text itself, so a changed text is parsed again
+
+--- Rows of the CSV under key, each built by build(field, col) where col maps a header name to its
+--- position: one pass over the text, nothing kept but what build returns.
+local function csv(key, build)
 	local db = tsm()
 	local text = db and db[key]
 	if type(text) ~= "string" then return {} end
 	local c = parsed[key]
 	if c and c.text == text then return c.rows end
-	local rows, header = {}, nil
+	local rows, col = {}, nil
 	for line in string.gmatch(text, "[^\n]+") do
 		local f = {}
 		for v in string.gmatch(line .. ",", "([^,]*),") do f[#f + 1] = v end
-		if not header then
-			header = f
+		if not col then
+			col = {}
+			for i, h in ipairs(f) do col[h] = i end
 		else
-			local r = {}
-			for i, h in ipairs(header) do r[h] = f[i] end
-			table.insert(rows, r)
+			rows[#rows + 1] = build(f, col)
 		end
 	end
 	parsed[key] = { text = text, rows = rows }
 	return rows
 end
 
-local function num(v) return tonumber(v) or 0 end
-local function itemID(s) return tonumber((s or ""):match("^i:(%d+)")) end
+-- A record: { time, player, other, item, id, quantity, price, amount, source } by position.
+local REC = { time = 1, player = 2, other = 3, item = 4, id = 5, quantity = 6, price = 7, amount = 8, source = 9 }
+local recordMeta = { __index = function(t, k) local i = REC[k]; if i then return rawget(t, i) end end }
+local function record(f, col)
+	local q = num(f[col.quantity])
+	local amount = col.amount and num(f[col.amount]) or num(f[col.price]) * q
+	local it = f[col.itemString]
+	return setmetatable({ num(f[col.time]), f[col.player], f[col.otherPlayer], it, itemID(it), q, num(f[col.price]), amount,
+		f[col.source] or f[col.type] }, recordMeta)
+end
+
+-- A gold log entry: { t, v } by position.
+local LOG = { t = 1, v = 2 }
+local logMeta = { __index = function(t, k) local i = LOG[k]; if i then return rawget(t, i) end end }
+local function logEntry(f, col) return setmetatable({ num(f[col.minute]) * 60, num(f[col.copper]) }, logMeta) end
 
 --- TSM's records of one kind for this realm: "Sales", "Buys", "Income", "Expense", "Expired",
 --- "Cancelled". Each row: time, player, other, item (itemString), id, quantity, price (each),
---- amount (total copper), source or type.
--- Normalized records, kept per parsed CSV (a new parse, when TSM's text changes, makes new ones).
-local normalized = setmetatable({}, { __mode = "k" })
-
---- TSM's accounting records of one kind, normalized. Shared between callers: read them, don't change them.
+--- amount (total copper), source or type. Shared between callers: read them, don't change them.
 function Lg.Records(kind)
-	local rows = csv("r@" .. realm() .. "@internalData@csv" .. kind)
-	if normalized[rows] then return normalized[rows] end
-	local out = {}
-	for _, r in ipairs(rows) do
-		local q = num(r.quantity)
-		local amount = r.amount and num(r.amount) or num(r.price) * q
-		table.insert(out, { time = num(r.time), player = r.player, other = r.otherPlayer, item = r.itemString,
-			id = itemID(r.itemString), quantity = q, price = num(r.price), amount = amount, source = r.source or r.type })
-	end
-	if rows[1] then normalized[rows] = out end
-	return out
+	return csv("r@" .. realm() .. "@internalData@csv" .. kind, record)
 end
 
 --- The gold a sale put in your bags: an auction sale after the AH cut, a vendor or trade sale as is.
@@ -126,13 +133,7 @@ function Lg.Net(s)
 end
 
 -- Gold history --------------------------------------------------------------------------------
-local function goldLog(scope)
-	local out = {}
-	for _, r in ipairs(csv("s@" .. scope .. "@internalData@goldLog")) do
-		table.insert(out, { t = num(r.minute) * 60, v = num(r.copper) })
-	end
-	return out
-end
+local function goldLog(scope) return csv("s@" .. scope .. "@internalData@goldLog", logEntry) end
 
 Lg.WARBAND = "Warband"
 
@@ -153,9 +154,7 @@ local function logs()
 		if Lg.Included(c.name) then table.insert(out, { name = c.name, log = goldLog(c.key) }) end
 	end
 	if Lg.Included(Lg.WARBAND) then
-		local wb = {}
-		for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
-		table.insert(out, { name = Lg.WARBAND, log = wb })
+		table.insert(out, { name = Lg.WARBAND, log = csv("g@ @internalData@warbankGoldLog", logEntry) })
 	end
 	return out
 end
