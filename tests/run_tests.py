@@ -775,12 +775,13 @@ lc = L.eval("AuctionIQ.ScanUI.lastPanel")
 qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
       lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "REAGENTS", "MARGIN"]
-      and plain(lc.section.head) == "WHICH QUALITY?" and len(qr) >= 2 and all(r.tip is not None and r.run is not None for r in qr))
+      and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None and r.run is not None for r in qr))
 check("Craft card: break-even and the week's recovery explain themselves on hover",
       all(r.tip is not None for r in list(lc.rows.values())[:2]) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
 qr[1].run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
-check("Craft card: clicking a quality picks it", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2]) and plain(lc2.section.rows[2][1]).startswith(">"))
+check("Craft card: clicking a quality picks it, and its row is highlighted", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2])
+      and lc2.section.rows[2].on is True and not lc2.section.rows[1].on)
 run("AuctionIQ.ScanUI.SetQty(3)")
 lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))

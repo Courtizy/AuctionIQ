@@ -1300,14 +1300,14 @@ function AUI.Card(n, scan)
 	for i, x in ipairs(result.rows) do
 		if i > 5 then break end
 		local on = AUI.IsSelected(x)
-		local label = (on and T.Color("accent", "> ") or "   ") .. W.QualityIcon(x.quality, 13, maxQ)
+		local label = W.QualityIcon(x.quality, 13, maxQ)
 			.. (x.concentration and ("  " .. W.ConcIcon(11) .. " " .. x.concentration) or mut("  no Conc."))
 			.. (x.short and T.Color("bad", "  too low") or "")
 		local tip = AUI.BreakdownLines(result, x, 5)
 		local gpp = x.gain and x.gain.perPoint or x.perPoint
 		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
 		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
-		qrows[#qrows + 1] = { label, money(x.profit), tip = tip,
+		qrows[#qrows + 1] = { label, money(x.profit), tip = tip, on = on,
 			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
 	end
 	-- the ranks above what you can reach, so you see what's missing
@@ -1315,7 +1315,7 @@ function AUI.Card(n, scan)
 	for _, x in ipairs(result.rows) do top = math.max(top, x.quality or 0) end
 	for q = top + 1, (maxQ or top) do
 		if #qrows >= 5 then break end
-		qrows[#qrows + 1] = { "   " .. W.QualityIcon(q, 13, maxQ) .. mut("  out of reach"), mut("-"),
+		qrows[#qrows + 1] = { W.QualityIcon(q, 13, maxQ) .. mut("  out of reach"), mut("-"),
 			tip = { { "Rank " .. q }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
 	end
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
@@ -1393,7 +1393,7 @@ function AUI.Card(n, scan)
 	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
-		section = { head = "WHICH QUALITY?", rows = qrows },
+		section = { head = "QUALITY", rows = qrows },
 		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
 		actions = actions, live = true }
 end

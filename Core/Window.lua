@@ -550,6 +550,13 @@ function W.SidePanel(parent, width, height, opts)
 	for k = 1, nSec do
 		local r = pair()
 		r.hit = tipHit()
+		-- a picked row: an accent wash and a bar on its left, as the list marks its selected row
+		r.sel = det:CreateTexture(nil, "BORDER")
+		r.sel:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.18)
+		r.sel:Hide()
+		r.mark = det:CreateTexture(nil, "ARTWORK")
+		r.mark:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+		r.mark:Hide()
 		det.srows[k] = r
 	end
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
@@ -663,6 +670,9 @@ function W.DrawSidePanel(det, d, said)
 		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
 		r.hit.tip = x and x.tip or false
 		r.hit.run = x and x.run or false
+		r.sel:ClearAllPoints(); r.sel:SetPoint("TOPLEFT", 1, y + 1); r.sel:SetSize(det.width - 2, 14)
+		r.mark:ClearAllPoints(); r.mark:SetPoint("TOPLEFT", 1, y + 1); r.mark:SetSize(2, 14)
+		r.sel:SetShown(x ~= nil and x.on == true); r.mark:SetShown(x ~= nil and x.on == true)
 		r.hit:SetShown(x ~= nil and (x.tip ~= nil or x.run ~= nil))
 		if x then y = y - 14 end
 	end
