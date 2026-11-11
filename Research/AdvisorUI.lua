@@ -1157,6 +1157,38 @@ for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SKILL_L
 	CH.On(ev, AUI.InvalidateGear)
 end
 
+-- Each recipe's worked-out result, from the scan or the first click, kept until something it
+-- depends on changes: skill, specialization, gear, Shattering Essence, learned recipes (and your
+-- bags, on the cost basis that counts what you hold), or ten minutes pass for prices. With it a
+-- click on a recipe the scan already worked out is instant, as in CraftSim.
+local known, knownGen = {}, 0
+AUI.KNOWN_AGE = 600
+function AUI.InvalidateKnown() knownGen = knownGen + 1; known = {} end
+for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED", "NEW_RECIPE_LEARNED" }) do
+	CH.On(ev, AUI.InvalidateKnown)
+end
+CH.On("BAG_UPDATE_DELAYED", function()
+	if CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" then AUI.InvalidateKnown() end
+end)
+local hadShatter
+CH.On("UNIT_AURA", function(_, unit)
+	if unit ~= "player" or not (CH.Queue and CH.Queue.HasShatterBuff) then return end
+	local has = CH.Queue.HasShatterBuff()
+	if has ~= hadShatter then hadShatter = has; AUI.InvalidateKnown() end
+end)
+
+--- Keep a recipe's live result (the scan hands over each one it works out).
+function AUI.Remember(recipeID, model, result)
+	if recipeID and model and result and not result.sim and not result.order then
+		known[recipeID] = { gen = knownGen, at = time(), model = model, live = result }
+	end
+end
+
+local function knownFor(recipeID)
+	local k = known[recipeID]
+	if k and k.gen == knownGen and time() - k.at < AUI.KNOWN_AGE then return k end
+end
+
 function AUI.Compute(recipeID)
 	local prof = CH.OpenProfessionID()
 	local opts = { professionID = prof }
@@ -1167,9 +1199,19 @@ function AUI.Compute(recipeID)
 		if rc then opts.allocationGUID, opts.recraftQuality = rc.guid, rc.quality end
 	end
 	local M = CH.Measure
-	local model, reason = M("advisor: read recipe", CH.Advisor.Measure, recipeID, opts)
-	if not model then return nil, reason end
-	live = M("advisor: work out", CH.Advisor.Evaluate, model)
+	local model
+	local k = not opts.order and not opts.allocationGUID and knownFor(recipeID)
+	if k then
+		model, live = k.model, k.live
+		-- the craft with your own reagents is worked out again below, from the bags as they are now
+		for i = #live.rows, 1, -1 do if live.rows[i].fromBags then table.remove(live.rows, i) end end
+	else
+		local reason
+		model, reason = M("advisor: read recipe", CH.Advisor.Measure, recipeID, opts)
+		if not model then return nil, reason end
+		live = M("advisor: work out", CH.Advisor.Evaluate, model)
+		if not opts.order and not opts.allocationGUID then AUI.Remember(recipeID, model, live) end
+	end
 	local result = live
 	local d = AUI.SimDelta(recipeID)
 	if d then result = M("advisor: simulate", CH.Advisor.Evaluate, model, { sim = d }) end

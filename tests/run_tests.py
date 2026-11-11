@@ -26,6 +26,7 @@ run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().AuctionIQ
 CH.ScanUI.ROW_AGE = -1
+CH.AdvisorUI.KNOWN_AGE = -1 # tests change the stubs between clicks: work each recipe out again
 CH.Prices.background = False # sales added up at once, not over the next frames
 CH.AdvisorUI.GEAR_AGE = -1
 CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
@@ -2933,6 +2934,22 @@ fr = L.eval("""(function()
   return { n = states and #states or 0, dt = dt, cheapest = cheapest }
 end)()""")
 check("advisor: a slot of many different items (inks) is worked out in well under a second", fr.n > 0 and fr.dt < 0.5)
+# after the scan, a click on a recipe reads its result: no second read of the recipe
+kn = L.eval("""(function()
+  local A, Adv = AuctionIQ.AdvisorUI, AuctionIQ.Advisor
+  A.KNOWN_AGE = 600; A.InvalidateKnown(); A.ShowOrder(nil)
+  local n, f = 0, Adv.Measure
+  Adv.Measure = function(...) n = n + 1; return f(...) end
+  local model = f(10, { professionID = AuctionIQ.OpenProfessionID() })
+  A.Remember(10, model, Adv.Evaluate(model))
+  A.Compute(10); A.Compute(10)
+  local reused = n
+  STUB.Fire("PLAYER_EQUIPMENT_CHANGED"); A.Compute(10)
+  local after = n
+  Adv.Measure = f; A.KNOWN_AGE = -1
+  return { reused = reused, after = after, cur = tostring(A.Compute and 1) }
+end)()""")
+check("advisor: a recipe the scan worked out opens without working it out again; a gear change does", kn.reused == 0 and kn.after == 1)
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))

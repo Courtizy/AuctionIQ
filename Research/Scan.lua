@@ -289,7 +289,10 @@ function Sc.Run(onStep, onDone)
 			local model = CH.Advisor.Measure(id, { professionID = profID })
 			if not model then return nil end
 			Sc.models[profID][id] = model
-			return model, CH.Advisor.Evaluate(model)
+			local result = CH.Advisor.Evaluate(model)
+			-- the craft card reuses it: a click on this recipe needn't work it out again
+			if CH.AdvisorUI and CH.AdvisorUI.Remember then CH.AdvisorUI.Remember(id, model, result) end
+			return model, result
 		end)
 	end
 	local function step()
