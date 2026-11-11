@@ -146,6 +146,22 @@ function STUB.Overlaps(roots)
 				end
 			end
 		end
+		-- a panel beside the cards (a side panel, a list) shares no pixel with them
+		for _, k in ipairs(rawget(f, "kids") or {}) do
+			if rawget(k, "kind") ~= "Button" and rawget(k, "shown") and rawget(k, "texs") then
+				local l, tp, w, h = box(rawget(k, "point"), rawget(k, "w"), rawget(k, "h"))
+				local hasCard = false
+				for _, t in ipairs(rawget(k, "texs")) do if rawget(t, "edges") then hasCard = true end end
+				if l and hasCard then
+					for _, c in ipairs(cards) do
+						local same = l == c.l and tp == c.t and w == c.w and h == c.h -- a view laid exactly over the card it replaces
+						if not same and l < c.l + c.w and c.l < l + w and tp < c.t + c.h and c.t < tp + h then
+							add(string.format("a panel overlaps a card in %s: panel (%d,%d %dx%d), card (%d,%d %dx%d)", path, l, tp, w, h, c.l, c.t, c.w, c.h))
+						end
+					end
+				end
+			end
+		end
 		for _, k in ipairs(rawget(f, "kids") or {}) do
 			if rawget(k, "kind") == "Button" and rawget(k, "shown") and (rawget(k, "w") or 0) > 0 then
 				local l, tp, w, h = box(rawget(k, "point"), rawget(k, "w"), rawget(k, "h"))

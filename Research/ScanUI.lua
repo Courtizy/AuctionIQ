@@ -17,7 +17,11 @@ local frame, status, detail
 local N, W, H = 21, 836, 18
 local DETAIL = 0 -- the selected recipe now sits in the side panel, right of the list
 local SIDE = 270 -- the Recipes views' side panel (the Craft page's Next Move panel)
-local TWR = W - SIDE - 16 -- the Recipes table's width beside it
+-- The layout, on a 6 px gutter: the table card from x 6, the side panel 6 to its right and 6 from the
+-- window's edge, both from y -48 to 6 above the bottom. TWR is the table's width inside its card.
+local GUT = 6
+local CARD_H = N * H + 28
+local TWR = W - SIDE - 3 * GUT - 10 -- the Recipes table's width beside it
 local offset, data = 0, {}
 local scrollBar
 local showOlder = true
@@ -398,7 +402,7 @@ end
 
 local function build()
 	local Wd, T = CH.Window, CH.Theme
-	frame = Wd.New("AuctionIQScan", "Crafting", W, 92 + N * H + DETAIL)
+	frame = Wd.New("AuctionIQScan", "Crafting", W, 48 + CARD_H + GUT + DETAIL)
 	local x = -26
 	local function barButton(label, width, fn)
 		local b = T.Button(frame.bar, label, width, 18)
@@ -472,7 +476,7 @@ local function build()
 	end
 	-- the table on its own dark card, as the design draws it; each row a hairline under it and the
 	-- selected one an accent bar on its left
-	SUI.tableCard = T.BorderCard(frame, 6, -48, W - 12, N * H + 28)
+	SUI.tableCard = T.BorderCard(frame, GUT, -48, TWR + 10, CARD_H)
 	for _, rows in pairs(tables) do
 		for i, r in ipairs(rows) do
 			local ry = -54 - i * H
@@ -494,9 +498,9 @@ local function build()
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 7, buttons = 4,
+	detail = Wd.SidePanel(frame, SIDE, CARD_H, { rows = 5, srows = 7, buttons = 4,
 		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
-	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
+	detail:SetPoint("TOPLEFT", W - SIDE - GUT, -48)
 	SUI.BuildDetails()
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
