@@ -34,9 +34,9 @@ local COLS = {
 	-- the snapshot: the best pick (most profit a craft, with or without Concentration), what it
 	-- earns and costs, margin, and how many you can make now
 	craft = { { "Recipe", 12, 164, "name" }, { "Best", 180, 48, "bestQ", "CENTER" }, { "Profit", 230, 88, "bestProfit" },
-		{ "Cost", 320, 80, "bestCost" }, { "Margin", 402, 60, "bestPct" }, { "Can make", 464, 86, "bestCan" } },
+		{ "Cost", 320, 80, "bestCost" }, { "Margin", 402, 60, "bestPct" }, { "Max", 464, 86, "bestCan" } },
 	conc = { { "Recipe", 12, 216, "name" }, { "With Conc.", 232, 112, "concProfit" }, { "Extra/pt", 348, 96, "gainPerPoint" },
-		{ "Can make", 448, 102, "canMakeConc" } },
+		{ "Max", 448, 102, "canMakeConc" } },
 	buy = { { "Recipe", 12, 216, "name" }, { "Craft each", 232, 104, "craftEach" }, { "Cheapest", 340, 100, "buyPrice" },
 		{ "Saves", 444, 106, "buySave" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
@@ -331,7 +331,7 @@ local function hover(owner, i, col)
 		return id and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)) or nil
 	end
 	if r.canMake then
-		table.insert(lines, { "You can make now", r.canMake .. (r.canMake == 0 and r.shortItem and T.Color("muted", "  short of " .. short(r.shortItem))
+		table.insert(lines, { "Max you can make now", r.canMake .. (r.canMake == 0 and r.shortItem and T.Color("muted", "  short of " .. short(r.shortItem))
 			or (r.shortItem and T.Color("muted", "  until " .. short(r.shortItem) .. " runs out") or "")) })
 	end
 	if r.canMakeConc then
@@ -1067,9 +1067,8 @@ function SUI.RecipePanel(r, n, v)
 		{ "MARGIN", r.pct and T.Color(r.pct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(r.pct * 100 + 0.5))) or T.Color("muted", "-"),
 			tip = { { "Margin" }, { T.Color("muted", "Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
 	local rows = {
-		{ "Can make now", r.canMake and tostring(r.canMake) or T.Color("muted", "-") },
 		{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") },
-		{ "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-") } }
+		{ "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-"), tip = r.perDay and CH.AdvisorUI and CH.AdvisorUI.PerDayTip and CH.AdvisorUI.PerDayTip(r) or nil } }
 	if cs and cs.paid then table.insert(rows, 1, { "You paid for yours", M(cs.paid) }) end
 	local srows = reagentRows(acc)
 	local function act(conc)
@@ -1081,7 +1080,7 @@ function SUI.RecipePanel(r, n, v)
 		local can, shortID = r.canMake, r.shortItem
 		if conc then can, shortID = r.canMakeConc, r.shortConc or r.shortItem end
 		if can and can < n then
-			label = string.format(conc and "Queue %d w/ Conc. · %d now" or "Queue %d · %d craftable now", n, can)
+			label = string.format(conc and "Queue %d w/ Conc. · Max %d" or "Queue %d · Max %d", n, can)
 			local nm = shortID and C_Item.GetItemNameByID and C_Item.GetItemNameByID(shortID)
 			tip = tip .. " You have the reagents for " .. can .. " of the " .. n .. " now"
 				.. (shortID and ("; " .. (nm or "a reagent") .. " runs short first") or "") .. ". The Shopping list has the rest."

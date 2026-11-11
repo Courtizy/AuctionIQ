@@ -1031,6 +1031,18 @@ function AUI.Show(recipeID, force)
 end
 
 --- Is the old standalone Advisor window on (Settings), instead of the Craft window's card?
+--- Gold a day explained: profit per craft times how many a day the region sells (up to the cap).
+function AUI.PerDayTip(scan)
+	local function mut(t) return CH.Theme.Color("muted", t) end
+	local cap = CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
+	local t = { { "Gold a day" },
+		{ mut("What this recipe could earn in a day if you only sold what the market takes: profit per craft, times how many the region sells a day, up to " .. cap .. ".") } }
+	if scan.soldPerDay then t[#t + 1] = { "Sold a day, region", string.format(scan.soldPerDay >= 100 and "%.0f" or "%.1f", scan.soldPerDay) } end
+	if scan.perPoint then t[#t + 1] = { mut("Concentration crafts count up to what a day's refill (about 250 points) pays for.") } end
+	t[#t + 1] = { mut("Use it to compare recipes: a big profit that sells once a week earns less than a small one that sells all day.") }
+	return t
+end
+
 function AUI.Classic() return settings().classic == true end
 
 --- The Advisor tab: bring it to the front (turning it back on if it was closed).
@@ -1303,7 +1315,7 @@ function AUI.NextTip(which)
 	end
 	local tip = { { "Next move" }, { mut(string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) } }
 	if m.mc then table.insert(tip, { mut(string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
-	table.insert(tip, { mut("Hover Profit, Break-even or Recover for how each was reached.") })
+	table.insert(tip, { mut("Hover Profit or Break-even for how each was reached.") })
 	return tip
 end
 
@@ -1377,22 +1389,24 @@ function AUI.Card(n, scan)
 	local rows = {}
 	if r then
 		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
-		rows[#rows + 1] = { "Recover in a week", m and m.recover and pctText(m.recover) or mut("-"), tip = AUI.NextTip("recover") }
-		-- what limits it, reagent by reagent (and Concentration), on hover
-		rows[#rows + 1] = { "Can make now", r.max and tostring(r.max) or mut("-"), tip = AUI.BreakdownLines(result, r, 7) }
-		if scan and scan.perDay then rows[#rows + 1] = { "Gold a day", money(scan.perDay) } end
+		-- Max is a list column now; its reagent-by-reagent hover lives there
+		if scan and scan.perDay then
+			rows[#rows + 1] = { "Gold a day", money(scan.perDay), tip = AUI.PerDayTip(scan) }
+		end
 		if cs and cs.paid then rows[#rows + 1] = { "You paid for yours", M(cs.paid) } end
-		-- buy it instead: the cheapest listing against what one costs to make
+		-- a listing so far under value it pays to buy it out and relist: only shown when it does
 		local bc = scan and scan.bc
-		if bc and bc.buy and #rows < 5 then
-			rows[#rows + 1] = { "Buy one instead", bc.save and bc.save > 0 and T.Color("ok", M(bc.buy)) or M(bc.buy),
-				tip = { { "Buy it or make it?" }, { "Cheapest listing", M(bc.buy) }, { "Costs to make one", M(bc.craft or 0) },
-					{ bc.save and bc.save > 0 and T.Color("ok", "Buying saves " .. M(bc.save)) or mut("Making it is cheaper.") } } }
+		if bc and bc.flip and bc.flip > 0 and #rows < 5 then
+			rows[#rows + 1] = { "Buy & relist", T.Color("ok", "+" .. M(bc.flip)),
+				tip = { { "Buy & relist" }, { mut("Someone has it listed well under what it sells for. Buying it out and relisting pays, on top of crafting.") },
+					{ "Cheapest listing", M(bc.buy) }, { "Resells for, after cut", bc.resell and M(bc.resell) or mut("-") },
+					{ "Each one you flip", T.Color("ok", "+" .. M(bc.flip)) },
+					{ mut("The cheapest listing may be only a few items: check the AH before buying out.") } } }
 		end
 	end
 	local label, off = AUI.QueueAction()
 	if r and not off and r.max and r.max < selQty then
-		label = string.format("Queue %d · %d craftable now", selQty, r.max)
+		label = string.format("Queue %d · Max %d", selQty, r.max)
 	end
 	-- Craft the pick now, as many as the stepper says (up to what you can make)
 	local can = r and math.min(selQty, r.max or 0) or 0

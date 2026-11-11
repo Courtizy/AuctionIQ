@@ -667,7 +667,7 @@ cf = D.ConcForecast(100, 30, 0.5, 15)
 check("Concentration forecast: 3 now, exact chance of a 4th (2 refunds in 3) and a 5th (4 in 4)",
       cf.now == 3 and abs(cf.chance[1] - 0.5) < 1e-12 and abs(cf.chance[2] - 0.0625) < 1e-12)
 check("Concentration forecast: without Ingenuity, only what the points cover", D.ConcForecast(100, 30, 0, 15).now == 3 and D.ConcForecast(100, 30, 0, 15).chance[1] is None)
-check("Concentration forecast text", D.ConcForecastText(cf) == "Can make 3 now, 50% chance of a 4th with Ingenuity refunds")
+check("Concentration forecast text", D.ConcForecastText(cf) == "Max 3 now, 50% chance of a 4th with Ingenuity refunds")
 bi = L.eval("""{ made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95, daily = 5, seed = 3,
   reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }""")
 bo = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
@@ -779,8 +779,14 @@ qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
       lc is not None and lc.live and [plain(f[1]) for f in lc.figures.values()] == ["PROFIT", "COST", "MARGIN"]
       and plain(lc.section.head) == "QUALITY" and len(qr) >= 2 and all(r.tip is not None and r.run is not None for r in qr))
-check("Craft card: break-even and the week's recovery explain themselves on hover",
-      all(r.tip is not None for r in list(lc.rows.values())[:2]) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
+check("Craft card: every row explains itself on hover, break-even first",
+      all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even price" and lc.subTip is not None)
+check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
+      not any(plain(r[1]) in ("Recover in a week", "Can make now", "Buy one instead") for r in lc.rows.values()))
+fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = { buy = 1000, resell = 5000, flip = 4000 } })")
+fr = {plain(r[1]): r for r in fl.rows.values()}
+check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
+      fr.get("Gold a day") is not None and fr["Gold a day"].tip is not None and fr.get("Buy & relist") is not None)
 qr[1].run()
 lc2 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: clicking a quality picks it, and its row is highlighted", CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2])
@@ -1263,7 +1269,7 @@ run("AuctionIQ.Prices.CostBasis('held')")
 rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
 bp2 = L.eval("""(function() local t = {}
   for _, c in ipairs(AuctionIQ.ScanUI.Columns and AuctionIQ.ScanUI.Columns('craft') or {}) do t[#t + 1] = c[1] end return t end)()""")
-check("scan list: Recipe, Best, Profit, Cost, Margin, Can make", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Can make"])
+check("scan list: Recipe, Best, Profit, Cost, Margin, Max", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Max"])
 check("scan: the Cost column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
       and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
 lv = L.eval("""(function()
@@ -1292,7 +1298,7 @@ check("scan side card: figures are profit, reagents and margin; craft or sell's 
       and not any(plain(r[1]) == "Margin" for r in rp.rows.values()))
 rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
-      plain(rq.actions[1].label) == "Queue 20 · 8 craftable now" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
+      plain(rq.actions[1].label) == "Queue 20 · Max 8" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
 # the review's queue findings: two mixes for the same recipe and quality stay two entries
 mx2 = L.eval("""(function() local Q = AuctionIQ.Queue; Q.Clear()
   local a = { char = 'Me-Realm', recipeID = 10, quality = 2, reagents = { { itemID = 201, slot = 1, n = 3 } }, shop = {} }

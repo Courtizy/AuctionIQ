@@ -231,7 +231,7 @@ function D.ConcForecast(budget, cost, ing, refund, limit)
 	return out
 end
 
---- "Can make 8 now · 60% chance of a 9th" for a Concentration row and the points you have.
+--- "Max 8 now · 60% chance of a 9th" for a Concentration row and the points you have.
 function D.ConcForecastFor(r, budget)
 	if not r or not r.concentration or not budget then return nil end
 	local s = r.stats or {}
@@ -248,7 +248,7 @@ D.Ordinal = ordinal
 
 function D.ConcForecastText(f)
 	if not f then return nil end
-	local t = string.format("Can make %d now", f.now)
+	local t = string.format("Max %d now", f.now)
 	local p = f.chance[1]
 	if p and p >= 0.005 then t = t .. string.format(", %d%% chance of a %s with Ingenuity refunds", math.floor(p * 100 + 0.5), ordinal(f.now + 1)) end
 	return t
