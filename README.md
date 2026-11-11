@@ -72,7 +72,7 @@ for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/
 ## Chat Commands
 
 `/aiq` - open or close the window<br>
-`/aiq dashboard`, `research`, `operations`, `accounting` - open a tab<br>
+`/aiq dashboard`, `operations` (or `craft`, `trade`, `shopping`), `accounting` - open a tab<br>
 `/aiq advisor` - crafting advisor on or off<br>
 `/aiq queue` - craft queue and shopping list<br>
 `/aiq scan` - rank every recipe of the open profession<br>

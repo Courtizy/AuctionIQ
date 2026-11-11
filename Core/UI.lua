@@ -660,14 +660,7 @@ local function frameOf(pg)
 	if pg == "settings" and settingsView == "groups" then return "groups" end
 	return FRAME[pg]
 end
--- old tab names (commands, other modules, saved links) and where they live now
--- (Research was a tab until its views moved: Markets and Professions to Operations, Performance to
--- Accounting. A view named with it opens wherever it lives now.)
-local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "operations", "professions" }, paths = { "operations", "paths" },
-	crafting = { "operations", "scenarios" }, professions = { "operations", "scenarios" }, markets = { "operations", "compare" },
-	analytics = { "ledger", "overview" }, performance = { "ledger", "overview" }, research = { "operations" },
-	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
-UI.TABS, UI.OLD = TABS, OLD
+UI.TABS = TABS
 
 --- Where a { tab, view } opens, in words: "Operations > Craft".
 function UI.PlaceName(go)
@@ -1319,7 +1312,6 @@ end
 
 --- Open a tab, and optionally one of its views: UI.Go("operations", "par").
 local function choose(tab, view, focus)
-	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return false end
 	-- a view that moved tabs (stock targets and dead stock to Trading, say) opens where it lives now
 	local home = view and FRAME[tab] == "ledger" and CH.LedgerUI.SectionOf and CH.LedgerUI.SectionOf(view)
@@ -1333,7 +1325,9 @@ end
 --- Open a tab and view; focus (optional) hands over what a recommendation is about: { name, id, char,
 --- qty, title }, so the view opens on it.
 function UI.Go(tab, view, focus)
-	if choose(tab, view, focus) and frame then UI.Refresh() end
+	local ok = choose(tab, view, focus)
+	if ok and frame then UI.Refresh() end
+	return ok
 end
 
 --- Show a tab: "today" (the Dashboard), "operations" or "ledger" (Accounting),
