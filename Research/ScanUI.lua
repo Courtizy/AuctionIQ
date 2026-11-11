@@ -31,8 +31,10 @@ local tables, heads = {}, {}
 local COLS = {
 	-- short tables: only the columns that rank the rows. The selected row's numbers are in the side
 	-- card, which answers the one question each view is for
-	craft = { { "Recipe", 12, 216, "name" }, { "Profit", 232, 104, "profit" }, { "Reagents", 340, 100, "cost" },
-		{ "Gold/day", 444, 106, "perDay" } },
+	-- the snapshot: the best pick (most profit a craft, with or without Concentration), what it
+	-- earns and costs, margin, and how many you can make now
+	craft = { { "Recipe", 12, 164, "name" }, { "Best", 180, 48, "bestQ", "CENTER" }, { "Profit", 230, 88, "bestProfit" },
+		{ "Cost", 320, 80, "bestCost" }, { "Margin", 402, 60, "bestPct" }, { "Can make", 464, 86, "bestCan" } },
 	conc = { { "Recipe", 12, 216, "name" }, { "With Conc.", 232, 112, "concProfit" }, { "Extra/pt", 348, 96, "gainPerPoint" },
 		{ "Can make", 448, 102, "canMakeConc" } },
 	buy = { { "Recipe", 12, 216, "name" }, { "Craft each", 232, 104, "craftEach" }, { "Cheapest", 340, 100, "buyPrice" },
@@ -42,13 +44,16 @@ local COLS = {
 		{ "", 466, 84, "concentration" } },
 	first = { { "Recipe", 12, 290, "name" }, { "Proceeds", 306, 120, "value" }, { "Point costs", 430, 120, "net" } },
 }
-local SORT = { craft = { key = "profit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
+function SUI.Columns(m) return COLS[m] end
+local SORT = { craft = { key = "bestProfit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
 local VIEWS = { { "craft", "Craft", 60 }, { "conc", "Concentration", 108 }, { "buy", "Buy vs craft", 96 } }
 local NAMES = { concentration = "Concentration needed", name = "name", profit = "profit per craft", pct = "margin", concProfit = "profit with Concentration",
 	perPoint = "gold per Concentration point", gainPerPoint = "gold Concentration adds per expected point", soldPerDay = "sold a day", perDay = "gold a day", buySave = "how much buying beats crafting",
 	from = "who it's from", commission = "commission", rewardValue = "rewards", cost = "reagents", quality = "quality",
 	value = "what it sells for", net = "cheapest point first", default = "fillable, knowledge, then profit",
 	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
+	bestQ = "best quality", bestProfit = "profit of the best pick", bestCost = "cost of the best pick", bestPct = "margin of the best pick",
+	bestCan = "how many of the best pick you can make now",
 	concentration = "Concentration points", craftEach = "what one costs to make", buyPrice = "cheapest listing",
 	resell = "what it resells for", flip = "buy and relist profit" }
 
@@ -277,12 +282,14 @@ function SUI.RecipeCellLines(r, col, v)
 	v = v or view
 	if not r or r.header then return nil end
 	local acc, title
-	if v == "craft" and (col == 2 or col == 3) then acc, title = r.accounts, "Without Concentration"
+	-- craft: Profit (3) and Cost (4) explain the best pick, plain or with Concentration
+	if v == "craft" and (col == 3 or col == 4) then
+		if r.bestConc then acc, title = r.concAccounts, "With Concentration" else acc, title = r.accounts, "Without Concentration" end
 	elseif v == "conc" and col == 2 then acc, title = r.concAccounts, "With Concentration" end
 	if not acc then return nil end
 	local B, T = CH.Window.Book, CH.Theme
 	local lines = { { T.Color("accent", r.name or "?"), T.Color("muted", title) } }
-	if v == "craft" and col == 3 then
+	if v == "craft" and col == 4 then
 		for _, l in ipairs((CH.ReagentBook(acc))) do lines[#lines + 1] = l end
 		if CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" then
 			lines[#lines + 1] = B.Note("Reagents you hold cost what they'd sell for after the cut: selling them is what crafting gives up. The rest cost the buy price.")
@@ -290,7 +297,7 @@ function SUI.RecipeCellLines(r, col, v)
 		for _, l in ipairs(CH.CraftOrSellBook(acc)) do lines[#lines + 1] = l end
 	else
 		for _, l in ipairs((CH.CraftBook(acc))) do lines[#lines + 1] = l end
-		lines[#lines + 1] = B.Note("Hover the Reagents column for each reagent's opportunity cost.")
+		lines[#lines + 1] = B.Note("Hover the Cost column for each reagent's opportunity cost.")
 	end
 	return lines
 end
@@ -1258,6 +1265,14 @@ function SUI.Refresh()
 		r.buySave = r.bc and r.bc.save
 		r.buyPrice, r.resell, r.flip = r.bc and r.bc.buy, r.bc and r.bc.resell, r.bc and r.bc.flip
 		r.gainPerPoint = CH.Scan.GainPerPoint(r)
+		-- the best pick: the Concentration craft when it earns more a craft than the plain one
+		local useConc = r.concProfit ~= nil and (r.profit == nil or r.concProfit > r.profit)
+		r.bestConc = useConc
+		r.bestQ = useConc and r.concQuality or r.quality
+		r.bestProfit = useConc and r.concProfit or r.profit
+		r.bestCost = useConc and (r.concCost or r.cost) or r.cost
+		r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
+		r.bestCan = useConc and r.canMakeConc or r.canMake
 		if not INVIEW[view](r) then
 			-- not part of this view
 		elseif r.current or showOlder then
@@ -1302,19 +1317,21 @@ function SUI.Refresh()
 		r.bg:SetShown(sel)
 		if r.mark then r.mark:SetShown(sel) end
 		if d and d.header then
-			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion))
-			r.cells[2]:SetText(T.Color("muted", string.format(d.current and "current, %d" or "older, %d", d.n)))
+			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion) .. T.Color("muted", string.format(d.current and "  current, %d" or "  older, %d", d.n)))
 			table.insert(out, "== " .. d.expansion)
 		elseif d then
 			local q = view == "conc" and d.concQuality or d.quality
 			r.cells[1]:SetText(CH.Window.ItemIcon(view == "conc" and (d.concItem or d.item) or (d.item or d.concItem), 15)
 				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			if view == "craft" then
-				-- the number; whether to sell the reagents instead is the card's sentence
-				r.cells[2]:SetText(money(d.profit))
-				r.cells[3]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
-				r.cells[4]:SetText(money(d.perDay))
-				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
+				-- the best pick: its rank (and Concentration), profit, cost, margin, how many now
+				r.cells[2]:SetText(CH.Window.QualityIcon(d.bestQ, 13, d.tiers)
+					.. (d.bestConc and (" " .. CH.Window.ConcIcon(11) .. (d.concentration and math.floor(d.concentration + 0.5) or "")) or ""))
+				r.cells[3]:SetText(money(d.bestProfit))
+				r.cells[4]:SetText(d.bestCost and CH.FormatMoney(d.bestCost) or T.Color("muted", "-"))
+				r.cells[5]:SetText(d.bestPct and T.Color(d.bestPct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(d.bestPct * 100 + 0.5))) or T.Color("muted", "-"))
+				r.cells[6]:SetText(n(d.bestCan))
+				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.bestProfit or 0)))
 			elseif view == "conc" then
 				r.cells[2]:SetText(CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit))
 				r.cells[3]:SetText(m(d.gainPerPoint or d.perPoint))

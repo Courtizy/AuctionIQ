@@ -1244,8 +1244,11 @@ cbl = [plain(l[1]).strip() for l in rb.book.values()]
 check("scan profit hover: revenue, costs, profit, then craft or sell", cbl[0] == "Revenue" and "Costs" in cbl and "Profit" in cbl
       and cbl.index("Profit") < cbl.index("Craft or sell?") and abs(rb.profit - (50000 - rb.total)) < 1)
 run("AuctionIQ.Prices.CostBasis('held')")
-rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3, "craft")
-check("scan: the Reagents column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
+rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
+bp2 = L.eval("""(function() local t = {}
+  for _, c in ipairs(AuctionIQ.ScanUI.Columns and AuctionIQ.ScanUI.Columns('craft') or {}) do t[#t + 1] = c[1] end return t end)()""")
+check("scan list: Recipe, Best, Profit, Cost, Margin, Can make", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Can make"])
+check("scan: the Cost column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
       and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
 lv = L.eval("""(function()
   local saved = { name = 'x', profit = 20000, cost = 30000, perDay = 40000,

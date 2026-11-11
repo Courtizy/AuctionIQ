@@ -143,8 +143,8 @@ function Sc.Live(r)
 		local cs = CH.CraftOrSell(r.accounts)
 		v.sellInstead = cs and cs.verdict == "sell" and cs.sell or false
 	end
-	local cp = live(r.concAccounts)
-	if cp then v.concProfit = cp end
+	local cp, cc = live(r.concAccounts)
+	if cp then v.concProfit, v.concCost = cp, cc end
 	local avg = r.avgConcentration or r.concentration
 	local gpp = Sc.GainPerPoint(r)
 	if gpp and avg and avg > 0 then
