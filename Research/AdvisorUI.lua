@@ -330,7 +330,15 @@ function AUI.Render(result, reason)
 		-- the pick that earns the most a craft, as the Craft list's Best column has it
 		local b, c = result.best, result.bestConc
 		local pick = (c and c.profit and (not b or not b.profit or c.profit > b.profit)) and c or b or c
-		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil } or nil
+		-- the Concentration craft with your own reagents: picked when it earns more, or when the
+		-- cheaper mix it stands in for needs a rank you don't have
+		for _, x in ipairs(result.rows) do
+			if x.fromBags and x.profit and pick and (x.profit > (pick.profit or 0)
+				or (x.quality == pick.quality and pick.concentration and CH.Advisor.MaxCraftable(result, pick, concNow()) < 1)) then
+				pick = x
+			end
+		end
+		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil, bags = pick.fromBags or nil } or nil
 	end
 	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
 	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
@@ -1135,6 +1143,7 @@ function AUI.SetSimSkill(n) sim.skill = n or 0 end
 --- Is this advisor row the selected one?
 function AUI.IsSelected(r)
 	return sel ~= nil and r ~= nil and r.quality == sel.quality and (r.concentration ~= nil) == sel.conc
+		and (r.fromBags == true) == (sel.bags == true)
 end
 
 --- The selected row of the result on screen, or nil.
@@ -1521,7 +1530,7 @@ function AUI.RowClick(i)
 	local r = shown and shown.rows[i]
 	if not r then return end
 	if not AUI.IsSelected(r) then selQty = 1 end
-	sel = { quality = r.quality, conc = r.concentration ~= nil }
+	sel = { quality = r.quality, conc = r.concentration ~= nil, bags = r.fromBags or nil }
 	AUI.Render(shown)
 end
 

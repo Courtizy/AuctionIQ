@@ -839,6 +839,16 @@ ac = L.eval("""(function() local res = AuctionIQ.Advisor.Analyze(10); local n = 
   return { before = n, after = #res.rows, h = h } end)()""")
 check("held Concentration: added when the advisor's Concentration mix needs a rank you don't hold",
       ac.after == ac.before + 1 and ac.h is not None and ac.h.concentration > 0)
+hs = L.eval("""(function() local res = AuctionIQ.Advisor.Analyze(10)
+  local old = C_Item.GetItemCount; C_Item.GetItemCount = function(id) if id == 201 then return 2 end return 99 end
+  AuctionIQ.AdvisorUI.AddHeldConc(res); C_Item.GetItemCount = old
+  local A = AuctionIQ.AdvisorUI; A.Render(res)
+  local hi; for i, r in ipairs(res.rows) do if r.fromBags then hi = i end end
+  if not hi then return nil end
+  A.RowClick(hi); local n = 0; for _, r in ipairs(res.rows) do if A.IsSelected(r) then n = n + 1 end end
+  return { bags = A.SelectedRow() and A.SelectedRow().fromBags, n = n } end)()""")
+check("held Concentration: clicking the yours row picks it alone, not the mix of the same rank",
+      hs is not None and hs.bags and hs.n == 1)
 
 # Dashboard and Ledger from TSM's saved data (read only)
 run(r"""

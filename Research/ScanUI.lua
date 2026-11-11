@@ -1272,6 +1272,11 @@ function SUI.Refresh()
 		r.bestCost = useConc and (r.concCost or r.cost) or r.cost
 		r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
 		r.bestCan = useConc and r.canMakeConc or r.canMake
+		-- the recipe open in the card knows about the Concentration craft with your own reagents
+		if useConc and r.bestCan == 0 then
+			local held = SUI.HeldMax and SUI.HeldMax(r.recipeID)
+			if held and held > 0 then r.bestCan = held end
+		end
 		if not INVIEW[view](r) then
 			-- not part of this view
 		elseif r.current or showOlder then
@@ -1373,6 +1378,17 @@ function SUI.Open()
 	SUI.prof = CH.OpenProfessionID() or SUI.prof
 	frame:Show()
 	if CH.OpenProfessionID() and not CH.Scan.Results(CH.OpenProfessionID()) then SUI.Start() else SUI.Refresh() end
+end
+
+--- How many of the Concentration craft with your own reagents you can make, for the recipe open in
+--- the card (the scan doesn't price that mix), or nil.
+function SUI.HeldMax(recipeID)
+	local A = CH.AdvisorUI
+	local res = A and A.Current and A.Current()
+	if not (res and res.recipeID == recipeID and res.rows) then return nil end
+	for _, x in ipairs(res.rows) do
+		if x.fromBags then return x.max end
+	end
 end
 
 function SUI.IsShown() return frame ~= nil and frame:IsShown() end
