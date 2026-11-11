@@ -201,7 +201,7 @@ C_TradeSkillUI = {
 	CloseTradeSkill = function() STUB.closed = true end,
 	GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = "Midnight" }, { professionID = 2871, expansionName = "Khaz Algar" } } end,
 	GetTradeSkillLineForRecipe = function(id)
-		if id == 11 then return 2871, "Khaz Algar Alchemy", 171 end
+		if id == 11 and STUB.oldLine11 then return 2871, "Khaz Algar Alchemy", 171 end
 		return 2906, "Midnight Alchemy", 171
 	end,
 	GetCategoryInfo = function(id) return ({ [50] = { name = "Potions" }, [60] = { name = "Flasks" } })[id] end,

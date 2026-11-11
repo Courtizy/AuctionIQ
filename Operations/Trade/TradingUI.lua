@@ -117,17 +117,55 @@ function TUI.PostDetail(d)
 	local T, M = CH.Theme, CH.FormatMoney
 	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.id) or ("item " .. r.id)
 	local label = a and D_LABEL(a) or "-"
+	local now = time()
+	local function find(list) for _, e in ipairs(list or {}) do if e.id == r.id then return e end end end
+	local L = CH.Ledger
 	local rows = {
 		{ "Recommended", a and T.Color(ACTION[a.action] or "fg", label) or "-" },
-		{ "Allowed by your rules", tostring(r.post or 0) },
+		{ "Allowed by your rules", tostring(r.post or 0) .. T.Color("muted", "  (" .. (r.op or "Default") .. ")") },
 		{ "Held / up / cap", string.format("%d / %d / %d", r.held or 0, r.up or 0, r.cap or 0) },
-		{ "Operation", r.op or "Default" },
 		{ "Price from", r.source and string.format("%s, %s ago", SOURCE[r.source] or r.source, CH.Scans and CH.Scans.Age and r.age and CH.Scans.Age(r.age) or "?")
 			or T.Color("bad", "no scan") },
 	}
 	if r.why then rows[#rows + 1] = { "Rule check", r.why } end
 	rows[#rows + 1] = { "Worth to you (EV)", x.ev and M(x.ev) or T.Color("muted", "-") }
 	rows[#rows + 1] = { "You've sold for (RZ)", x.realized and M(x.realized) or T.Color("muted", "none sold") }
+	-- the market for this one item: what Market prices, Compare prices, When it sells, Competition,
+	-- Stock targets and Dead stock showed as separate lists
+	local mk = {}
+	local m = CH.Prices.MarketAny and CH.Prices.MarketAny(r.id)
+	if m then
+		local ch = m.change7
+		mk[#mk + 1] = { "Market / 7-day avg", M(m.market or m.min or 0) .. T.Color("muted", " / " .. (m.avg7 and M(m.avg7) or "-"))
+			.. (ch and T.Color(ch >= 0 and "ok" or "bad", string.format("  %+d%%", math.floor(ch * 100 + 0.5))) or ""),
+			tip = { { "Listed now", tostring(m.qty or "-") } } }
+	end
+	local c = CH.Compare and CH.Compare.Row(r.id)
+	if c and c.verdict ~= "no prices" then
+		mk[#mk + 1] = { "Sources", T.Color(c.verdict == "cheap now" and "ok" or c.verdict == "pricey now" and "bad" or "muted", c.verdict),
+			tip = { { "AH scan", c.ah and M(c.ah) or "-" }, { "TSM market", c.tsm and M(c.tsm) or "-" }, { "Oribos", c.oe and M(c.oe) or "-" },
+				{ "Region", c.region and M(c.region) or "-" } } }
+	end
+	local DAYS = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }
+	local w = find(L.SaleTimes(now - 90 * 86400))
+	if w and w.sold >= 3 then
+		mk[#mk + 1] = { "Sells best", string.format("%s %02d:00-%02d:00", DAYS[w.bestDay], w.bestHour, (w.bestHour + 4) % 24)
+			.. T.Color(w.share >= 0.4 and "ok" or "muted", string.format("  %d%%", math.floor(w.share * 100 + 0.5))),
+			tip = { { "Sales counted", tostring(w.sold) }, { "Post by", string.format("%s %02d:00", DAYS[w.bestDay], (w.bestHour + 23) % 24) } } }
+	end
+	local cp = find(L.Competition(now - 30 * 86400))
+	if cp then
+		mk[#mk + 1] = { "Competition", T.Color(cp.status == "contested" and "bad" or cp.status == "busy" and "accent" or "ok", cp.status)
+			.. (cp.rival and T.Color("muted", "  " .. cp.rival) or ""),
+			tip = { { "Cancels", tostring(cp.cancels) }, { "Undercut", cp.rate and string.format("%d%%", math.floor(cp.rate * 100 + 0.5)) or "-" } } }
+	end
+	local target, manual
+	if CH.Par then target, manual = CH.Par.Target(r.id, now) end
+	local dead = find(L.DeadStock(now, 30))
+	mk[#mk + 1] = { "Stock target", (target and tostring(target) or T.Color("muted", "none")) .. (manual and T.Color("accent", " (you)") or "")
+		.. (dead and T.Color("bad", "  not moving") or ""),
+		tip = { { "Shift-click +1, ctrl-click -1, alt-click automatic", "" }, dead and { dead.advice, dead.lastSold and LUI.Ago(dead.lastSold, now) or "never sold" } or nil },
+		run = function() LUI.ParClick(r.id) end }
 	local note = a and ("Because " .. a.reason .. ".") or ""
 	local actions = {}
 	local function ahOpen() return AuctionHouseFrame and AuctionHouseFrame.IsShown and AuctionHouseFrame:IsShown() end
@@ -149,7 +187,7 @@ function TUI.PostDetail(d)
 		figures = { { "PRICE", r.price and T.Color("gold", M(r.price)) or T.Color("muted", "-") },
 			{ "AH NOW", r.ah and M(r.ah) or T.Color("muted", "no scan") },
 			{ "WORTH", T.Color("gold", M((r.price or 0) * (a and a.qty or 0) * CH.AH_CUT)) } },
-		rows = rows, note = T.Color("muted", note), actions = actions }
+		rows = rows, section = { head = "MARKET", rows = mk }, note = T.Color("muted", note), actions = actions }
 end
 
 local function postRows(ctx)

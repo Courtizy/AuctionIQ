@@ -773,19 +773,33 @@ check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and pla
 run('AuctionIQ.Queue.Clear()')
 scan_cols = list(CH.ScanUI.Refresh().values())
 check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
-pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
-check("scan: each recipe tagged with its expansion", pot.line == 2871 and pot.expansion == "Khaz Algar" and sr.currentLine == 2906)
-heads = [t for t in scan_cols if t.startswith("== ")]
-check("scan: current expansion first, older under their own header",
-      heads == ["== Midnight", "== Khaz Algar"] and scan_cols[0] == "== Midnight"
-      and scan_cols.index("== Khaz Algar") < [i for i, t in enumerate(scan_cols) if t.startswith("Test Potion")][0])
-run('AuctionIQ.ScanUI.olderButton.scripts.OnClick()')
-hidden = list(CH.ScanUI.Refresh().values())
-check("scan: older expansions can be hidden", not any(t.startswith("Test Potion") for t in hidden) and not any(t.startswith("== ") for t in hidden))
-run('AuctionIQ.ScanUI.olderButton.scripts.OnClick()')
-run('for _, r in ipairs(AuctionIQ.Scan.Results(2906).rows) do r.line = nil; r.expansion = nil end')
-again = list(CH.ScanUI.Refresh().values())
-check("scan: an older saved scan gets its expansions filled in", "== Khaz Algar" in again)
+check("scan: each recipe tagged with the expansion the window has open", sr.currentLine == 2906
+      and all(r.line == 2906 for r in sr.rows.values()))
+ex = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  STUB.oldLine11 = true
+  local mid = {}
+  for _, id in ipairs(AuctionIQ.Scan.Recipes()) do mid[id] = true end
+  local oldChild = ui.GetChildProfessionInfo
+  ui.GetChildProfessionInfo = function() local c = oldChild(); c.professionID = 2871; return c end
+  local ka = AuctionIQ.Scan.Recipes()
+  ui.GetChildProfessionInfo = oldChild
+  -- a saved row from another expansion stays out of the list
+  local rows = AuctionIQ.Scan.Results(2906).rows
+  local keep = rows[1].line
+  rows[1].line = 2871
+  AuctionIQ.ScanUI.InvalidateRows()
+  local shown = AuctionIQ.ScanUI.Refresh()
+  rows[1].line = keep
+  AuctionIQ.ScanUI.InvalidateRows()
+  STUB.oldLine11 = nil
+  local hid = true
+  for _, t in ipairs(shown) do if t:find(rows[1].name, 1, true) == 1 then hid = false end end
+  return { midHas11 = mid[11] == true, midHas10 = mid[10] == true, ka = #ka == 1 and ka[1] == 11, hid = hid }
+end)()""")
+check("scan: only the expansion the profession window has open is scanned (Midnight by default, Khaz Algar when switched)",
+      not ex.midHas11 and ex.midHas10 and ex.ka)
+check("scan: a saved row from another expansion stays out of the list", ex.hid)
 # Scan to queue: the selected recipe's plain and Concentration crafts, each queued as shown
 pot = [r for r in CH.Scan.Results(2906).rows.values() if r.name == "Test Potion"][0]
 run(f"AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.SetView('craft'); AuctionIQ.ScanUI.Select({pot.recipeID})")
@@ -1277,8 +1291,9 @@ par = {e.id: e for e in CH.Par.List().values()}
 check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
 check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 2)
 run("AuctionIQ.Par.Set(302, 6); AuctionIQ.Par.Refresh()")
-rows, foot = CH.LedgerUI.Rows("par", L.eval("{ }"))
-check("par view rows", len(list(rows.values())) == 2 and plain(foot).startswith("1 items below stock target"))
+pdet = CH.TradingUI.PostDetail(L.eval("{ x = { plan = { id = 302, post = 1, held = 4, up = 0, cap = 5 } } }"))
+prow = {plain(r[1]): plain(r[2]) for r in pdet.section.rows.values()}
+check("Trade item panel: the stock target, set by you, with shift-click to change it", prow.get("Stock target", "").startswith("6 (you)"))
 run("AuctionIQ.Par.Set(302, nil); AuctionIQ.Par.Refresh()")
 # Groups and auctioning
 n = CH.Groups.Rebuild()
@@ -1777,7 +1792,7 @@ run("AuctionIQ.Export.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
 run("AuctionIQ.UI.Page('ledger')")
 check("theme: the Accounting tab uses the same palette as the rest", L.eval("AuctionIQ.Theme.palette == 'auctioniq'"))
-run("AuctionIQ.UI.Page('operations', 'compare')")
+run("AuctionIQ.UI.Page('operations', 'post')")
 check("theme: other pages are ToxiUI graphite with the class accent", L.eval("AuctionIQ.Theme.palette == 'auctioniq' and AuctionIQ.Theme.hex.bg == '292929' and AuctionIQ.Theme.hex.panel == '1a1a1a' and AuctionIQ.Theme.hex.accent == '3fc7eb'"))
 # AH scans: any search answered in the AH window is saved (Data/Scans.lua)
 run("""C_AuctionHouse.GetNumItemSearchResults = function() return 3 end
@@ -1839,10 +1854,10 @@ check("ledger and briefing pages draw", CH.UI.IsShown())
 LUI = CH.LedgerUI
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 check("Performance opens in Accounting, Reports", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Reports")
-run("AuctionIQ.UI.Page('ledger', 'dead')")
-check("a view named on the wrong tab opens where it lives: dead stock in Operations", LUI.Section() == "operations" and LUI.View() == "dead" and LUI.Group() == "Trade")
+run("AuctionIQ.UI.Page('ledger', 'post')")
+check("a view named on the wrong tab opens where it lives: Ready to post in Operations", LUI.Section() == "operations" and LUI.View() == "post" and LUI.Group() == "Trade")
 for view, (sec, group) in {"results": ("ledger", "Reports"), "scenarios": ("operations", "Craft"), "paths": ("operations", "Craft"),
-        "compare": ("operations", "Trade"), "professions": ("operations", "Craft")}.items():
+        "post": ("operations", "Trade"), "professions": ("operations", "Craft")}.items():
     run(f"AuctionIQ.UI.Page('operations', '{view}')")
     check(f"view {view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and CH.UI.IsShown())
 check("old tab names (research, markets, analytics) no longer open anything",
@@ -1869,13 +1884,12 @@ qf = L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
 run("AuctionIQ.UI.Pages().dashboard.d.figures.queued.hit.scripts.OnClick()")
 check("dashboard: clicking it opens Operations, Work queue", CH.LedgerUI.View() == "queue" and CH.LedgerUI.Section() == "operations")
-run("AuctionIQ.db.queue = STUB.oldQueue; AuctionIQ.UI.Page('operations', 'compare')")
+run("AuctionIQ.db.queue = STUB.oldQueue; AuctionIQ.UI.Page('operations', 'post')")
 check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionIQ.UI.TABS").values()] == ["Dashboard", "Operations", "Accounting"])
-run("AuctionIQ.UI.Page('operations', 'compare')")
+run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: what you hold, the market and the rules, in one sub-tab", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market prices",
-      "Compare prices", "When it sells", "Competition", "Stock targets", "Dead stock", "Manage rules"])
+check("Trade: Ready to post (the market is in its item panel) and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
@@ -1994,23 +2008,21 @@ run("AuctionIQ.UI.Page('operations', 'scenarios')")
 check("old crafting tab opens Operations, Professions on Compare crafts", LUI.Section() == "operations" and LUI.View() == "scenarios")
 run("AuctionIQ.UI.Page('operations', 'professions')")
 check("Knowledge shows beside the nav", LUI.View() == "professions" and L.eval("AuctionIQ.UI.Pages().plan:IsShown()") is True)
-mfoot = L.eval("select(2, AuctionIQ.LedgerUI.Rows('market', {}))")
-mrows0 = list(L.eval("(AuctionIQ.LedgerUI.Rows('market', {}))").values())
-check("market prices without the app come from TSM", len(mrows0) >= 1 and "TSM (60-day avg)" in plain(mfoot) )
+def market_rows(id):
+    d = CH.TradingUI.PostDetail(L.eval("{ x = { plan = { id = %d, post = 1, held = 1, up = 0, cap = 5 } } }" % id))
+    return {plain(r[1]): plain(r[2]) for r in d.section.rows.values()}
+check("market prices without the app come from TSM", CH.Prices.MarketAny(301).source == "tsm" and "Market / 7-day avg" in market_rows(301))
 run("OEMarketInfo = function(item, t) if item == 'item:301' then t.market = 25000; t.region = 24000; t.days = 1 end return t end")
 oe = CH.Prices.Oribos(301)
 check("Oribos Exchange read directly", oe.market == 25000 and oe.region == 24000)
 run("STUB.savedPrices = STUB.prices; STUB.prices = {}; AuctionIQ.Prices.ClearCache()")
 m301 = CH.Prices.MarketAny(301)
-mfoot2 = L.eval("select(2, AuctionIQ.LedgerUI.Rows('market', {}))")
-check("market prices fall back to Oribos Exchange without TSM data", m301.market == 25000 and m301.source == "oribos" and "Oribos Exchange" in plain(mfoot2))
+check("market prices fall back to Oribos Exchange without TSM data", m301.market == 25000 and m301.source == "oribos")
 run("STUB.prices = STUB.savedPrices; OEMarketInfo = nil; AuctionIQ.Prices.ClearCache()")
 run("STUB.now = STUB.now - 2 * 86400; AuctionIQ.Scans.Record(301, { { price = 18000, qty = 40 } }, true); STUB.now = STUB.now + 2 * 86400")
 run("AuctionIQ.Scans.Record(301, { { price = 22000, qty = 40 } }, true)")
-mrows = L.eval("(AuctionIQ.LedgerUI.Rows('market', {}))")
-r301 = [r for r in mrows.values() if r.id == 301]
-mfoot3 = L.eval("select(2, AuctionIQ.LedgerUI.Rows('market', {}))")
-check("market prices use your AH scans first", len(r301) == 1 and "+10%" in plain(r301[0].cells[5]) and "your AH scans" in plain(mfoot3))
+check("market prices use your AH scans first, with the 7-day change in the item panel",
+      CH.Prices.MarketAny(301).source == "scan" and "+10%" in market_rows(301).get("Market / 7-day avg", ""))
 # Compare prices: AH scan vs TSM vs Oribos (Data/Compare.lua)
 tsm301 = CH.Prices.Raw("dbmarket", 301)
 cr = CH.Compare.Row(301)
@@ -2022,8 +2034,7 @@ check("compare: well under the others reads cheap now", (cr.verdict == "cheap no
 run("AuctionIQ.db.scans[301].at = STUB.now - 2 * 86400")
 cr = CH.Compare.Row(301)
 check("compare: an old scan is shown but not judged", not cr.ahFresh and cr.gap is None and cr.verdict in ("agree", "disagree"))
-crow = [r for r in L.eval("(AuctionIQ.LedgerUI.Rows('compare', {}))").values() if r.id == 301]
-check("compare view lists the item with each source", len(crow) == 1 and "2 days" in plain(crow[0].cells[3]) and plain(crow[0].cells[8]) == cr.verdict)
+check("Trade item panel: Sources reads the price comparison", market_rows(301).get("Sources") == cr.verdict)
 check("compare: median of an even list", CH.Compare.Median(L.eval("{ 4, 1, 3, 2 }")) == 2.5)
 run("OEMarketInfo = nil; AuctionIQ.db.scans = {}; AuctionIQ.Prices.ClearCache()")
 run("AuctionIQ.UI.Page('ledger')")
@@ -2448,17 +2459,14 @@ nlrows = list(CH.ScanUI.Refresh().values())
 check("orders: an unlearned recipe says so and Queue all skips it", CH.ScanUI.QueueAll() == 0
       and "You haven't learned this recipe." in [plain(l[1]) for l in CH.ScanUI.OrderLines(nl[0]).values()])
 run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
-# orders from an older expansion are tagged, and Older: hidden leaves them out
+# orders for another expansion than the one open are tagged and left out
 run("""STUB.oldLine = C_TradeSkillUI.GetTradeSkillLineForRecipe
 C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) if id == 10 then return 2871, 'Khaz Algar Alchemy' end return 2906, 'Midnight Alchemy' end
 STUB.oldInfos = C_TradeSkillUI.GetChildProfessionInfos
 C_TradeSkillUI.GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = 'Midnight' }, { professionID = 2871, expansionName = 'Khaz Algar' } } end""")
 olist = list(CH.Orders.List().values())
 check("orders: each order knows its expansion and whether it's the current one", olist[0].expansion == "Khaz Algar" and not olist[0].current)
-run("AuctionIQ.ScanUI.ToggleOlder()")
-check("orders: Older: hidden leaves older-expansion orders out", len(list(CH.ScanUI.Refresh().values())) == 0)
-run("AuctionIQ.ScanUI.ToggleOlder()")
-check("orders: Older: shown brings them back", len(list(CH.ScanUI.Refresh().values())) == 3)
+check("orders: orders for another expansion are left out of the list", len(list(CH.ScanUI.Refresh().values())) == 0)
 run("C_TradeSkillUI.GetTradeSkillLineForRecipe = STUB.oldLine; C_TradeSkillUI.GetChildProfessionInfos = STUB.oldInfos")
 # the list keeps each order's row between redraws; the game's bag or Concentration events redo it
 run("""AuctionIQ.Orders.MAX_AGE = 60; STUB.analyses = 0; STUB.oldAnalyze = AuctionIQ.Orders.Analyze
@@ -2561,7 +2569,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "plans", "overview", "statement", "balance", "cashflow"]:
+for v in ["inventory", "sales", "income", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "plans", "overview", "statement", "balance", "cashflow"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",

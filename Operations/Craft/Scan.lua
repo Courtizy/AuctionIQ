@@ -226,9 +226,13 @@ function Sc.Expansion(recipeID)
 	return line, lineName and lineName:match("^(.-)%s+%S+$") or "Classic"
 end
 
---- The current expansion's skill line: the newest of the profession's lines, else the newest in rows.
+--- The expansion AuctionIQ works on: the one the profession window has open (Midnight by default,
+--- Khaz Algar when you switch to it there), else the newest of the profession's lines, else the
+--- newest in rows.
 function Sc.CurrentLine(rows)
 	local ui, best = C_TradeSkillUI, nil
+	local open = ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	if open and open.professionID and open.professionID ~= 0 then return open.professionID end
 	for _, p in ipairs(ui.GetChildProfessionInfos and ui.GetChildProfessionInfos() or {}) do
 		if p.professionID and (not best or p.professionID > best) then best = p.professionID end
 	end
@@ -237,12 +241,17 @@ function Sc.CurrentLine(rows)
 	return best
 end
 
---- Recipe IDs worth scanning in the open profession.
+--- Recipe IDs worth scanning in the open profession: the expansion the window has open only.
 function Sc.Recipes()
 	local out = {}
 	local ui = C_TradeSkillUI
+	local line = Sc.CurrentLine()
 	for _, id in ipairs(ui.GetAllRecipeIDs and ui.GetAllRecipeIDs() or {}) do
-		if eligible(ui.GetRecipeInfo(id)) then table.insert(out, id) end
+		if eligible(ui.GetRecipeInfo(id)) then
+			local ok, l = true, nil
+			if line and ui.GetTradeSkillLineForRecipe then ok, l = pcall(ui.GetTradeSkillLineForRecipe, id) end
+			if not (ok and l and line) or l == line then table.insert(out, id) end
+		end
 	end
 	return out
 end

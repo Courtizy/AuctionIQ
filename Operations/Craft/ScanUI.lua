@@ -24,7 +24,6 @@ local CARD_H = N * H + 28
 local TWR = W - SIDE - 3 * GUT - 10 -- the Recipes table's width beside it
 local offset, data = 0, {}
 local scrollBar
-local showOlder = true
 local mode = "recipes"
 local view = "craft" -- the Recipes list's view: craft, conc or buy
 local selected -- recipeID of the selected recipe
@@ -168,10 +167,7 @@ local function click(i)
 		SUI.Refresh()
 		return
 	end
-	if r.header then
-		if not r.current then showOlder = false; offset = 0; SUI.Refresh() end
-		return
-	end
+	if r.header then return end
 	-- a click selects the recipe and opens it; queueing is the strip's buttons, so it's always the craft shown there
 	if C_TradeSkillUI.OpenRecipe and C_Timer then
 		-- opening the recipe makes the advisor work it out and redraw this window next frame: draw
@@ -412,7 +408,6 @@ local function setMode(m)
 end
 SUI.SetMode = function(m) mode = m; offset = 0; if m == "orders" then SUI.FetchOrders() end return SUI.Refresh() end
 function SUI.Mode() return mode end
---- Show or hide older-expansion recipes and orders.
 --- Switch the Recipes list's view: "craft", "conc" or "buy". Shows Recipes if another list is up.
 function SUI.SetView(v)
 	if not COLS[v] or v == "orders" or v == "first" then return {} end
@@ -420,7 +415,6 @@ function SUI.SetView(v)
 	return SUI.Refresh()
 end
 function SUI.View() return view end
-function SUI.ToggleOlder() showOlder = not showOlder; offset = 0; return SUI.Refresh() end
 
 --- Sort by a column (as a header click does): a new column sorts it biggest first, the same one flips.
 function SUI.SortBy(key)
@@ -453,7 +447,6 @@ local function build()
 	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)
 	SUI.ordersButton = barButton("Work orders", 90, function() setMode("orders") end)
 	barButton("Scan", 50, function() SUI.Start() end)
-	SUI.olderButton = barButton("Older: shown", 100, function() SUI.ToggleOlder() end)
 	-- Work orders: one button that walks the orders: claim, craft, turn in, next order
 	SUI.nextButton = barButton("Claim next", 100, function() SUI.Next() end)
 	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
@@ -697,10 +690,6 @@ local function showTable()
 			label = label:find("|T") and label or label:upper()
 			hb.text:SetText(not on and "" or sorted and T.Color("accent", label .. (SORT[m].asc and " ^" or " v")) or label)
 		end
-	end
-	if SUI.olderButton then
-		SUI.olderButton:SetShown(mode == "recipes" or mode == "orders")
-		SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	end
 	if SUI.allButton then SUI.allButton:SetText(mode == "recipes" and "Fill queue" or "Queue all") end
 	if SUI.nextButton then SUI.nextButton:SetShown(mode == "orders"); SUI.UpdateNext() end
@@ -1020,11 +1009,11 @@ local function refreshLists()
 	local rows = showTable()
 	local list, older = mode == "orders" and CH.Orders.List() or CH.Orders.FirstCrafts(), 0
 	if mode == "orders" then
-		-- orders from older expansions show a tag, and "Older: hidden" leaves them out
+		-- only the expansion the profession window has open
 		local keep = {}
 		for _, d in ipairs(list) do
 			if not d.current then older = older + 1 end
-			if d.current or showOlder then table.insert(keep, d) end
+			if d.current then table.insert(keep, d) end
 		end
 		list = keep
 	end
@@ -1038,8 +1027,7 @@ local function refreshLists()
 			if d.kp then kp = kp + 1 end
 		end
 		local fetching = CH.Orders.fetching and T.Color("accent", "  Fetching orders from the game...") or ""
-		local olderNote = older > 0 and T.Color("muted", showOlder and string.format("   %d from older expansions", older)
-			or string.format("   %d older-expansion orders hidden", older)) or ""
+		local olderNote = older > 0 and T.Color("muted", string.format("   %d for other expansions: switch expansion in the profession window", older)) or ""
 		local total = 0
 		for _, d in ipairs(data) do if d.ok and (d.profit or 0) > 0 then total = total + d.profit end end
 		status:SetText(#data > 0 and string.format("%d Total Work Orders: %s profit, %s KP", #data, T.Color("ok", CH.FormatMoney(total)), T.Color("accent", kp)) .. olderNote .. fetching
@@ -1371,7 +1359,7 @@ function SUI.Draw()
 	local concNow = prof and CH.ConcentrationNow(prof)
 	local current = s and (s.currentLine or CH.Scan.CurrentLine(s.rows))
 	local t0 = debugprofilestop and debugprofilestop()
-	local groups, order, hidden, count = {}, {}, 0, 0
+	local groups, count = {}, 0
 	-- each row's numbers are kept until bags, Concentration, the scan or a minute changes them:
 	-- a click on a recipe only moves the highlight, so it shouldn't work out every row again
 	local now = time()
@@ -1411,38 +1399,23 @@ function SUI.Draw()
 		end
 		if not INVIEW[view](r) then
 			-- not part of this view
-		elseif r.current or showOlder then
-			local key = r.current and math.huge or (r.line or 0)
-			if not groups[key] then groups[key] = {}; table.insert(order, key) end
-			table.insert(groups[key], r)
+		elseif r.current then
+			-- only the expansion the profession window has open
+			table.insert(groups, r)
 			count = count + 1
-		else
-			hidden = hidden + 1
 		end
 	end
-	-- the current expansion first, then older ones newest first, each under its own header
-	table.sort(order, function(a, b) return a > b end)
-	local split = #order > 1 or (#order == 1 and order[1] ~= math.huge)
-	for _, key in ipairs(order) do
-		local g = sortRows(groups[key], SORT[view].key, SORT[view].asc)
-		if split then
-			local cur = key == math.huge
-			table.insert(data, { header = true, current = cur, n = #g,
-				expansion = g[1].expansion or (cur and "Current expansion" or "Older recipes") })
-		end
-		for _, r in ipairs(g) do table.insert(data, r) end
-	end
+	for _, r in ipairs(sortRows(groups, SORT[view].key, SORT[view].asc)) do table.insert(data, r) end
 	if t0 then CH.MeasureAdd("craft redraw: rows" .. (fresh and "" or " (worked out)"), debugprofilestop() - t0) end
 	offset = math.max(0, math.min(offset, #data - N))
 	scrollBar:Set(offset, N, #data)
-	SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
 	if not CH.Scan.IsRunning() then
 		local age = s and time() - s.at
 		local ago = age and (age < 3600 and string.format("%d min ago", math.floor(age / 60))
 			or age < 86400 and string.format("%dh ago", math.floor(age / 3600)) or string.format("%d days ago, scan again", math.floor(age / 86400)))
 		local what = view == "conc" and "recipes can use Concentration" or view == "buy" and "recipes have a listing" or "recipes"
 		status:SetText(s and T.Color(age and age >= 86400 and "bad" or "muted", string.format("%d %s, scanned %s.%s", count, what,
-			ago or "", hidden > 0 and string.format(" %d older hidden.", hidden) or ""))
+			ago or "", ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
 	local function n(k) return k and T.Color(k > 0 and "fg" or "muted", tostring(k)) or T.Color("muted", "-") end
@@ -1515,6 +1488,18 @@ function SUI.Open()
 	frame:Show()
 	if CH.OpenProfessionID() and not CH.Scan.Results(CH.OpenProfessionID()) then SUI.Start() else SUI.Refresh() end
 end
+
+-- Switching expansion in the profession window (Midnight to Khaz Algar, say) switches the list to
+-- that expansion's scan, scanning it if there's none yet.
+local function expansionChanged()
+	local id = CH.OpenProfessionID and CH.OpenProfessionID()
+	if not (id and frame and frame:IsShown()) or id == SUI.prof then return end
+	selected, offset = nil, 0
+	SUI.Open()
+end
+SUI.ExpansionChanged = expansionChanged
+CH.On("TRADE_SKILL_LIST_UPDATE", expansionChanged)
+CH.On("TRADE_SKILL_DATA_SOURCE_CHANGED", expansionChanged)
 
 --- How many of the Concentration craft with your own reagents you can make, for the recipe open in
 --- the card (the scan doesn't price that mix), or nil.

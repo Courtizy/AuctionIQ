@@ -54,12 +54,8 @@ local VIEWS = {
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Realized profit", 542, 100 }, { "Margin", 646, 78 } } },
 	perf = { label = "Forecast accuracy", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
 		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
-	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
-		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
 	holdings = { label = "Holdings", parent = "Inventory", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
 		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
-	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
-		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
 }
@@ -376,20 +372,6 @@ function LUI.Rows(v, opts)
 		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
 	end
 
-	if v == "dead" then
-		local tied = 0
-		for _, e in ipairs(L.DeadStock(now, opts.days or 30, opts.char)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				tied = tied + e.value
-				table.insert(out, { id = e.id, cells = { text, e.held, money(e.value), e.lastSold and LUI.Ago(e.lastSold, now) or CH.Theme.Color("muted", "never"),
-					e.expired, CH.Theme.Color(e.expired >= 3 and "bad" or "muted", e.advice) },
-					sort = { name, e.held, e.value, e.lastSold and (now - e.lastSold) or math.huge, e.expired, e.advice } })
-			end
-		end
-		return out, string.format("%d items not moving, %s tied up", #out, money(tied))
-	end
-
 	if v == "holdings" then
 		local gain = 0
 		for _, e in ipairs(L.Holdings(now, opts.char)) do
@@ -403,23 +385,6 @@ function LUI.Rows(v, opts)
 			end
 		end
 		return out, "Unrealized gain on stock you bought: " .. signed(gain)
-	end
-
-	if v == "par" then
-		local short, worth = 0, 0
-		for _, e in ipairs(CH.Par.List(now)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				if e.short > 0 then short, worth = short + 1, worth + e.value end
-				table.insert(out, { id = e.id, cells = { text, string.format("%.0f", e.weekly), e.target, e.held,
-					e.short > 0 and CH.Theme.Color("bad", e.short) or CH.Theme.Color("ok", "0"), e.short > 0 and money(e.value) or "",
-					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", string.format("%d days at %d%%",
-						CH.Expect.Setting("cover"), math.floor(CH.Expect.Setting("service") * 100 + 0.5))) },
-					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
-			end
-		end
-		return out, string.format("%d items below stock target, %s of stock to make or buy", short, money(worth))
-			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
 	end
 
 	if v == "overhead" then
@@ -688,7 +653,6 @@ function LUI.Build(p, fs, panel)
 		hit:SetScript("OnClick", function(self)
 			-- a statement line opens the transactions behind it
 			if self.go then return CH.UI.Go(self.go[1], self.go[2]) end
-			if view == "par" and self.id then LUI.ParClick(self.id) end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
 		end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
@@ -702,7 +666,7 @@ function LUI.Build(p, fs, panel)
 	-- the selected row's detail, in a panel right of the table, for a view that has one: a kicker, a
 	-- headline, three figures, label and value rows, a section of rows (each explains itself on hover),
 	-- a note, and buttons from the bottom up (the first, the main one, lowest)
-	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { onAction = function(self)
+	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { rows = 7, srows = 6, onAction = function(self)
 		local ok, msg = self.run()
 		said = msg and { ok = ok, msg = msg } or nil
 		CH.UI.Refresh()
@@ -749,7 +713,7 @@ function LUI.Refresh()
 	local charLabel = char and (v.charLabel and v.charLabel(char) or char:match("^[^#]+")) or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
-	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
+	p.timeButton:SetShown(view ~= "inventory" and not (VIEWS[view] and VIEWS[view].noTime))
 
 	local act = v.action
 	p.actionButton:SetShown(act ~= nil)
@@ -910,7 +874,7 @@ function LUI.SetRows(n)
 	return ROWS
 end
 
---- Stock targets view: shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
+--- An item's stock target (Trade's item panel): shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
 --- back to the automatic one (a week of sales).
 function LUI.ParClick(id, mod)
 	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")

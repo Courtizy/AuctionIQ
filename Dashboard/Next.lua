@@ -174,7 +174,7 @@ function Next.List(now)
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
 					risk = "a cut may not sell it either: check who's undercutting",
-					go = { "operations", "dead", { name = name(e.id), id = e.id, title = "Rethink" } } })
+					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do

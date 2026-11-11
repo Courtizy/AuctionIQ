@@ -38,7 +38,6 @@ Operations\Craft\Professions.lua
 Operations\Queue\Cooldowns.lua
 Data\Ledger.lua
 Accounting\LedgerUI.lua
-Operations\Trade\MarketsUI.lua
 Operations\Trade\Par.lua
 Data\Forecast.lua
 Operations\Trade\Groups.lua
