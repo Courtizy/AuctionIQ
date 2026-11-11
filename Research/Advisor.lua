@@ -804,6 +804,15 @@ end
 function A.FinishingAdvice(result)
 	local model = result and result.model
 	if not model or not model.finishing or #model.finishing == 0 then return {} end
+	-- a full search per finishing reagent: worked out once per result (the card asks on every redraw)
+	if result.finishingAdvice then return result.finishingAdvice end
+	local out = A.FinishingAdviceNow(result)
+	result.finishingAdvice = out
+	return out
+end
+
+function A.FinishingAdviceNow(result)
+	local model = result.model
 	local base = pickBest(build(model, result.sim, {}, false))
 	local baseProfit = base and base.profit or 0
 	local picked = {}

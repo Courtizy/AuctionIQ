@@ -315,6 +315,8 @@ function Sc.Run(onStep, onDone)
 			if not model then return nil end
 			Sc.models[profID][id] = model
 			local result = CH.Advisor.Evaluate(model)
+			-- what the card shows about finishing reagents, worked out now while the scan has the time
+			if CH.Advisor.FinishingAdvice then pcall(CH.Advisor.FinishingAdvice, result) end
 			-- the craft card reuses it: a click on this recipe needn't work it out again
 			if CH.AdvisorUI and CH.AdvisorUI.Remember then CH.AdvisorUI.Remember(id, model, result) end
 			return model, result
