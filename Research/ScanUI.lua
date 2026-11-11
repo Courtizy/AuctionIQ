@@ -58,7 +58,7 @@ local NAMES = { concentration = "Concentration needed", name = "name", profit = 
 	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
 	bestQ = "best quality", bestProfit = "profit of the best pick", bestCost = "cost of the best pick", bestPct = "margin of the best pick",
 	bestCan = "how many of the best pick you can make now",
-	reagentsPct = "reagents you hold enough of",
+	reagentsPct = "the reagent you're shortest on",
 	concentration = "Concentration points", craftEach = "what one costs to make", buyPrice = "cheapest listing",
 	resell = "what it resells for", flip = "buy and relist profit" }
 
@@ -1050,9 +1050,9 @@ local function refreshLists()
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
 			r.cells[2]:SetText(d.customer or d.from)
-			-- have vs need: how many of the craft's reagents you hold enough of (the hover lists the short ones)
+			-- have vs need, in units, of the reagent you're shortest on (the hover lists every short one)
 			r.cells[3]:SetText(d.reagentsNeed and d.reagentsNeed > 0
-				and T.Color(d.reagentsHave >= d.reagentsNeed and "ok" or "bad", string.format("%d/%d", d.reagentsHave, d.reagentsNeed))
+				and T.Color(d.reagentsHave >= d.reagentsNeed and "ok" or "bad", string.format("%s/%d", d.reagentsHave > 999 and "999+" or tostring(d.reagentsHave), d.reagentsNeed))
 				or T.Color("muted", "-"))
 			r.cells[4]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
 			-- the Concentration the craft needs, as CraftSim: 0 when its reagents (and Shatter) reach the rank

@@ -358,17 +358,18 @@ function O.Row(order)
 		local r = result and (result.best or result.bestConc)
 		local rewards, value, kp = O.Rewards(order)
 		-- whether your bags, banks and warband bank hold the reagents (and Concentration) for one craft
-		local have, missing, reagentsHave, reagentsNeed
+		local have, missing, reagentsHave, reagentsNeed, lowName
 		if r then
 			local n, lines = CH.Advisor.MaxCraftable(result, r, concNow)
 			have = n >= 1
 			missing = {}
-			reagentsHave, reagentsNeed = 0, 0
+			local low
 			for _, l in ipairs(lines) do
 				if l.have < l.need then table.insert(missing, l) end
 				-- each reagent the craft takes: whether you hold enough of it
-				reagentsNeed = reagentsNeed + 1
-				if l.have >= l.need then reagentsHave = reagentsHave + 1 end
+				-- the reagent you're furthest short on (or closest to running short of): its units
+				local ratio = l.need > 0 and l.have / l.need or math.huge
+				if not low or ratio < low then low, reagentsHave, reagentsNeed, lowName = ratio, l.have, l.need, l.name end
 			end
 		end
 		local info = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
@@ -384,7 +385,7 @@ function O.Row(order)
 			cost = r and r.cost, profit = r and r.profit, quality = r and r.quality, concentration = r and r.concentration,
 			line = line, expansion = expansion, current = not line or not current or line == current,
 			have = have, missing = missing, reagentsHave = reagentsHave, reagentsNeed = reagentsNeed,
-			reagentsPct = reagentsNeed and reagentsNeed > 0 and reagentsHave / reagentsNeed or nil,
+			reagentsPct = reagentsNeed and reagentsNeed > 0 and reagentsHave / reagentsNeed or nil, reagentsLow = lowName,
 			customer = order.orderType == 3 and "NPC" or order.customerName or TYPES[order.orderType] or "?",
 			costLines = r and result and O.CostLines(result, r) or nil,
 			-- no row because a reagent you'd supply has no price, not because the quality is out of reach
