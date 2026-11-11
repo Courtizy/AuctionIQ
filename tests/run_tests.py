@@ -2265,6 +2265,16 @@ run("AuctionIQ.UI.Page('today')")
 for w in ["ScanUI", "QueueUI", "LogUI"]:
     run(f"if AuctionIQ.{w} and AuctionIQ.{w}.Toggle then pcall(AuctionIQ.{w}.Toggle) end")
     audit(w)
+# the Craft window's Details view: one item, laid out on the table card's grid
+run("AuctionIQ.AdvisorUI.Show(10, true); AuctionIQ.ScanUI.SetMode('recipes'); AuctionIQ.ScanUI.Select(10); AuctionIQ.ScanUI.SetDetails(true)")
+dd = L.eval("AuctionIQ.ScanUI.lastDetails")
+check("details: break-even chart, price check, will it sell and what drives the cost, for the picked recipe",
+      dd is not None and dd.chart is not None and len(list(dd.chartLines.values())) >= 1 and dd.price.verdict and dd.sell.verdict
+      and len(list(dd.sell.rows.values())) >= 3 and len(list(dd.cost.rows.values())) >= 1 and "%" in plain(dd.cost.verdict))
+check("details: the reagents are ranked by their share of the cost", all("%" in plain(r[2]) for r in dd.cost.rows.values()))
+audit("craft details")
+run("AuctionIQ.ScanUI.SetDetails(false)")
+check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False)
 # Review fixes ---------------------------------------------------------------------------------
 # 1. a browse doesn't make an old buying ladder look fresh, and a browse at a different price drops it
 run("""AuctionIQ.db.scans = AuctionIQ.db.scans or {}

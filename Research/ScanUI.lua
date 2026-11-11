@@ -139,6 +139,7 @@ end
 --- Select a recipe in the Recipes list (as a click does); the quantity goes back to 1.
 function SUI.Select(recipeID)
 	if recipeID ~= selected then qty = 1 end
+	-- the Details view follows the picked recipe; a click on the list means it isn't showing
 	selected = recipeID
 	return SUI.Refresh()
 end
@@ -483,9 +484,10 @@ local function build()
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 2,
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 5, srows = 5, buttons = 3,
 		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
 	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
+	SUI.BuildDetails()
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
@@ -494,6 +496,136 @@ local function build()
 	end)
 	T.Fonts(frame)
 	Wd.Attach("scan", frame)
+end
+
+-- Details: one item, over the list -----------------------------------------------------------------
+local details -- the Details view, over the table while it's on
+local detailsOn = false
+local DW, DH = TWR + 10, N * H + 28 -- the table card's size: the view covers it exactly
+local GAP, PAD = 6, 10
+
+-- A section card of the Details view: a heading, a verdict line and label / value rows.
+local function section(parent, x, y, w, nRows, vw)
+	vw = vw or 100
+	local Wd, T = CH.Window, CH.Theme
+	local sc = { x = x, y = y, w = w }
+	sc.card = T.BorderCard(parent, x, y, w, 40)
+	sc.head = Wd.OneLine(Wd.Text(parent, x + PAD, y - 8, w - 2 * PAD, "LEFT", "GameFontNormalSmall"))
+	T.TitleFont(sc.head, 10, "bold")
+	sc.verdict = Wd.OneLine(Wd.Text(parent, x + PAD, y - 22, w - 2 * PAD, "LEFT", "GameFontHighlightSmall"))
+	sc.rows = {}
+	for k = 1, nRows do
+		local ry = y - 40 - (k - 1) * 14
+		-- label and value never share pixels: the value takes the right vw, the label the rest less 4
+		local r = { label = Wd.OneLine(Wd.Text(parent, x + PAD, ry, w - 2 * PAD - vw - 4, "LEFT", "GameFontHighlightSmall")),
+			value = Wd.OneLine(Wd.Text(parent, x + w - PAD - vw, ry, vw, "RIGHT", "GameFontHighlightSmall")) }
+		r.label:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
+		r.hit = CreateFrame("Button", nil, parent)
+		r.hit:SetPoint("TOPLEFT", x + 2, ry + 1)
+		r.hit:SetSize(w - 4, 14)
+		r.hit:SetScript("OnEnter", function(self) if self.tip then Wd.Tooltip(self, self.tip) end end)
+		r.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		sc.rows[k] = r
+	end
+	return sc
+end
+
+local function fillSection(sc, head, d)
+	local T = CH.Theme
+	sc.head:SetText(T.Color("accent", head))
+	sc.verdict:SetText(d and d.verdict or "")
+	local n = 0
+	for k, r in ipairs(sc.rows) do
+		local x = d and d.rows and d.rows[k]
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit.tip = x and x.tip or nil
+		r.hit:SetShown(x ~= nil and x.tip ~= nil)
+		if x then n = k end
+	end
+	return n
+end
+
+--- Build the Details view: a back bar, the break-even chart, then Price check and Will it sell side
+--- by side, then What drives the cost. Every block sits on the table card's grid, 6 px apart.
+function SUI.BuildDetails()
+	local Wd, T = CH.Window, CH.Theme
+	details = CreateFrame("Frame", nil, frame)
+	details:SetPoint("TOPLEFT", 6, -48)
+	details:SetSize(DW, DH)
+	details:SetFrameLevel((frame.GetFrameLevel and frame:GetFrameLevel() or 1) + 20)
+	details:EnableMouse(true) -- the list under it takes no clicks
+	details.bg = details:CreateTexture(nil, "BACKGROUND")
+	details.bg:SetAllPoints()
+	details.bg:SetColorTexture(0.059, 0.059, 0.059, 1)
+	local back = T.Button(details, "< Back", 64, 18)
+	back:SetPoint("TOPLEFT", 0, 0)
+	back:SetScript("OnClick", function() SUI.SetDetails(false) end)
+	details.title = Wd.OneLine(Wd.Text(details, 72, -3, DW - 72, "LEFT", "GameFontNormal"))
+	-- the chart, full width
+	local cy = -18 - GAP
+	local CH_H = 150
+	details.chartCard = T.BorderCard(details, 0, cy, DW, CH_H)
+	details.chartHead = Wd.OneLine(Wd.Text(details, PAD, cy - 8, DW - 2 * PAD, "LEFT", "GameFontNormalSmall"))
+	T.TitleFont(details.chartHead, 10, "bold")
+	local chart = CreateFrame("Frame", nil, details)
+	chart:SetPoint("TOPLEFT", 0, cy - 20)
+	chart:SetSize(DW, CH_H - 20)
+	-- the plot is ch - 62 tall; its axis labels end 30 px above the card's bottom, for two foot lines
+	chart.cw, chart.ch = DW, CH_H - 16
+	chart.dots, chart.labels = {}, {}
+	for i = 1, 8 do chart.labels[i] = Wd.OneLine(Wd.Text(chart, 12, -16, 120)) end
+	details.foot = { Wd.OneLine(Wd.Text(details, PAD, cy - CH_H + 26, DW - 2 * PAD)), Wd.OneLine(Wd.Text(details, PAD, cy - CH_H + 14, DW - 2 * PAD)) }
+	details.chart = chart
+	-- price check and will it sell, side by side
+	local y2 = cy - CH_H - GAP
+	local half = math.floor((DW - GAP) / 2)
+	details.price = section(details, 0, y2, half, 4)
+	details.sell = section(details, half + GAP, y2, DW - half - GAP, 4)
+	-- what drives the cost, full width, to the bottom
+	details.y3 = y2 - (40 + 4 * 14 + 6) - GAP
+	details.cost = section(details, 0, details.y3, DW, 5, 170)
+	T.Fonts(details)
+	details:Hide()
+end
+
+--- Turn the Details view on or off for the selected recipe. Returns what it drew, for tests.
+function SUI.SetDetails(on)
+	detailsOn = on and true or false
+	return SUI.Refresh()
+end
+function SUI.DetailsOn() return detailsOn end
+
+local function renderDetails()
+	if not details then return nil end
+	local A = CH.AdvisorUI
+	local cur = A and A.Current()
+	local live = mode == "recipes" and detailsOn and cur and cur.recipeID == selected and not cur.order and not A.Classic()
+	local d = live and A.Details(qty, selectedRow())
+	details:SetShown(d ~= nil)
+	if scrollBar and scrollBar.SetShown then scrollBar:SetShown(d == nil) end
+	if not d then return nil end
+	local T = CH.Theme
+	details.title:SetText(T.Color("accent", d.title) .. T.Color("muted", "  details"))
+	details.chartHead:SetText(T.Color("accent", "BREAK-EVEN") .. T.Color("muted", "   profit a craft against the sale price"))
+	if d.chart then
+		A.DrawChart(details.chart, d.chart)
+		details.chart:Show()
+	else
+		details.chart:Hide()
+	end
+	-- each series' break-even, one line each under the chart
+	local foot = d.chartLines or {}
+	details.foot[1]:SetText(foot[1] or T.Color("muted", "No price to chart yet."))
+	details.foot[2]:SetText(foot[2] or "")
+	local np = fillSection(details.price, "PRICE CHECK", d.price)
+	local ns = fillSection(details.sell, "WILL IT SELL?", d.sell)
+	local hh = 40 + math.max(np, ns, 1) * 14 + 6
+	details.price.card:Place(details.price.x, details.price.y, details.price.w, hh)
+	details.sell.card:Place(details.sell.x, details.sell.y, details.sell.w, hh)
+	local nc = fillSection(details.cost, "WHAT DRIVES THE COST", d.cost)
+	details.cost.card:Place(details.cost.x, details.cost.y, details.cost.w, 40 + math.max(nc, 1) * 14 + 6)
+	SUI.lastDetails = d
+	return d
 end
 
 -- Show only the active list's table and headers, with an arrow on the sorted column.
@@ -1102,7 +1234,7 @@ local INVIEW = {
 --- Redraw from the saved scan. Returns the row texts, for tests.
 function SUI.Refresh()
 	if not frame then return {} end
-	if mode ~= "recipes" then status:SetWidth(W - 24); return refreshLists() end
+	if mode ~= "recipes" then status:SetWidth(W - 24); renderDetails(); return refreshLists() end
 	status:SetWidth(W - 24 - (SUI.viewsWidth or 0))
 	local rows = showTable()
 	local T = CH.Theme
@@ -1196,6 +1328,7 @@ function SUI.Refresh()
 		end
 	end
 	renderDetail()
+	renderDetails()
 	return out
 end
 

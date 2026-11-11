@@ -506,7 +506,11 @@ end
 
 local function drawChart(chart, data)
 	local T = CH.Theme
-	local x0, y0, w, h = 70, 18, WIDTH - 70 - 16, PANE_H - 18 - 44
+	-- chart.cw / chart.ch: another frame's size (the Craft window's Details view)
+	local cw, chh = chart.cw, chart.ch
+	if type(cw) ~= "number" then cw = WIDTH end
+	if type(chh) ~= "number" then chh = PANE_H end
+	local x0, y0, w, h = 70, 18, cw - 70 - 16, chh - 18 - 44
 	local n = 0
 	local function dot(px, py, sw, sh, color, a)
 		n = n + 1
@@ -544,6 +548,8 @@ local function drawChart(chart, data)
 	label(5, pctText(data.hi), x0 + w - 60, -(y0 + h + 2), 60, "RIGHT")
 	for i = 6, #L do L[i]:Hide() end
 end
+
+AUI.DrawChart = drawChart
 
 -- Batch analysis ----------------------------------------------------------------------------------
 
@@ -1343,9 +1349,11 @@ function AUI.Card(n, scan)
 	end
 	local actions = { { label = label, off = off, tip = "Adds the picked quality, with the advisor's reagents.",
 		run = function() return AUI.QueueSelected() end } }
+	actions[2] = { label = "Details", tip = "Break-even, a price check, whether it will sell and what drives the cost.",
+		run = function() if CH.ScanUI then CH.ScanUI.SetDetails(true) end end }
 	local g = gearPick
 	if g and g.set and not result.sim then
-		actions[2] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
+		actions[3] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
 			run = function() local ok, why = CH.Gear.Equip(g.set); if not ok then CH.Print("can't change gear " .. (why or "")) end
 				if C_Timer then C_Timer.After(1, function() AUI.Show() end) end end }
 	end
@@ -1357,6 +1365,74 @@ function AUI.Card(n, scan)
 		section = { head = "WHICH QUALITY?", rows = qrows },
 		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
 		actions = actions, live = true }
+end
+
+--- The Craft window's Details view for the recipe on screen, one item at a time: the break-even
+--- chart, a price check against the item's normal, whether it will sell, and what drives the
+--- reagent cost. n is how many you'd make. { title, chart, chartLines, price, sell, cost }, each of
+--- price, sell and cost { verdict, rows = { { label, value, tip } } }. nil with no recipe.
+function AUI.Details(n, scan)
+	local result = shown
+	if not result then return nil end
+	local T, M = CH.Theme, CH.FormatMoney
+	local mut = function(t) return T.Color("muted", t) end
+	n = math.max(1, math.floor(n or selQty))
+	local r = AUI.SelectedRow() or result.best or result.bestConc
+	local item = r and r.item
+	local out = { title = (result.name or "?"), chart = AUI.ChartData(result), n = n }
+	out.chartLines = AUI.ChartLines(out.chart)
+	-- 1. price check: today against its normal
+	local mk = item and CH.Prices.MarketAny and CH.Prices.MarketAny(item)
+	local scanned = item and CH.Scans and CH.Scans.Get(item)
+	local pr = {}
+	if mk and mk.market then pr[#pr + 1] = { "Today, your realm", M(mk.market) } end
+	if mk and mk.hist then pr[#pr + 1] = { "Normal (60 days)", M(mk.hist) } end
+	if mk and mk.region then pr[#pr + 1] = { "Region average", M(mk.region) } end
+	if scanned and scanned.min then pr[#pr + 1] = { "Lowest listing (your scan)", M(scanned.min) } end
+	local ch = mk and mk.change7
+	local pv = not ch and mut("No 60-day price to compare against yet.")
+		or ch >= 0.1 and T.Color("ok", string.format("%d%% above normal: a good time to sell.", math.floor(ch * 100 + 0.5)))
+		or ch <= -0.1 and T.Color("bad", string.format("%d%% below normal: crafting now locks in a low price.", math.floor(-ch * 100 + 0.5)))
+		or T.Color("fg", "About its normal price.")
+	out.price = { verdict = pv, rows = pr }
+	-- 2. will it sell: the region's daily sales against what's listed plus what you'd make
+	local per = item and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(item)
+	local m = r and AUI.NextMove()
+	local items = m and m.qty > 0 and (m.items / m.qty * n) or n * (result.made or 1)
+	local listed = scanned and scanned.qty
+	local sr = { { "Sold a day, region", per and string.format(per >= 100 and "%.0f" or "%.1f", per) or mut("-") },
+		{ "Listed now", listed and tostring(listed) or mut("scan the AH"),
+			tip = { { "Listed now" }, { mut(listed and ("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.")
+				or "Search the item at the Auction House and AuctionIQ keeps the count.") } } },
+		{ string.format("You'd make, %d %s", n, n == 1 and "craft" or "crafts"), string.format("~%d", math.floor(items + 0.5)) } }
+	local days = per and per > 0 and ((listed or 0) + items) / per
+	if days then sr[#sr + 1] = { "Days to sell it all", string.format(days >= 10 and "%.0f" or "%.1f", days),
+		tip = { { "Days to sell" }, { mut("What's listed now plus your batch, over the region's sales a day. Your realm sells only part of that, so treat it as the best case.") } } } end
+	local sv = not per and mut("No sales rate for this item yet.")
+		or days and days <= 3 and T.Color("ok", "Sells fast: the market takes it in days.")
+		or days and days <= 14 and T.Color("fg", "Sells steadily: expect a week or two.")
+		or T.Color("bad", "Slow: more listed than the market takes in two weeks.")
+	out.sell = { verdict = sv, rows = sr }
+	-- 3. what drives the cost: each reagent's share, and where it comes from
+	local cl = r and CH.Advisor.CostLines(result, r.picks, r.finishing) or {}
+	local total = 0
+	for _, c in ipairs(cl) do total = total + (c.total or 0) end
+	table.sort(cl, function(a, b) return (a.total or 0) > (b.total or 0) end)
+	local cr = {}
+	for _, c in ipairs(cl) do
+		if #cr >= 6 then break end
+		local src = c.finishing and mut("finishing") or c.crafted and T.Color("accent", "cheaper to craft")
+			or (c.own and c.own >= c.n) and T.Color("ok", "yours") or (c.own and c.own > 0) and T.Color("fg", string.format("%d yours", c.own))
+			or mut("buy")
+		local share = total > 0 and c.total and string.format("%d%%", math.floor(c.total / total * 100 + 0.5)) or "-"
+		cr[#cr + 1] = { string.format("%dx %s", c.n, c.name or "?") .. "  " .. src, (c.total and M(c.total) or T.Color("bad", "no price")) .. "  " .. mut(share),
+			tip = (function() local t = { { c.name or "?" } }; for _, l in ipairs(CH.Advisor.HeldText(c)) do t[#t + 1] = l end
+				if #t == 1 then t[2] = { mut("Bought at the cheapest listing you can get.") } end; return t end)() }
+	end
+	local top = cl[1]
+	out.cost = { verdict = top and total > 0 and T.Color("fg", string.format("%s is %d%% of the cost.", top.name or "?", math.floor((top.total or 0) / total * 100 + 0.5))) or mut("No reagent prices."),
+		rows = cr }
+	return out
 end
 
 --- Set how many of the selected craft to queue (1 to 999).
