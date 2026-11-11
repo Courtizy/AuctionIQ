@@ -95,12 +95,18 @@ local function newFrame(parent, kind, template)
 		return fs
 	end
 	function f:CreateTexture()
-		local t = {}
+		local t = { shown = true }
+		if not rawget(f, "texs") then rawset(f, "texs", {}) end
+		table.insert(rawget(f, "texs"), t)
 		function t:SetVertexColor(r, g, b) self.vc = { r, g, b } end
-		function t:SetPoint(...) whole(select(2, ...)) end
-		function t:SetSize(w, h) whole(w, h) end
-		function t:SetWidth(w) whole(w) end
-		function t:SetHeight(h) whole(h) end
+		function t:SetPoint(...) whole(select(2, ...)); self.pt = { ... } end
+		function t:ClearAllPoints() self.pt = nil end
+		function t:SetSize(w, h) whole(w, h); self.w, self.h = w, h end
+		function t:SetWidth(w) whole(w); self.w = w end
+		function t:SetHeight(h) whole(h); self.h = h end
+		function t:Show() self.shown = true end
+		function t:Hide() self.shown = false end
+		function t:SetShown(v) self.shown = v and true or false end
 		return setmetatable(t, { __index = function() return function() end end })
 	end
 	f.TitleText = f:CreateFontString()

@@ -113,3 +113,55 @@ function STUB.Audit(roots)
 	for _, r in ipairs(roots) do visit(r) end
 	return out
 end
+
+-- A region's box in its parent, when it's placed by its top-left corner on the parent: l, t (down), w, h.
+local function box(pt, w, h)
+	if type(pt) ~= "table" or pt[1] ~= "TOPLEFT" or type(w) ~= "number" or type(h) ~= "number" then return nil end
+	local x, y
+	if type(pt[2]) == "number" then x, y = pt[2], pt[3]
+	elseif pt[3] == "TOPLEFT" and type(pt[4]) == "number" and (pt[2] == nil) then x, y = pt[4], pt[5] end
+	if type(x) ~= "number" or type(y) ~= "number" then return nil end
+	return x, -y, w, h
+end
+
+--- Cards that overlap each other, and buttons that sit across a card's edge (half on it, half off),
+--- under the given roots: { "what: why" }.
+function STUB.Overlaps(roots)
+	local out, seen = {}, {}
+	local function add(s) if not seen[s] then seen[s] = true; table.insert(out, s) end end
+	local function visit(f, path)
+		if rawget(f, "shown") == false and rawget(f, "parent") then return end
+		local cards = {}
+		for _, t in ipairs(rawget(f, "texs") or {}) do
+			if rawget(t, "edges") and rawget(t, "shown") ~= false then
+				local l, tp, w, h = box(rawget(t, "pt"), rawget(t, "w"), rawget(t, "h"))
+				if l then table.insert(cards, { l = l, t = tp, w = w, h = h }) end
+			end
+		end
+		for i = 1, #cards do
+			for j = i + 1, #cards do
+				local a, b = cards[i], cards[j]
+				if a.l < b.l + b.w and b.l < a.l + a.w and a.t < b.t + b.h and b.t < a.t + a.h then
+					add(string.format("cards overlap in %s: (%d,%d %dx%d) and (%d,%d %dx%d)", path, a.l, a.t, a.w, a.h, b.l, b.t, b.w, b.h))
+				end
+			end
+		end
+		for _, k in ipairs(rawget(f, "kids") or {}) do
+			if rawget(k, "kind") == "Button" and rawget(k, "shown") and (rawget(k, "w") or 0) > 0 then
+				local l, tp, w, h = box(rawget(k, "point"), rawget(k, "w"), rawget(k, "h"))
+				if l then
+					for _, c in ipairs(cards) do
+						local hit = l < c.l + c.w and c.l < l + w and tp < c.t + c.h and c.t < tp + h
+						local inside = l >= c.l and l + w <= c.l + c.w and tp >= c.t and tp + h <= c.t + c.h
+						if hit and not inside then
+							add(string.format("button across a card's edge in %s: '%s' (%d,%d %dx%d) on card (%d,%d %dx%d)", path, plain(rawget(k, "label") or (type(rawget(k, "text")) == "table" and rawget(k, "text").t) or "?"), l, tp, w, h, c.l, c.t, c.w, c.h))
+						end
+					end
+				end
+			end
+			visit(k, path)
+		end
+	end
+	for _, r in ipairs(roots) do visit(r, name and (rawget(r, "name") or "window") or "window") end
+	return out
+end

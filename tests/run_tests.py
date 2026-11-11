@@ -2320,6 +2320,8 @@ def audit(where):
     roots = L.eval("(function() local r = {} for _, f in ipairs(STUB.frames) do if (f.parent == nil or f.parent == UIParent) and f.w > 0 then table.insert(r, f) end end return r end)()")
     for p in L.eval("STUB.Audit")(roots).values():
         audit_all.append(where + ": " + p)
+    for p in L.eval("STUB.Overlaps")(roots).values():
+        audit_all.append(where + ": " + p)
 for tab in ["today", "research", "operations", "markets", "crafting", "trading", "analytics", "ledger", "report", "settings"]:
     run(f"AuctionIQ.UI.Page('{tab}')")
     audit(tab)
