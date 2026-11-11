@@ -412,7 +412,12 @@ local function build()
 		return b
 	end
 	-- Recipes: Fill queue from the scan, its plan shown on hover first. Orders and first crafts: queue them all.
-	SUI.allButton = barButton("Queue all", 72, function() if mode == "recipes" then SUI.Fill() else SUI.QueueAll() end end)
+	SUI.allButton = barButton("Queue all", 72, function()
+		local added
+		if mode == "recipes" then added = SUI.Fill() ~= nil else added = SUI.QueueAll() > 0 end
+		-- as a recipe's Queue button does: a popped-out Queue window comes up to show what was added
+		if added and not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
+	end)
 	SUI.allButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.AllLines()) end)
 	SUI.allButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	SUI.firstButton = barButton("First crafts", 86, function() setMode("first") end)

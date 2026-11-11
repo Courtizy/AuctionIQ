@@ -218,6 +218,17 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
 	elseif msg == "orders" then
 		CH.Orders.Debug()
+	elseif msg == "shatter" then
+		-- what Shatter could take, and how many of each you hold in bags / everywhere
+		local ids = CH.Queue.ShatterCandidates()
+		CH.Print(#ids .. " items Shatter can take" .. (#ids == 0 and " (open your enchanting window first)" or ":"))
+		for _, id in ipairs(ids) do
+			local bags = C_Item.GetItemCount(id) or 0
+			local all = C_Item.GetItemCount(id, true, false, true, true) or 0
+			CH.Print(string.format("  %s (%d): %d in bags, %d in all", CH.Advisor.ItemName(id), id, bags, all))
+		end
+		local id, bag, slot = CH.Queue.ShatterItem()
+		CH.Print("would use: " .. (id and (CH.Advisor.ItemName(id) .. (bag and (" in bag " .. bag .. " slot " .. slot) or " (not in your bags)")) or "nothing"))
 	elseif msg == "queue" then
 		CH.QueueUI.Toggle()
 	elseif msg == "scan" then

@@ -2163,6 +2163,19 @@ end)()""")
 check("shatter: a Midnight enchanting craft without Shattering Essence shows Shatter first (others don't)", sh.step == "Shatter" and sh.other == "Craft")
 check("shatter: casts Shatter on the cheapest mote in your bags", sh.cast and sh.salv.id == 1235731 and sh.salv.slot == 2)
 check("shatter: with the buff on, the step is Craft again", sh.after == "Craft")
+# the game's salvage list can come back empty: the recipe's own slot still names the motes
+sc = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldS, oldSch, oldC, oldCount = ui.GetSalvagableItemIDs, ui.GetRecipeSchematic, C_Container, C_Item.GetItemCount
+  ui.GetSalvagableItemIDs = function() return {} end
+  ui.GetRecipeSchematic = function(id) if id == 1235731 then return { reagentSlotSchematics = { { reagents = { { itemID = 601 }, { itemID = 602 } } } } } end return oldSch(id) end
+  C_Item.GetItemCount = function(id) return id == 602 and 2 or 0 end
+  C_Container = { GetContainerNumSlots = function(bag) return bag == 5 and 1 or 0 end, GetContainerItemID = function() return 602 end }
+  local id, bag = AuctionIQ.Queue.ShatterItem()
+  ui.GetSalvagableItemIDs, ui.GetRecipeSchematic, C_Container, C_Item.GetItemCount = oldS, oldSch, oldC, oldCount
+  return { id = id, bag = bag }
+end)()""")
+check("shatter: finds motes from the recipe's slot when the salvage list is empty (reagent bag too)", sc.id == 602 and sc.bag == 5)
 check("shatter: the advisor counts Shattering Essence before it's cast (as CraftSim), and not twice once it's on",
       sh.shatterModel and not sh.shatter2 and sh.ing1 == sh.ing2 + 5)
 check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
@@ -2203,6 +2216,12 @@ run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")
 check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
+# popped out and closed, the Queue window comes up when Queue all adds orders
+run("""AuctionIQ.Queue.Clear(); AuctionIQ.QueueUI.Show(); AuctionIQ.Window.ToggleQueuePop()
+AuctionIQ.QueueUI.Toggle(); STUB.wasShown = AuctionIQ.QueueUI.IsShown()
+AuctionIQ.ScanUI.allButton.scripts.OnClick()""")
+check("pop-out: Queue all opens the closed Queue window", not L.globals().STUB.wasShown and CH.QueueUI.IsShown() and CH.db.queue[1] is not None)
+run("AuctionIQ.Window.ToggleQueuePop(); AuctionIQ.ScanUI.Open(); AuctionIQ.ScanUI.SetMode(\"orders\"); AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
 nohave = list(CH.Orders.List().values())
 check("orders: each says whether you hold the reagents, and which are missing", not nohave[0].have and len(list(nohave[0].missing.values())) > 0)

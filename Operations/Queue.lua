@@ -329,9 +329,23 @@ function Q.ShatterStats(professionID)
 end
 
 --- What Shatter would use: the cheapest mote you hold. Returns itemID, bag, slot, or nil.
-function Q.ShatterItem()
+--- The items Shatter can take: what the game lists as salvageable for it, and every reagent its
+--- schematic's slots name (where CraftSim reads them; the salvage list can come back empty).
+function Q.ShatterCandidates()
 	local ui = C_TradeSkillUI
-	local ids = ui and ui.GetSalvagableItemIDs and ui.GetSalvagableItemIDs(Q.SHATTER.recipe) or {}
+	local ids, seen = {}, {}
+	local function add(id) if id and not seen[id] then seen[id] = true; ids[#ids + 1] = id end end
+	local ok, list = pcall(function() return ui and ui.GetSalvagableItemIDs and ui.GetSalvagableItemIDs(Q.SHATTER.recipe) end)
+	for _, id in ipairs(ok and list or {}) do add(id) end
+	local ok2, sch = pcall(function() return ui and ui.GetRecipeSchematic and ui.GetRecipeSchematic(Q.SHATTER.recipe, false) end)
+	for _, slot in ipairs(ok2 and sch and sch.reagentSlotSchematics or {}) do
+		for _, r in ipairs(slot.reagents or {}) do add(r.itemID or (r.reagent and r.reagent.itemID)) end
+	end
+	return ids
+end
+
+function Q.ShatterItem()
+	local ids = Q.ShatterCandidates()
 	local best, bestPrice
 	for _, id in ipairs(ids) do
 		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id) or 0
@@ -342,7 +356,9 @@ function Q.ShatterItem()
 	end
 	if not best then return nil end
 	local C = C_Container
-	for bag = 0, (NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
+	-- the four bags and the reagent bag (5), where motes usually sit
+	local last = math.max(NUM_TOTAL_EQUIPPED_BAG_SLOTS or 0, Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or 0, 5)
+	for bag = 0, last do
 		for slot = 1, (C and C.GetContainerNumSlots and C.GetContainerNumSlots(bag) or 0) do
 			if C.GetContainerItemID(bag, slot) == best then return best, bag, slot end
 		end

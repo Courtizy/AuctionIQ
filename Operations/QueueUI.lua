@@ -382,7 +382,9 @@ function QUI.Refresh()
 					CH.Print("can't craft " .. (e.name or "it") .. " yet: " .. T.Color("bad", (now and now.why == "conc") and "not enough Concentration" or "reagents missing") .. ".")
 					return QUI.Refresh()
 				end
-				CH.Queue.Craft(e, gated and step == "Craft" and math.min(e.qty, now.now) or e.qty)
+				local ok, why = CH.Queue.Craft(e, gated and step == "Craft" and math.min(e.qty, now.now) or e.qty)
+				-- say why nothing happened, rather than a click that does nothing
+				if not ok and why then CH.Print("can't " .. step:lower() .. " " .. (e.name or "it") .. ": " .. tostring(why)) end
 			end)
 			r.craft:SetScript("OnEnter", function(self)
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
