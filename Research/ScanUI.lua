@@ -1336,6 +1336,7 @@ function SUI.Draw()
 	local prof = profID and CH.Me().professions[profID]
 	local concNow = prof and CH.ConcentrationNow(prof)
 	local current = s and (s.currentLine or CH.Scan.CurrentLine(s.rows))
+	local t0 = debugprofilestop and debugprofilestop()
 	local groups, order, hidden, count = {}, {}, 0, 0
 	-- each row's numbers are kept until bags, Concentration, the scan or a minute changes them:
 	-- a click on a recipe only moves the highlight, so it shouldn't work out every row again
@@ -1397,6 +1398,7 @@ function SUI.Draw()
 		end
 		for _, r in ipairs(g) do table.insert(data, r) end
 	end
+	if t0 then CH.MeasureAdd("craft redraw: rows" .. (fresh and "" or " (worked out)"), debugprofilestop() - t0) end
 	offset = math.max(0, math.min(offset, #data - N))
 	scrollBar:Set(offset, N, #data)
 	SUI.olderButton:SetText(showOlder and "Older: shown" or "Older: hidden")
@@ -1448,8 +1450,8 @@ function SUI.Draw()
 			end
 		end
 	end
-	renderDetail()
-	renderDetails()
+	CH.Measure("craft redraw: side card", renderDetail)
+	CH.Measure("craft redraw: details", renderDetails)
 	return out
 end
 

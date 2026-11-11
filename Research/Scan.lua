@@ -505,3 +505,24 @@ function Sc.Model(profID, recipeID)
 end
 
 CH.On("TRADE_SKILL_CLOSE", function() wipe(Sc.models) end)
+
+--- /aiq mem: how much AuctionIQ is holding, by kind (counts, to see what grows).
+function CH.MemLines()
+	local out = {}
+	local nm, nf = 0, 0
+	for _, byRecipe in pairs(Sc.models) do
+		for _, m in pairs(byRecipe) do
+			nm = nm + 1
+			nf = nf + (m.frontierCache and m.frontierCache.states and #m.frontierCache.states or 0)
+		end
+	end
+	table.insert(out, string.format("recipe models this session: %d (%d reagent-mix states)", nm, nf))
+	if CH.AdvisorUI and CH.AdvisorUI.KnownCount then table.insert(out, "recipes worked out and kept: " .. CH.AdvisorUI.KnownCount()) end
+	if CH.Ledger and CH.Ledger.ParsedCounts then
+		for _, l in ipairs(CH.Ledger.ParsedCounts()) do table.insert(out, l) end
+	end
+	local scans = 0
+	for _, p in pairs(CH.Me().professions or {}) do scans = scans + (p.scan and p.scan.rows and #p.scan.rows or 0) end
+	table.insert(out, "saved scan rows (this character): " .. scans)
+	return out
+end

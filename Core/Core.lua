@@ -124,6 +124,13 @@ function CH.Measure(name, fn, ...)
 	return a, b, c
 end
 
+--- Add a timing measured by hand (ms) under name, as CH.Measure does.
+function CH.MeasureAdd(name, dt)
+	local p = perf.by[name]
+	if not p then p = { calls = 0, ms = 0, max = 0 }; perf.by[name] = p end
+	p.calls, p.ms, p.max = p.calls + 1, p.ms + dt, math.max(p.max, dt)
+end
+
 local function dispatch(event, ...)
 	for _, fn in ipairs(handlers[event] or {}) do
 		fn(event, ...)
@@ -176,6 +183,17 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
 	if msg == "perf" then
 		for _, l in ipairs(CH.PerfLines()) do CH.Print(l) end
+		return
+	elseif msg == "mem" then
+		-- what AuctionIQ holds once the garbage is cleared, and what it's made of
+		local getMem = (C_AddOns and C_AddOns.GetAddOnMemoryUsage) or GetAddOnMemoryUsage
+		if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+		local before = getMem and getMem(addonName) or 0
+		collectgarbage("collect")
+		if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+		local after = getMem and getMem(addonName) or 0
+		CH.Print(string.format("memory %.1f MB, %.1f MB after clearing garbage", before / 1024, after / 1024))
+		for _, l in ipairs(CH.MemLines and CH.MemLines() or {}) do CH.Print("  " .. l) end
 		return
 	elseif msg == "perf reset" then
 		CH.PerfReset(); CH.Print("perf counters reset.")

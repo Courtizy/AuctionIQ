@@ -1184,6 +1184,8 @@ function AUI.Remember(recipeID, model, result)
 	end
 end
 
+function AUI.KnownCount() local n = 0; for _ in pairs(known) do n = n + 1 end; return n end
+
 local function knownFor(recipeID)
 	local k = known[recipeID]
 	if k and k.gen == knownGen and time() - k.at < AUI.KNOWN_AGE then return k end

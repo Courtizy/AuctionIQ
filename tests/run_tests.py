@@ -2950,6 +2950,9 @@ kn = L.eval("""(function()
   return { reused = reused, after = after, cur = tostring(A.Compute and 1) }
 end)()""")
 check("advisor: a recipe the scan worked out opens without working it out again; a gear change does", kn.reused == 0 and kn.after == 1)
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('mem'); AuctionIQ.Print = STUB.oldPrint")
+mp = [str(t) for t in L.globals().STUB.printed.values()]
+check("/aiq mem: memory after clearing garbage, then what's held", mp[0].startswith("memory ") and any("recipe models" in x for x in mp))
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))

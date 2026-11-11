@@ -78,6 +78,15 @@ local function itemID(s) return tonumber((s or ""):match("^i:(%d+)")) end
 
 local parsed = {} -- [key] = { text, rows }: the text itself, so a changed text is parsed again
 
+--- /aiq mem: each parsed TSM text, its size and rows.
+function Lg.ParsedCounts()
+	local out = {}
+	for key, c in pairs(parsed) do
+		table.insert(out, string.format("TSM %s: %d rows from %.1f MB of text", key:match("csv(%a+)$") or key:match("@(%a+)$") or key, #c.rows, #c.text / 1048576))
+	end
+	return out
+end
+
 --- Rows of the CSV under key, each built by build(field, col) where col maps a header name to its
 --- position: one pass over the text, nothing kept but what build returns.
 local function csv(key, build)
