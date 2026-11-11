@@ -1514,6 +1514,9 @@ check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("A
 run("local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; AuctionIQ.AuctionUI.Refresh()")
 tl = [plain(l[1]) for l in CH.TooltipLines("i:302").values()]
 check("tooltip: shows how AuctionIQ will post it", "Posting" in tl and "  Min / normal / max" in tl)
+bef = L.eval("(function() local be, row = AuctionIQ.BreakEvenFor(302); return { be = be, has = row ~= nil } end)()")
+check("tooltip: a crafted item shows its break-even, each, and the auction side can ask for it",
+      bef.has and bef.be is not None and "Break-even, each" in tl)
 
 run("AuctionIQ.Mail.Route('Crafted', 'Luxaren')")
 check("mail: a group's route reaches its sub-groups", CH.Mail.Destination(302)[0] == "Luxaren" and CH.Mail.Destination(201) is None)

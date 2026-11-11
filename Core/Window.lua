@@ -524,9 +524,12 @@ function W.SidePanel(parent, width, height, opts)
 	det.sub = text(IW, "LEFT", "GameFontDisableSmall", 2)
 	det.subHit = tipHit()
 	det.figures = {}
-	local FW = math.floor(IW / 3)
+	-- the three figures: the middle one (Cost, and how many a craft makes) a little wider
+	local FX = { 0, math.floor(IW * 0.30), math.floor(IW * 0.72) }
+	local FWS = { FX[2], FX[3] - FX[2], IW - FX[3] }
+	det.FX, det.FWS = FX, FWS
 	for k = 1, 3 do
-		local f = { label = text(FW - 4, "LEFT", "GameFontDisableSmall"), value = text(FW - 4, "LEFT", "GameFontHighlightLarge"), hit = tipHit() }
+		local f = { label = text(FWS[k] - 4, "LEFT", "GameFontDisableSmall"), value = text(FWS[k] - 4, "LEFT", "GameFontHighlightLarge"), hit = tipHit() }
 		T.TitleFont(f.label, 9, "bold")
 		T.TitleFont(f.value, 15, "black")
 		det.figures[k] = f
@@ -634,14 +637,14 @@ function W.DrawSidePanel(det, d, said)
 	det.subHit.tip = d.subTip or false
 	det.subHit:SetShown(d.subTip ~= nil and subH > 0)
 	if subH > 0 then y = y - subH - 2 end
-	local FW = math.floor(det.IW / 3)
+	local FX, FWS = det.FX, det.FWS
 	local anyFig = d.figures and d.figures[1]
 	y = y - 2
 	for k, f in ipairs(det.figures) do
 		local x = d.figures and d.figures[k]
-		at(f.label, 12 + (k - 1) * FW, y); at(f.value, 12 + (k - 1) * FW, y - 12)
+		at(f.label, 12 + FX[k], y); at(f.value, 12 + FX[k], y - 12)
 		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
-		f.hit:ClearAllPoints(); f.hit:SetPoint("TOPLEFT", 10 + (k - 1) * FW, y + 2); f.hit:SetSize(FW, 32)
+		f.hit:ClearAllPoints(); f.hit:SetPoint("TOPLEFT", 10 + FX[k], y + 2); f.hit:SetSize(FWS[k], 32)
 		f.hit.tip = x and x.tip or false
 		f.hit:SetShown(x ~= nil and x.tip ~= nil)
 	end

@@ -199,6 +199,7 @@ local function summary(result)
 		-- the decision numbers, kept with the scan: what Concentration adds per point, the break-even price
 		gainPerPoint = c and c.gain and c.gain.perPoint, concGain = c and c.gain and c.gain.gain,
 		breakEven = b and b.breakEven and b.breakEven.price, cushion = b and b.breakEven and b.breakEven.cushion,
+		concBreakEven = c and c.breakEven and c.breakEven.price,
 		-- priced with a reagent you craft: not used to price other crafts, so costs never loop
 		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
