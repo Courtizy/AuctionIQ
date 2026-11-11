@@ -298,7 +298,8 @@ function QUI.Refresh()
 		end
 	end
 	local shop, total = CH.Queue.ShoppingList()
-	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", "  buy for " .. CH.FormatMoney(total) .. ", Shop queue at the AH") or ""))
+	shopHead:SetText(T.Color("accent", "Shopping list") .. (#shop > 0 and T.Color("muted", (total or 0) >= 1
+		and ("  buy for " .. CH.FormatMoney(total) .. ", Shop queue at the AH") or "  nothing to buy: you have it all") or ""))
 	sOffset = math.max(0, math.min(sOffset, #shop - SROWS))
 	sBar:Set(sOffset, SROWS, #shop)
 	if #shop > SROWS then shopHead:SetText(shopHead:GetText() .. CH.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shop, sOffset + SROWS), #shop))) end
