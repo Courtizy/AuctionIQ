@@ -299,8 +299,15 @@ function T.Button(parent, label, w, h)
 	fs:SetPoint("CENTER", 0, 1)
 	fs:SetText(label)
 	b.text = fs
-	b:SetScript("OnEnter", function(self) self:SetBackdropBorderColor(T.accent[1], T.accent[2], T.accent[3], 1); fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end)
-	b:SetScript("OnLeave", function(self) self:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1); fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end)
+	-- hover: the accent border and text; a main action (T.Primary) keeps its dark label on the fill
+	b:SetScript("OnEnter", function(self)
+		self:SetBackdropBorderColor(T.accent[1], T.accent[2], T.accent[3], 1)
+		if not self.aiqPrimary then fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end
+	end)
+	b:SetScript("OnLeave", function(self)
+		self:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1)
+		if self.aiqPrimary then fs:SetTextColor(0.03, 0.03, 0.04) else fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end
+	end)
 	return b
 end
 
@@ -321,15 +328,80 @@ function T.Card(parent, x, y, w, h, accent)
 	return t, a
 end
 
---- The main action of a panel: the button filled with the accent colour (the design's Queue button).
+--- The main action of a panel, as the design draws it: the button filled solid with the accent
+--- colour, its label dark and bold. Hovering brightens it instead of recolouring the label.
 function T.Primary(b)
 	if not b or not b.CreateTexture then return b end
 	local t = type(b.aiqFill) == "table" and b.aiqFill or b:CreateTexture(nil, "BORDER")
 	t:SetPoint("TOPLEFT", 1, -1)
 	t:SetPoint("BOTTOMRIGHT", -1, 1)
-	t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.4)
+	t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.92)
 	b.aiqFill = t
+	b.aiqPrimary = true
+	local fs = b.text or (b.GetFontString and b:GetFontString())
+	if fs and fs.SetTextColor then
+		T.TitleFont(fs, nil, "bold")
+		fs:SetTextColor(0.03, 0.03, 0.04)
+	end
 	return b
+end
+
+--- A card as the design draws it: a dark block (#1a1a1a) with a black 1 px border, behind a table or a
+--- panel's block. Returns the background texture.
+function T.BorderCard(parent, x, y, w, h, layer)
+	local bg = parent:CreateTexture(nil, layer or "BACKGROUND", nil, 1)
+	bg:SetPoint("TOPLEFT", x, y)
+	bg:SetSize(w, h)
+	bg:SetColorTexture(0.102, 0.102, 0.102, 0.94)
+	local edges = {}
+	for k, e in ipairs({ { 0, 0, w, 1 }, { 0, -(h - 1), w, 1 }, { 0, 0, 1, h }, { w - 1, 0, 1, h } }) do
+		local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, 2)
+		t:SetPoint("TOPLEFT", x + e[1], y + e[2])
+		t:SetSize(e[3], e[4])
+		t:SetColorTexture(0, 0, 0, 1)
+		edges[k] = t
+	end
+	bg.edges = edges
+	--- Move and resize the card with its border.
+	function bg.Place(_, nx, ny, nw, nh)
+		bg:ClearAllPoints(); bg:SetPoint("TOPLEFT", nx, ny); bg:SetSize(nw, nh)
+		for k, e in ipairs({ { 0, 0, nw, 1 }, { 0, -(nh - 1), nw, 1 }, { 0, 0, 1, nh }, { nw - 1, 0, 1, nh } }) do
+			edges[k]:ClearAllPoints(); edges[k]:SetPoint("TOPLEFT", nx + e[1], ny + e[2]); edges[k]:SetSize(e[3], e[4])
+		end
+	end
+	function bg.Visible(_, on) bg:SetShown(on); for _, t in ipairs(edges) do t:SetShown(on) end end
+	return bg
+end
+
+--- A tab as the design draws it: bold text, muted until it's the open one, which turns the accent
+--- colour with a 2 px accent line under it. T.SetTab(b, on) switches it.
+function T.Tab(parent, label, w, h)
+	local b = CreateFrame("Button", nil, parent)
+	b:SetSize(w, h or 22)
+	local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	fs:SetPoint("CENTER", 0, 1)
+	fs:SetText(label)
+	T.TitleFont(fs, nil, "bold")
+	b.text = fs
+	local line = b:CreateTexture(nil, "ARTWORK")
+	line:SetPoint("BOTTOMLEFT", 2, 0)
+	line:SetSize(w - 4, 2)
+	line:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+	b.line = line
+	b:SetScript("OnEnter", function(self) if not self.on then fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end end)
+	b:SetScript("OnLeave", function(self) T.SetTab(self, self.on); GameTooltip:Hide() end)
+	T.SetTab(b, false)
+	return b
+end
+function T.SetTab(b, on)
+	if not b then return end
+	b.on = on and true or false
+	local c = on and T.accent or T.muted
+	if b.text and b.text.SetTextColor then b.text:SetTextColor(c[1], c[2], c[3]) end
+	if b.line then
+		b.line:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+		b.line:SetShown(on and true or false)
+	end
 end
 
 -- ElvUI sets its media during its own login; take its colours once everything has loaded.

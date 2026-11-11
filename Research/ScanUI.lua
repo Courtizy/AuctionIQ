@@ -409,8 +409,8 @@ local function build()
 	local vx = -12
 	for k = #VIEWS, 1, -1 do
 		local v = VIEWS[k]
-		local b = T.Button(frame, v[2], v[3], 18)
-		b:SetPoint("TOPRIGHT", vx, -30)
+		local b = T.Tab(frame, v[2], v[3], 20)
+		b:SetPoint("TOPRIGHT", vx, -28)
 		b:SetScript("OnClick", function() SUI.SetView(v[1]) end)
 		b.view = v[1]
 		vx = vx - v[3] - 4
@@ -454,23 +454,33 @@ local function build()
 			heads[m][j] = hb
 		end
 	end
+	-- the table on its own dark card, as the design draws it; each row a hairline under it and the
+	-- selected one an accent bar on its left
+	SUI.tableCard = T.BorderCard(frame, 6, -48, W - 12, N * H + 28)
+	for _, rows in pairs(tables) do
+		for i, r in ipairs(rows) do
+			local ry = -54 - i * H
+			local line = frame:CreateTexture(nil, "BACKGROUND", nil, 3)
+			line:SetPoint("TOPLEFT", 7, ry + 3 - H)
+			line:SetSize(W - 14, 1)
+			line:SetColorTexture(0, 0, 0, 0.6)
+			r.line = line
+			local mark = frame:CreateTexture(nil, "ARTWORK")
+			mark:SetPoint("TOPLEFT", 7, ry + 3)
+			mark:SetSize(2, H)
+			T.AccentTexture(mark)
+			mark:Hide()
+			r.mark = mark
+		end
+	end
 	scrollBar = Wd.ScrollBar(frame, W - 8, -70, N * H)
 	SUI.scrollBar = scrollBar
 	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
 	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
 	-- and the Queue buttons, with a quantity stepper on the card
-	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 52 - 10, { rows = 4, srows = 5, buttons = 2, onAction = function(self) self.run() end })
-	detail:SetPoint("TOPLEFT", W - SIDE - 6, -52)
-	local function stepper(label, x, d)
-		local b = T.Button(detail, label, 20, 18)
-		b:SetPoint("TOPRIGHT", x, -6)
-		b:SetScript("OnClick", function() SUI.SetQty(qty + (IsShiftKeyDown and IsShiftKeyDown() and d * 10 or d)) end)
-		b:SetScript("OnEnter", function(self) Wd.Tooltip(self, { { "How many to queue" }, { T.Color("muted", "Shift-click for 10 at a time.") } }) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		return b
-	end
-	stepper("+", -8, 1)
-	stepper("-", -32, -1)
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 48 - 10, { rows = 4, srows = 5, buttons = 2,
+		onAction = function(self) self.run() end, stepper = function(d) SUI.SetQty(qty + d) end })
+	detail:SetPoint("TOPLEFT", W - SIDE - 6, -48)
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
@@ -496,6 +506,7 @@ local function showTable()
 			hb:SetShown(on)
 			local sorted = on and SORT[m].key == hb.key
 			local label = m == "orders" and hb.key == "concentration" and CH.Window.ConcIcon(14) or hb.label
+			label = label:find("|T") and label or label:upper()
 			hb.text:SetText(not on and "" or sorted and T.Color("accent", label .. (SORT[m].asc and " ^" or " v")) or label)
 		end
 	end
@@ -509,10 +520,21 @@ local function showTable()
 		if b and b.SetAlpha then b:SetAlpha(mode == m and 1 or 0.65) end
 	end
 	for _, b in ipairs(SUI.viewButtons or {}) do
-		if b.SetAlpha then b:SetAlpha(mode == "recipes" and view == b.view and 1 or 0.65) end
+		T.SetTab(b, mode == "recipes" and view == b.view)
 	end
 	if detail then detail:SetShown(mode == "recipes") end
 	if scrollBar and scrollBar.SetX then scrollBar:SetX(mode == "recipes" and TWR + 4 or W - 8) end
+	if SUI.tableCard then SUI.tableCard:Place(6, -48, (mode == "recipes" and TWR + 10 or W - 12), N * H + 28) end
+	for m, rows in pairs(tables) do
+		local on = m == listKey()
+		for _, r in ipairs(rows) do
+			if r.line then
+				r.line:SetShown(on)
+				r.line:SetWidth((mode == "recipes" and TWR + 8 or W - 14))
+			end
+			if r.mark then r.mark:Hide() end
+		end
+	end
 	return tables[listKey()]
 end
 
@@ -865,7 +887,7 @@ function SUI.RecipePanel(r, n)
 	local actions = { act(false) }
 	if r.concProfit then actions[2] = act(true) end
 	local made = r.made and r.made ~= 1 and string.format("  ·  makes %.1f", r.made) or ""
-	return { kicker = "NEXT MOVE", title = string.format("Craft %d x %s", n, r.name or "?"),
+	return { kicker = "CRAFT OR SELL?", title = string.format("Craft %d x %s", n, r.name or "?"),
 		sub = CH.Window.QualityIcon(r.quality or r.concQuality, 14, r.tiers) .. T.Color("muted", made .. (r.canMake and string.format("  ·  can make %d", r.canMake) or "")),
 		figures = figures, rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = srows }, note = note, actions = actions }
 end
@@ -876,7 +898,7 @@ local function renderDetail()
 	local T = CH.Theme
 	local d = SUI.RecipePanel(selectedRow())
 	if not d then
-		d = { kicker = "NEXT MOVE", title = T.Color("muted", "Pick a recipe"),
+		d = { kicker = "CRAFT OR SELL?", title = T.Color("muted", "Pick a recipe"),
 			note = T.Color("muted", "Click a recipe to see what it makes, what its reagents cost you, and whether to craft or sell them.") }
 	end
 	CH.Window.DrawSidePanel(detail, d)
@@ -955,7 +977,9 @@ function SUI.Refresh()
 	local out = {}
 	for i, r in ipairs(rows) do
 		local d = data[i + offset]
-		r.bg:SetShown(d ~= nil and not d.header and d.recipeID == selected)
+		local sel = d ~= nil and not d.header and d.recipeID == selected
+		r.bg:SetShown(sel)
+		if r.mark then r.mark:SetShown(sel) end
 		if d and d.header then
 			r.cells[1]:SetText(T.Color(d.current and "accent" or "muted", d.expansion))
 			r.cells[2]:SetText(T.Color("muted", string.format(d.current and "current, %d" or "older, %d", d.n)))

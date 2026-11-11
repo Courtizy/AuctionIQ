@@ -214,11 +214,10 @@ local function build()
 
 	-- Tabs for the area under the rows: the notes, the break-even chart or a batch analysis
 	local function paneTab(label, w, x, key, tip)
-		local b = T.Button(panel, label, w, 18)
+		local b = T.Tab(panel, label, w, 20)
 		b:SetPoint("TOPLEFT", x, ay - 26)
 		b:SetScript("OnClick", function() AUI.SetPane(key) end)
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		b:SetScript("OnEnter", function(self) if not self.on then self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end; CH.Window.Tooltip(self, tip) end)
 		return b
 	end
 	panel.notesBtn = paneTab("Notes", 60, 6, "notes", { { "Notes" },
@@ -666,10 +665,7 @@ function AUI.RenderPane()
 	local chart, T = panel.chart, CH.Theme
 	local function setOn(b, on)
 		if not b then return end
-		if b.SetAlpha then b:SetAlpha(on and 1 or 0.6) end
-		if on then T.Primary(b) end
-		if type(b.aiqFill) == "table" then if on then b.aiqFill:Show() else b.aiqFill:Hide() end end
-		b.on = on
+		T.SetTab(b, on)
 	end
 	setOn(panel.notesBtn, pane == "notes"); setOn(panel.chartBtn, pane == "chart"); setOn(panel.batchBtn, pane == "batch")
 	local lines = {}

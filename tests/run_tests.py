@@ -1236,8 +1236,8 @@ check("scan list at live prices: the columns match the hovers, the saved scan st
       abs(lv.cost - 3 * 20000 * CH.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
       and lv.profit < 0 and lv.sell and lv.perDay == 0)
 rp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
-check("scan side panel: Next Move with profit, reagents and craft or sell, the reagents each with a hover, and Queue n",
-      rp is not None and plain(rp.kicker) == "NEXT MOVE" and plain(rp.title) == "Craft 3 x x" and plain(rp.figures[1][1]) == "PROFIT"
+check("scan side panel: craft or sell with profit, reagents and craft or sell, the reagents each with a hover, and Queue n",
+      rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "Craft 3 x x" and plain(rp.figures[1][1]) == "PROFIT"
       and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
       and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
