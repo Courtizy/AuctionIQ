@@ -695,27 +695,6 @@ function Lg.DeadStock(now, days, char)
 	return out
 end
 
---- Your stock against what you paid: { id, held, paid (each), now (each), gain, pct, daysOfStock }.
-function Lg.Holdings(now, char)
-	now = now or time()
-	local paid = Lg.Paid()
-	local sold30 = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.id and s.time >= now - 30 * DAY then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
-	end
-	local out = {}
-	for _, e in ipairs(Lg.Inventory(nil, char)) do
-		local p = e.id and paid[e.id]
-		if p and e.unit then
-			local gain = (e.unit - p.each) * e.total
-			local perDay = (sold30[e.id] or 0) / 30
-			table.insert(out, { id = e.id, held = e.total, paid = p.each, now = e.unit, gain = gain,
-				pct = p.each > 0 and (e.unit - p.each) / p.each or 0, daysOfStock = perDay > 0 and e.total / perDay or nil })
-		end
-	end
-	return out
-end
-
 --- Overhead since a time: TSM's other expenses (repairs, postage and so on, not transfers between
 --- your characters) by type, plus totals to set against trading. { types = { type, n, gold }, total,
 --- sales (after cut), buys, profit, afterOverhead }.

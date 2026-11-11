@@ -634,8 +634,8 @@ if LUI and LUI.Register then
 	LUI.Register("ledger", P.VIEWS, {})
 	for _, k in ipairs({ "overview", "performance", "batches", "perf", "results", "drivers", "capital", "crafting" }) do
 		local d = LUI.ViewDef(k)
-		if d then d.parent, d.section = "Reports", d.section or "ledger" end
+		if d then d.parent, d.section = "Statements", d.section or "ledger" end
 	end
-	LUI.AddNav("ledger", "Reports", "overview")
-	LUI.Order("ledger", { "Reports", "Revenue", "Expenses", "Inventory", "Profit" })
+	LUI.AddNav("ledger", "Statements", "overview")
+	LUI.Order("ledger", { "Statements", "Ledger" })
 end

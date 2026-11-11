@@ -454,6 +454,7 @@ St.VIEWS = {
 }
 
 if LUI and LUI.Register then
-	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow" }, "Reports")
-	LUI.Order("ledger", { "Reports", "Revenue", "Expenses", "Inventory", "Profit" })
+	LUI.Register("ledger", St.VIEWS, {})
+	for i, k in ipairs({ "statement", "balance", "cashflow" }) do LUI.AddNavAt("ledger", "Statements", k, i) end
+	LUI.Order("ledger", { "Statements", "Ledger" })
 end
