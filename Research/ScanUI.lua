@@ -752,6 +752,9 @@ CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 end)
 -- the button moves on (Craft, Turn in) as the game updates the claimed order
 CH.On("CRAFTINGORDERS_CLAIMED_ORDER_UPDATED", function() redraw() end)
+-- released (Cancel Order) or timed out: back to Claim, and the other orders can be claimed again
+CH.On("CRAFTINGORDERS_RELEASE_ORDER_RESPONSE", function() redraw(); SUI.UpdateNext() end)
+CH.On("CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", function() redraw(); SUI.UpdateNext() end)
 -- and to Craft once Shatter's buff lands
 local hadShatter
 CH.On("UNIT_AURA", function(_, unit)
@@ -915,11 +918,10 @@ function SUI.RecipePanel(r, n, v)
 	end
 	local figures = { figure("PROFIT", profit or r.profit, book, (profit or r.profit or 0) >= 0 and "ok" or "bad"),
 		figure("REAGENTS", rcost, rbook),
-		cs and { cs.verdict == "even" and "ABOUT EVEN" or cs.gain >= 0 and "CRAFT WINS BY" or "SELL WINS BY",
-			T.Color(cs.verdict == "even" and "fg" or cs.gain >= 0 and "ok" or "bad", M(math.abs(cs.gain))), tip = csTip }
-			or { "CRAFT OR SELL", T.Color("muted", "none held"), tip = csTip } }
+		-- craft or sell is the sentence above: its numbers are on that sentence's hover
+		{ "MARGIN", r.pct and T.Color(r.pct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(r.pct * 100 + 0.5))) or T.Color("muted", "-"),
+			tip = { { "Margin" }, { T.Color("muted", "Profit as a share of what the crafts sell for, after the cut.") } } } }
 	local rows = {
-		{ "Margin", r.pct and string.format("%d%%", math.floor(r.pct * 100 + 0.5)) or T.Color("muted", "-") },
 		{ "Can make now", r.canMake and tostring(r.canMake) or T.Color("muted", "-") },
 		{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") },
 		{ "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-") } }
@@ -943,7 +945,7 @@ function SUI.RecipePanel(r, n, v)
 			off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil,
 			run = function() return SUI.QueueSelected(conc, n, r) end }
 	end
-	return { kicker = "CRAFT OR SELL?", title = r.name or "?", sub = verdict,
+	return { kicker = "CRAFT OR SELL?", title = r.name or "?", sub = verdict, subTip = csTip,
 		figures = figures, bar = cs and math.max(0, math.min(1, cs.craft / math.max(1, cs.craft + cs.sell))) or nil,
 		rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = srows },
 		note = T.Color("muted", HELD_NOTE), actions = { act(false) }, act = act }

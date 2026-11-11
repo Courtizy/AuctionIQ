@@ -1240,6 +1240,9 @@ check("scan side panel: craft or sell with profit and reagents, the reagents eac
       rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "x" and plain(rp.figures[1][1]) == "PROFIT"
       and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
       and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
+check("scan side card: figures are profit, reagents and margin; craft or sell's numbers hover on its sentence",
+      [plain(f[1]) for f in rp.figures.values()] == ["PROFIT", "REAGENTS", "MARGIN"] and plain(rp.figures[3][2]) == "50%" and rp.subTip is not None
+      and not any(plain(r[1]) == "Margin" for r in rp.rows.values()))
 rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
       plain(rq.actions[1].label) == "Queue 20 · 8 craftable now" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
@@ -2087,6 +2090,11 @@ check("orders: a refused turn-in leaves the order queued with Turn in to try aga
       L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil") and CH.ScanUI.ClaimState(by[77]) == "turnin")
 run('STUB.fulfilled = nil'); CH.ScanUI.Claim(by[77]); run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
 check("orders: once the game takes it, it leaves the queue", L.eval("STUB.fulfilled") == 77 and L.eval("AuctionIQ.Queue.ForOrder(77) == nil"))
+rel = L.eval("""(function() local Q = AuctionIQ.Queue
+  local e = Q.AddEntry({ char = 'Me-Realm', recipeID = 10, orderID = '88', reagents = {}, shop = {}, stage = 'claimed' }, 1)
+  STUB.Fire('CRAFTINGORDERS_RELEASE_ORDER_RESPONSE', 0, 88)
+  local s = Q.OrderStep(e); Q.Remove(e); return s end)()""")
+check("orders: releasing a claimed order (Cancel Order) puts it back to Claim", rel == "Claim")
 run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")

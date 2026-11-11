@@ -707,6 +707,22 @@ CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
 	end
 end)
 
+-- Released (Cancel Order on the game's page) or timed out: the order goes back to Claim.
+local function released(orderID)
+	local co = C_CraftingOrders
+	local now = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	for _, e in ipairs(list()) do
+		if e.orderID and e.stage and (orderID == nil and not (now and CH.Orders.Same(now.orderID, e.orderID))
+			or orderID ~= nil and CH.Orders.Same(e.orderID, orderID)) then
+			e.stage, e.confirmed = nil, nil
+			setPending(e, nil)
+		end
+	end
+	Q.Changed()
+end
+CH.On("CRAFTINGORDERS_RELEASE_ORDER_RESPONSE", function(_, result, orderID) if okResult(result) then released(orderID) end end)
+CH.On("CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", function() released(nil) end)
+
 -- Is a reagent slot required (a basic reagent) or optional (finishing, optional)?
 local function slotRequired(sl)
 	if sl.required ~= nil then return sl.required end

@@ -516,6 +516,7 @@ function W.SidePanel(parent, width, height, opts)
 	det.title = text(IW, "LEFT", "GameFontNormalLarge", 2)
 	T.TitleFont(det.title, 15, "black")
 	det.sub = text(IW, "LEFT", "GameFontDisableSmall", 2)
+	det.subHit = tipHit()
 	det.figures = {}
 	local FW = math.floor(IW / 3)
 	for k = 1, 3 do
@@ -609,7 +610,11 @@ function W.DrawSidePanel(det, d, said)
 	y = y - height(det.title, 17) - 2
 	at(det.sub, 12, y)
 	det.sub:SetText(d.sub or "")
-	if d.sub and d.sub ~= "" then y = y - height(det.sub, 12) - 2 end
+	local subH = (d.sub and d.sub ~= "") and height(det.sub, 12) or 0
+	det.subHit:ClearAllPoints(); det.subHit:SetPoint("TOPLEFT", 10, y + 2); det.subHit:SetSize(det.IW, subH + 2)
+	det.subHit.tip = d.subTip or false
+	det.subHit:SetShown(d.subTip ~= nil and subH > 0)
+	if subH > 0 then y = y - subH - 2 end
 	local FW = math.floor(det.IW / 3)
 	local anyFig = d.figures and d.figures[1]
 	y = y - 2
