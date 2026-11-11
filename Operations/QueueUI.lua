@@ -156,7 +156,7 @@ local function build()
 			and "Take the queue out of the tabs so it sits beside the Craft window." or "Put the queue back in the tabs, behind the Craft window.") } }
 	end, function() CH.Window.ToggleQueuePop(); updatePop() end)
 	-- a status line under the bar, as the Craft window's
-	panel.status = Wd.OneLine(text(panel, 12, -32, W - 24, "LEFT"))
+	panel.status = Wd.OneLine(text(panel, 12, -31, W - 24, "LEFT"))
 
 	-- the queue, on its card
 	T.BorderCard(panel, 6, QY, W - 12, QH)

@@ -423,7 +423,7 @@ local function build()
 	SUI.nextButton = barButton("Claim next", 100, function() SUI.Next() end)
 	SUI.nextButton:SetScript("OnEnter", function(self) Wd.Tooltip(self, SUI.NextLines()) end)
 	SUI.nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	status = Wd.Text(frame, 12, -34, W - 24)
+	status = Wd.Text(frame, 12, -31, W - 24) -- centred between the title bar and the table card
 	-- the Recipes views, at the right of the status line
 	SUI.viewButtons = {}
 	local vx = -12
