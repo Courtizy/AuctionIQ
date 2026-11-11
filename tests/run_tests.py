@@ -68,9 +68,6 @@ run('STUB.now = STUB.now + 24 * 3600')  # a day later
 check("Concentration refills about 250 a day", CH.ConcentrationNow(p)[0] == 650)
 run('STUB.now = STUB.now + 48 * 3600')  # two more days
 check("Concentration stops at its cap", CH.ConcentrationNow(p)[0] == 1000)
-text = letters(CH.UI.BriefingText())
-check("briefing lists gold, Concentration and the best craft",
-      "123g" in text and "Midnight Enchanting  1000 / 1000" in re.sub(r"\|c\w{8}|\|r", "", text) and "Phoenix Oil" in text and "FULL" in text)
 
 run('SlashCmdList.AUCTIONIQ("")')
 check("/ch opens the window", CH.UI.IsShown())
@@ -259,8 +256,8 @@ en = L.eval("""(function()
   ItemLocation = { CreateFromBagAndSlot = function(_, bag, slot) return { bag = bag, slot = slot } end }
   ui.CraftEnchant = function(id, n, reagents, target, conc) r.enchant = { id = id, n = n, bag = target.bag, slot = target.slot, k = #reagents } end
   ui.CraftRecipe = function() r.recipe = true end
-  local e = AuctionIQ.Queue.AddEntry({ char = AuctionIQ.Me().key or 'Me-Realm', recipeID = 10, name = 'Test Enchant', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = {} }, 1)
-  r.ok = AuctionIQ.Queue.Craft(e, 1)
+  local e = AuctionIQ.Queue.AddEntry({ char = AuctionIQ.CharacterKey(), recipeID = 10, name = 'Test Enchant', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = {} }, 1)
+  r.ok, r.why = AuctionIQ.Queue.Craft(e, 1)
   AuctionIQ.Queue.Clear()
   ui.GetRecipeInfo, ui.GetRecipeOutputItemData, C_Container, ui.CraftRecipe, ui.CraftEnchant, ItemLocation = oldInfo, oldOut, oldC, oldCR, nil, loc0
   return r
@@ -823,7 +820,6 @@ check("scan: back to the Craft view", any(x.startswith("Test Potion profit=") fo
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 cd = list(CH.Cooldowns.All().values())
 check("cooldowns recorded and listed", len(cd) == 1 and cd[0].name == "Phoenix Oil" and cd[0].ready == False)
-check("briefing shows cooldowns", "Cooldowns" in plain(CH.UI.BriefingText()))
 
 # Craft results log
 CH.AdvisorUI.Show(10)
@@ -1172,8 +1168,6 @@ check("net worth change counts gold and inventory", LG.WorthChange(L.eval("STUB.
 rep = LG.Report()
 check("morning report: last day's sales and what came back", rep.sold == 2 and rep.earned == 5700000 and rep.bought == 10
       and list(rep.expired.values())[0].id == 302 and len(list(rep.restock.values())) == 0)
-bt = plain(CH.UI.BriefingText())
-check("briefing opens with the last 24 hours", bt.startswith("Last 24 hours") and "Came back unsold" in bt and "repost it" in bt)
 pl = {e.id: e for e in LG.ProductPL(-1e12).values()}
 check("product P&L: crafted sales after cut less cost at what you paid", 302 in pl and pl[302].sold == 2
       and abs(pl[302].revenue - 6000000 * 0.95) < 1 and abs(pl[302].profit - (pl[302].revenue - pl[302].cost)) < 1
@@ -1283,7 +1277,6 @@ par = {e.id: e for e in CH.Par.List().values()}
 check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
 check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 2)
 run("AuctionIQ.Par.Set(302, 6); AuctionIQ.Par.Refresh()")
-check("briefing lists what's below par", "Below stock target" in plain(CH.UI.BriefingText()))
 rows, foot = CH.LedgerUI.Rows("par", L.eval("{ }"))
 check("par view rows", len(list(rows.values())) == 2 and plain(foot).startswith("1 items below stock target"))
 run("AuctionIQ.Par.Set(302, nil); AuctionIQ.Par.Refresh()")
@@ -1782,12 +1775,8 @@ tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
 check("gold per hour: two windows open together count the time once", abs(tm.hours - 1.0) < 1e-9 and abs(tm.kinds["Crafting"] - 0.5) < 1e-9)
 run("AuctionIQ.UI.Page('operations', 'professions')")
 check("plan page draws", CH.UI.IsShown() and len(list(CH.PlanUI.Refresh().values())) == 1)
-n7 = CH.ReportUI.Numbers(7)
-check("report: 7 days of sales after cut, purchases, overhead", abs(n7.sales - 7000000 * 0.95) < 1 and n7.buys == 1000000 and n7.overhead == 20000)
-run("AuctionIQ.UI.Page('ledger', 'report')")
-check("briefing opens with the books", len(list(CH.ReportUI.Refresh().values())) == 5)
-csvtext, nrows = CH.ReportUI.CSV("sales", L.eval("{ }"))
-run("AuctionIQ.ReportUI.Export('sales', { days = 30 })")
+csvtext, nrows = CH.Export.CSV("sales", L.eval("{ }"))
+run("AuctionIQ.Export.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
 run("AuctionIQ.UI.Page('ledger')")
 check("theme: the Accounting tab uses the same palette as the rest", L.eval("AuctionIQ.Theme.palette == 'auctioniq'"))
@@ -1825,8 +1814,6 @@ rows, foot = LU.Rows("expense", L.eval("{ }"))
 check("ledger other expenses: repairs count", "Total: 2g" in plain(foot))
 rows, foot = LU.Rows("expired", L.eval("{ }"))
 check("ledger failed auctions", len(list(rows.values())) == 1 and plain(foot).startswith("1 items expired") and "deposits lost" in plain(foot))
-rows, foot = LU.Rows("resale", L.eval("{ }"))
-check("ledger resale: only items both bought and sold", len(list(rows.values())) == 0 and "0 items resold" in plain(foot))
 inv = list(LU.Rows("inventory", L.eval("{ char = 'Courtizy' }"))[0].values())
 check("ledger inventory: one character leaves out the others and the warband", len(inv) == 1 and inv[0].cells[2] == 3)
 run("AuctionIQ.UI.Page('ledger')")
@@ -1853,8 +1840,6 @@ check("ledger and briefing pages draw", CH.UI.IsShown())
 
 # Three tabs: each view opens in the tab it belongs to, and old tab names are gone
 LUI = CH.LedgerUI
-run("AuctionIQ.UI.Page('ledger', 'report')")
-check("report opens inside the Accounting tab", LUI.Section() == "ledger" and LUI.View() == "report" and CH.Theme.palette == "auctioniq")
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 check("Performance opens in Accounting, Reports", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Reports")
 run("AuctionIQ.UI.Page('ledger', 'dead')")
@@ -1865,6 +1850,8 @@ for view, (sec, group) in {"results": ("ledger", "Reports"), "scenarios": ("oper
     check(f"view {view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and CH.UI.IsShown())
 check("old tab names (research, markets, analytics) no longer open anything",
       not CH.UI.Go("research") and not CH.UI.Go("markets") and not CH.UI.Go("analytics"))
+check("retired views are gone: Resale, Report and Gold per hour",
+      CH.LedgerUI.ViewDef("resale") is None and CH.LedgerUI.ViewDef("report") is None and CH.LedgerUI.ViewDef("time") is None)
 # Dashboard figures: queued crafts split into ready, short of reagents, and on other characters
 run("""STUB.oldQueue = AuctionIQ.db.queue
 AuctionIQ.db.queue = { { char = AuctionIQ.CharacterKey(), name = 'A', qty = 3, shop = {} },
@@ -2046,8 +2033,6 @@ crow = [r for r in L.eval("(AuctionIQ.LedgerUI.Rows('compare', {}))").values() i
 check("compare view lists the item with each source", len(crow) == 1 and "2 days" in plain(crow[0].cells[3]) and plain(crow[0].cells[8]) == cr.verdict)
 check("compare: median of an even list", CH.Compare.Median(L.eval("{ 4, 1, 3, 2 }")) == 2.5)
 run("OEMarketInfo = nil; AuctionIQ.db.scans = {}; AuctionIQ.Prices.ClearCache()")
-tfoot = L.eval("select(2, AuctionIQ.LedgerUI.Rows('time', { days = 30 }))")
-check("gold per hour moved to analytics", "hours" in plain(tfoot))
 run("AuctionIQ.UI.Page('ledger')")
 check("Accounting remembers its last view", LUI.Section() == "ledger" and LUI.View() == "perf")
 run("AuctionIQ.UI.Page('settings', 'groups')"); run("AuctionIQ.UI.Page('operations', 'professions')"); run("AuctionIQ.UI.Page('today')")
@@ -2109,7 +2094,6 @@ run("AuctionIQ.UI.Page('today')")
 d = L.eval("AuctionIQ.UI and nil")
 run("AuctionIQ.Queue.Clear(); AuctionIQ.db.characters['Alt-Realm'] = nil; AuctionIQ.ConcentrationNow = STUB.oldConcNow")
 check("crafting tab text has Concentration and best crafts", "Concentration" in plain(CH.UI.CraftingText()) and "Best crafts" in plain(CH.UI.CraftingText()))
-check("the report still has everything", "Best crafts" in plain(CH.UI.BriefingText()) and "Gold" in plain(CH.UI.BriefingText()))
 
 # recipe scan: how many you can make now, with finishing reagents and Concentration
 run("STUB.bags[901] = 10; STUB.bags[902] = 3; STUB.bags[903] = 1")
@@ -2584,7 +2568,7 @@ run("AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.Ad
 check("layout: the advisor's batch pane is showing a suggestion", plain(L.eval("AuctionIQ.AdvisorUI.PaneTitle()")).startswith(("Make ", "Don't craft", "No sale rate")))
 audit("advisor batch pane")
 run("AuctionIQ.AdvisorUI.SetPane('notes')")
-for v in ["compare", "inventory", "sales", "income", "resale", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "time", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
+for v in ["compare", "inventory", "sales", "income", "purchases", "expense", "expired", "cancelled", "pl", "holdings", "overhead", "market", "rivals", "when", "par", "dead", "perf", "results", "post", "performance", "batches", "drivers", "capital", "crafting", "scenarios", "queue", "shopping", "restock", "professions", "paths", "work", "plans", "overview", "statement", "balance", "cashflow", "ready"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",

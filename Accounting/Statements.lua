@@ -345,7 +345,7 @@ local function incomeRows(ctx)
 		{ "Cost of goods sold", kind = "head" },
 		{ "Crafted items", -s.cogs.crafted, kind = "line", go = { "ledger", "pl" },
 			tip = "What the crafts you sold cost to make: their reagents at what you paid in the 30 days before each sale (today's price for any you never bought), after Resourcefulness and Multicraft." },
-		{ "Resold items", -s.cogs.bought, kind = "line", go = { "ledger", "resale" }, tip = "What you paid for the items you bought and sold again." },
+		{ "Resold items", -s.cogs.bought, kind = "line", go = { "ledger", "purchases" }, tip = "What you paid for the items you bought and sold again." },
 		{ string.format("Gathered and looted (%d sold, no cost)", s.cogs.freeUnits), 0, kind = "line",
 			tip = "Items you sold that cost you nothing you recorded: gathered, looted or rewards. Their sales are all profit." },
 		{ s.cogs.backedShare and string.format("Backed by your purchase records: %d%% of that cost", math.floor(s.cogs.backedShare * 100 + 0.5)) or "No cost of goods sold yet",

@@ -51,7 +51,7 @@ Core\SettingsUI.lua
 Core\Alerts.lua
 Operations\Craft\Planner.lua
 Operations\Craft\PlanUI.lua
-Accounting\ReportUI.lua
+Accounting\Export.lua
 Dashboard\Next.lua
 Core\UI.lua
 Core\Minimap.lua

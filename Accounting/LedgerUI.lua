@@ -1,5 +1,5 @@
 -- Ledger page of the main window, like TSM's, with sub-tabs: Overview (Report, Inventory); Revenue
--- (Sales, Other, Resale); Expenses (Purchases, Other, Expired, Cancelled); Profit (Product P&L,
+-- (Sales, Other); Expenses (Purchases, Other, Expired, Cancelled); Profit (Product P&L,
 -- Holdings, Overhead); Performance (Core/Views.lua: where forecasts missed). Filter by name, character and
 -- time frame, sort by any column, hover an item for its tooltip. Data comes from CH.Ledger, which
 -- reads TSM's saved accounting and never writes to it.
@@ -44,8 +44,6 @@ local VIEWS = {
 		{ "Worth each", 302, 78 }, { "Value", 384, 90 }, { "Unrealized", 478, 84 }, { "Last sold", 566, 70 }, { "Days of stock", 640, 84 } } },
 	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
 	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
-	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
-		{ "Sold", 358, 56 }, { "Avg sell", 418, 90 }, { "Avg profit", 512, 100 }, { "Total profit", 616, 108 } } },
 	purchases = { label = "Purchases", parent = "Expenses", sort = 7, asc = true, cols = ITEM_TIME },
 	expense = { label = "Other", parent = "Expenses", sort = 5, asc = true, cols = OTHER },
 	expired = { label = "Expired", parent = "Expenses", sort = 5, asc = true,
@@ -64,9 +62,6 @@ local VIEWS = {
 		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
 	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
 		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	-- the old weekly briefing: off the nav (the statements replace it), still opened by /aiq report
-	report = { label = "Report", page = "briefing", cols = {} },
-	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Two tabs share this table page, each with sub-tabs across the top and their views in the left
 -- nav: Operations (Professions, Markets, Queue, Stock: what to craft, buy or post) and Accounting
@@ -74,7 +69,7 @@ local VIEWS = {
 -- Other modules fill theirs in with LUI.Register; LUI.Order sets the sub-tabs' order.
 local SECTIONS = {
 	ledger = { tabbed = true,
-		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
+		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true },
 		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
 		{ "expired", sub = true }, { "cancelled", sub = true },
 		{ "Inventory", "inventory" }, { "inventory", sub = true },
@@ -339,33 +334,6 @@ function LUI.Rows(v, opts)
 		return out, foot
 	end
 
-	if v == "resale" then
-		local items = {}
-		local function add(r, buy)
-			if not keepRec(r) or not r.id then return end
-			local e = items[r.id] or { bq = 0, bg = 0, sq = 0, sg = 0 }
-			items[r.id] = e
-			if buy then e.bq, e.bg = e.bq + r.quantity, e.bg + r.amount else e.sq, e.sg = e.sq + r.quantity, e.sg + r.amount end
-		end
-		for _, r in ipairs(L.Records("Buys")) do add(r, true) end
-		for _, r in ipairs(L.Records("Sales")) do add(r, false) end
-		local n, total = 0, 0
-		for id, e in pairs(items) do
-			if e.bq > 0 and e.sq > 0 then
-				local text, name = LUI.ItemText(id)
-				if keepName(name) then
-					local ab, as = e.bg / e.bq, e.sg / e.sq
-					local each = as - ab
-					local units = math.min(e.bq, e.sq)
-					n, total = n + units, total + each * units
-					table.insert(out, { id = id, cells = { text, e.bq, money(ab), e.sq, money(as), signed(each), signed(each * units) },
-						sort = { name, e.bq, ab, e.sq, as, each, each * units } })
-				end
-			end
-		end
-		return out, string.format("%d items resold   Total profit: %s", n, signed(total))
-	end
-
 	if v == "pl" then
 		local rows = L.ProductPL(since, opts.char)
 		local rev, prof, lines = 0, 0, {}
@@ -467,18 +435,6 @@ function LUI.Rows(v, opts)
 		return out, string.format("Trading profit %s, overhead %s, after overhead %s", signed(o.profit), money(-o.total), signed(o.afterOverhead))
 	end
 
-	if v == "time" then
-		local x = CH.Planner.Time(opts.days and since or (now - 30 * 86400))
-		for k, h in pairs(x.kinds) do
-			if keepName(k) then
-				table.insert(out, { cells = { k, string.format("%.1f", h), x.hours > 0 and string.format("%d%%", math.floor(h / x.hours * 100 + 0.5)) or "" },
-					sort = { k, h, h } })
-			end
-		end
-		return out, string.format("%.1f hours", x.hours) .. (x.profit and ("   profit after overhead " .. signed(x.profit)) or "")
-			.. (x.perHour and ("   " .. signed(math.floor(x.perHour)) .. " an hour") or "")
-			.. CH.Theme.Color("muted", "   time counts while the AH, mailbox or a profession is open")
-	end
 
 	-- expired / cancelled
 	-- TSM doesn't record the deposit, so it's estimated from the vendor price and the item's duration
@@ -668,7 +624,7 @@ function LUI.Build(p, fs, panel)
 
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
-	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
+	p.exportButton:SetScript("OnClick", function() CH.Export.Export(view, { filter = filter, char = char, days = days }) end)
 	-- a view's own action in Export's place (Compare crafts: scan your professions)
 	p.actionButton = T.Button(body, "", 70, 20)
 	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
@@ -1006,7 +962,7 @@ function LUI.Set(opts)
 		LUI.quietUntil = (GetTime and GetTime() or 0) + 1.5
 		if opts.filter == nil then opts.filter = focus.name or "" end
 	end
-	if opts.view then
+	if opts.view and VIEWS[opts.view] then
 		section = LUI.SectionOf(opts.view) or section
 		view = opts.view; lastView[section] = view
 		if VIEWS[view].parent then lastIn[VIEWS[view].parent] = view end
