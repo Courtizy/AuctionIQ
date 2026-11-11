@@ -1216,7 +1216,7 @@ cbl = [plain(l[1]).strip() for l in rb.book.values()]
 check("scan profit hover: revenue, costs, profit, then craft or sell", cbl[0] == "Revenue" and "Costs" in cbl and "Profit" in cbl
       and cbl.index("Profit") < cbl.index("Craft or sell?") and abs(rb.profit - (50000 - rb.total)) < 1)
 run("AuctionIQ.Prices.CostBasis('held')")
-rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
+rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3, "craft")
 check("scan: the Reagents column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
       and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
 lv = L.eval("""(function()
@@ -1235,6 +1235,11 @@ lv = L.eval("""(function()
 check("scan list at live prices: the columns match the hovers, the saved scan stays as scanned",
       abs(lv.cost - 3 * 20000 * CH.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
       and lv.profit < 0 and lv.sell and lv.perDay == 0)
+rp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
+check("scan side panel: Next Move with profit, reagents and craft or sell, the reagents each with a hover, and Queue n",
+      rp is not None and plain(rp.kicker) == "NEXT MOVE" and plain(rp.title) == "Craft 3 x x" and plain(rp.figures[1][1]) == "PROFIT"
+      and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
+      and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")

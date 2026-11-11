@@ -474,3 +474,144 @@ end
 W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
 W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
 W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
+
+--- A side panel beside a table, in the ToxiUI look (the Craft page's Next Move panel): a kicker, a
+--- headline, a sub line and three figures on a dark card with the accent line, label and value rows,
+--- a section of rows on its own card (each explains itself on hover), a note, a said line and
+--- buttons from the bottom up (the first, the main one, filled with the accent and lowest).
+--- opts: { rows = 6, srows = 5, buttons = 3, onAction = function(button) end }.
+--- Fill it with W.DrawSidePanel(panel, d): d = { kicker, title, sub, figures = { { label, value, tip = lines } x3 },
+--- rows = { { label, value } }, section = { head, rows = { { label, value, tip = lines } } }, note,
+--- actions = { { label, run, tip, off } } }.
+function W.SidePanel(parent, width, height, opts)
+	opts = opts or {}
+	local T = CH.Theme
+	local det = CreateFrame("Frame", nil, parent)
+	det:SetSize(width, height)
+	local dbg = det:CreateTexture(nil, "BACKGROUND")
+	dbg:SetAllPoints()
+	dbg:SetColorTexture(1, 1, 1, 0.03)
+	local function text(x, y, w, justify, template, lines)
+		local fs = W.Text(det, x, y, w, justify, template)
+		if lines and fs.SetMaxLines then fs:SetWordWrap(true); fs:SetMaxLines(lines) elseif not lines then W.OneLine(fs) end
+		return fs
+	end
+	local function card(top, bottom, accent)
+		local t = det:CreateTexture(nil, "BORDER")
+		t:SetPoint("TOPLEFT", 4, top)
+		t:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, bottom)
+		t:SetColorTexture(0, 0, 0, 0.45)
+		if accent then
+			local a = det:CreateTexture(nil, "ARTWORK")
+			a:SetPoint("TOPLEFT", 4, top)
+			a:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, top - 2)
+			local c = T.accent
+			a:SetColorTexture(c[1], c[2], c[3], 1)
+			det.accentBar = a
+		end
+		return t
+	end
+	local function tipHit(x, y, w, h)
+		local hit = CreateFrame("Button", nil, det)
+		hit:SetPoint("TOPLEFT", x, y)
+		hit:SetSize(w, h)
+		hit:SetScript("OnEnter", function(self) if self.tip and self.tip[1] then W.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		hit:Hide()
+		return hit
+	end
+	local nRows, nSec, nBtn = opts.rows or 6, opts.srows or 5, opts.buttons or 3
+	local IW = width - 20
+	det.width = width
+	det.cardTop = card(-4, -114, true)
+	det.kicker = text(10, -8, IW, "LEFT", "GameFontNormalSmall")
+	det.title = text(10, -24, IW, "LEFT", "GameFontNormalLarge", 2)
+	det.sub = text(10, -62, IW, "LEFT", "GameFontDisableSmall")
+	det.figures = {}
+	local FW = math.floor(IW / 3)
+	for k = 1, 3 do
+		det.figures[k] = { label = text(10 + (k - 1) * FW, -82, FW - 4, "LEFT", "GameFontDisableSmall"),
+			value = text(10 + (k - 1) * FW, -96, FW - 4, "LEFT", "GameFontHighlight"),
+			hit = tipHit(8 + (k - 1) * FW, -80, FW, 32) }
+	end
+	local function pair(y)
+		return { label = text(10, y, IW - 112, "LEFT", "GameFontHighlightSmall"), value = text(IW - 100, y, 110, "RIGHT", "GameFontHighlightSmall") }
+	end
+	det.rows = {}
+	for k = 1, nRows do det.rows[k] = pair(-122 - (k - 1) * 16) end
+	local headY = -122 - nRows * 16 - 8
+	det.cardPrices = card(headY + 6, headY - 16 - nSec * 16 - 2)
+	det.head = text(10, headY, IW, "LEFT", "GameFontNormalSmall")
+	det.srows = {}
+	for k = 1, nSec do
+		local r = pair(headY - 16 - (k - 1) * 16)
+		r.hit = tipHit(6, headY - 14 - (k - 1) * 16, IW + 8, 16)
+		det.srows[k] = r
+	end
+	det.note = text(10, headY - 16 - nSec * 16 - 4, IW, "LEFT", "GameFontDisableSmall", 3)
+	det.said = W.Text(det, 10, 0, IW, "LEFT", "GameFontHighlightSmall")
+	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
+	det.buttons = {}
+	for k = 1, nBtn do
+		local b = T.Button(det, "", IW, 22)
+		b:SetPoint("BOTTOMLEFT", 10, 10 + (k - 1) * 26)
+		if k == 1 then T.Primary(b) end
+		b:SetScript("OnClick", function(self)
+			if not self.run or self.blocked then return end
+			if opts.onAction then opts.onAction(self) else self.run() end
+		end)
+		b:SetScript("OnEnter", function(self)
+			if self.tipText or self.blocked then W.Tooltip(self, { { self.label or "" }, { T.Color("muted", self.blocked or self.tipText) } }) end
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		det.buttons[k] = b
+	end
+	det:Hide()
+	return det
+end
+
+--- Fill a side panel (W.SidePanel) from d, with said (a line saying what the last action did) above
+--- the buttons. Shows the panel and returns d.
+function W.DrawSidePanel(det, d, said)
+	local T = CH.Theme
+	det.kicker:SetText(d.kicker and T.Color("accent", d.kicker) or "")
+	det.title:SetText(d.title or "")
+	det.sub:SetText(d.sub or "")
+	for k, f in ipairs(det.figures) do
+		local x = d.figures and d.figures[k]
+		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
+		f.hit.tip = x and x.tip
+		f.hit:SetShown(x ~= nil and x.tip ~= nil)
+	end
+	for k, r in ipairs(det.rows) do
+		local x = d.rows and d.rows[k]
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+	end
+	local sec = d.section
+	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
+	for k, r in ipairs(det.srows) do
+		local x = sec and sec.rows and sec.rows[k]
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit.tip = x and x.tip
+		r.hit:SetShown(x ~= nil and x.tip ~= nil)
+	end
+	det.note:SetText(d.note or "")
+	local nb = 0
+	for k, b in ipairs(det.buttons) do
+		local a = d.actions and d.actions[k]
+		b.run, b.tipText, b.blocked = a and a.run or false, a and a.tip or false, a and a.off or false
+		if a then
+			nb = k
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			if f then f:SetText(a.label) elseif b.SetText then b:SetText(a.label) end
+			b.label = a.label
+			if b.SetAlpha then b:SetAlpha(a.off and 0.4 or 1) end
+		end
+		b:SetShown(a ~= nil)
+	end
+	det.said:ClearAllPoints()
+	det.said:SetPoint("BOTTOMLEFT", 10, 14 + nb * 26)
+	det.said:SetText(said or "")
+	det:Show()
+	return d
+end

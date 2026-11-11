@@ -14,8 +14,10 @@ local _, CH = ...
 local SUI = {}
 CH.ScanUI = SUI
 local frame, status, detail
-local N, W, H = 16, 836, 18
-local DETAIL = 72 -- the selected recipe's strip under the list
+local N, W, H = 21, 836, 18
+local DETAIL = 0 -- the selected recipe now sits in the side panel, right of the list
+local SIDE = 270 -- the Recipes views' side panel (the Craft page's Next Move panel)
+local TWR = W - SIDE - 16 -- the Recipes table's width beside it
 local offset, data = 0, {}
 local scrollBar
 local showOlder = true
@@ -27,13 +29,13 @@ local tables, heads = {}, {}
 
 -- { label, x, width, sort key, justify }. craft, conc and buy are the Recipes views.
 local COLS = {
-	craft = { { "Recipe", 12, 236, "name" }, { "Profit/craft", 250, 120, "profit" }, { "%", 372, 44, "pct" },
-		{ "Reagents", 418, 96, "cost" }, { "Can make", 516, 70, "canMake" }, { "Sold/day", 588, 70, "soldPerDay" },
-		{ "Est. gold/day", 660, 164, "perDay" } },
-	conc = { { "Recipe", 12, 236, "name" }, { "Plain", 250, 130, "profit" }, { "With Conc.", 382, 140, "concProfit" },
-		{ "Points", 524, 60, "concentration" }, { "Extra/pt", 586, 100, "gainPerPoint" }, { "Can make", 688, 136, "canMakeConc" } },
-	buy = { { "Recipe", 12, 236, "name" }, { "Craft each", 250, 110, "craftEach" }, { "Cheapest listing", 362, 120, "buyPrice" },
-		{ "Resells for", 484, 110, "resell" }, { "Buying saves", 596, 110, "buySave" }, { "Buy & relist", 708, 116, "flip" } },
+	-- the Recipes views are short tables: the rest of each recipe is in the side panel
+	craft = { { "Recipe", 12, 206, "name" }, { "Profit/craft", 222, 96, "profit" }, { "Reagents", 322, 86, "cost" },
+		{ "Can make", 412, 62, "canMake" }, { "Gold/day", 478, 72, "perDay" } },
+	conc = { { "Recipe", 12, 190, "name" }, { "Plain", 206, 92, "profit" }, { "With Conc.", 302, 104, "concProfit" },
+		{ "Extra/pt", 410, 72, "gainPerPoint" }, { "Can make", 486, 64, "canMakeConc" } },
+	buy = { { "Recipe", 12, 190, "name" }, { "Craft each", 206, 84, "craftEach" }, { "Cheapest", 294, 84, "buyPrice" },
+		{ "Saves", 382, 84, "buySave" }, { "Relist", 470, 80, "flip" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
 	orders = { { "Recipe", 62, 240, "name" }, { "Customer", 304, 104, "from", "LEFT" }, { "Rewards", 410, 104, "rewardValue" },
 		{ "Profit", 516, 104, "profit" }, { "Crafting costs", 622, 110, "cost" }, { "", 734, 90, "concentration" } },
@@ -269,12 +271,12 @@ function SUI.RecipeCellLines(r, col, v)
 	v = v or view
 	if not r or r.header then return nil end
 	local acc, title
-	if v == "craft" and (col == 2 or col == 4) or v == "conc" and col == 2 then acc, title = r.accounts, "Without Concentration"
+	if v == "craft" and (col == 2 or col == 3) or v == "conc" and col == 2 then acc, title = r.accounts, "Without Concentration"
 	elseif v == "conc" and col == 3 then acc, title = r.concAccounts, "With Concentration" end
 	if not acc then return nil end
 	local B, T = CH.Window.Book, CH.Theme
 	local lines = { { T.Color("accent", r.name or "?"), T.Color("muted", title) } }
-	if v == "craft" and col == 4 then
+	if v == "craft" and col == 3 then
 		for _, l in ipairs((CH.ReagentBook(acc))) do lines[#lines + 1] = l end
 		if CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" then
 			lines[#lines + 1] = B.Note("Reagents you hold cost what they'd sell for after the cut: selling them is what crafting gives up. The rest cost the buy price.")
@@ -418,7 +420,7 @@ local function build()
 	for m, cols in pairs(COLS) do
 		local blank = {}
 		for j, c in ipairs(cols) do blank[j] = { "", c[2], c[3], c[5] } end
-		tables[m] = Wd.Table(frame, blank, N, -54, H, click, hover, W)
+		tables[m] = Wd.Table(frame, blank, N, -54, H, click, hover, (m == "craft" or m == "conc" or m == "buy") and TWR or W)
 		if m == "orders" then
 			-- a Claim button at the start of each order's row
 			for i, r in ipairs(tables[m]) do
@@ -453,44 +455,22 @@ local function build()
 		end
 	end
 	scrollBar = Wd.ScrollBar(frame, W - 8, -70, N * H)
-	-- The selected recipe: both crafts the scan found, each with its own Queue button
-	detail = CreateFrame("Frame", nil, frame)
-	detail:SetPoint("TOPLEFT", 0, -(70 + N * H + 4))
-	detail:SetSize(W, DETAIL)
-	local rule = detail:CreateTexture(nil, "ARTWORK")
-	rule:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
-	rule:SetPoint("TOPLEFT", 6, 0)
-	rule:SetPoint("TOPRIGHT", -6, 0)
-	rule:SetHeight(1)
-	detail.card = T.Card(detail, 6, -1, W - 12, DETAIL - 2, false)
-	detail.title = Wd.OneLine(Wd.Text(detail, 12, -6, W - 24 - 150, "LEFT", "GameFontHighlight"))
+	SUI.scrollBar = scrollBar
+	-- The selected recipe, in a side panel right of the list (the Craft page's Next Move panel):
+	-- what it makes and costs at today's prices, its reagents at what they cost you, craft or sell,
+	-- and the Queue buttons, with a quantity stepper on the card
+	detail = Wd.SidePanel(frame, SIDE, 92 + N * H - 52 - 10, { rows = 4, srows = 5, buttons = 2, onAction = function(self) self.run() end })
+	detail:SetPoint("TOPLEFT", W - SIDE - 6, -52)
 	local function stepper(label, x, d)
-		local b = T.Button(detail, label, 22, 18)
-		b:SetPoint("TOPRIGHT", x, -3)
+		local b = T.Button(detail, label, 20, 18)
+		b:SetPoint("TOPRIGHT", x, -6)
 		b:SetScript("OnClick", function() SUI.SetQty(qty + (IsShiftKeyDown and IsShiftKeyDown() and d * 10 or d)) end)
 		b:SetScript("OnEnter", function(self) Wd.Tooltip(self, { { "How many to queue" }, { T.Color("muted", "Shift-click for 10 at a time.") } }) end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		return b
 	end
-	stepper("+", -12, 1)
-	detail.qty = Wd.OneLine(Wd.Text(detail, W - 12 - 22 - 44, -6, 40, "CENTER", "GameFontHighlight"))
-	stepper("-", -(12 + 22 + 48), -1)
-	Wd.OneLine(Wd.Text(detail, W - 12 - 22 - 48 - 22 - 42, -6, 38, "RIGHT")):SetText("Qty")
-	detail.lines, detail.buttons = {}, {}
-	for k, conc in ipairs({ false, true }) do
-		local y = -6 - k * 22
-		detail.lines[k] = Wd.OneLine(Wd.Text(detail, 12, y, W - 24 - 190))
-		local b = T.Button(detail, conc and "Queue with Concentration" or "Queue plain", 180, 18)
-		b:SetPoint("TOPRIGHT", -12, y + 3)
-		if not conc then T.Primary(b) end
-		b:SetScript("OnClick", function(self) if not self.off then SUI.QueueSelected(conc) end end)
-		b:SetScript("OnEnter", function(self)
-			Wd.Tooltip(self, { { conc and "Queue the Concentration craft" or "Queue the plain craft" },
-				{ T.Color("muted", self.off or "Adds the craft on this line, with the reagents the scan picked.") } })
-		end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		detail.buttons[k] = b
-	end
+	stepper("+", -8, 1)
+	stepper("-", -32, -1)
 	frame:EnableMouseWheel(true)
 	frame:SetScript("OnMouseWheel", function(_, d)
 		offset = math.max(0, math.min(math.max(0, #data - N), offset - d * 3))
@@ -532,6 +512,7 @@ local function showTable()
 		if b.SetAlpha then b:SetAlpha(mode == "recipes" and view == b.view and 1 or 0.65) end
 	end
 	if detail then detail:SetShown(mode == "recipes") end
+	if scrollBar and scrollBar.SetX then scrollBar:SetX(mode == "recipes" and TWR + 4 or W - 8) end
 	return tables[listKey()]
 end
 
@@ -815,41 +796,91 @@ local function refreshLists()
 end
 
 --- Redraw from the saved scan. Returns the row texts, for tests.
--- The selected recipe's strip: what each Queue button would add, and whether it can.
+--- The selected recipe's side panel, as the Craft page's: { kicker, title, sub, figures, rows, section,
+--- note, actions } at today's prices (the same the list and its hovers show). Figures and the reagent
+--- rows explain themselves on hover. nil with no recipe.
+function SUI.RecipePanel(r, n)
+	if not r or r.header then return nil end
+	local T, M, B = CH.Theme, CH.FormatMoney, CH.Window.Book
+	n = n or qty
+	local acc = r.accounts or r.concAccounts
+	local function money0(v) return v and money(v) or T.Color("muted", "-") end
+	-- the money: profit and reagents a craft, then craft or sell with what you hold
+	local book, profit = acc and CH.CraftBook(acc)
+	local rbook, rcost = nil, nil
+	if acc then rbook, rcost = CH.ReagentBook(acc) end
+	local cs = acc and CH.CraftOrSell(acc)
+	-- craft or sell: which earns more, by how much, with the reagents you hold
+	local csLabel = not cs and "CRAFT OR SELL" or cs.gain >= 0 and "CRAFTING WINS" or "SELLING WINS"
+	local csText = not cs and T.Color("muted", "none held") or cs.gain >= 0 and T.Color("ok", "+" .. M(cs.gain))
+		or T.Color("bad", "+" .. M(-cs.gain))
+	local csTip = cs and CH.CraftOrSellBook(acc) or { { "Craft or sell?" }, { T.Color("muted", "You hold none of this craft's reagents, so there's nothing to sell instead.") } }
+	local figures = { { "PROFIT", money0(profit or r.profit), tip = book },
+		{ "REAGENTS", rcost and M(rcost) or T.Color("muted", "-"), tip = rbook },
+		{ csLabel, csText, tip = csTip } }
+	local rows = {}
+	rows[#rows + 1] = { "Margin", r.pct and string.format("%d%%", math.floor(r.pct * 100 + 0.5)) or T.Color("muted", "-") }
+	rows[#rows + 1] = { "Sold a day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or T.Color("muted", "-") }
+	rows[#rows + 1] = { "Gold a day", money0(r.perDay) }
+	if r.concProfit then
+		rows[#rows + 1] = { string.format("With Concentration (%d)", r.concentration or 0), money(r.concProfit)
+			.. (r.gainPerPoint and T.Color("muted", string.format(" %s/pt", M(r.gainPerPoint))) or "") }
+	end
+	-- the reagents, each at what it costs you, hover for its opportunity cost
+	local srows = {}
+	local list = acc and acc.reagents or {}
+	local P = CH.Prices
+	for k, rg in ipairs(list) do
+		if k > 4 and #list > 5 then
+			srows[#srows + 1] = { string.format("%d more", #list - 4), "", tip = rbook }
+			break
+		end
+		local one = CH.ReagentBook({ reagents = { rg } })
+		local lineCost = one[2] and one[2][2] or "-"
+		local held = P.Held and P.Held(rg.itemID) or 0
+		local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)) or ("item " .. rg.itemID)
+		local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. CH.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
+		local tip = { { T.Color("accent", name) .. q } }
+		for j = 2, #one do tip[#tip + 1] = one[j] end
+		-- yours are marked: hover for the opportunity cost, stock and prices
+		srows[#srows + 1] = { (held > 0 and T.Color("accent", "* ") or "") .. string.format("%gx %s%s", rg.n or 0, name, q), lineCost, tip = tip }
+	end
+	local note
+	if cs and cs.gain < 0 then
+		note = T.Color("bad", "Selling the reagents you hold earns " .. M(-cs.gain) .. " more than crafting.")
+	elseif r.bc and r.bc.save and r.bc.save > 0 then
+		note = T.Color("muted", "Buying it costs " .. M(r.bc.save) .. " less than crafting it.")
+	else
+		note = T.Color("muted", CH.Prices.CostBasis and CH.Prices.CostBasis() == "held"
+			and "* you hold some: they cost what they'd sell for, since selling them is what crafting gives up." or "Reagents at what they cost to buy.")
+	end
+	local function act(conc)
+		local ok, why = SUI.ScanEntry(r, conc)
+		local what = string.format("%d %s", n, n == 1 and "craft" or "crafts")
+		return { label = conc and ("Queue " .. what .. " with Concentration") or ("Queue " .. what),
+			tip = conc and "Adds the Concentration craft, with the reagents the scan picked." or "Adds the plain craft, with the reagents the scan picked.",
+			off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil,
+			run = function() return SUI.QueueSelected(conc, n, r) end }
+	end
+	local actions = { act(false) }
+	if r.concProfit then actions[2] = act(true) end
+	local made = r.made and r.made ~= 1 and string.format("  ·  makes %.1f", r.made) or ""
+	return { kicker = "NEXT MOVE", title = string.format("Craft %d x %s", n, r.name or "?"),
+		sub = CH.Window.QualityIcon(r.quality or r.concQuality, 14, r.tiers) .. T.Color("muted", made .. (r.canMake and string.format("  ·  can make %d", r.canMake) or "")),
+		figures = figures, rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = srows }, note = note, actions = actions }
+end
+
+-- The selected recipe's side panel.
 local function renderDetail()
 	if not detail then return end
-	local T, M, Wd = CH.Theme, CH.FormatMoney, CH.Window
-	local r = selectedRow()
-	detail.qty:SetText(tostring(qty))
-	if not r then
-		detail.title:SetText(T.Color("muted", "Click a recipe to see its crafts and queue one."))
-		for k = 1, 2 do detail.lines[k]:SetText(""); detail.buttons[k].off = "Pick a recipe first."; detail.buttons[k]:SetAlpha(0.4) end
-		return
+	local T = CH.Theme
+	local d = SUI.RecipePanel(selectedRow())
+	if not d then
+		d = { kicker = "NEXT MOVE", title = T.Color("muted", "Pick a recipe"),
+			note = T.Color("muted", "Click a recipe to see what it makes, what its reagents cost you, and whether to craft or sell them.") }
 	end
-	detail.title:SetText(Wd.ItemIcon(r.item or r.concItem, 16) .. T.Color("accent", r.name or "?")
-		.. (r.made and r.made ~= 1 and T.Color("muted", string.format("  makes %.1f a craft", r.made)) or ""))
-	local function can(n, short)
-		if not n then return "" end
-		local why = n == 0 and short and (short == "concentration" and "  not enough Concentration" or "  short of reagents") or ""
-		return T.Color(n > 0 and "fg" or "bad", "  can make " .. n) .. T.Color("muted", why)
-	end
-	local plain = r.profit and (T.Color("accent", "Plain") .. "  " .. Wd.QualityIcon(r.quality, 14, r.tiers)
-		.. "  reagents " .. M(r.cost or 0) .. "  profit " .. money(r.profit) .. " a craft" .. can(r.canMake, r.shortItem))
-		or T.Color("muted", "Plain: no priced craft without Concentration")
-	local acc = r.concAccounts
-	local conc = r.concProfit and (T.Color("accent", "Concentration") .. "  " .. Wd.QualityIcon(r.concQuality, 14, r.tiers)
-		.. string.format("  %d points", r.concentration or 0) .. "  reagents " .. M(acc and acc.cost or r.cost or 0)
-		.. "  profit " .. money(r.concProfit) .. (r.perPoint and T.Color("muted", " (" .. M(r.perPoint) .. " a point)") or "")
-		.. can(r.canMakeConc, r.shortConc))
-		or T.Color("muted", "Concentration: no craft that lifts the quality")
-	detail.lines[1]:SetText(plain)
-	detail.lines[2]:SetText(conc)
-	for k, c in ipairs({ false, true }) do
-		local b = detail.buttons[k]
-		local ok, why = SUI.ScanEntry(r, c)
-		b.off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil
-		b:SetAlpha(ok and 1 or 0.4)
-	end
+	CH.Window.DrawSidePanel(detail, d)
+	SUI.lastPanel = d
 end
 SUI.RenderDetail = renderDetail
 
@@ -934,28 +965,24 @@ function SUI.Refresh()
 			r.cells[1]:SetText(CH.Window.ItemIcon(view == "conc" and (d.concItem or d.item) or (d.item or d.concItem), 15)
 				.. CH.Window.QualityIcon(q, 14, d.tiers) .. " " .. (d.current and (d.name or "?") or T.Color("muted", d.name or "?")))
 			if view == "craft" then
-				r.cells[2]:SetText(d.sellInstead and T.Color("bad", "sell the reagents") or money(d.profit))
-				r.cells[3]:SetText(d.pct and string.format("%d%%", math.floor(d.pct * 100 + 0.5)) or "")
-				r.cells[4]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
-				r.cells[5]:SetText(n(d.canMake))
-				r.cells[6]:SetText(d.soldPerDay and string.format("%.0f", d.soldPerDay) or "-")
-				r.cells[7]:SetText(money(d.perDay))
+				r.cells[2]:SetText(d.sellInstead and T.Color("bad", "sell reagents") or money(d.profit))
+				r.cells[3]:SetText(d.cost and CH.FormatMoney(d.cost) or T.Color("muted", "-"))
+				r.cells[4]:SetText(n(d.canMake))
+				r.cells[5]:SetText(money(d.perDay))
 				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.profit or 0)))
 			elseif view == "conc" then
 				r.cells[2]:SetText(d.profit and (CH.Window.QualityIcon(d.quality, 14, d.tiers) .. " " .. money(d.profit)) or T.Color("muted", "-"))
 				r.cells[3]:SetText(CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit))
-				r.cells[4]:SetText(tostring(d.concentration or "-"))
-				r.cells[5]:SetText(m(d.gainPerPoint or d.perPoint))
-				r.cells[6]:SetText(n(d.canMakeConc))
+				r.cells[4]:SetText(m(d.gainPerPoint or d.perPoint))
+				r.cells[5]:SetText(n(d.canMakeConc))
 				table.insert(out, string.format("%s conc=%d pp=%d", d.name, math.floor(d.concProfit or 0), math.floor(d.perPoint or 0)))
 			else
 				local bc = d.bc or {}
 				r.cells[2]:SetText(bc.craft and CH.FormatMoney(bc.craft) or T.Color("muted", "-"))
 				r.cells[3]:SetText(bc.buy and CH.FormatMoney(bc.buy) or T.Color("muted", "-"))
-				r.cells[4]:SetText(bc.resell and CH.FormatMoney(bc.resell) or T.Color("muted", "-"))
-				r.cells[5]:SetText(bc.save and (bc.save > 0 and T.Color("ok", "buy, " .. CH.FormatMoney(bc.save)) or T.Color("muted", "craft"))
+				r.cells[4]:SetText(bc.save and (bc.save > 0 and T.Color("ok", "buy, " .. CH.FormatMoney(bc.save)) or T.Color("muted", "craft"))
 					or T.Color("muted", "-"))
-				r.cells[6]:SetText(bc.flip and money(bc.flip) or T.Color("muted", "-"))
+				r.cells[5]:SetText(bc.flip and money(bc.flip) or T.Color("muted", "-"))
 				table.insert(out, string.format("%s save=%d", d.name, math.floor(bc.save or 0)))
 			end
 		end
