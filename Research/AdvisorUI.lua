@@ -1294,7 +1294,7 @@ function AUI.NextTip(which)
 		return tip
 	elseif which == "breakEven" then
 		local be = r.breakEven
-		local tip = { { "Break-even" }, { mut("The sale price per item where this craft stops making money: below it, each craft loses gold.") } }
+		local tip = { { "Break-even" }, { mut("The sale price per item that gets back what the reagents cost you: what you paid for those you hold, today's price for the rest. Below it, you sell at a loss.") } }
 		if not be then
 			table.insert(tip, { mut(shown.order and "An order pays a fixed commission, so it has no break-even price." or "No price to compare against yet.") })
 			return tip
@@ -1302,7 +1302,11 @@ function AUI.NextTip(which)
 		table.insert(tip, { "Break-even per item", T.Color("gold", M(be.price)) })
 		table.insert(tip, { "Estimated sale price", M(be.estimate) })
 		table.insert(tip, { "Room before a loss", be.cushion >= 0 and T.Color("ok", pctText(be.cushion)) or T.Color("bad", "already below") })
-		table.insert(tip, { mut(string.format("Reagents %s%s, spread over about %.1f items a craft%s.", M(r.cost or 0),
+		if be.paid then table.insert(tip, { "  You paid for the ones you hold", M(be.paid) }) end
+		if be.today and math.abs(be.today - be.price) >= 1 then
+			table.insert(tip, { "At today's reagent prices", M(be.today) })
+		end
+		table.insert(tip, { mut(string.format("Reagents %s%s, spread over about %.1f items a craft%s.", M(be.spent or r.cost or 0),
 			pp and (pp.resGold or 0) > 0 and (" less " .. M(pp.resGold) .. " Resourcefulness saves") or "", m.items / m.qty,
 			r.oldValue and ", plus the item you recraft" or "")) })
 		table.insert(tip, { mut("The AH cut and deposits are counted on every sale.") })
@@ -1490,7 +1494,11 @@ function AUI.Card(n, scan)
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
 		section = { head = "QUALITY", rows = qrows, toggle = toggle },
-		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
+		-- one short line for the pick; every rank's posting warning on its hover
+		note = (r and r.post) and (T.Color("bad", "! ") .. mut(r.post.kind == "nopost" and "Your TSM operation doesn't post this item."
+				or ("Below your TSM posting minimum of " .. M(r.post.min) .. ".")))
+			or (#warn > 0 and mut("A posting warning on another rank: hover.")) or mut("Hover a number for how it was reached."),
+		noteTip = #warn > 0 and (function() local t = { { "Posting" } }; for _, l in ipairs(warn) do t[#t + 1] = { l } end; return t end)() or nil,
 		actions = actions, live = true }
 end
 

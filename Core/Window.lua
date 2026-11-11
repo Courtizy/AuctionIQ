@@ -564,6 +564,7 @@ function W.SidePanel(parent, width, height, opts)
 	T.TitleFont(det.toggle, 10, "bold")
 	det.toggleHit = tipHit()
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
+	det.noteHit = tipHit()
 	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
 	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
 	-- the buttons, bottom up: the main one (accent, a little taller), then the others, dark
@@ -697,6 +698,9 @@ function W.DrawSidePanel(det, d, said)
 	-- the note, in what's left above the buttons
 	at(det.note, 12, y)
 	det.note:SetText(d.note or "")
+	det.noteHit:ClearAllPoints(); det.noteHit:SetPoint("TOPLEFT", 10, y + 2); det.noteHit:SetSize(det.IW, 26)
+	det.noteHit.tip = d.noteTip or false
+	det.noteHit:SetShown(d.noteTip ~= nil)
 	local nb = 0
 	local by = 0
 	for k, b in ipairs(det.buttons) do

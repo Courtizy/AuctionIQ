@@ -90,9 +90,46 @@ function D.BreakEvenParts(parts, estimate)
 	return { price = factor * estimate, estimate = estimate, factor = factor, cushion = 1 - factor }
 end
 
+--- What this craft's reagents cost you: what you paid for those you hold (today's buy price when
+--- the ledger doesn't know), and today's buy price for the rest. Returns the cost and how much of it
+--- is what you paid; nil when the reagents can't be listed.
+function D.SpentCost(result, r)
+	if not (CH.Queue and CH.Queue.FromRow and CH.Scan and CH.Scan.ReagentPrice) then return nil end
+	local ok, e = pcall(CH.Queue.FromRow, result, r)
+	if not (ok and e and e.shop and e.shop[1]) then return nil end
+	local P = CH.Prices
+	local total, paidPart = 0, 0
+	for _, sh in ipairs(e.shop) do
+		local n = sh.n or 0
+		local unit = CH.Scan.ReagentPrice(sh.itemID, result.recipeID)
+		if not unit then return nil end
+		local own = math.min(n, P.Held and P.Held(sh.itemID) or 0)
+		local pe = own > 0 and P.PaidEach and P.PaidEach(sh.itemID)
+		if pe then paidPart = paidPart + own * pe else own = 0 end
+		total = total + (own > 0 and own * pe or 0) + (n - own) * unit
+	end
+	return total, paidPart
+end
+
+--- Break-even: the sale price per item that gets back what the reagents cost you (what you paid for
+--- those you hold, today's price for the rest), after the cut, Multicraft, Resourcefulness and
+--- deposits. today: the same at today's prices for every reagent; paid: how much was what you paid.
 function D.BreakEven(result, r)
 	local parts = D.RowParts(result, r)
-	return parts and D.BreakEvenParts(parts, r.price)
+	if not parts then return nil end
+	local spent, paid = D.SpentCost(result, r)
+	local be
+	if spent then
+		local p2 = {}
+		for k, v in pairs(parts) do p2[k] = v end
+		p2.consumed = spent
+		be = D.BreakEvenParts(p2, r.price)
+		if be then be.paid = paid and paid > 0 and paid or nil; be.spent = spent end
+	end
+	local today = D.BreakEvenParts(parts, r.price)
+	be = be or today
+	if be and today then be.today = today.price end
+	return be
 end
 
 --- Profit a craft at sale price x (per item, before the cut): a straight line through the break-even.

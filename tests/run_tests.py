@@ -643,6 +643,13 @@ D = L.eval("AuctionIQ.Decide")
 be = res.best.breakEven
 check("break-even: the sale price per item where the plain craft makes nothing (cut included)",
       abs(be.price - 2120000 / 0.95) < 1 and be.estimate == 3000000 and abs(be.cushion - (1 - 2120000 / 2850000)) < 1e-9)
+bpd = L.eval("""(function() local P = AuctionIQ.Prices; local oh, op = P.Held, P.PaidEach
+  P.Held = function() return 999 end; P.PaidEach = function() return 1 end
+  local r = AuctionIQ.Advisor.Analyze(10); local be = r.best.breakEven
+  P.Held, P.PaidEach = oh, op
+  return { price = be.price, today = be.today, paid = be.paid } end)()""")
+check("break-even: what you paid for the reagents you hold, with today's prices beside it",
+      bpd.paid is not None and bpd.price < bpd.today and abs(bpd.today - 2120000 / 0.95) < 1)
 check("break-even: profit at the break-even price is zero", abs(D.ProfitAt(D.RowParts(res, res.best), 3000000, be.price)) < 1)
 bp = L.eval("{ revenue = 130, consumed = 100, returned = 20, deposits = 10, fixed = 0 }")
 bpe = D.BreakEvenParts(bp, 13)
