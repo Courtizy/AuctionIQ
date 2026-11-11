@@ -49,7 +49,13 @@ function D.AccountParts(row, acc)
 			from = price and "market" or nil
 			if not price and a.unit and a.unit > 0 then price, from = a.unit / (CH.AH_CUT or 0.95), "kept" end
 		end
-		return { revenue = revenue, consumed = a.cost, returned = a.resGold or 0, deposits = (a.deposit or 0) * units,
+		-- reagents at today's prices (yours at their opportunity cost), the same the Scan tab shows
+		local consumed = a.cost
+		if a.reagents and a.reagents[1] and CH.ReagentBook then
+			local ok, _, total = pcall(CH.ReagentBook, a)
+			if ok and total then consumed = total end
+		end
+		return { revenue = revenue, consumed = consumed, returned = a.resGold or 0, deposits = (a.deposit or 0) * units,
 			fixed = 0, items = units, price = price, priceFrom = from }
 	end
 	return { revenue = (row.profit or 0) + (row.cost or 0), consumed = row.cost or 0, returned = 0, deposits = 0, fixed = 0 }
@@ -225,7 +231,7 @@ function D.ConcForecast(budget, cost, ing, refund, limit)
 	return out
 end
 
---- "Can make 8 now · 60% chance of a 9th" for a Concentration row and the points you have.
+--- "Max 8 now · 60% chance of a 9th" for a Concentration row and the points you have.
 function D.ConcForecastFor(r, budget)
 	if not r or not r.concentration or not budget then return nil end
 	local s = r.stats or {}
@@ -242,7 +248,7 @@ D.Ordinal = ordinal
 
 function D.ConcForecastText(f)
 	if not f then return nil end
-	local t = string.format("Can make %d now", f.now)
+	local t = string.format("Max %d now", f.now)
 	local p = f.chance[1]
 	if p and p >= 0.005 then t = t .. string.format(", %d%% chance of a %s with Ingenuity refunds", math.floor(p * 100 + 0.5), ordinal(f.now + 1)) end
 	return t

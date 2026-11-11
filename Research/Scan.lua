@@ -122,6 +122,43 @@ function Sc.GainPerPoint(r)
 	return (r.concProfit - math.max(0, r.profit or 0)) / avg
 end
 
+--- A saved scan row at today's prices, for the Scan list: a view of the row (it reads through to
+--- the saved one, which stays as scanned) whose profit, reagents, margin, Concentration profit,
+--- gain per point, gold a day and sell-instead come from the same live statement the hovers show.
+--- Rows saved without accounts come back as they are.
+function Sc.Live(r)
+	if not (r and (r.accounts or r.concAccounts)) or not CH.CraftBook then return r end
+	local v = { scanned = r }
+	local function live(acc)
+		if not acc then return nil end
+		local ok, _, profit = pcall(CH.CraftBook, acc)
+		if not ok or not profit then return nil end
+		local _, cost = CH.ReagentBook(acc)
+		return profit, cost
+	end
+	local p, c = live(r.accounts)
+	if p then
+		v.profit, v.cost = p, c
+		v.pct = c and c > 0 and p / c or nil
+		local cs = CH.CraftOrSell(r.accounts)
+		v.sellInstead = cs and cs.verdict == "sell" and cs.sell or false
+	end
+	local cp, cc = live(r.concAccounts)
+	if cp then v.concProfit, v.concCost = cp, cc end
+	local avg = r.avgConcentration or r.concentration
+	local gpp = Sc.GainPerPoint(r)
+	if gpp and avg and avg > 0 then
+		local dConc = (v.concProfit or r.concProfit or 0) - (r.concProfit or 0)
+		local dPlain = math.max(0, v.profit or r.profit or 0) - math.max(0, r.profit or 0)
+		v.gainPerPoint = gpp + (dConc - dPlain) / avg
+	end
+	-- gold a day moves with the profit it was worked from
+	local was = math.max(0, r.profit or 0) + math.max(0, r.concProfit or 0)
+	local now = math.max(0, v.profit or r.profit or 0) + math.max(0, v.concProfit or r.concProfit or 0)
+	if r.perDay and was > 0 then v.perDay = r.perDay * now / was end
+	return setmetatable(v, { __index = r })
+end
+
 local function summary(result)
 	local b, c = result.best, result.bestConc
 	local item = b and b.item or (c and c.item)
@@ -166,6 +203,11 @@ local function summary(result)
 		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
 		perDay = perDay,
+		-- selling the reagents you hold beats crafting: what they'd bring after the cut
+		sellInstead = (function()
+			local ok, cs = pcall(CH.Advisor.CraftOrSell, result, b)
+			return ok and cs and cs.gain < 0 and cs.sell or nil
+		end)(),
 	}
 end
 Sc.Summary = summary

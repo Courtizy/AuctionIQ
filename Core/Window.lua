@@ -205,13 +205,44 @@ function W.ScrollBar(parent, x, y, h, noCount)
 end
 
 --- Show tooltip lines ({left, right} or {left}) on owner.
+--- lines: { left, right, rightColor, leftColor }, as the item tooltip draws them: a line that
+--- isn't indented is a heading or total (accent), an indented one is a line item (fg); colors are
+--- Theme names. A line with no right side is a note and wraps.
 function W.Tooltip(owner, lines)
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	local Th = CH.Theme
 	for _, l in ipairs(lines) do
-		if l[2] then GameTooltip:AddDoubleLine(l[1], l[2], 1, 1, 1, 1, 1, 1) else GameTooltip:AddLine(l[1], 1, 1, 1, true) end
+		if l[2] then
+			local lc = Th[l[4] or (tostring(l[1]):sub(1, 2) == "  " and "fg" or "accent")] or Th.fg
+			local rc = Th[l[3] or "fg"] or Th.fg
+			GameTooltip:AddDoubleLine(l[1], l[2], lc[1], lc[2], lc[3], rc[1], rc[2], rc[3])
+		else
+			GameTooltip:AddLine(l[1], 1, 1, 1, true)
+		end
 	end
 	GameTooltip:Show()
 end
+
+--- Bookkeeping lines for tooltips, laid out like the statements and the item tooltip:
+---   Head("Profit")                       heading
+---   Line("Commission", 7200000)          line item, gold in, as is
+---   Line("Reagents", -451000, true)      line item, gold out in red
+---   Sub("Paid price", text)              detail under a line, muted
+---   Total("Profit", 690000)              total, green or red
+---   Note("Only what you supply.")        muted note
+local Book = {}
+W.Book = Book
+local function gold(c) return CH.FormatMoney(c or 0) end
+function Book.Head(label, right) return { label, right or "", "muted", "accent" } end
+function Book.Line(label, c, out)
+	if c == nil then return { "  " .. label, CH.Theme.Color("muted", "-"), "muted", "fg" } end
+	local neg = out or c < 0
+	return { "  " .. label, (neg and c ~= 0 and "-" or "") .. gold(math.abs(c)), neg and c ~= 0 and "bad" or "fg", "fg" }
+end
+function Book.Text(label, text, color) return { "  " .. label, text, color or "fg", "fg" } end
+function Book.Sub(label, text) return { "      " .. label, text, "muted", "muted" } end
+function Book.Total(label, c) return { label, (c and c < 0 and "-" or "") .. gold(math.abs(c or 0)), (c or 0) >= 0 and "ok" or "bad", "accent" } end
+function Book.Note(text) return { CH.Theme.Color("muted", text) } end
 
 --- An item's icon, inline in text. The game has every item icon loaded, so this is cheap.
 function W.ItemIcon(itemID, size)
@@ -263,6 +294,8 @@ end
 --- Is this window one of the tabs right now (the queue isn't, when popped out)?
 function W.InTabs(key)
 	if key == "queue" then return not ws().popQueue end
+	-- two windows, Craft and Queue: the old Advisor window only when Settings turns it back on
+	if key == "advisor" then return deck().classic == true end
 	return byKey[key] ~= nil
 end
 
@@ -356,7 +389,8 @@ function W.Arrange()
 		strip.dock:SetShown(undocked)
 		if undocked then strip.dock:ClearAllPoints(); strip.dock:SetPoint("TOPLEFT", x + 8, 0); x = x + 58 end
 		strip:SetWidth(math.max(10, x))
-		strip:Show()
+		-- one tab (the queue popped out) is no choice: no row
+		strip:SetShown(#labels > 1 or undocked)
 	elseif strip then
 		strip:Hide()
 	end
@@ -441,5 +475,250 @@ function W.ToggleQueuePop()
 end
 
 W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
-W.AddTab("scan", "Scan", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked.")
+W.AddTab("scan", "Craft", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked, and the one you pick.")
 W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
+
+--- A side panel beside a table, as the design draws it (the Craft page's Next Move panel): a card
+--- with the accent line holding a kicker, a headline, a sub line, three big figures, an optional
+--- gradient bar and label and value rows; a second card with a section of rows (each explains itself
+--- on hover); a note; and buttons from the bottom up (the first, the main one, filled with the accent
+--- and lowest). opts: { rows = 6, srows = 5, buttons = 3, onAction = function(button) end,
+--- stepper = function(delta) end (a - and + beside the main button) }.
+--- Fill it with W.DrawSidePanel(panel, d): d = { kicker, title, sub, figures = { { label, value, tip = lines } x3 },
+--- bar = 0..1, rows = { { label, value } }, section = { head, rows = { { label, value, tip = lines } }, toggle = { on, run, tip } }, note,
+--- actions = { { label, run, tip, off } } }. The blocks stack from the top, each as tall as its text.
+function W.SidePanel(parent, width, height, opts)
+	opts = opts or {}
+	local T = CH.Theme
+	local det = CreateFrame("Frame", nil, parent)
+	det:SetSize(width, height)
+	det.width, det.height = width, height
+	local function text(w, justify, template, lines)
+		local fs = W.Text(det, 12, 0, w, justify, template)
+		if lines and fs.SetMaxLines then fs:SetWordWrap(true); fs:SetMaxLines(lines) elseif not lines then W.OneLine(fs) end
+		return fs
+	end
+	local function tipHit()
+		local hit = CreateFrame("Button", nil, det)
+		hit:SetScript("OnEnter", function(self) if self.tip and self.tip[1] then W.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		-- a row can also do something when clicked (pick a quality)
+		hit:SetScript("OnClick", function(self) if self.run then self.run() end end)
+		hit:Hide()
+		return hit
+	end
+	local nRows, nSec, nBtn = opts.rows or 6, opts.srows or 5, opts.buttons or 3
+	local IW = width - 24
+	det.IW = IW
+	det.cardTop = T.BorderCard(det, 0, 0, width, 120)
+	det.accentBar = det:CreateTexture(nil, "ARTWORK")
+	det.accentBar:SetPoint("TOPLEFT", 0, 0)
+	det.accentBar:SetSize(width, 2)
+	T.AccentTexture(det.accentBar)
+	det.cardPrices = T.BorderCard(det, 0, -130, width, 100)
+	det.kicker = text(IW, "LEFT", "GameFontNormalSmall")
+	T.TitleFont(det.kicker, 10, "bold")
+	det.title = text(IW, "LEFT", "GameFontNormalLarge", 2)
+	T.TitleFont(det.title, 15, "black")
+	det.sub = text(IW, "LEFT", "GameFontDisableSmall", 2)
+	det.subHit = tipHit()
+	det.figures = {}
+	local FW = math.floor(IW / 3)
+	for k = 1, 3 do
+		local f = { label = text(FW - 4, "LEFT", "GameFontDisableSmall"), value = text(FW - 4, "LEFT", "GameFontHighlightLarge"), hit = tipHit() }
+		T.TitleFont(f.label, 9, "bold")
+		T.TitleFont(f.value, 15, "black")
+		det.figures[k] = f
+	end
+	-- the bar under the figures: a dark track and the theme's gradient
+	det.track = det:CreateTexture(nil, "ARTWORK")
+	det.track:SetColorTexture(0.067, 0.067, 0.067, 1)
+	det.track:SetSize(IW, 6)
+	det.fill = det:CreateTexture(nil, "OVERLAY")
+	det.fill:SetSize(IW, 6)
+	T.Gradient(det.fill)
+	local function pair()
+		local r = { label = text(IW - 100, "LEFT", "GameFontHighlightSmall"), value = text(110, "RIGHT", "GameFontHighlightSmall") }
+		r.label:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
+		return r
+	end
+	det.rows = {}
+	for k = 1, nRows do local r = pair(); r.hit = tipHit(); det.rows[k] = r end
+	det.head = text(IW, "LEFT", "GameFontNormalSmall")
+	T.TitleFont(det.head, 10, "bold")
+	det.srows = {}
+	for k = 1, nSec do
+		local r = pair()
+		r.hit = tipHit()
+		-- a picked row: an accent wash and a bar on its left, as the list marks its selected row
+		r.sel = det:CreateTexture(nil, "BORDER")
+		r.sel:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.18)
+		r.sel:Hide()
+		r.mark = det:CreateTexture(nil, "ARTWORK")
+		r.mark:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+		r.mark:Hide()
+		det.srows[k] = r
+	end
+	-- a switch on the section's head line (Concentrate on or off)
+	det.toggle = text(120, "RIGHT", "GameFontNormalSmall")
+	T.TitleFont(det.toggle, 10, "bold")
+	det.toggleHit = tipHit()
+	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
+	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
+	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
+	-- the buttons, bottom up: the main one (accent, a little taller), then the others, dark
+	det.buttons = {}
+	local by = 0
+	for k = 1, nBtn do
+		local h = k == 1 and 28 or 24
+		local w = (k == 1 and opts.stepper) and (width - 56) or width
+		local b = T.Button(det, "", w, h)
+		b:SetPoint("BOTTOMLEFT", 0, by)
+		by = by + h + 6
+		if k == 1 then T.Primary(b) end
+		b:SetScript("OnClick", function(self)
+			if not self.run or self.blocked then return end
+			if opts.onAction then opts.onAction(self) else self.run() end
+		end)
+		local enter = b.GetScript and b:GetScript("OnEnter")
+		b:SetScript("OnEnter", function(self)
+			if type(enter) == "function" then enter(self) end
+			if self.tipText or self.blocked then W.Tooltip(self, { { self.label or "" }, { T.Color("muted", self.blocked or self.tipText) } }) end
+		end)
+		det.buttons[k] = b
+	end
+	det.buttonsHeight = by
+	det.stepper = {}
+	if opts.stepper then
+		for k, dlt in ipairs({ -1, 1 }) do
+			local b = T.Button(det, dlt < 0 and "-" or "+", 24, 28)
+			b:SetPoint("BOTTOMRIGHT", -(k == 1 and 28 or 0), 0)
+			b:SetScript("OnClick", function() opts.stepper(IsShiftKeyDown and IsShiftKeyDown() and dlt * 10 or dlt) end)
+			local enter = b.GetScript and b:GetScript("OnEnter")
+			b:SetScript("OnEnter", function(self)
+				if type(enter) == "function" then enter(self) end
+				W.Tooltip(self, { { dlt < 0 and "One fewer" or "One more" }, { T.Color("muted", "How many to queue. Shift-click for 10 at a time.") } })
+			end)
+			det.stepper[k] = b
+		end
+	end
+	det:Hide()
+	return det
+end
+
+--- Fill a side panel (W.SidePanel) from d, with said (a line saying what the last action did) above
+--- the buttons. The blocks stack from the top as tall as their text. Shows the panel and returns d.
+function W.DrawSidePanel(det, d, said)
+	local T = CH.Theme
+	local function at(fs, x, y) fs:ClearAllPoints(); fs:SetPoint("TOPLEFT", x, y) end
+	-- how tall a wrapped line of text is: its width over the line's, up to two lines
+	local function height(fs, lineH)
+		local sw = fs.GetStringWidth and fs:GetStringWidth()
+		if type(sw) ~= "number" or sw <= 0 then return lineH end
+		return lineH * math.min(2, math.max(1, math.ceil(sw / det.IW)))
+	end
+	local y = -8
+	at(det.kicker, 12, y)
+	det.kicker:SetText(d.kicker and T.Color("accent", d.kicker) or "")
+	y = y - 14
+	at(det.title, 12, y)
+	det.title:SetText(d.title or "")
+	y = y - height(det.title, 17) - 2
+	at(det.sub, 12, y)
+	det.sub:SetText(d.sub or "")
+	-- the sub line always takes its two lines, so what's under it stays put as it changes
+	local subH = (d.sub and d.sub ~= "") and 24 or 0
+	det.subHit:ClearAllPoints(); det.subHit:SetPoint("TOPLEFT", 10, y + 2); det.subHit:SetSize(det.IW, subH + 2)
+	det.subHit.tip = d.subTip or false
+	det.subHit:SetShown(d.subTip ~= nil and subH > 0)
+	if subH > 0 then y = y - subH - 2 end
+	local FW = math.floor(det.IW / 3)
+	local anyFig = d.figures and d.figures[1]
+	y = y - 2
+	for k, f in ipairs(det.figures) do
+		local x = d.figures and d.figures[k]
+		at(f.label, 12 + (k - 1) * FW, y); at(f.value, 12 + (k - 1) * FW, y - 12)
+		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
+		f.hit:ClearAllPoints(); f.hit:SetPoint("TOPLEFT", 10 + (k - 1) * FW, y + 2); f.hit:SetSize(FW, 32)
+		f.hit.tip = x and x.tip or false
+		f.hit:SetShown(x ~= nil and x.tip ~= nil)
+	end
+	if anyFig then y = y - 32 end
+	local bar = type(d.bar) == "number" and math.max(0, math.min(1, d.bar)) or nil
+	det.track:ClearAllPoints(); det.track:SetPoint("TOPLEFT", 12, y)
+	det.fill:ClearAllPoints(); det.fill:SetPoint("TOPLEFT", 12, y)
+	det.track:SetShown(bar ~= nil); det.fill:SetShown(bar ~= nil and bar > 0)
+	if bar then det.fill:SetWidth(math.max(1, det.IW * bar)); y = y - 12 end
+	local shown = 0
+	for k, r in ipairs(det.rows) do
+		local x = d.rows and d.rows[k]
+		at(r.label, 12, y); at(r.value, det.width - 122, y)
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
+		r.hit.tip = x and x.tip or false
+		r.hit:SetShown(x ~= nil and x.tip ~= nil)
+		if x then y = y - 14; shown = shown + 1 end
+	end
+	y = y - 4
+	det.cardTop:Place(0, 0, det.width, -y)
+	-- the section, on its own card
+	local sec = d.section
+	y = y - 6
+	local secTop = y
+	at(det.head, 12, y - 6)
+	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
+	local tg = sec and sec.toggle
+	at(det.toggle, det.width - 132, y - 6)
+	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE") or "")
+	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 136, y - 2); det.toggleHit:SetSize(128, 16)
+	det.toggleHit.tip = tg and tg.tip or false
+	det.toggleHit.run = tg and tg.run or false
+	det.toggleHit:SetShown(tg ~= nil)
+	if sec then y = y - 20 end
+	for k, r in ipairs(det.srows) do
+		local x = sec and sec.rows and sec.rows[k]
+		at(r.label, 12, y); at(r.value, det.width - 122, y)
+		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
+		r.hit:ClearAllPoints(); r.hit:SetPoint("TOPLEFT", 4, y + 1); r.hit:SetSize(det.width - 8, 14)
+		r.hit.tip = x and x.tip or false
+		r.hit.run = x and x.run or false
+		r.sel:ClearAllPoints(); r.sel:SetPoint("TOPLEFT", 1, y + 1); r.sel:SetSize(det.width - 2, 14)
+		r.mark:ClearAllPoints(); r.mark:SetPoint("TOPLEFT", 1, y + 1); r.mark:SetSize(2, 14)
+		r.sel:SetShown(x ~= nil and x.on == true); r.mark:SetShown(x ~= nil and x.on == true)
+		r.hit:SetShown(x ~= nil and (x.tip ~= nil or x.run ~= nil))
+		if x then y = y - 14 end
+	end
+	if sec then
+		y = y - 4
+		det.cardPrices:Place(0, secTop, det.width, secTop - y)
+		y = y - 6
+	end
+	det.cardPrices:Visible(sec ~= nil)
+	-- the note, in what's left above the buttons
+	at(det.note, 12, y)
+	det.note:SetText(d.note or "")
+	local nb = 0
+	local by = 0
+	for k, b in ipairs(det.buttons) do
+		local a = d.actions and d.actions[k]
+		b.run, b.tipText, b.blocked = a and a.run or false, a and a.tip or false, a and a.off or false
+		if a then
+			nb = k
+			by = by + (k == 1 and 28 or 24) + 6
+			local f = b.text or (b.GetFontString and b:GetFontString())
+			local label = (a.label or ""):upper()
+			if f then f:SetText(label) elseif b.SetText then b:SetText(label) end
+			b.label = a.label
+			if b.SetAlpha then b:SetAlpha(a.off and 0.45 or 1) end
+		end
+		b:SetShown(a ~= nil)
+	end
+	for _, s in ipairs(det.stepper or {}) do s:SetShown(nb > 0) end
+	local room = ((det.GetHeight and det:GetHeight()) or det.height) + y - by - 4
+	if det.note.SetMaxLines then det.note:SetMaxLines(math.max(1, math.min(4, math.floor(room / 12)))) end
+	det.said:ClearAllPoints()
+	det.said:SetPoint("BOTTOMLEFT", 12, by + 4)
+	det.said:SetText(said or "")
+	det:Show()
+	return d
+end

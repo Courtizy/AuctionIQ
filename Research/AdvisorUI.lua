@@ -214,11 +214,10 @@ local function build()
 
 	-- Tabs for the area under the rows: the notes, the break-even chart or a batch analysis
 	local function paneTab(label, w, x, key, tip)
-		local b = T.Button(panel, label, w, 18)
+		local b = T.Tab(panel, label, w, 20)
 		b:SetPoint("TOPLEFT", x, ay - 26)
 		b:SetScript("OnClick", function() AUI.SetPane(key) end)
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip) end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		b:SetScript("OnEnter", function(self) if not self.on then self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end; CH.Window.Tooltip(self, tip) end)
 		return b
 	end
 	panel.notesBtn = paneTab("Notes", 60, 6, "notes", { { "Notes" },
@@ -328,8 +327,18 @@ function AUI.Render(result, reason)
 	local rkey = tostring(result.recipeID) .. (result.order and ":order" or "")
 	if rkey ~= selRecipe then
 		selRecipe, selQty = rkey, 1
-		local pick = result.best or result.bestConc
-		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil } or nil
+		-- the pick that earns the most a craft, as the Craft list's Best column has it
+		local b, c = result.best, result.bestConc
+		local pick = (c and c.profit and (not b or not b.profit or c.profit > b.profit)) and c or b or c
+		-- the Concentration craft with your own reagents: picked when it earns more, or when the
+		-- cheaper mix it stands in for needs a rank you don't have
+		for _, x in ipairs(result.rows) do
+			if x.fromBags and x.profit and pick and (x.profit > (pick.profit or 0)
+				or (x.quality == pick.quality and pick.concentration and CH.Advisor.MaxCraftable(result, pick, concNow()) < 1)) then
+				pick = x
+			end
+		end
+		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil, bags = pick.fromBags or nil } or nil
 	end
 	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
 	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
@@ -426,6 +435,10 @@ function AUI.SummaryLines(result)
 			table.insert(lines, "  Downside " .. money(down) .. mut(string.format(" per craft if reagents rise %s and the price falls %s", pctText(sc.reagents), pctText(sc.price)))
 				.. mut("; sell rate: " .. basis))
 		end
+		local cs = CH.Advisor.CraftOrSell(result, b)
+		if cs and cs.gain < 0 then
+			table.insert(lines, T.Color("bad", "  Sell the reagents instead: ") .. M(cs.sell) .. mut(" for yours beats crafting by ") .. M(-cs.gain))
+		end
 		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
 	elseif result.order then
 		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
@@ -503,7 +516,11 @@ end
 
 local function drawChart(chart, data)
 	local T = CH.Theme
-	local x0, y0, w, h = 70, 18, WIDTH - 70 - 16, PANE_H - 18 - 44
+	-- chart.cw / chart.ch: another frame's size (the Craft window's Details view)
+	local cw, chh = chart.cw, chart.ch
+	if type(cw) ~= "number" then cw = WIDTH end
+	if type(chh) ~= "number" then chh = PANE_H end
+	local x0, y0, w, h = 70, 18, cw - 70 - 16, chh - 18 - 44
 	local n = 0
 	local function dot(px, py, sw, sh, color, a)
 		n = n + 1
@@ -541,6 +558,8 @@ local function drawChart(chart, data)
 	label(5, pctText(data.hi), x0 + w - 60, -(y0 + h + 2), 60, "RIGHT")
 	for i = 6, #L do L[i]:Hide() end
 end
+
+AUI.DrawChart = drawChart
 
 -- Batch analysis ----------------------------------------------------------------------------------
 
@@ -662,10 +681,7 @@ function AUI.RenderPane()
 	local chart, T = panel.chart, CH.Theme
 	local function setOn(b, on)
 		if not b then return end
-		if b.SetAlpha then b:SetAlpha(on and 1 or 0.6) end
-		if on then T.Primary(b) end
-		if type(b.aiqFill) == "table" then if on then b.aiqFill:Show() else b.aiqFill:Hide() end end
-		b.on = on
+		T.SetTab(b, on)
 	end
 	setOn(panel.notesBtn, pane == "notes"); setOn(panel.chartBtn, pane == "chart"); setOn(panel.batchBtn, pane == "batch")
 	local lines = {}
@@ -863,25 +879,27 @@ end
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
 	local function add(l, rt) table.insert(lines, { l, rt }) end
+	local B = CH.Window.Book
+	local function put(l) table.insert(lines, l) end
 	if col == 3 then
-		add(CH.Theme.Color("accent", "Reagents") .. CH.Theme.Color("muted", "  estimated cost"))
+		put(B.Head("Reagents", CH.Theme.Color("muted", "estimated cost")))
 		local live
 		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			add(string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or ""),
-				(c.unit and (CH.FormatMoney(c.unit) .. " ea  ") or "") .. CH.FormatMoney(c.total))
-			for _, t in ipairs(CH.Advisor.HeldText(c)) do add(t[1], t[2]) end
+			local label = string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.unit and CH.Theme.Color("muted", " @ " .. CH.FormatMoney(c.unit)) or "")
+				.. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or "")
+			put(c.total and B.Line(label, -c.total, true) or B.Text(label, CH.Theme.Color("bad", "no price"), "bad"))
+			for _, t in ipairs(CH.Advisor.HeldText(c)) do put(t) end
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
-			for _, l in ipairs(AUI.BuyNowLines(c)) do add(l[1], l[2]); live = true end
+			for _, l in ipairs(AUI.BuyNowLines(c)) do put({ "   " .. l[1], l[2], "muted", "muted" }); live = true end
 		end
-		add(CH.Theme.Color("accent", "Total"), CH.FormatMoney(r.cost))
+		put(B.Total("Total", -(r.cost or 0)))
 		-- the same reagents on each costing basis: they answer different questions
-		for _, l in ipairs(AUI.BasisLines(result, r)) do add(l[1], l[2]) end
-		add(CH.Theme.Color("muted", "Replacement: TSM's last lowest listing, at least 80% of market value. An estimate for planning."))
-		if live then add(CH.Theme.Color("muted", "Buy now: the listings you've seen for that many, which is what you'd pay.")) end
-		add(CH.Theme.Color("muted", "Opportunity cost: what yours would bring sold at the sell price, after the 5% cut."))
+		for _, l in ipairs(AUI.BasisLines(result, r)) do put(l[2] == "" and B.Head(l[1]) or B.Sub(l[1], l[2])) end
+		if live then put(B.Note("Buy now: the listings you've seen for that many, which is what you'd pay.")) end
+		put(B.Note("Opportunity cost: what yours would bring at the sell price, after the 5% cut."))
 		-- two questions, two costs: restocking today against what the reagents you hold cost you
-		for _, l in ipairs(AUI.PaidLines(result, r)) do add(l[1], l[2]) end
-		if result.order and next(result.order.providedSlots or {}) then add(CH.Theme.Color("muted", "The customer provides the rest.")) end
+		for _, l in ipairs(AUI.PaidLines(result, r)) do put(l[2] == "" and { l[1], "" } or B.Sub(l[1], l[2])) end
+		if result.order and next(result.order.providedSlots or {}) then put(B.Note("The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
 		add(CH.Theme.Color("accent", name) .. rankText(r.quality, result.model and result.model.maxQ))
@@ -908,26 +926,28 @@ function AUI.BreakdownLines(result, r, col)
 			for _, l in ipairs(AUI.PostingLines(r.item, level, r.price)) do add(l[1], l[2]) end
 		end
 	elseif col == 5 then
-		add(CH.Theme.Color("accent", "Average profit") .. CH.Theme.Color("muted", "  per craft"))
-		add(result.order and "Commission and rewards" or "Expected sale value", CH.FormatMoney(r.value))
-		add("Less reagents", CH.FormatMoney(-r.cost))
+		put(B.Head("Revenue", CH.Theme.Color("muted", "average per craft")))
+		put(B.Line(result.order and "Commission and rewards" or "Expected sale value", r.value))
 		local pp = r.parts
 		if pp and pp.mc > 0 and not result.order then
-			add(string.format("Multicraft  %d%% x %.1f more", math.floor(pp.mc * 100 + 0.5), pp.extraItems), "+" .. CH.FormatMoney(pp.mcGold))
+			put(B.Line(string.format("Multicraft  %d%% x %.1f more", math.floor(pp.mc * 100 + 0.5), pp.extraItems), pp.mcGold))
 		end
+		put(B.Head("Costs"))
+		put(B.Line("Reagents", -(r.cost or 0), true))
 		if pp and pp.res > 0 then
-			add(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), "+" .. CH.FormatMoney(pp.resGold))
+			put(B.Line(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), pp.resGold))
 		end
-		if r.oldValue then add("Less the item you recraft", CH.FormatMoney(-r.oldValue)) end
-		add(CH.Theme.Color("accent", "Profit"), money(r.profit))
-		if r.profit and r.cost and r.cost > 0 then add("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5))) end
+		if r.oldValue then put(B.Line("The item you recraft", -r.oldValue, true)) end
+		put(B.Total("Profit", r.profit))
+		for _, l in ipairs(CH.Advisor.CraftOrSellLines(result, r)) do put(l) end
+		if r.profit and r.cost and r.cost > 0 then put(B.Text("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5)))) end
 		-- margin: profit over what the craft brings in (proceeds, Multicraft's extras included)
 		local proceeds = r.value and r.parts and (r.value + (r.parts.mcGold or 0))
 		if r.profit and proceeds and proceeds > 0 and not result.order then
-			add("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5)))
+			put(B.Text("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5))))
 		end
 		if r.breakEven then
-			add("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item")
+			put(B.Text("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item"))
 			add(CH.Theme.Color("muted", string.format("  estimate %s per item; can fall %s", CH.FormatMoney(r.breakEven.estimate),
 				pctText(math.max(0, r.breakEven.cushion)))), "")
 		end
@@ -981,16 +1001,15 @@ end
 function AUI.ShowBreakdown(owner, i, col)
 	local r = shown and shown.rows[i]
 	if not r then return end
-	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-	for _, l in ipairs(AUI.BreakdownLines(shown, r, col)) do
-		if l[2] then GameTooltip:AddDoubleLine(l[1], l[2], 1, 1, 1, 1, 1, 1) else GameTooltip:AddLine(l[1]) end
-	end
-	GameTooltip:Show()
+	CH.Window.Tooltip(owner, AUI.BreakdownLines(shown, r, col))
 end
 
 --- Update the advisor for a recipe (or the one on screen). It comes to the front unless another tab
 --- is open: then it updates quietly, ready for when you click its tab.
 function AUI.Show(recipeID, force)
+	-- the old Advisor window's X turned the advisor off for good; under the two windows that would
+	-- keep the Craft window from opening, so clear it once when the two windows first load
+	if CH.db and not settings().twoWindows then settings().twoWindows = true; settings().hide = nil end
 	if not CH.db or (settings().hide and not force) or not ownProfession() then
 		if panel then panel:Hide() end
 		return
@@ -1010,8 +1029,29 @@ function AUI.Show(recipeID, force)
 	else
 		AUI.Render(nil)
 	end
-	if force or not CH.Window.Busy("advisor") then panel:Show() end
+	if settings().classic then
+		if force or not CH.Window.Busy("advisor") then panel:Show() end
+	else
+		-- two windows, Craft and Queue: the recipe shows in the Craft window's card
+		panel:Hide()
+		if CH.ScanUI and CH.ScanUI.ShowRecipe then CH.ScanUI.ShowRecipe(current, force) end
+	end
 end
+
+--- Is the old standalone Advisor window on (Settings), instead of the Craft window's card?
+--- Gold a day explained: profit per craft times how many a day the region sells (up to the cap).
+function AUI.PerDayTip(scan)
+	local function mut(t) return CH.Theme.Color("muted", t) end
+	local cap = CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
+	local t = { { "Gold a day" },
+		{ mut("What this recipe could earn in a day if you only sold what the market takes: profit per craft, times how many the region sells a day, up to " .. cap .. ".") } }
+	if scan.soldPerDay then t[#t + 1] = { "Sold a day, region", string.format(scan.soldPerDay >= 100 and "%.0f" or "%.1f", scan.soldPerDay) } end
+	if scan.perPoint then t[#t + 1] = { mut("Concentration crafts count up to what a day's refill (about 250 points) pays for.") } end
+	t[#t + 1] = { mut("Use it to compare recipes: a big profit that sells once a week earns less than a small one that sells all day.") }
+	return t
+end
+
+function AUI.Classic() return settings().classic == true end
 
 --- The Advisor tab: bring it to the front (turning it back on if it was closed).
 function AUI.Open()
@@ -1053,12 +1093,32 @@ function AUI.Compute(recipeID)
 	local result = live
 	local d = AUI.SimDelta(recipeID)
 	if d then result = CH.Advisor.Evaluate(model, { sim = d }) end
+	AUI.AddHeldConc(result)
 	gearPick = nil
 	if not opts.order and CH.Gear then
 		local ok, g = pcall(CH.Gear.Best, model, (live.bestConc and not live.best) and "conc" or nil)
 		if ok then gearPick = g end
 	end
 	return result
+end
+
+--- When no Concentration craft of a rank can be made now (its mix needs a rank of reagent you
+--- don't hold), add the one with your own reagents: what the profession window charges when you
+--- tick Concentrate. It goes right after that rank's other Concentration row.
+function AUI.AddHeldConc(result)
+	if not (result and result.rows and CH.Advisor.HeldConcRow) or result.order or result.sim then return end
+	local ok, h = pcall(CH.Advisor.HeldConcRow, result)
+	if not ok or not h then return end
+	local cn = concNow()
+	local at
+	for i, r in ipairs(result.rows) do
+		if r.concentration and r.quality == h.quality then
+			-- one you can make already, or the same craft: nothing to add
+			if CH.Advisor.MaxCraftable(result, r, cn) > 0 or r.concentration == h.concentration then return end
+			at = i
+		end
+	end
+	table.insert(result.rows, (at or #result.rows) + 1, h)
 end
 
 --- The result on screen (for the results log to compare against).
@@ -1083,6 +1143,7 @@ function AUI.SetSimSkill(n) sim.skill = n or 0 end
 --- Is this advisor row the selected one?
 function AUI.IsSelected(r)
 	return sel ~= nil and r ~= nil and r.quality == sel.quality and (r.concentration ~= nil) == sel.conc
+		and (r.fromBags == true) == (sel.bags == true)
 end
 
 --- The selected row of the result on screen, or nil.
@@ -1263,8 +1324,243 @@ function AUI.NextTip(which)
 	end
 	local tip = { { "Next move" }, { mut(string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) } }
 	if m.mc then table.insert(tip, { mut(string.format("Multicraft makes extra items: about %.1f in all, on average.", m.items)) }) end
-	table.insert(tip, { mut("Hover Profit, Break-even or Recover for how each was reached.") })
+	table.insert(tip, { mut("Hover Profit or Break-even for how each was reached.") })
 	return tip
+end
+
+--- The Craft window's card for the recipe on screen: craft or sell, profit, reagents and margin,
+--- which quality (each with its Concentration and profit, a click picks it), break-even and the
+--- chance to recover in a week, and the Queue button. n is how many to queue. scan is the recipe's
+--- scan row, for its craft-or-sell verdict and gold a day. nil when no recipe is worked out.
+function AUI.Card(n, scan)
+	local result = shown
+	if not result then return nil end
+	local T, M, W = CH.Theme, CH.FormatMoney, CH.Window
+	local mut = function(t) return T.Color("muted", t) end
+	if n then selQty = math.max(1, math.min(999, math.floor(n))) end
+	local maxQ = result.model and result.model.maxQ
+	local r = AUI.SelectedRow()
+	local m = r and AUI.NextMove()
+	-- which quality: Highest at the top, Lowest at the bottom, and Best between them only when a
+	-- middle rank earns the most plainly (else Best is a tag on Highest or Lowest). Under a rank, a
+	-- Concentrate line when Concentration reaches it. A click on any line picks it.
+	local function line(i, x, label)
+		local tip = AUI.BreakdownLines(result, x, 5)
+		local gpp = x.gain and x.gain.perPoint or x.perPoint
+		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
+		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix needs a rank you don't have.") }) end
+		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
+		return { label, money(x.profit), tip = tip, on = AUI.IsSelected(x),
+			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
+	end
+	-- one plain and one Concentration craft per rank: the selected one, else yours (only there when
+	-- the cheaper mix can't be made), else the one that earns more
+	local plainAt, concAt = {}, {}
+	for i, x in ipairs(result.rows) do
+		local q = x.quality or 0
+		local slot = x.concentration and concAt or plainAt
+		local had = slot[q] and result.rows[slot[q]]
+		if not had or AUI.IsSelected(x) or (not AUI.IsSelected(had) and (x.fromBags or (not had.fromBags and (x.profit or 0) > (had.profit or 0)))) then
+			slot[q] = i
+		end
+	end
+	-- Concentrate on or off, as the pick is; the toggle picks the best craft on the other side
+	local concMode = r ~= nil and r.concentration ~= nil
+	local slot = concMode and concAt or plainAt
+	local function bestOf(t)
+		local bq
+		for q, i in pairs(t) do
+			if not bq or (result.rows[i].profit or 0) > (result.rows[t[bq]].profit or 0) then bq = q end
+		end
+		return bq
+	end
+	local lo, hi
+	for q in pairs(plainAt) do lo = math.min(lo or q, q); hi = math.max(hi or q, q) end
+	for q in pairs(concAt) do hi = math.max(hi or q, q); lo = lo or q end
+	local best = bestOf(slot)
+	local qrows = {}
+	if hi and maxQ and maxQ > hi then
+		qrows[#qrows + 1] = { W.QualityIcon(maxQ, 13, maxQ) .. mut("  out of reach"), mut("-"),
+			tip = { { "Rank " .. maxQ }, { mut("Even the best reagents and Concentration don't reach it with your skill now. Knowledge points or a skill finishing reagent can.") } } }
+	end
+	local function rank(q, name)
+		if not q then return end
+		local i = slot[q]
+		local x = i and result.rows[i]
+		local label = W.QualityIcon(q, 13, maxQ) .. "  " .. name .. (x and x.short and T.Color("bad", "  too low") or "")
+		if x then
+			local row = line(i, x, label)
+			if x.concentration then row[2] = T.Color("accent", W.ConcIcon(11) .. " " .. x.concentration) .. "  " .. row[2] end
+			qrows[#qrows + 1] = row
+		else
+			qrows[#qrows + 1] = { label, mut("-"),
+				tip = { { "Rank " .. q }, { mut(concMode and "Concentration doesn't help here: turn Concentrate off to pick it."
+					or "Only Concentration reaches it: turn Concentrate on to pick it.") } } }
+		end
+	end
+	local tagBest = best and (best == hi or best == lo)
+	rank(hi, "Highest" .. ((tagBest and best == hi) and mut(" · Best") or ""))
+	if best and not tagBest then rank(best, "Best") end
+	if lo and lo ~= hi then rank(lo, "Lowest" .. ((tagBest and best == lo) and mut(" · Best") or "")) end
+	local other = concMode and plainAt or concAt
+	local ob = bestOf(other)
+	local toggle = next(concAt) ~= nil and {
+		on = concMode,
+		tip = { { "Concentrate" }, { mut(concMode and "On: each rank shows its Concentration craft. Click to see the plain crafts."
+			or "Off: each rank shows its plain craft. Click to see what Concentration does at each.") } },
+		run = ob and function() AUI.RowClick(other[ob]); if CH.ScanUI then CH.ScanUI.Refresh() end end or nil,
+	} or nil
+	-- craft or sell, from today's prices of what you hold (the scan's reagents)
+	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
+	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
+	local cs = acc and CH.CraftOrSell(acc)
+	local sub
+	if cs then
+		sub = cs.verdict == "even" and T.Color("fg", "About even: craft it, or sell the reagents for about the same.")
+			or cs.gain >= 0 and T.Color("ok", "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.")
+			or T.Color("bad", "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.")
+		if cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
+			sub = sub .. mut(" Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
+		end
+	elseif r then
+		sub = r.profit and r.profit >= 0 and T.Color("ok", "Craft it: " .. M(r.profit) .. " a craft.")
+			or T.Color("bad", "Each craft loses " .. M(-(r.profit or 0)) .. " at today's prices.")
+	end
+	-- the whole notes, and craft or sell's numbers, on the sentence's hover
+	local tip = cs and CH.CraftOrSellBook(acc) or { { "Notes" } }
+	local notes = AUI.SummaryLines(result)
+	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(notes, l) end
+	local src = AUI.SourceLine(result)
+	if src then table.insert(notes, src) end
+	for _, l in ipairs(notes) do table.insert(tip, { l }) end
+	-- margin as the scan list has it: profit over what the reagents cost
+	local margin = r and r.profit and r.cost and r.cost > 0 and r.profit / r.cost
+	local figures = {
+		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
+		{ "COST", r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
+		{ "MARGIN", margin and T.Color(margin >= 0 and "ok" or "bad", pctText(margin)) or mut("-"),
+			tip = { { "Margin" }, { mut("Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
+	local rows = {}
+	if r then
+		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
+		-- Max is a list column now; its reagent-by-reagent hover lives there
+		if scan and scan.perDay then
+			rows[#rows + 1] = { "Gold a day", money(scan.perDay), tip = AUI.PerDayTip(scan) }
+		end
+		if cs and cs.paid then rows[#rows + 1] = { "You paid for yours", M(cs.paid) } end
+		-- a listing so far under value it pays to buy it out and relist: only shown when it does
+		local bc = scan and scan.bc
+		if bc and bc.flip and bc.flip > 0 and #rows < 5 then
+			rows[#rows + 1] = { "Buy & relist", T.Color("ok", "+" .. M(bc.flip)),
+				tip = { { "Buy & relist" }, { mut("Someone has it listed well under what it sells for. Buying it out and relisting pays, on top of crafting.") },
+					{ "Cheapest listing", M(bc.buy) }, { "Resells for, after cut", bc.resell and M(bc.resell) or mut("-") },
+					{ "Each one you flip", T.Color("ok", "+" .. M(bc.flip)) },
+					{ mut("The cheapest listing may be only a few items: check the AH before buying out.") } } }
+		end
+	end
+	local label, off = AUI.QueueAction()
+	if r and not off and r.max and r.max < selQty then
+		label = string.format("Queue %d · Max %d", selQty, r.max)
+	end
+	-- Craft the pick now, as many as the stepper says (up to what you can make)
+	local can = r and math.min(selQty, r.max or 0) or 0
+	local craftOff = not r and "Pick a quality first." or result.sim and "Turn the simulation off to craft."
+		or r.short and "This rank is below what the order asks for." or can < 1 and "You don't have the reagents (or Concentration) for one."
+		or nil
+	local actions = { { label = string.format("Craft %d", math.max(1, can)), off = craftOff,
+		tip = "Crafts the picked rank now, with these reagents" .. (r and r.concentration and " and Concentration" or "") .. ".",
+		run = function()
+			local ok, why = CH.Queue.CraftNow(result, r, can)
+			if not ok then CH.Print("can't craft that: " .. tostring(why)) end
+			return ok
+		end },
+		{ label = label, off = off, tip = "Adds the picked rank to the queue, with these reagents.",
+		run = function() return AUI.QueueSelected() end } }
+	actions[3] = { label = "Details", tip = "Break-even, a price check, whether it will sell and what drives the cost.",
+		run = function() if CH.ScanUI then CH.ScanUI.SetDetails(true) end end }
+	local g = gearPick
+	if g and g.set and not result.sim then
+		actions[4] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
+			run = function() local ok, why = CH.Gear.Equip(g.set); if not ok then CH.Print("can't change gear " .. (why or "")) end
+				if C_Timer then C_Timer.After(1, function() AUI.Show() end) end end }
+	end
+	local warn = AUI.PostLines(result)
+	local itemID = (r and r.item) or (result.model and result.model.output)
+	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
+		sub = sub, subTip = tip, figures = figures, rows = rows,
+		bar = m and m.recover or nil,
+		section = { head = "QUALITY", rows = qrows, toggle = toggle },
+		note = #warn > 0 and table.concat(warn, "\n") or mut("Hover a number for how it was reached; the sentence for the notes."),
+		actions = actions, live = true }
+end
+
+--- The Craft window's Details view for the recipe on screen, one item at a time: the break-even
+--- chart, a price check against the item's normal, whether it will sell, and what drives the
+--- reagent cost. n is how many you'd make. { title, chart, chartLines, price, sell, cost }, each of
+--- price, sell and cost { verdict, rows = { { label, value, tip } } }. nil with no recipe.
+function AUI.Details(n, scan)
+	local result = shown
+	if not result then return nil end
+	local T, M = CH.Theme, CH.FormatMoney
+	local mut = function(t) return T.Color("muted", t) end
+	n = math.max(1, math.floor(n or selQty))
+	local r = AUI.SelectedRow() or result.best or result.bestConc
+	local item = r and r.item
+	local out = { title = (result.name or "?"), chart = AUI.ChartData(result), n = n }
+	out.chartLines = AUI.ChartLines(out.chart)
+	-- 1. price check: today against its normal
+	local mk = item and CH.Prices.MarketAny and CH.Prices.MarketAny(item)
+	local scanned = item and CH.Scans and CH.Scans.Get(item)
+	local pr = {}
+	if mk and mk.market then pr[#pr + 1] = { "Today, your realm", M(mk.market) } end
+	if mk and mk.avg7 then pr[#pr + 1] = { string.format("Normal, %d-day average", mk.avgDays or 7), M(mk.avg7) } end
+	if mk and mk.region then pr[#pr + 1] = { "Region average", M(mk.region) } end
+	if scanned and scanned.min then pr[#pr + 1] = { "Lowest listing", M(scanned.min),
+		tip = { { "Lowest listing" }, { mut("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.") } } } end
+	local ch = mk and mk.change7
+	local pv = not ch and mut("No average price to compare against yet.")
+		or ch >= 0.1 and T.Color("ok", string.format("%d%% above normal: a good time to sell.", math.floor(ch * 100 + 0.5)))
+		or ch <= -0.1 and T.Color("bad", string.format("%d%% below normal: crafting now locks in a low price.", math.floor(-ch * 100 + 0.5)))
+		or T.Color("fg", "About its normal price.")
+	out.price = { verdict = pv, rows = pr }
+	-- 2. will it sell: the region's daily sales against what's listed plus what you'd make
+	local per = item and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(item)
+	local m = r and AUI.NextMove()
+	local items = m and m.qty > 0 and (m.items / m.qty * n) or n * (result.made or 1)
+	local listed = scanned and scanned.qty
+	local sr = { { "Sold a day, region", per and string.format(per >= 100 and "%.0f" or "%.1f", per) or mut("-") },
+		{ "Listed now", listed and tostring(listed) or mut("scan the AH"),
+			tip = { { "Listed now" }, { mut(listed and ("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.")
+				or "Search the item at the Auction House and AuctionIQ keeps the count.") } } },
+		{ string.format("You'd make, %d %s", n, n == 1 and "craft" or "crafts"), string.format("~%d", math.floor(items + 0.5)) } }
+	local days = per and per > 0 and ((listed or 0) + items) / per
+	if days then sr[#sr + 1] = { "Days to sell it all", string.format(days >= 10 and "%.0f" or "%.1f", days),
+		tip = { { "Days to sell" }, { mut("What's listed now plus your batch, over the region's sales a day. Your realm sells only part of that, so treat it as the best case.") } } } end
+	local sv = not per and mut("No sales rate for this item yet.")
+		or days and days <= 3 and T.Color("ok", "Sells fast: the market takes it in days.")
+		or days and days <= 14 and T.Color("fg", "Sells steadily: expect a week or two.")
+		or T.Color("bad", "Slow: more listed than the market takes in two weeks.")
+	out.sell = { verdict = sv, rows = sr }
+	-- 3. what drives the cost: each reagent's share, and where it comes from
+	local cl = r and CH.Advisor.CostLines(result, r.picks, r.finishing) or {}
+	local total = 0
+	for _, c in ipairs(cl) do total = total + (c.total or 0) end
+	table.sort(cl, function(a, b) return (a.total or 0) > (b.total or 0) end)
+	local cr = {}
+	for _, c in ipairs(cl) do
+		if #cr >= 6 then break end
+		local src = c.finishing and mut("finishing") or c.crafted and T.Color("accent", "cheaper to craft")
+			or (c.own and c.own >= c.n) and T.Color("ok", "yours") or (c.own and c.own > 0) and T.Color("fg", string.format("%d yours", c.own))
+			or mut("buy")
+		local share = total > 0 and c.total and string.format("%d%%", math.floor(c.total / total * 100 + 0.5)) or "-"
+		cr[#cr + 1] = { string.format("%dx %s", c.n, c.name or "?") .. "  " .. src, (c.total and M(c.total) or T.Color("bad", "no price")) .. "  " .. mut(share),
+			tip = (function() local t = { { c.name or "?" } }; for _, l in ipairs(CH.Advisor.HeldText(c)) do t[#t + 1] = l end
+				if #t == 1 then t[2] = { mut("Bought at the cheapest listing you can get.") } end; return t end)() }
+	end
+	local top = cl[1]
+	out.cost = { verdict = top and total > 0 and T.Color("fg", string.format("%s is %d%% of the cost.", top.name or "?", math.floor((top.total or 0) / total * 100 + 0.5))) or mut("No reagent prices."),
+		rows = cr }
+	return out
 end
 
 --- Set how many of the selected craft to queue (1 to 999).
@@ -1279,7 +1575,7 @@ function AUI.RowClick(i)
 	local r = shown and shown.rows[i]
 	if not r then return end
 	if not AUI.IsSelected(r) then selQty = 1 end
-	sel = { quality = r.quality, conc = r.concentration ~= nil }
+	sel = { quality = r.quality, conc = r.concentration ~= nil, bags = r.fromBags or nil }
 	AUI.Render(shown)
 end
 

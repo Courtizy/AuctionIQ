@@ -746,77 +746,11 @@ function LUI.Build(p, fs, panel)
 	-- the selected row's detail, in a panel right of the table, for a view that has one: a kicker, a
 	-- headline, three figures, label and value rows, a section of rows (each explains itself on hover),
 	-- a note, and buttons from the bottom up (the first, the main one, lowest)
-	local det = CreateFrame("Frame", nil, body)
-	det:SetSize(SIDE, ROWS * RH + 20)
-	local dbg = det:CreateTexture(nil, "BACKGROUND")
-	dbg:SetAllPoints()
-	dbg:SetColorTexture(1, 1, 1, 0.03)
-	-- the Next Move block and the price scenarios each sit on a darker card, so they read apart
-	-- from each other and from the table
-	local function card(top, bottom, accent)
-		local t = det:CreateTexture(nil, "BORDER")
-		t:SetPoint("TOPLEFT", 4, top)
-		t:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, bottom)
-		t:SetColorTexture(0, 0, 0, 0.45)
-		if accent then
-			local a = det:CreateTexture(nil, "ARTWORK")
-			a:SetPoint("TOPLEFT", 4, top)
-			a:SetPoint("BOTTOMRIGHT", det, "TOPRIGHT", -4, top - 2)
-			local c = CH.Theme.accent
-			a:SetColorTexture(c[1], c[2], c[3], 1)
-			det.accentBar = a
-		end
-		return t
-	end
-	det.cardTop = card(-4, -114, true)
-	det.cardPrices = card(-220, -324)
-	local IW = SIDE - 20
-	det.kicker = fs(det, 10, -8, IW, "LEFT", "GameFontNormalSmall")
-	det.title = fs(det, 10, -24, IW, "LEFT", "GameFontNormalLarge")
-	if det.title.SetMaxLines then det.title:SetWordWrap(true); det.title:SetMaxLines(2) end
-	det.sub = fs(det, 10, -62, IW, "LEFT", "GameFontDisableSmall")
-	det.figures = {}
-	local FW = math.floor(IW / 3)
-	for k = 1, 3 do
-		det.figures[k] = { label = fs(det, 10 + (k - 1) * FW, -82, FW - 4, "LEFT", "GameFontDisableSmall"),
-			value = fs(det, 10 + (k - 1) * FW, -96, FW - 4, "LEFT", "GameFontHighlight") }
-	end
-	local function pair(y)
-		return { label = fs(det, 10, y, IW - 112, "LEFT", "GameFontHighlightSmall"), value = fs(det, IW - 100, y, 110, "RIGHT", "GameFontHighlightSmall") }
-	end
-	det.rows = {}
-	for k = 1, 6 do det.rows[k] = pair(-122 - (k - 1) * 16) end
-	det.head = fs(det, 10, -226, IW, "LEFT", "GameFontNormalSmall")
-	det.srows = {}
-	for k = 1, 5 do
-		local r = pair(-242 - (k - 1) * 16)
-		local hit = CreateFrame("Button", nil, det)
-		hit:SetPoint("TOPLEFT", 6, -240 - (k - 1) * 16)
-		hit:SetSize(IW + 8, 16)
-		hit:SetScript("OnEnter", function(self) if self.tip and self.tip[1] then CH.Window.Tooltip(self, self.tip) end end)
-		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		r.hit = hit
-		det.srows[k] = r
-	end
-	det.note = fs(det, 10, -326, IW, "LEFT", "GameFontDisableSmall")
-	if det.note.SetMaxLines then det.note:SetWordWrap(true); det.note:SetMaxLines(3) end
-	det.said = fs(det, 10, 0, IW, "LEFT", "GameFontHighlightSmall")
-	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
-	det.buttons = {}
-	for k = 1, 3 do
-		local b = CH.Theme.Button(det, "", IW, 22)
-		b:SetPoint("BOTTOMLEFT", 10, 10 + (k - 1) * 26)
-		if k == 1 then CH.Theme.Primary(b) end -- the main action, filled with the accent like the design
-		b:SetScript("OnClick", function(self)
-			if not self.run then return end
-			local ok, msg = self.run()
-			said = msg and { ok = ok, msg = msg } or nil
-			CH.UI.Refresh()
-		end)
-		b:SetScript("OnEnter", function(self) if self.tipText then CH.Window.Tooltip(self, { { self.tipText } }) end end)
-		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		det.buttons[k] = b
-	end
+	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { onAction = function(self)
+		local ok, msg = self.run()
+		said = msg and { ok = ok, msg = msg } or nil
+		CH.UI.Refresh()
+	end })
 	det:Hide()
 	p.detail = det
 	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
@@ -998,43 +932,8 @@ function LUI.DrawDetail(p, v, sel, shown)
 	det:ClearAllPoints()
 	det:SetPoint("TOPLEFT", X0 + TW - SIDE, -32)
 	det:SetHeight(ROWS * RH + 20)
-	det.kicker:SetText(d.kicker and CH.Theme.Color("accent", d.kicker) or "")
-	det.title:SetText(d.title or "")
-	det.sub:SetText(d.sub or "")
-	for k, f in ipairs(det.figures) do
-		local x = d.figures and d.figures[k]
-		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
-	end
-	for k, r in ipairs(det.rows) do
-		local x = d.rows and d.rows[k]
-		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
-	end
-	local sec = d.section
-	det.head:SetText(sec and CH.Theme.Color("accent", sec.head or "") or "")
-	for k, r in ipairs(det.srows) do
-		local x = sec and sec.rows and sec.rows[k]
-		r.label:SetText(x and x[1] or ""); r.value:SetText(x and x[2] or "")
-		r.hit.tip = x and x.tip
-		r.hit:SetShown(x ~= nil and x.tip ~= nil)
-	end
-	det.note:SetText(d.note or "")
-	local nb = 0
-	for k, b in ipairs(det.buttons) do
-		local a = d.actions and d.actions[k]
-		b.run, b.tipText = a and a.run, a and a.tip
-		if a then
-			nb = k
-			local f = b.text or (b.GetFontString and b:GetFontString())
-			if f then f:SetText(a.label) elseif b.SetText then b:SetText(a.label) end
-			b.label = a.label
-		end
-		b:SetShown(a ~= nil)
-	end
-	det.said:ClearAllPoints()
-	det.said:SetPoint("BOTTOMLEFT", 10, 14 + nb * 26)
 	local busy = v.action and v.action.status and v.action.status()
-	det.said:SetText(busy and CH.Theme.Color("accent", busy) or said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
-	det:Show()
+	CH.Window.DrawSidePanel(det, d, busy and CH.Theme.Color("accent", busy) or said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
 	LUI.lastDetail = d
 	return d
 end

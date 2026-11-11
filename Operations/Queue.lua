@@ -13,8 +13,18 @@ local function have(id)
 	return C_Item.GetItemCount(id, true, false, true, true) or 0 -- bags, bank, reagent bank, warband bank
 end
 
+-- The exact craft an entry is: its reagents (item, slot and count, finishing ones included) and its
+-- Concentration, so two mixes that reach the same quality stay two entries with their own forecasts.
+local function mixOf(e)
+	local parts = {}
+	for _, r in ipairs(e.reagents or {}) do parts[#parts + 1] = string.format("%s@%s*%s", tostring(r.itemID), tostring(r.slot), tostring(r.n)) end
+	table.sort(parts)
+	return table.concat(parts, ",")
+end
+Q.MixOf = mixOf
+
 local function keyOf(e)
-	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and "c" or "", e.orderID and tostring(e.orderID) or "" }, ":")
+	return table.concat({ e.char, e.recipeID, e.quality, e.concentration and tostring(e.concentration) or "", e.orderID and tostring(e.orderID) or "", mixOf(e) }, ":")
 end
 
 --- Turn an advisor row into a queue entry for this character.
@@ -59,28 +69,21 @@ function Q.Add(result, r, qty, extra)
 	for k, v in pairs(extra or {}) do e[k] = v end
 	-- order IDs are kept as text: they can be numbers too big to save and compare reliably
 	if e.orderID then e.orderID = tostring(e.orderID) end
-	local k = keyOf(e)
-	for _, x in ipairs(list()) do
-		if keyOf(x) == k then
-			x.qty = x.qty + (qty or 1)
-			x.reagents, x.shop, x.profit, x.cost = e.reagents, e.shop, e.profit, e.cost -- latest picks and prices
-			Q.Changed()
-			return x
-		end
-	end
-	e.qty = qty or 1
-	table.insert(list(), e)
-	Q.Changed()
-	return e
+	return Q.AddEntry(e, qty)
 end
 
 --- Add a ready-made entry (from Q.FromScan), stacking with the same recipe, quality and Concentration.
 function Q.AddEntry(e, qty)
+	-- an order is one craft: queueing it again (Queue all twice) changes nothing
+	if e.orderID then
+		local x = Q.ForOrder(e.orderID)
+		if x then return x end
+	end
+	-- only the exact same craft stacks: the entry keeps its own reagents, so nothing is overwritten
 	local k = keyOf(e)
 	for _, x in ipairs(list()) do
 		if keyOf(x) == k then
 			x.qty = x.qty + (qty or 1)
-			x.reagents, x.shop, x.profit, x.cost = e.reagents, e.shop, e.profit, e.cost
 			Q.Changed()
 			return x
 		end
@@ -94,7 +97,9 @@ end
 --- A queue entry from a saved scan row, for any character, without the profession window open.
 --- conc picks the Concentration craft. nil when the scan predates saving reagent slots.
 function Q.FromScan(charKey, char, row, conc)
-	local acc = conc and row.concAccounts or row.accounts
+	-- the Concentration craft needs its own saved mix: never the plain one under its name
+	local acc
+	if conc then acc = row.concAccounts else acc = row.accounts end
 	if not acc or not acc.queue then return nil end
 	local shop = {}
 	for _, s in ipairs(acc.reagents or {}) do table.insert(shop, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers }) end
@@ -242,6 +247,8 @@ end
 --- own claimed order wins over what we remember: crafted when it says the order can be turned in.
 function Q.OrderStep(e)
 	if not e.orderID then return Q.NeedsShatter(e.recipeID) and "Shatter" or "Craft" end
+	local waiting = Q.Pending(e)
+	if waiting then return Q.PENDING_LABEL[waiting] end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
@@ -642,7 +649,7 @@ function Q.CanCraftHere(e)
 end
 
 local crafting -- the entry being crafted, to count finished crafts off it
-local delivering = {} -- orders turned in, until the game says it took them
+local PENDING_FOR = 15 -- seconds to wait for the game to answer a step before letting you retry
 
 local function okResult(result)
 	local ok = Enum and Enum.CraftingOrderResult and Enum.CraftingOrderResult.Ok or 0
@@ -655,32 +662,150 @@ local function claimedOrder(id)
 	if c and CH.Orders.Same(c.orderID, id) then return c end
 end
 
--- The game answers a claim or a turn-in later: undo what we assumed if it said no.
+local function now() return GetTime and GetTime() or time() end
+
+--- A step sent to the game and not yet answered: "claim", "craft" or "turnin", or nil. A step
+--- unanswered for PENDING_FOR seconds lapses, so it can be tried again.
+function Q.Pending(e)
+	if not (e and e.pending) then return nil end
+	if e.pendingAt and now() - e.pendingAt > PENDING_FOR then e.pending, e.pendingAt = nil, nil; return nil end
+	return e.pending
+end
+local function setPending(e, what) e.pending, e.pendingAt = what, what and now() or nil; Q.Changed() end
+Q.PENDING_LABEL = { claim = "Claiming...", craft = "Crafting...", turnin = "Turning in..." }
+
+local function entryForOrder(orderID)
+	for _, e in ipairs(list()) do if e.orderID and CH.Orders.Same(e.orderID, orderID) then return e end end
+end
+
+-- The game answers a claim or a turn-in later: the queue moves on only when it says yes.
 CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
-	if okResult(result) then return end
-	for _, e in ipairs(list()) do
-		if CH.Orders.Same(e.orderID, orderID) and e.stage == "claimed" then e.stage = nil end
+	local e = entryForOrder(orderID)
+	if not e then return end
+	setPending(e, nil)
+	if okResult(result) then
+		e.stage = "claimed"
+		CH.Print("claimed: " .. (e.name or "the order"))
+	else
+		e.stage = nil
+		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
 	end
-	CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
 	Q.Changed()
 end)
 CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
-	local key = tostring(orderID)
-	local e = delivering[key]
-	delivering[key] = nil
+	local e = entryForOrder(orderID)
 	if okResult(result) then CH.Orders.Forget(orderID) end
-	if not e or okResult(result) then return end
-	e.stage, e.qty = "crafted", 1
-	table.insert(list(), 1, e)
-	CH.Print("the game didn't take that order (" .. tostring(result) .. "). It's back at the top of the queue.")
-	Q.Changed()
+	if not e then return end
+	setPending(e, nil)
+	if okResult(result) then
+		CH.Print("turned in: " .. (e.name or "the order"))
+		Q.Remove(e)
+	else
+		e.stage = "crafted"
+		CH.Print("the game didn't take that order (" .. tostring(result) .. "). It's still in the queue: press Turn in to try again.")
+		Q.Changed()
+	end
 end)
 
+-- Released (Cancel Order on the game's page) or timed out: the order goes back to Claim.
+local function released(orderID)
+	local co = C_CraftingOrders
+	local now = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	for _, e in ipairs(list()) do
+		if e.orderID and e.stage and (orderID == nil and not (now and CH.Orders.Same(now.orderID, e.orderID))
+			or orderID ~= nil and CH.Orders.Same(e.orderID, orderID)) then
+			e.stage, e.confirmed = nil, nil
+			setPending(e, nil)
+		end
+	end
+	Q.Changed()
+end
+CH.On("CRAFTINGORDERS_RELEASE_ORDER_RESPONSE", function(_, result, orderID) if okResult(result) then released(orderID) end end)
+CH.On("CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", function() released(nil) end)
+
+-- Is a reagent slot required (a basic reagent) or optional (finishing, optional)?
+local function slotRequired(sl)
+	if sl.required ~= nil then return sl.required end
+	local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
+	return basic == nil or sl.reagentType == nil or sl.reagentType == basic
+end
+
+--- Work out exactly what an order craft will send: your reagents less what the customer gives,
+--- without locked slots. A required reagent you're short of stops it, named; an optional one you're
+--- short of is left out. Returns { mine, names, dropped } or nil and why.
+function Q.OrderAllocation(e, claimed)
+	local ui = C_TradeSkillUI
+	local supplied = {}
+	for _, r in ipairs(claimed.reagents or {}) do
+		local info = r.reagentInfo or r
+		local id = info.reagent and info.reagent.itemID or info.itemID
+		if id then supplied[id] = (supplied[id] or 0) + (info.quantity or math.huge) end
+	end
+	-- only what they give beyond what the advisor already planned for comes off ours
+	for id, n in pairs(e.given or {}) do if supplied[id] then supplied[id] = math.max(0, supplied[id] - n) end end
+	local sch = ui and ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+	local slots = {}
+	for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do slots[sl.dataSlotIndex] = sl end
+	local mine, names, dropped = {}, {}, {}
+	for _, r in ipairs(e.reagents or {}) do
+		local off = math.min(r.n, supplied[r.itemID] or 0)
+		if off > 0 then supplied[r.itemID] = supplied[r.itemID] - off end
+		local n = r.n - off
+		if n > 0 then
+			local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
+			local sl = r.slot and slots[r.slot]
+			local required = not sl or slotRequired(sl)
+			local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(r.itemID, true, false, true, true) or n
+			if sl and CH.Advisor and CH.Advisor.SlotLocked and CH.Advisor.SlotLocked(e.recipeID, sl) then
+				if required then return nil, string.format("%s goes in a slot that's locked for you", nm) end
+				dropped[#dropped + 1] = nm .. " (slot locked)"
+			elseif have < n then
+				if required then return nil, string.format("you need %d %s and have %d", n, nm, have) end
+				dropped[#dropped + 1] = string.format("%s (have %d of %d)", nm, have, n)
+			else
+				-- the game's own shape, as CraftSim passes it
+				mine[#mine + 1] = { reagent = { itemID = r.itemID }, quantity = n, dataSlotIndex = r.slot }
+				names[#names + 1] = string.format("%dx %s", n, nm)
+			end
+		end
+	end
+	return { mine = mine, names = names, dropped = dropped }
+end
+
+-- What these exact reagents make for the order, with or without Concentration: rank and points.
+local function orderRank(e, claimed, mine, conc)
+	local ui = C_TradeSkillUI
+	if not (ui and ui.GetCraftingOperationInfoForOrder) then return nil end
+	local all = {}
+	for _, r in ipairs(mine) do all[#all + 1] = r end
+	-- the customer's graded reagents count too; a single-quality one makes the game answer nothing
+	local graded = {}
+	local sch = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
+	for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
+		if #(sl.reagents or {}) > 1 then
+			for _, x in ipairs(sl.reagents) do graded[x.itemID or (x.reagent and x.reagent.itemID) or 0] = true end
+		end
+	end
+	for _, r in ipairs(claimed.reagents or {}) do
+		local info = r.reagentInfo or r
+		local id = info.reagent and info.reagent.itemID
+		if id and (graded[id] or not sch) then all[#all + 1] = info end
+	end
+	local ok, op = pcall(ui.GetCraftingOperationInfoForOrder, e.recipeID, all, claimed.orderID, conc)
+	if not (ok and op) then return nil end
+	return op.craftingQuality, op.concentrationCost
+end
+
 --- Craft an entry with its queued reagents and Concentration. Must be called from a click.
---- An order goes claim, craft, turn in, each with the game's live order (as CraftSim does it).
+--- An order goes claim, craft, turn in, each with the game's live order (as CraftSim does it), and
+--- each moves on only when the game confirms it. The craft settles its final reagents first and
+--- checks that exact set; if it differs from the plan (a reagent left out, Concentration needed), it
+--- says how and the next press crafts it.
 function Q.Craft(e, amount)
 	local ok, why = Q.CanCraftHere(e)
 	if not ok then return false, why end
+	local waiting = Q.Pending(e)
+	if waiting then return false, "waiting for the game to confirm: " .. Q.PENDING_LABEL[waiting]:lower() end
 	if Q.OrderStep(e) == "Shatter" then return Q.Shatter() end
 	if e.orderID and Q.OrderStep(e) == "Craft" then Q.Replan(e) end
 	local reagents = {}
@@ -692,9 +817,8 @@ function Q.Craft(e, amount)
 		if step == "Claim" then
 			local o = CH.Orders.Live(e.orderID)
 			if not o then return false, "that order isn't listed any more: fetch the work orders again" end
+			setPending(e, "claim")
 			C_CraftingOrders.ClaimOrder(o.orderID, profession())
-			e.stage = "claimed"
-			Q.Changed()
 			return true
 		end
 		local claimed = claimedOrder(e.orderID)
@@ -704,106 +828,53 @@ function Q.Craft(e, amount)
 			return false, "that order isn't claimed any more: claim it again"
 		end
 		if step == "Turn in" then
+			setPending(e, "turnin")
 			C_CraftingOrders.FulfillOrder(claimed.orderID, "", profession())
-			delivering[tostring(e.orderID)] = e
-			Q.Remove(e)
 			return true
 		end
-		-- craft into the order: the customer's reagents are theirs, leave them out of ours
-		-- only what they give beyond what the advisor already planned for comes off ours
-		local supplied = {}
-		for _, r in ipairs(claimed.reagents or {}) do
-			local info = r.reagentInfo or r
-			local id = info.reagent and info.reagent.itemID or info.itemID
-			if id then supplied[id] = (supplied[id] or 0) + (info.quantity or math.huge) end
-		end
-		for id, n in pairs(e.given or {}) do if supplied[id] then supplied[id] = math.max(0, supplied[id] - n) end end
-		local mine = {}
-		for _, r in ipairs(reagents) do
-			local off = math.min(r.quantity, supplied[r.itemID] or 0)
-			if off > 0 then supplied[r.itemID] = supplied[r.itemID] - off end
-			if r.quantity - off > 0 then
-				table.insert(mine, { reagent = r.reagent, itemID = r.itemID, dataSlotIndex = r.dataSlotIndex, quantity = r.quantity - off })
-			end
-		end
-		-- The game silently refuses a craft below the order's rank, so ask it first what these
-		-- reagents make for this order, and turn Concentration on when that's what reaches it.
+		-- 1. the exact reagents this craft will send
+		local alloc, stop = Q.OrderAllocation(e, claimed)
+		if not alloc then return false, stop end
+		-- 2. check that exact set reaches the rank asked; Concentration only if that's what reaches it
 		local conc = e.concentration ~= nil
 		local need = claimed.minQuality or 0
-		local ui = C_TradeSkillUI
-		if need > 1 and ui.GetCraftingOperationInfoForOrder then
-			local all = {}
-			for _, r in ipairs(mine) do table.insert(all, r) end
-			-- only reagents with qualities: a single-quality one makes the game answer nothing
-			local graded = {}
-			local sch = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
-			for _, sl in ipairs(sch and sch.reagentSlotSchematics or {}) do
-				if #(sl.reagents or {}) > 1 then
-					for _, x in ipairs(sl.reagents) do graded[x.itemID or (x.reagent and x.reagent.itemID) or 0] = true end
-				end
-			end
-			for _, r in ipairs(claimed.reagents or {}) do
-				local info = r.reagentInfo or r
-				local id = info.reagent and info.reagent.itemID
-				if id and (graded[id] or not sch) then table.insert(all, info) end
-			end
-			local function rank(c)
-				local ok, op = pcall(ui.GetCraftingOperationInfoForOrder, e.recipeID, all, claimed.orderID, c)
-				return ok and op and op.craftingQuality
-			end
-			local q = rank(conc)
+		local points
+		if need > 1 then
+			local q, cost = orderRank(e, claimed, alloc.mine, conc)
+			points = conc and cost or nil
 			if q and q < need and not conc then
-				local qc = rank(true)
-				if qc and qc >= need then
-					conc = true
-					e.concentration = e.concentration or true
-					CH.Print(string.format("the order needs rank %d and these reagents make rank %d, so this craft uses Concentration.", need, q))
-				else
-					return false, string.format("the order needs rank %d but your reagents only reach rank %d, even with Concentration", need, qc or q)
+				local qc, cc = orderRank(e, claimed, alloc.mine, true)
+				if not (qc and qc >= need) then
+					return false, string.format("the order needs rank %d but these reagents reach rank %d, even with Concentration", need, qc or q)
 				end
+				conc, points = true, cc
 			elseif q and q < need then
-				return false, string.format("the order needs rank %d but your reagents only reach rank %d with Concentration", need, q)
+				return false, string.format("the order needs rank %d but these reagents only reach rank %d with Concentration", need, q)
 			end
 		end
+		-- 3. a craft that differs from the plan waits for a second press, after saying how
+		local changes = {}
+		if #alloc.dropped > 0 then changes[#changes + 1] = "leaves out " .. table.concat(alloc.dropped, ", ") end
+		if conc and e.concentration == nil then
+			changes[#changes + 1] = string.format("uses Concentration (%s points) to reach rank %d", points and tostring(math.floor(points + 0.5)) or "?", need)
+		end
+		local sig = table.concat(changes, "; ")
+		if sig ~= "" and e.confirmed ~= sig then
+			e.confirmed = sig
+			Q.Changed()
+			return false, "this craft " .. sig .. ". Press again to craft it this way."
+		end
+		e.confirmed = nil
+		setPending(e, "craft")
 		crafting = e
+		CH.Print(string.format("crafting %s into the order with %s, Concentration %s%s",
+			e.name or "?", #alloc.names > 0 and table.concat(alloc.names, ", ") or "only the customer's reagents",
+			conc and "on" or "off", points and conc and string.format(" (%d points)", math.floor(points + 0.5)) or ""))
+		local ui = C_TradeSkillUI
 		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
-			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, mine, nil, conc)
+			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, alloc.mine, nil, conc)
 		else
-			-- a reagent you don't hold enough of makes the game refuse the craft without a word: leave
-			-- optional ones (finishing) out and say so
-			local held, names = {}, {}
-			for _, r in ipairs(mine) do
-				local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(r.itemID, true, false, true, true) or r.quantity
-				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
-				if have >= r.quantity then
-					table.insert(held, r)
-					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
-				else
-					CH.Print(string.format("left out %s: you have %d of the %d it takes", nm, have, r.quantity))
-				end
-			end
-			mine = held
-			-- a reagent in a slot the game has locked for you (an unopened finishing slot) is dropped
-			local sch2 = ui.GetRecipeSchematic and ui.GetRecipeSchematic(e.recipeID, false)
-			local lockedSlot = {}
-			for _, sl in ipairs(sch2 and sch2.reagentSlotSchematics or {}) do
-				if CH.Advisor and CH.Advisor.SlotLocked and CH.Advisor.SlotLocked(e.recipeID, sl) then lockedSlot[sl.dataSlotIndex] = true end
-			end
-			held, names = {}, {}
-			for _, r in ipairs(mine) do
-				local nm = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.itemID) or ("item " .. r.itemID)
-				if r.dataSlotIndex and lockedSlot[r.dataSlotIndex] then
-					CH.Print(string.format("left out %s: that slot is locked for you", nm))
-				else
-					-- the game's own shape, as CraftSim passes it
-					table.insert(held, { reagent = { itemID = r.itemID }, quantity = r.quantity, dataSlotIndex = r.dataSlotIndex })
-					names[#names + 1] = string.format("%dx %s", r.quantity, nm)
-				end
-			end
-			mine = held
-			CH.Print(string.format("crafting %s into the order with %s, Concentration %s, rank %s needed",
-				e.name or "?", #names > 0 and table.concat(names, ", ") or "only the customer's reagents", conc and "on" or "off", tostring(need)))
-			ui.CraftRecipe(e.recipeID, 1, mine, nil, claimed.orderID, conc)
+			ui.CraftRecipe(e.recipeID, 1, alloc.mine, nil, claimed.orderID, conc)
 		end
 		return true
 	end
@@ -820,6 +891,7 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 		local e, co = crafting, C_CraftingOrders
 		crafting = nil
 		local function settle()
+			setPending(e, nil)
 			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 			if not claimed or not CH.Orders.Same(claimed.orderID, e.orderID) or claimed.isFulfillable then
 				e.stage = "crafted"
@@ -831,9 +903,27 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 		if co and co.GetClaimedOrder and C_Timer then C_Timer.After(0.5, settle) else settle() end
 		return
 	end
-	Q.Remove(crafting, 1)
+	-- a craft straight from the Craft window isn't in the queue: just count it down
+	if crafting.direct then crafting.qty = crafting.qty - 1 else Q.Remove(crafting, 1) end
 	if crafting.qty <= 0 then crafting = nil end
 end)
+-- a craft the game stopped: the order's step is free to try again
+for _, ev in ipairs({ "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED" }) do
+	CH.On(ev, function(_, unit, _, spellID)
+		if unit ~= "player" or not crafting or crafting.recipeID ~= spellID then return end
+		if crafting.orderID then setPending(crafting, nil) end
+		crafting = nil
+	end)
+end
+
+--- Craft an advisor row now, without queueing it: the Craft window's Craft button. n crafts with
+--- the row's reagents and Concentration. Returns true, or false and why.
+function Q.CraftNow(result, r, n)
+	if not (result and r) then return false, "pick a quality first" end
+	local e = Q.FromRow(result, r)
+	e.direct, e.qty = true, math.max(1, math.floor(n or 1))
+	return Q.Craft(e, e.qty)
+end
 
 -- UI hook; QueueUI replaces it.
 function Q.Changed() end

@@ -43,8 +43,8 @@ local function heldInfo(model, id)
 		local P = CH.Prices
 		local n = P.Held and P.Held(id) or 0
 		-- opportunity cost: what yours would bring if you sold them instead (after the cut)
-		local v = n > 0 and P.Get("chvalue", "i:" .. id) or nil
-		h = { n = n, each = v and v * CH.AH_CUT or nil, paid = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
+		local v = n > 0 and P.SellValue(id) or nil
+		h = { n = n, each = v, paid = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
 		model.heldCache[id] = h
 	end
 	return h
@@ -817,15 +817,47 @@ function A.HeldText(l)
 	if not (l and l.own and l.own > 0) then return out end
 	local M, T = CH.FormatMoney, CH.Theme
 	local function m(v) return v and M(v) or T.Color("muted", "-") end
+	local B = CH.Window.Book
 	local list = CH.Prices.Get("chvalue", "i:" .. l.id)
 	local lowest = CH.Prices.Raw and CH.Prices.Raw("dbminbuyout", l.id) or l.buy
-	out[#out + 1] = { string.format("   Opportunity cost (%d yours)", l.own), m(l.ownEach) }
-	out[#out + 1] = { T.Color("muted", "      Stock"), tostring(l.stock or l.own) }
-	out[#out + 1] = { T.Color("muted", "      Paid price"), m(l.paidEach) }
-	out[#out + 1] = { T.Color("muted", "      Current price"), m(lowest) }
-	out[#out + 1] = { T.Color("muted", "      Sell price"), m(list) }
-	if (l.buyN or 0) > 0 then out[#out + 1] = { string.format("   To buy (%d)", l.buyN), m(l.buy) } end
+	out[#out + 1] = B.Sub(string.format("Opportunity cost (%d yours)", l.own), m(l.ownEach))
+	out[#out + 1] = B.Sub("   Stock", tostring(l.stock or l.own))
+	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
+	out[#out + 1] = B.Sub("   Current price", m(lowest))
+	out[#out + 1] = B.Sub("   Sell price", m(list))
+	-- what selling them would really leave you: the cut, plus deposits and waiting for a slow seller
+	if list and l.ownEach and l.sell then
+		local _, how = CH.Prices.SellValue(l.id)
+		local days = how and how.days
+		out[#out + 1] = B.Sub(days and days >= 0.5 and string.format("   Cut, deposits, ~%.0f days to sell", days) or "   Cut, deposits, wait",
+			"-" .. M(math.max(0, list - l.ownEach)))
+	end
+	if (l.buyN or 0) > 0 then out[#out + 1] = B.Sub(string.format("To buy (%d)", l.buyN), m(l.buy)) end
 	return out
+end
+
+--- Craft or sell: what crafting brings against selling the reagents you hold instead.
+--- { sell (yours at what they'd sell for after the cut), craft (the craft's proceeds less what you'd
+--- buy), gain (craft less sell: the row's profit) } or nil when you hold none of its reagents.
+function A.CraftOrSell(result, r)
+	if not (result and r and r.profit and r.picks) then return nil end
+	local own = 0
+	for _, l in ipairs(A.CostLines(result, r.picks, r.finishing)) do
+		if l.own and l.own > 0 and l.ownEach then own = own + l.own * l.ownEach end
+	end
+	if own <= 0 then return nil end
+	return { sell = own, craft = r.profit + own, gain = r.profit }
+end
+
+--- The craft-or-sell block for a profit hover, in Book lines (empty when you hold none of the reagents).
+function A.CraftOrSellLines(result, r)
+	local cs = A.CraftOrSell(result, r)
+	if not cs then return {} end
+	local B = CH.Window.Book
+	return { B.Head("Craft or sell?"),
+		B.Line("Craft and sell the item", cs.craft),
+		B.Line("Sell your reagents instead", cs.sell),
+		cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain) }
 end
 
 --- Each reagent in a row: id, name, rank, units, price per unit (chmat: an estimate), line total.
@@ -913,4 +945,49 @@ function A.MaxCraftable(result, r, concNow)
 	end
 	if max == math.huge then max = 0 end
 	return max, lines
+end
+
+--- The Concentration craft with the reagents you hold, as the game fills a slot by default (lowest
+--- rank first): what the profession window charges when you tick Concentrate without changing a
+--- reagent. The advisor's own Concentration mix can need a rank you don't hold; this one you can
+--- make now when the points cover it. A row like Evaluate's (fromBags = true), or nil.
+function A.HeldConcRow(result)
+	local model = result and result.model
+	if not model or result.order or result.sim or not model.supportsQualities or #model.qual == 0 then return nil end
+	local picks = {}
+	for i, slot in ipairs(model.qual) do
+		local left, row = slot.qty, {}
+		for q, id in ipairs(slot.items) do
+			local n = math.min(left, have(id))
+			if n > 0 then row[q] = n; left = left - n end
+		end
+		if left > 0 then return nil end
+		picks[i] = row
+	end
+	for _, slot in ipairs(model.fixed) do if have(slot.items[1]) < slot.qty then return nil end end
+	local op = operation(model, picks, false, {})
+	if not op then return nil end
+	local q = A.QualityAt(model, skillOf(op))
+	if q >= model.maxQ then return nil end
+	local opc = operation(model, picks, true, {})
+	local cc = opc and opc.concentrationCost
+	if not cc or cc <= 0 then return nil end
+	local c = cost(model, picks)
+	if not c then return nil end
+	local s = St().FromOperation(opc)
+	local s0 = model.stats0 or {}
+	s.mcExtra, s.resExtra, s.refundExtra, s.concReduce = s0.mcExtra, s0.resExtra, s0.refundExtra, s0.concReduce
+	local cq = q + 1
+	local item = model.outputs[cq] or model.output
+	local r = valueRow(model, { quality = cq, from = q, concentration = cc, picks = picks, skill = skillOf(op) }, s, item, c, {})
+	local avgConc, ing = St().AverageConcentration(cc, s)
+	r.avgConcentration, r.ingenuity = avgConc, ing
+	r.perPoint = r.profit and avgConc and avgConc > 0 and r.profit / avgConc or nil
+	r.fromBags = true
+	local Dc = CH.Decide
+	if Dc then
+		r.breakEven = Dc.BreakEven(result, r)
+		r.gain = Dc.ConcGain(r, result.best and result.best.profit)
+	end
+	return r
 end

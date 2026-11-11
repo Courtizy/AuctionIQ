@@ -50,19 +50,19 @@ local function craftLines(lines, row, acc, at)
 	local losses = gross * cut - (sales + mc)
 	if losses >= 1 then table.insert(lines, { "  Deposits and waiting to sell", m(-losses), "bad" }) end
 	table.insert(lines, { "  Revenue after cut", m(sales + mc), nil, "accent" })
-	-- reagents, itemised
-	table.insert(lines, { "  Reagents", m(-(acc.cost or 0)), "bad" })
-	for _, rg in ipairs(acc.reagents or {}) do
-		local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)) or ("item " .. rg.itemID)
-		local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. CH.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
-		local n = string.format("%g", math.floor(rg.n * 10 + 0.5) / 10)
-		table.insert(lines, { "    " .. n .. "x " .. name .. q, rg.cost and m(rg.cost) or "-", "muted", "muted" })
+	-- reagents, itemised at what they cost you now: yours at what they'd sell for, the rest at the buy price
+	local book, rcost = CH.ReagentBook(acc, { short = true })
+	table.insert(lines, { "  Reagents", m(-rcost), "bad" })
+	for k = 2, #book - 1 do
+		local l = book[k]
+		table.insert(lines, { "  " .. l[1], l[2], "muted", "muted" })
 	end
 	local res = acc.resGold or 0
 	if res ~= 0 then
 		table.insert(lines, { "  Resourcefulness, reagents saved", "+" .. m(res), "ok" })
-		table.insert(lines, { "  Reagents after savings", m(-((acc.cost or 0) - res)), "bad", "accent" })
+		table.insert(lines, { "  Reagents after savings", m(-(rcost - res)), "bad", "accent" })
 	end
+	acc = setmetatable({ profit = sales + mc + res - rcost }, { __index = acc })
 	-- the bottom line
 	local good = acc.profit >= 0 and "ok" or "bad"
 	table.insert(lines, { "Profit per craft", m(acc.profit), good })
@@ -72,6 +72,126 @@ local function craftLines(lines, row, acc, at)
 	if acc.avgConcentration and acc.avgConcentration > 0 then
 		table.insert(lines, { string.format("  Per Concentration point (%d)", acc.avgConcentration), m(acc.profit / acc.avgConcentration), good })
 	end
+end
+
+--- Craft or sell, live: crafting and selling the item (buying only the reagents you're short of)
+--- against selling the reagents you hold instead, at what they'd bring after the cut.
+--- { craft, sell, gain } or nil when you hold none of the craft's reagents.
+CH.CRAFT_OR_SELL_EVEN = 0.05 -- within 5% of what your reagents would bring, it's about even
+
+function CH.CraftOrSell(acc)
+	if not (acc and acc.reagents) then return nil end
+	local P = CH.Prices
+	local sell, buy, paid, paidAll = 0, 0, 0, true
+	for _, rg in ipairs(acc.reagents) do
+		local n = rg.n or 0
+		local unit = n > 0 and rg.cost and rg.cost / n or 0
+		local own = math.min(n, P.Held and P.Held(rg.itemID) or 0)
+		local v = own > 0 and P.SellValue(rg.itemID)
+		-- a reagent you hold with no sale price is only worth buying again: today's price
+		sell = sell + own * (v or unit)
+		buy = buy + (n - own) * unit
+		-- what you paid for yours: a sunk cost, shown for context, never in the decision
+		if own > 0 then
+			local pe = P.PaidEach and P.PaidEach(rg.itemID)
+			if pe then paid = paid + own * pe else paidAll = false end
+		end
+	end
+	if sell <= 0 then return nil end
+	local craft = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - buy
+	local gain = craft - sell
+	-- a small difference isn't worth acting on: about even, so crafting stays the plan
+	local verdict = math.abs(gain) <= CH.CRAFT_OR_SELL_EVEN * sell and "even" or gain > 0 and "craft" or "sell"
+	return { craft = craft, sell = sell, gain = gain, buy = buy, verdict = verdict,
+		paid = paidAll and paid > 0 and paid or nil }
+end
+
+local function reagentName(rg)
+	local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)) or ("item " .. rg.itemID)
+	local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. CH.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
+	return string.format("%gx %s%s", math.floor((rg.n or 0) * 10 + 0.5) / 10, name, q)
+end
+
+--- A craft's reagents as a Book statement, at today's prices: on the held basis the units you hold
+--- cost what they'd sell for after the cut (the opportunity cost) and the rest what they cost to buy.
+--- Under each reagent you hold: the opportunity cost, stock, paid, current and sell prices, and what
+--- you'd buy (opts.short: one row each for yours and to buy). Returns the lines and the total.
+function CH.ReagentBook(acc, opts)
+	local B, P, M = CH.Window.Book, CH.Prices, CH.FormatMoney
+	local held = P.CostBasis and P.CostBasis() == "held"
+	local lines, total = { B.Head("Reagents", "per craft") }, 0
+	for _, rg in ipairs(acc and acc.reagents or {}) do
+		local n = rg.n or 0
+		local buy = n > 0 and rg.cost and rg.cost / n or nil
+		local stock = held and P.Held and P.Held(rg.itemID) or 0
+		local own = math.min(n, stock)
+		local v = own > 0 and P.SellValue(rg.itemID) or nil
+		local ownEach = v or buy
+		local cost
+		if (own <= 0 or ownEach) and (own >= n or buy) then cost = own * (ownEach or 0) + (n - own) * (buy or 0) end
+		total = total + (cost or 0)
+		lines[#lines + 1] = B.Line(reagentName(rg), cost and -cost or nil, true)
+		if own > 0 then
+			if opts and opts.short then
+				lines[#lines + 1] = B.Sub(string.format("%g yours, at sell price", own), M(ownEach or 0))
+				if n - own > 0 then lines[#lines + 1] = B.Sub(string.format("%g to buy", n - own), buy and M(buy) or "-") end
+			elseif CH.Advisor and CH.Advisor.HeldText then
+				for _, t in ipairs(CH.Advisor.HeldText({ id = rg.itemID, own = own, ownEach = ownEach, stock = stock,
+					paidEach = P.PaidEach and P.PaidEach(rg.itemID), buyN = n - own, buy = buy })) do lines[#lines + 1] = t end
+			end
+		end
+	end
+	if not (acc and acc.reagents and acc.reagents[1]) then total = acc and acc.cost or 0 end -- an older scan: no itemised reagents
+	lines[#lines + 1] = B.Total("Total reagents", -total)
+	return lines, total
+end
+
+--- Craft or sell, as a Book block: crafting (after buying what you're short of) against selling the
+--- reagents you hold. Empty when you hold none of them.
+function CH.CraftOrSellBook(acc)
+	local cs = CH.CraftOrSell(acc)
+	if not cs then return {} end
+	local B, M = CH.Window.Book, CH.FormatMoney
+	local out = { B.Head("Craft or sell?", "with the reagents you hold"), B.Line("Craft and sell the item", cs.craft) }
+	if cs.buy and cs.buy >= 1 then out[#out + 1] = B.Sub("after buying the rest for", M(cs.buy)) end
+	out[#out + 1] = B.Line("Sell your reagents instead", cs.sell)
+	if cs.verdict == "even" then
+		out[#out + 1] = B.Total("About even, crafting by", cs.gain)
+	else
+		out[#out + 1] = cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain)
+	end
+	-- what you paid: sunk, so it doesn't change the choice, but it says what the choice costs you
+	if cs.paid then
+		out[#out + 1] = B.Text("You paid for yours", M(cs.paid), "muted")
+		local best = math.max(cs.sell, cs.sell + cs.gain)
+		if best < cs.paid then
+			out[#out + 1] = B.Note("They're worth less than you paid: you lose " .. M(cs.paid - best)
+				.. " against that either way. The better choice just loses less.")
+		end
+	end
+	return out
+end
+
+--- A scanned craft as a statement at today's prices: revenue, reagents (at what they cost you now),
+--- Resourcefulness, profit, then craft or sell. For the Scan tab's profit hovers.
+function CH.CraftBook(acc, title)
+	local B, M = CH.Window.Book, CH.FormatMoney
+	local _, rcost = CH.ReagentBook(acc)
+	local out = { B.Head(title or "Revenue", "per craft") }
+	out[#out + 1] = B.Line("Sales after the AH cut", acc.sales or 0)
+	if (acc.mcGold or 0) ~= 0 then out[#out + 1] = B.Line("Multicraft", acc.mcGold) end
+	out[#out + 1] = B.Head("Costs")
+	out[#out + 1] = B.Line("Reagents", -rcost, true)
+	if (acc.resGold or 0) ~= 0 then out[#out + 1] = B.Line("Resourcefulness saves", acc.resGold) end
+	local profit = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - rcost
+	out[#out + 1] = B.Total("Profit", profit)
+	if acc.profit and math.abs(profit - acc.profit) >= 100 then out[#out + 1] = B.Sub("at the scan", M(acc.profit)) end
+	for _, l in ipairs(CH.CraftOrSellBook(acc)) do out[#out + 1] = l end
+	return out, profit
+end
+
+local function craftOrSellLines(lines, acc)
+	for _, l in ipairs(CH.CraftOrSellBook(acc)) do table.insert(lines, l) end
 end
 
 function CH.TooltipLines(link)
@@ -138,6 +258,7 @@ function CH.TooltipLines(link)
 	local row, acc, at = CH.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
 		craftLines(lines, row, acc, at)
+		craftOrSellLines(lines, acc)
 	else
 		local profit = CH.Prices.CraftProfit(link)
 		if profit then
