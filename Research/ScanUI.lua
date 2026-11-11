@@ -874,8 +874,10 @@ function SUI.Refresh()
 	local concNow = prof and CH.ConcentrationNow(prof)
 	local current = s and (s.currentLine or CH.Scan.CurrentLine(s.rows))
 	local groups, order, hidden, count = {}, {}, 0, 0
-	for _, r in ipairs(s and s.rows or {}) do
-		if not r.line then r.line, r.expansion = CH.Scan.Expansion(r.recipeID) end
+	for _, saved in ipairs(s and s.rows or {}) do
+		if not saved.line then saved.line, saved.expansion = CH.Scan.Expansion(saved.recipeID) end
+		-- today's prices, the same the hovers use; the saved row keeps the scan's
+		local r = CH.Scan.Live(saved)
 		r.current = not r.line or not current or r.line == current
 		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
 		r.bc = CH.Scan.BuyOrCraft(r)

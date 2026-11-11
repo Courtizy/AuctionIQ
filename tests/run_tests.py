@@ -1217,6 +1217,22 @@ run("AuctionIQ.Prices.CostBasis('held')")
 rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
 check("scan: the Reagents column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
       and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
+lv = L.eval("""(function()
+  local saved = { name = 'x', profit = 20000, cost = 30000, perDay = 40000,
+    accounts = { sales = 50000, mcGold = 0, resGold = 0, profit = 20000, cost = 30000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }
+  local old = AuctionIQ.Prices.Get
+  AuctionIQ.Prices.Get = function(k, l, ...) if l == "i:201" and (k == "chvalue") then return 20000 end return old(k, l, ...) end
+  local oldH = AuctionIQ.Prices.Held
+  AuctionIQ.Prices.Held = function(id) if id == 201 then return 3 end return 0 end
+  local v = AuctionIQ.Scan.Live(saved)
+  local out = { profit = v.profit, cost = v.cost, perDay = v.perDay, sell = v.sellInstead, savedProfit = saved.profit, name = v.name }
+  local book, bp = AuctionIQ.CraftBook(saved.accounts)
+  out.hover = bp
+  AuctionIQ.Prices.Get, AuctionIQ.Prices.Held = old, oldH
+  return out end)()""")
+check("scan list at live prices: the columns match the hovers, the saved scan stays as scanned",
+      abs(lv.cost - 3 * 20000 * CH.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
+      and lv.profit < 0 and lv.sell and lv.perDay == 0)
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
