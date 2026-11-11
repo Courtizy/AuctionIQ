@@ -88,7 +88,7 @@ local SH = 38 + SROWS * H + 6
 local BY = SY - SH - 6
 local BH = 70
 -- the queue's columns: x and width
-local C = { name = { 12, 196 }, who = { 212, 78 }, state = { 294, 100 }, profit = { 398, 60 }, craft = { 462, 50 }, minus = { 516, 18 } }
+local C = { name = { 12, 206 }, who = { 222, 72 }, state = { 298, 96 }, profit = { 398, 60 }, craft = { 462, 50 }, minus = { 516, 18 } }
 
 -- A card's heading, as the Craft window's side panel draws QUALITY: small, bold, the theme colour.
 local function head(parent, x, y, w)
@@ -235,10 +235,10 @@ local function build()
 	budget = { head = head(panel, 12, y, W - 24), rows = {} }
 	for i, name in ipairs({ "Shopping cost", "Missing materials", "Concentration required" }) do
 		local by = y - 4 - i * 14
-		local b = { label = Wd.OneLine(text(panel, 12, by, 150)) }
+		local b = { label = Wd.OneLine(text(panel, 12, by, 176)) }
 		b.label:SetText(name)
 		b.label:SetTextColor(T.muted[1], T.muted[2], T.muted[3])
-		b.text = Wd.OneLine(text(panel, 166, by, W - 166 - 12, "RIGHT"))
+		b.text = Wd.OneLine(text(panel, 192, by, W - 192 - 12, "RIGHT"))
 		budget.rows[i] = b
 	end
 	T.Fonts(panel)
@@ -360,7 +360,8 @@ function QUI.Refresh()
 		if show then
 			local tag = (e.concentration and (" " .. CH.Window.ConcIcon(13)) or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
 				.. (e.orderID and T.Color("accent", " order") or "") .. (e.special and T.Color("accent", " reward") or "")
-			r.name:SetText(string.format("%s%s%s x%d%s", CH.Window.ItemIcon(e.item, 15), e.name or "?", rank(e.quality, e.tiers), e.qty, tag))
+			-- the count first, so a long name cut short keeps it
+			r.name:SetText(string.format("%s%dx %s%s%s", CH.Window.ItemIcon(e.item, 15), e.qty, e.name or "?", rank(e.quality, e.tiers), tag))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
 			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
 			local rd = ready[e] or { now = 0, blocked = e.qty, short = {} }
