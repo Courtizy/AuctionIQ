@@ -229,14 +229,19 @@ local recent = { at = 0 }
 function Prices.RecentSales(now)
 	now = now or time()
 	local records = CH.Ledger.Records("Sales")
-	if recent.records == records and math.abs(now - recent.at) < 60 then return recent.by end
+	-- the same records within ten minutes: the 30-day window has barely moved
+	if recent.records == records and math.abs(now - recent.at) < 600 then return recent.by end
 	local by, from = {}, now - 30 * 86400
+	local F, net = CH.Ledger.F, CH.Ledger.Net
+	local fid, fq, ft = F.id, F.quantity, F.time
 	for _, s in ipairs(records) do
-		if s.id and s.quantity > 0 and s.time >= from and s.time <= now then
-			local e = by[s.id]
-			if not e then e = { gold = 0, n = 0 }; by[s.id] = e end
-			e.gold, e.n = e.gold + CH.Ledger.Net(s), e.n + s.quantity
-			if not e.last or s.time > e.last then e.last = s.time end
+		-- by position: this walks every sale, and the lookup by name costs a call per field
+		local id, q, t = s[fid], s[fq], s[ft]
+		if id and q > 0 and t >= from and t <= now then
+			local e = by[id]
+			if not e then e = { gold = 0, n = 0 }; by[id] = e end
+			e.gold, e.n = e.gold + net(s), e.n + q
+			if not e.last or t > e.last then e.last = t end
 		end
 	end
 	recent.records, recent.at, recent.by = records, now, by

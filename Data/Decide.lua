@@ -786,12 +786,24 @@ function D.Calibration(now)
 	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
 	local sales = CH.Ledger.Records("Sales")
 	local out = { checked = 0, inside = 0, under = 0, over = 0 }
+	-- each item's sales once, so every forecast walks only its own item's sales
+	local byItem, want = {}, {}
+	for _, f in ipairs(forecasts()) do if f.item then want[f.item] = true end end
+	local fid = CH.Ledger.F and CH.Ledger.F.id
+	for _, s in ipairs(sales) do
+		local id = fid and s[fid] or s.id
+		if id and want[id] then
+			local l = byItem[id]
+			if not l then l = {}; byItem[id] = l end
+			l[#l + 1] = s
+		end
+	end
 	for _, f in ipairs(forecasts()) do
 		local to = f.at + D.HORIZON * 86400
 		if to <= now then
 			local got = 0
-			for _, s in ipairs(sales) do
-				if s.id == f.item and s.time >= f.at and s.time < to then got = got + CH.Ledger.Net(s) end
+			for _, s in ipairs(byItem[f.item] or {}) do
+				if s.time >= f.at and s.time < to then got = got + CH.Ledger.Net(s) end
 			end
 			out.checked = out.checked + 1
 			if got >= (f.p10 or 0) and got <= (f.p90 or math.huge) then out.inside = out.inside + 1 end

@@ -87,12 +87,15 @@ local function csv(key, build)
 	local c = parsed[key]
 	if c and c.text == text then return c.rows end
 	local rows, col = {}, nil
+	local f, n = {}, 0 -- one scratch table for every line: parsing makes no garbage per row
 	for line in string.gmatch(text, "[^\n]+") do
-		local f = {}
-		for v in string.gmatch(line .. ",", "([^,]*),") do f[#f + 1] = v end
+		local k = 0
+		for v in string.gmatch(line .. ",", "([^,]*),") do k = k + 1; f[k] = v end
+		for i = k + 1, n do f[i] = nil end
+		n = k
 		if not col then
 			col = {}
-			for i, h in ipairs(f) do col[h] = i end
+			for i = 1, k do col[f[i]] = i end
 		else
 			rows[#rows + 1] = build(f, col)
 		end
@@ -103,6 +106,7 @@ end
 
 -- A record: { time, player, other, item, id, quantity, price, amount, source } by position.
 local REC = { time = 1, player = 2, other = 3, item = 4, id = 5, quantity = 6, price = 7, amount = 8, source = 9 }
+Lg.F = REC -- positions, for loops over every record that want to skip the lookup by name
 local recordMeta = { __index = function(t, k) local i = REC[k]; if i then return rawget(t, i) end end }
 local function record(f, col)
 	local q = num(f[col.quantity])

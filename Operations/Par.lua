@@ -17,18 +17,23 @@ local function store()
 	return CH.db.par
 end
 
-local soldCache, soldAt
---- Units sold per week per item over the last two weeks: { [itemID] = n }.
+local soldCache, soldAt, soldFrom
+--- Units sold per week per item over the last two weeks: { [itemID] = n }. Kept until the sales
+--- change or five minutes pass (it's asked once per item in a list).
 function Par.Weekly(now)
 	now = now or time()
-	if soldCache and soldAt == now then return soldCache end
+	local records = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Records("Sales") or nil
+	if soldCache and soldFrom == records and math.abs(now - soldAt) < 300 then return soldCache end
 	local t = {}
-	if CH.Ledger and CH.Ledger.Available() then
-		for _, s in ipairs(CH.Ledger.Records("Sales")) do
-			if s.id and s.time >= now - 14 * DAY then t[s.id] = (t[s.id] or 0) + s.quantity / 2 end
+	if records then
+		local F = CH.Ledger.F
+		local since = now - 14 * DAY
+		for _, s in ipairs(records) do
+			local id = s[F.id]
+			if id and s[F.time] >= since then t[id] = (t[id] or 0) + s[F.quantity] / 2 end
 		end
 	end
-	soldCache, soldAt = t, now
+	soldCache, soldAt, soldFrom = t, now, records
 	return t
 end
 
