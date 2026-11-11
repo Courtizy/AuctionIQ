@@ -161,6 +161,20 @@ function Prices.Held(id)
 	return C_Item.GetItemCount(id, true, false, true, true) or 0
 end
 
+--- What one you hold would bring if you sold it instead of crafting with it: the sale price after
+--- the AH cut, less the deposits lost to expiries and the cost of waiting for a slow seller
+--- (Expect.Value), so a reagent that barely moves isn't valued as if it sold at once. nil with no
+--- sale price. Second value: Expect's breakdown { gross, deposits, carry, days }.
+function Prices.SellValue(id)
+	local v = id and Prices.Get("chvalue", "i:" .. id)
+	if not v then return nil end
+	if CH.Expect and CH.Expect.Value then
+		local ok, net, how = pcall(CH.Expect.Value, id, v)
+		if ok and net then return math.max(0, net), how end
+	end
+	return v * CH.AH_CUT, { gross = v * CH.AH_CUT }
+end
+
 --- What one of a reagent costs on a costing basis (default: the one in Settings): copper and the
 --- basis it really came from (paid falls back to replacement for what you never bought).
 function Prices.ReagentCost(id, basis)

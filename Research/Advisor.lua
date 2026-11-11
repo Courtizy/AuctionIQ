@@ -43,8 +43,8 @@ local function heldInfo(model, id)
 		local P = CH.Prices
 		local n = P.Held and P.Held(id) or 0
 		-- opportunity cost: what yours would bring if you sold them instead (after the cut)
-		local v = n > 0 and P.Get("chvalue", "i:" .. id) or nil
-		h = { n = n, each = v and v * CH.AH_CUT or nil, paid = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
+		local v = n > 0 and P.SellValue(id) or nil
+		h = { n = n, each = v, paid = n > 0 and P.PaidEach and P.PaidEach(id) or nil }
 		model.heldCache[id] = h
 	end
 	return h
@@ -825,6 +825,13 @@ function A.HeldText(l)
 	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
 	out[#out + 1] = B.Sub("   Current price", m(lowest))
 	out[#out + 1] = B.Sub("   Sell price", m(list))
+	-- what selling them would really leave you: the cut, plus deposits and waiting for a slow seller
+	if list and l.ownEach and l.sell then
+		local _, how = CH.Prices.SellValue(l.id)
+		local days = how and how.days
+		out[#out + 1] = B.Sub(days and days >= 0.5 and string.format("   Cut, deposits, ~%.0f days to sell", days) or "   Cut, deposits, wait",
+			"-" .. M(math.max(0, list - l.ownEach)))
+	end
 	if (l.buyN or 0) > 0 then out[#out + 1] = B.Sub(string.format("To buy (%d)", l.buyN), m(l.buy)) end
 	return out
 end

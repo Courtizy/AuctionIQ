@@ -85,9 +85,9 @@ function CH.CraftOrSell(acc)
 		local n = rg.n or 0
 		local unit = n > 0 and rg.cost and rg.cost / n or 0
 		local own = math.min(n, P.Held and P.Held(rg.itemID) or 0)
-		local v = own > 0 and P.Get("chvalue", "i:" .. rg.itemID)
+		local v = own > 0 and P.SellValue(rg.itemID)
 		-- a reagent you hold with no sale price is only worth buying again: today's price
-		sell = sell + own * (v and v * CH.AH_CUT or unit)
+		sell = sell + own * (v or unit)
 		buy = buy + (n - own) * unit
 	end
 	if sell <= 0 then return nil end
@@ -114,8 +114,8 @@ function CH.ReagentBook(acc, opts)
 		local buy = n > 0 and rg.cost and rg.cost / n or nil
 		local stock = held and P.Held and P.Held(rg.itemID) or 0
 		local own = math.min(n, stock)
-		local v = own > 0 and P.Get("chvalue", "i:" .. rg.itemID) or nil
-		local ownEach = v and v * CH.AH_CUT or buy
+		local v = own > 0 and P.SellValue(rg.itemID) or nil
+		local ownEach = v or buy
 		local cost
 		if (own <= 0 or ownEach) and (own >= n or buy) then cost = own * (ownEach or 0) + (n - own) * (buy or 0) end
 		total = total + (cost or 0)

@@ -1178,6 +1178,8 @@ hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { held
 ht = [plain(x[1]).strip() for x in CH.Advisor.HeldText(hl).values()]
 check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
       and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
+check("held basis: a held reagent is worth its sale price less the cut, deposits and waiting (Expect.Value)",
+      L.eval("(function() local v = AuctionIQ.Prices.SellValue(201); local c = AuctionIQ.Prices.Get('chvalue', 'i:201'); return v and c and v <= c * AuctionIQ.AH_CUT + 0.5 end)()") is not False)
 run("STUB.oldHeld = AuctionIQ.Prices.Held; AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end")
 cres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
 cs = CH.Advisor.CraftOrSell(cres, cres.best)
