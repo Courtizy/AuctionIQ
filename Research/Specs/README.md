@@ -7,7 +7,8 @@ crafting professions) are built by `tools/build_specs.py` from Blizzard's own ga
 To refresh after a patch: `python3 tools/build_specs.py` (or `--offline` to rebuild from the saved
 tables).
 
-`ConcentrationCurves.lua` (Concentration cost curves) still comes from
+`ConcentrationCurves.lua` (Concentration cost curves) and `EnchantScrolls.lua` (each enchant's scroll
+item per quality) come from
 [CraftSim](https://github.com/derfloh205/CraftSim) (converted from its data files), MIT licence,
 copyright (c) derfloh205. The profit, Multicraft, Resourcefulness, Ingenuity and Concentration
 formulas in `Data/Stats.lua` follow CraftSim's.

@@ -111,6 +111,13 @@ end
 function A.ScrollOutputs(recipeID, info)
 	local ui = C_TradeSkillUI
 	local out = {}
+	-- the game has no output item for an enchant (GetRecipeOutputItemData answers nothing useful),
+	-- so, as CraftSim does, the scroll comes from a table keyed by the recipe's craftingDataID
+	if ui and ui.GetCraftingOperationInfo and CH.EnchantScrolls then
+		local ok, op = pcall(ui.GetCraftingOperationInfo, recipeID, {}, nil, false)
+		local ids = ok and op and op.craftingDataID and CH.EnchantScrolls[op.craftingDataID]
+		if ids then for q, id in ipairs(ids) do out[q] = id end; return out end
+	end
 	if not (ui and ui.GetRecipeOutputItemData) then return out end
 	local function ask(q)
 		local ok, data = pcall(ui.GetRecipeOutputItemData, recipeID, {}, nil, q)
@@ -286,7 +293,10 @@ function A.Measure(recipeID, opts)
 	local outputs = info.qualityItemIDs or {}
 	-- An enchant has no item of its own (it's cast on gear), so neither field names one: what it
 	-- makes for the AH is the scroll on Enchanting Vellum. Ask the game what each quality's scroll is.
-	if #outputs == 0 and not schematic.outputItemID then outputs = A.ScrollOutputs(recipeID, info) end
+	if info.isEnchantingRecipe or (#outputs == 0 and not schematic.outputItemID) then
+		local scrolls = A.ScrollOutputs(recipeID, info)
+		if #scrolls > 0 then outputs = scrolls end
+	end
 	-- Gear (rods, tools, armour) keeps one item ID for every quality: the quality is its item level,
 	-- so each quality is priced by the item at that level (TSM's "i:ID::iLEVEL").
 	local keys, maxQ = {}, math.max(1, #outputs)

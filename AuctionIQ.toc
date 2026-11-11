@@ -23,6 +23,7 @@ Data\Formula.lua
 Data\Stats.lua
 Data\Decide.lua
 Research\Specs\ConcentrationCurves.lua
+Research\Specs\EnchantScrolls.lua
 Research\Specs\SpecAlchemy.lua
 Research\Specs\SpecBlacksmithing.lua
 Research\Specs\SpecEnchanting.lua

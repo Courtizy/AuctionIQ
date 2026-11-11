@@ -274,6 +274,21 @@ ea = L.eval("""(function()
   return { best = res and res.best and res.best.profit ~= nil, out1 = res and res.model.outputs[1] }
 end)()""")
 check("enchant: with no output item on the recipe, the scroll is priced and a ranked option comes back", ea.best and ea.out1 == 100)
+ec = L.eval("""(function()
+  local ui = C_TradeSkillUI
+  local oldInfo, oldSch, oldOut = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData
+  ui.GetRecipeInfo = function(id) local i = oldInfo(id); if id == 10 and i then local c = {}; for k, v in pairs(i) do c[k] = v end
+    c.qualityItemIDs = nil; c.isEnchantingRecipe = true; return c end; return i end
+  ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
+  ui.GetRecipeOutputItemData = function() return { hyperlink = "|cffffffff|Henchant:1234|h[Enchant]|h|r" } end
+  STUB.craftingDataID = 3837
+  local res = AuctionIQ.Advisor.Analyze(10, { professionID = AuctionIQ.OpenProfessionID() })
+  STUB.craftingDataID = nil
+  ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
+  local o = res and res.model.outputs or {}
+  return { o[1], o[2], #o }
+end)()""")
+check("enchant: the scroll per quality comes from the enchant table by craftingDataID, as CraftSim does (the game's output is an enchant link)", ec[1] == 244030 and ec[2] == 244031 and ec[3] == 2)
 check("enchant: each quality's scroll comes from the game's output data", en.q1 == 9101 and en.q2 == 9102)
 check("enchant: the queue crafts it onto Enchanting Vellum (CraftEnchant), not CraftRecipe",
       en.enchant is not None and en.enchant.id == 10 and en.enchant.bag == 1 and en.enchant.slot == 3 and en.recipe is None)
