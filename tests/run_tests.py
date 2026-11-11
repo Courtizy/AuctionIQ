@@ -2902,6 +2902,26 @@ cr = L.eval("""(function()
   return { first = first, clicks = clicks, after = after }
 end)()""")
 check("craft list: a click reuses each row; bags changing work them out again", cr.first > 0 and cr.clicks == 0 and cr.after == cr.first)
+# a slot that takes many different items (an ink's pigments) stays quick and still finds the cheapest
+fr = L.eval("""(function()
+  local old = AuctionIQ.Scan.ReagentPrice
+  AuctionIQ.Scan.ReagentPrice = function(id) return 100 + (id % 10) * 7 + math.floor(id / 10) * 3 end
+  local qual, per = {}, {}
+  for i = 1, 3 do
+    local items, p = {}, {}
+    for k = 1, 8 do items[k] = i * 100 + k; p[k] = (k % 4) * 0.5 end
+    qual[i] = { qty = 10, items = items }; per[i] = p
+  end
+  local model = { recipeID = 1, qual = qual, perUnit = per }
+  local t0 = os.clock()
+  local states = AuctionIQ.Advisor.Frontier(model)
+  local dt = os.clock() - t0
+  AuctionIQ.Scan.ReagentPrice = old
+  local cheapest = math.huge
+  for _, st in ipairs(states or {}) do if st.c < cheapest then cheapest = st.c end end
+  return { n = states and #states or 0, dt = dt, cheapest = cheapest }
+end)()""")
+check("advisor: a slot of many different items (inks) is worked out in well under a second", fr.n > 0 and fr.dt < 0.5)
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))

@@ -566,6 +566,18 @@ local function build(model, delta, fin, live)
 end
 
 -- Every way to fill one slot's units across its qualities: { skill, cost, row }.
+-- A slot can take many different items (an ink's "any pigment" slot), not just ranks of one, and
+-- every split of its units across them grows past millions. Two cuts keep it small without losing
+-- the cheapest mix: of items that add the same skill a unit, only the cheapest for the whole slot
+-- is tried; and if that still leaves too many splits, only mixes of at most two items are tried
+-- (with skill linear in units, the cheapest mix for a skill needs no more than two).
+local MAX_MIXES = 4000
+local function choose(n, k) -- n choose k, capped
+	local r = 1
+	for i = 1, k do r = r * (n - k + i) / i; if r > 1e9 then return r end end
+	return r
+end
+
 local function slotMixes(model, i)
 	local slot, out = model.qual[i], {}
 	local nq = #slot.items
@@ -578,25 +590,68 @@ local function slotMixes(model, i)
 		if c == nil then c = unitsCost(model, slot.items[q], n) or false; costs[q][n] = c end
 		return c or nil
 	end
-	local function walk(q, left, row, sk, c)
-		if q == nq then
-			local cl = costN(q, left)
-			if not cl then return end
-			local r = {}
-			for k, v in pairs(row) do r[k] = v end
-			if left > 0 then r[q] = left end
-			out[#out + 1] = { sk + left * (model.perUnit[i][q] or 0), c + cl, r }
-			return
+	-- the cheapest item for each skill a unit
+	local bySkill, keep = {}, {}
+	for q = 1, nq do
+		local per = model.perUnit[i][q] or 0
+		local k = string.format("%.6f", per)
+		local full = costN(q, slot.qty)
+		local cur = bySkill[k]
+		if not cur then
+			bySkill[k] = q; keep[#keep + 1] = q
+		else
+			local cc = costN(cur, slot.qty)
+			if full and (not cc or full < cc) then
+				for j, x in ipairs(keep) do if x == cur then keep[j] = q end end
+				bySkill[k] = q
+			end
 		end
-		for n = 0, left do
-			local cn = costN(q, n)
-			if not cn then break end
-			row[q] = n > 0 and n or nil
-			walk(q + 1, left - n, row, sk + n * (model.perUnit[i][q] or 0), c + cn)
-		end
-		row[q] = nil
 	end
-	walk(1, slot.qty, {}, 0, 0)
+	table.sort(keep)
+	local function add(row, sk, c)
+		local r = {}
+		for k, v in pairs(row) do if v > 0 then r[k] = v end end
+		out[#out + 1] = { sk, c, r }
+	end
+	local nk, qty = #keep, slot.qty
+	if choose(qty + nk - 1, nk - 1) <= MAX_MIXES then
+		local row = {}
+		local function walk(j, left, sk, c)
+			local q = keep[j]
+			if j == nk then
+				local cl = costN(q, left)
+				if not cl then return end
+				row[q] = left
+				add(row, sk + left * (model.perUnit[i][q] or 0), c + cl)
+				row[q] = nil
+				return
+			end
+			for n = 0, left do
+				local cn = costN(q, n)
+				if not cn then break end
+				row[q] = n
+				walk(j + 1, left - n, sk + n * (model.perUnit[i][q] or 0), c + cn)
+			end
+			row[q] = nil
+		end
+		walk(1, qty, 0, 0)
+	else
+		-- too many to try every split: each item alone, and every pair split every way
+		for a = 1, nk do
+			local qa = keep[a]
+			local ca = costN(qa, qty)
+			if ca then add({ [qa] = qty }, qty * (model.perUnit[i][qa] or 0), ca) end
+			for b = a + 1, nk do
+				local qb = keep[b]
+				for n = 1, qty - 1 do
+					local c1, c2 = costN(qa, n), costN(qb, qty - n)
+					if c1 and c2 then
+						add({ [qa] = n, [qb] = qty - n }, n * (model.perUnit[i][qa] or 0) + (qty - n) * (model.perUnit[i][qb] or 0), c1 + c2)
+					end
+				end
+			end
+		end
+	end
 	return out
 end
 
@@ -625,6 +680,12 @@ function frontier(model)
 	for i = 1, #model.qual do
 		local mixes = slotMixes(model, i)
 		if #mixes == 0 then states = nil; break end
+		-- a mix that another beats on both skill and cost can't be in a cheapest answer: drop it
+		-- before pairing with the slots so far (the pairing is what grows)
+		table.sort(mixes, function(x, y) if math.abs(x[1] - y[1]) > 1e-9 then return x[1] > y[1] end return x[2] < y[2] end)
+		local pruned, low = {}, math.huge
+		for _, m in ipairs(mixes) do if m[2] < low - 1e-9 then pruned[#pruned + 1] = m; low = m[2] end end
+		mixes = pruned
 		local nxt = {}
 		for _, st in ipairs(states) do
 			for _, m in ipairs(mixes) do
