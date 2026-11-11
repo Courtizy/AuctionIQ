@@ -823,9 +823,14 @@ AV.VIEWS.scenarios.action = {
 LUI.Register("ledger", AV.VIEWS, {})
 -- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
 -- the market) and Queue (the work planned: crafts, shopping and what's blocking it).
-LUI.Register("operations", {}, { "scenarios", "paths", "professions" }, "Craft")
--- Plan payoff by recipe opens from Specialization, so it sits in Craft without its own nav line
-if LUI.ViewDef("plans") then LUI.ViewDef("plans").parent = "Craft" end
+-- Craft here is only what crosses characters: Compare crafts and Specialization. Scanning, the advisor,
+-- work orders and the queue live in the window docked beside the profession window.
+LUI.Register("operations", {}, { "scenarios", "paths" }, "Craft")
+-- Plan payoff by recipe and the weekly knowledge checklist open from Specialization, so they sit in
+-- Craft without a nav line of their own
+for _, k in ipairs({ "plans", "professions" }) do
+	if LUI.ViewDef(k) then LUI.ViewDef(k).parent = "Craft" end
+end
 LUI.Register("operations", {}, { "post", "rules" }, "Trade")
 LUI.Register("operations", {}, { "queue", "shopping", "restock" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })

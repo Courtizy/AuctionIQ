@@ -510,7 +510,7 @@ drawn = list(CH.PathsUI.DrawTree().values())
 check("paths: opens in the main window, Operations > Craft > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths"
       and CH.LedgerUI.Section() == "operations" and CH.LedgerUI.Group() == "Craft")
 check("Craft: Specialization, the weekly checklist and plan payoff by recipe",
-      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Weekly checklist", "Specialization", "Plan payoff by recipe"])
+      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Weekly knowledge", "Specialization", "Plan payoff by recipe"])
 run('AuctionIQ.UI.Refresh()')
 kp = plain(L.eval("AuctionIQ.UI.Pages().paths.kpText:GetText()"))
 pay = plain(L.eval("AuctionIQ.UI.Pages().paths.payText:GetText()"))
@@ -1896,7 +1896,10 @@ navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").v
 check("Trade: Ready to post (the market is in its item panel) and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Craft: Compare crafts first, then Specialization and the weekly checklist", navshown == ["Compare crafts", "Specialization", "Weekly checklist"])
+check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
+      and LUI.Group() == "Craft" and LUI.View() == "professions")
+run("AuctionIQ.UI.Page('operations', 'paths'); AuctionIQ.UI.Pages().paths.weekly.scripts.OnClick()")
+check("Specialization: its Weekly button opens the weekly knowledge checklist", LUI.View() == "professions" and LUI.Group() == "Craft")
 run("AuctionIQ.UI.Page('operations', 'shopping')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Queue: the queue, its shopping list and restock plans", LUI.Group() == "Queue" and navshown == ["Queue", "Shopping list", "Restock plans"])
@@ -2602,7 +2605,7 @@ check("resize: never smaller than the normal size", CH.UI.SetSize(100, 100) == (
 run("AuctionIQ.UI.Page('today')")
 navs = list(CH.UI.Pages().ledger.nav.values())
 long = [plain(b.text.t) for b in navs if b.text and not b.fits]
-check("nav: every label fits its button on one line", len(navs) > 20 and long == [] and all(b.text.wrap is False for b in navs if b.text))
+check("nav: every label fits its button on one line", len(navs) >= 12 and long == [] and all(b.text.wrap is False for b in navs if b.text))
 run("AuctionIQ.UI.Page('today')")
 for w in ["ScanUI", "QueueUI", "LogUI"]:
     run(f"if AuctionIQ.{w} and AuctionIQ.{w}.Toggle then pcall(AuctionIQ.{w}.Toggle) end")

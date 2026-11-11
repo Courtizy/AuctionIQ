@@ -199,8 +199,16 @@ function PUI.Build(p)
 	end
 	-- Knowledge and Plan payoff for the profession picked, above Paths
 	frame.kpText = Wd.OneLine(Wd.Text(frame, 336, KP_Y, W - 336, "LEFT", "GameFontHighlightSmall"))
-	frame.payText = Wd.OneLine(Wd.Text(frame, 0, PAY_Y, W - 110, "LEFT", "GameFontHighlightSmall"))
-	local byRecipe = T.Button(frame, "By recipe", 100, 18)
+	frame.payText = Wd.OneLine(Wd.Text(frame, 0, PAY_Y, W - 150, "LEFT", "GameFontHighlightSmall"))
+	-- the weekly knowledge checklist (every character and profession) opens from here: knowledge is
+	-- what you spend in the tree
+	local weekly = T.Button(frame, "Weekly", 70, 18)
+	weekly:SetPoint("TOPRIGHT", -74, PAY_Y + 2)
+	weekly:SetScript("OnClick", function() CH.UI.Go("operations", "professions") end)
+	weekly:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The weekly knowledge checklist for every character and profession, what's coming up, and Concentration." } }) end)
+	weekly:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	frame.weekly = weekly
+	local byRecipe = T.Button(frame, "By recipe", 70, 18)
 	byRecipe:SetPoint("TOPRIGHT", 0, PAY_Y + 2)
 	byRecipe:SetScript("OnClick", function() CH.UI.Go("operations", "plans") end)
 	byRecipe:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Each saved plan, recipe by recipe: quality and profit now against planned." } }) end)
