@@ -1236,10 +1236,20 @@ check("scan list at live prices: the columns match the hovers, the saved scan st
       abs(lv.cost - 3 * 20000 * CH.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
       and lv.profit < 0 and lv.sell and lv.perDay == 0)
 rp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
-check("scan side panel: craft or sell with profit, reagents and craft or sell, the reagents each with a hover, and Queue n",
-      rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "Craft 3 x x" and plain(rp.figures[1][1]) == "PROFIT"
+check("scan side panel: craft or sell with profit and reagents, the reagents each with a hover, and Queue n",
+      rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "x" and plain(rp.figures[1][1]) == "PROFIT"
       and plain(rp.figures[2][1]) == "REAGENTS" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
       and rp.section.rows[1].tip is not None and plain(rp.actions[1].label) == "Queue 3 crafts")
+cp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, concProfit = 50000, concentration = 40, gainPerPoint = 750, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 2, "conc")
+check("scan side card, Concentration view: worth the Concentration, plain against with, extra a point",
+      plain(cp.kicker) == "WORTH THE CONCENTRATION?" and plain(cp.figures[1][1]) == "PLAIN" and plain(cp.figures[2][1]) == "WITH CONC." and "Worth it" in plain(cp.sub))
+bp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 1, bc = { buy = 1000, craft = 1500, save = 500 }, accounts = { sales = 50000, reagents = {} } }"), 1, "buy")
+check("scan side card, Buy vs craft: buy it or make it, and which saves", plain(bp.kicker) == "BUY IT OR MAKE IT?" and plain(bp.figures[3][1]) == "BUYING SAVES" and "Buy it" in plain(bp.sub))
+op = CH.ScanUI.OrderPanel(L.eval("{ name = 'o', orderID = 5, kind = 'Patron', from = 'Bob', ok = true, have = true, profit = 7000, cost = 3000, commission = 10000, rewardValue = 0, rewards = {}, costLines = {} }"))
+check("scan side card, Work orders: take this order, pays less reagents is profit",
+      plain(op.kicker) == "TAKE THIS ORDER?" and plain(op.figures[1][1]) == "PAYS" and plain(op.figures[3][1]) == "PROFIT" and "Take it" in plain(op.sub))
+fp = CH.ScanUI.FirstPanel(L.eval("{ name = 'f', recipeID = 2, cost = 5000, value = 3000, net = -2000 }"))
+check("scan side card, First crafts: worth the knowledge, what the point costs", plain(fp.kicker) == "WORTH THE KNOWLEDGE?" and plain(fp.figures[3][1]) == "POINT COSTS")
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('groups')")
