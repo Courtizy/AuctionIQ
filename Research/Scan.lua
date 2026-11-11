@@ -351,6 +351,18 @@ end
 --- game only shows an addon the professions of the character you're logged in as, so another
 --- character's are scanned on that character. onStep() as it goes (Sc.all says where it is),
 --- onDone(results) at the end, results = { { name, rows, why } }. Returns ok, why not.
+--- From a click: open the profession Scan all is waiting on and carry on scanning.
+function Sc.ContinueAll()
+	local all = Sc.all
+	local prof = all and all.waiting
+	if not prof then return false end
+	all.waiting = nil
+	local ui = C_TradeSkillUI
+	if ui.OpenTradeSkill then ui.OpenTradeSkill(prof.skillLine) end
+	all.wait()
+	return true
+end
+
 function Sc.ScanAll(onStep, onDone)
 	if Sc.IsRunning() then return false, "a scan is already running" end
 	if InCombatLockdown and InCombatLockdown() then return false, "you're in combat" end
@@ -377,7 +389,6 @@ function Sc.ScanAll(onStep, onDone)
 		local prof = list[all.i]
 		if not prof then return finish() end
 		all.name, all.done, all.total = prof.name, 0, nil
-		if not showing(prof.skillLine) and ui.OpenTradeSkill then ui.OpenTradeSkill(prof.skillLine) end
 		local tries = 0
 		local function wait()
 			if all.stop then return finish() end
@@ -393,6 +404,18 @@ function Sc.ScanAll(onStep, onDone)
 			if tries > 40 then return record(prof, nil, "didn't open") end -- about 8 seconds
 			C_Timer.After(0.2, wait)
 		end
+		all.wait = wait
+		-- the game only lets a click open a profession: the first opens from the Scan press; each
+		-- after that waits for a press of the button (it reads Open <profession>)
+		if not showing(prof.skillLine) then
+			if all.i > 1 or all.clickUsed then
+				all.waiting = prof
+				if onStep then onStep() end
+				return
+			end
+			all.clickUsed = true
+			if ui.OpenTradeSkill then ui.OpenTradeSkill(prof.skillLine) end
+		end
 		wait()
 		if onStep then onStep() end
 	end
@@ -404,12 +427,17 @@ end
 function Sc.AllStatus()
 	local a = Sc.all
 	if not a then return nil end
+	if a.waiting then return string.format("Press Open %s to scan it (%d of %d)", a.waiting.name or "?", a.i, #a.list) end
 	return string.format("Scanning %s (%d of %d)%s", a.name or "?", a.i, #a.list,
 		a.total and string.format(" %d/%d", a.done or 0, a.total) or "")
 end
 
 --- Stop the scan of every profession after the one it's on.
-function Sc.StopAll() if Sc.all then Sc.all.stop = true; Sc.Stop() end end
+function Sc.StopAll()
+	if not Sc.all then return end
+	if Sc.all.waiting then Sc.all = nil; return end
+	Sc.all.stop = true; Sc.Stop()
+end
 
 --- The saved scan for a profession on this character.
 function Sc.Results(profID)

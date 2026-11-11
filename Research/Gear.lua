@@ -116,7 +116,7 @@ end
 
 --- Best set for a recipe model. mode "conc" ranks by gold per Concentration point, else by profit.
 --- Returns { set, gain, result, current } or nil when there's nothing to compare.
-function G.Best(model, mode, c)
+function G.Best(model, mode, c, finishing)
 	c = c or G.Candidates()
 	local sets = G.Sets(c)
 	if #sets <= 1 then return nil end
@@ -125,14 +125,14 @@ function G.Best(model, mode, c)
 		if mode == "conc" then return r.bestConc and r.bestConc.perPoint end
 		return r.best and r.best.profit
 	end
-	local base = CH.Advisor.Evaluate(model, { sim = CH.Stats.New() })
+	local base = CH.Advisor.Evaluate(model, { sim = CH.Stats.New(), finishing = finishing })
 	local baseScore = score(base)
 	if not baseScore then return nil end
 	local best, bestScore, bestResult = nil, baseScore, base
 	for _, set in ipairs(sets) do
 		if not isWorn(set) then
 			local delta = CH.Stats.Diff(sum(setItems(set)), now)
-			local r = CH.Advisor.Evaluate(model, { sim = delta })
+			local r = CH.Advisor.Evaluate(model, { sim = delta, finishing = finishing })
 			local s = score(r)
 			if s and s > bestScore + 1 then best, bestScore, bestResult = set, s, r end
 		end

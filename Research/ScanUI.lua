@@ -1312,7 +1312,19 @@ local INVIEW = {
 }
 
 --- Redraw from the saved scan. Returns the row texts, for tests.
+-- Worked-out recipe rows, kept between redraws (see SUI.Refresh). Weak keys: an old scan's rows go.
+local rowCache, rowGen = { rows = setmetatable({}, { __mode = "k" }) }, 0
+SUI.ROW_AGE = 60
+function SUI.InvalidateRows() rowGen = rowGen + 1 end
+for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "CURRENCY_DISPLAY_UPDATE", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED", "PLAYERBANKSLOTS_CHANGED", "NEW_RECIPE_LEARNED" }) do
+	CH.On(ev, SUI.InvalidateRows)
+end
+
 function SUI.Refresh()
+	return (CH.Measure("craft window redraw", SUI.Draw))
+end
+
+function SUI.Draw()
 	if not frame then return {} end
 	if mode ~= "recipes" then status:SetWidth(W - 24); renderDetails(); return refreshLists() end
 	status:SetWidth(W - 24 - (SUI.ShowViews and SUI.viewsWidth or 0))
@@ -1325,10 +1337,18 @@ function SUI.Refresh()
 	local concNow = prof and CH.ConcentrationNow(prof)
 	local current = s and (s.currentLine or CH.Scan.CurrentLine(s.rows))
 	local groups, order, hidden, count = {}, {}, 0, 0
+	-- each row's numbers are kept until bags, Concentration, the scan or a minute changes them:
+	-- a click on a recipe only moves the highlight, so it shouldn't work out every row again
+	local now = time()
+	local fresh = rowCache.gen == rowGen and rowCache.s == s and rowCache.conc == concNow and rowCache.cur == current
+		and now - (rowCache.at or 0) < SUI.ROW_AGE
+	if not fresh then rowCache = { gen = rowGen, s = s, conc = concNow, cur = current, at = now, rows = {} } end
 	for _, saved in ipairs(s and s.rows or {}) do
+		local r = rowCache.rows[saved]
+		if not r then
 		if not saved.line then saved.line, saved.expansion = CH.Scan.Expansion(saved.recipeID) end
 		-- today's prices, the same the hovers use; the saved row keeps the scan's
-		local r = CH.Scan.Live(saved)
+		r = CH.Scan.Live(saved)
 		r.current = not r.line or not current or r.line == current
 		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
 		r.bc = CH.Scan.BuyOrCraft(r)
@@ -1351,6 +1371,8 @@ function SUI.Refresh()
 				r.canMakeConc = held
 				if useConc then r.bestCan = held end
 			end
+		end
+		rowCache.rows[saved] = r
 		end
 		if not INVIEW[view](r) then
 			-- not part of this view

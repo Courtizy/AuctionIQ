@@ -776,7 +776,11 @@ end
 -- and the list fills in as each finishes. Another character's professions are scanned on them.
 local lastRefresh = 0
 AV.VIEWS.scenarios.action = {
-	label = function() return CH.Scan.all and "Stop" or "Scan" end,
+	label = function()
+		local all = CH.Scan.all
+		if all and all.waiting then return "Open " .. (all.waiting.name or "next") end
+		return all and "Stop" or "Scan"
+	end,
 	status = function() return CH.Scan.AllStatus and CH.Scan.AllStatus() end,
 	tip = function()
 		local names = {}
@@ -788,6 +792,11 @@ AV.VIEWS.scenarios.action = {
 			{ CH.Theme.Color("muted", "Stand at a crafting table for the best numbers: its bonuses count only while you're at it.") } }
 	end,
 	click = function()
+		if CH.Scan.all and CH.Scan.all.waiting then
+			local name = CH.Scan.all.waiting.name
+			CH.Scan.ContinueAll()
+			return true, "Scanning " .. (name or "the next profession") .. "."
+		end
 		if CH.Scan.all then CH.Scan.StopAll(); return true, "Stopping after this profession." end
 		local ok, why = CH.Scan.ScanAll(function()
 			local now = GetTime and GetTime() or 0

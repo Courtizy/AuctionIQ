@@ -696,7 +696,10 @@ function A.Evaluate(model, opts)
 	-- Choose finishing reagents on the model (cheap), then build the real rows with the winners.
 	local none = {}
 	local finPlain, finConc = none, none -- one table, so no finishing choice builds once
-	local all = combos(model)
+	-- opts.finishing = { plain, conc } skips trying every finishing combination (Gear.Best reuses
+	-- the live craft's picks: one search per gear set instead of one per set and combination)
+	local all = opts.finishing and { {} } or combos(model)
+	if opts.finishing then finPlain, finConc = opts.finishing.plain or none, opts.finishing.conc or none end
 	if #all > 1 then
 		local bp, bc
 		for _, fin in ipairs(all) do
@@ -720,7 +723,8 @@ function A.Evaluate(model, opts)
 	if best then best.recommended = true end
 	if bestConc then bestConc.bestConcentration = true end
 	local result = { recipeID = model.recipeID, name = model.name, rows = rows, qual = model.qual, fixed = model.fixed,
-		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order }
+		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order,
+		finishingPicks = { plain = finPlain, conc = finConc } }
 	-- the decision numbers: break-even sale price, and what Concentration adds over the plain craft
 	local Dc = CH.Decide
 	if Dc then

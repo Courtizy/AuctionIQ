@@ -25,6 +25,8 @@ def check(name, cond):
 run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().AuctionIQ
+CH.ScanUI.ROW_AGE = -1
+CH.AdvisorUI.GEAR_AGE = -1
 CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
@@ -161,9 +163,15 @@ for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "
 bc = L.eval('function() local inp = { reagents = { { n = 1, unit = 100, finishing = true } }, have = function(id) return C_Item.GetItemCount(id, true) end }; return AuctionIQ.Decide.BatchCost(inp, 3) end')()
 check("decide: a reagent with no item id (an older scan's account) doesn't ask the game for its count", bc is not None)
 run('AuctionIQ.Scan.ScanAll(nil, function(r) STUB.allDone = r end)')
+waits = 0
 for _ in range(400):
     if CH.Scan.all is None: break
+    if CH.Scan.all.waiting is not None:
+        # the game only lets a click open a profession: the button reads Open <name> and waits for one
+        if L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()').startswith("Open "): waits += 1
+        run('AuctionIQ.LedgerUI.ViewDef("scenarios").action.click()')
     run('STUB.RunTimers()')
+check("scan all: each profession after the first waits for a click to open it (the game blocks it otherwise)", waits >= 1)
 ad = L.eval('STUB.allDone')
 check("scan all: rolls through each profession and reports each", ad is not None and len(list(ad.values())) == 3 and ad[3].name == "Cooking")
 check("scan all: opens the ones that aren't showing", "333," in (L.eval('STUB.opened') or "") and "185," in (L.eval('STUB.opened') or ""))
@@ -2881,6 +2889,19 @@ frac = [f"{k} {v}" for k, v in L.eval("STUB.frac").items()]
 check("pixel-perfect: every offset and size on a whole unit" + (": " + "; ".join(frac) if frac else ""), not frac)
 rr = L.eval("(function() local r = AuctionIQ.Ledger.Records('Sales')[1]; return r and { r[1] == r.time, r[8] == r.amount, rawget(r, 'time') == nil } end)()")
 check("ledger records: one small array per row, read by name as before", rr is not None and all(rr.values()))
+# a click on a recipe reuses the worked-out rows; a bag change works them out again
+cr = L.eval("""(function()
+  local S = AuctionIQ.ScanUI
+  S.SetMode("recipes"); S.Open(); S.ROW_AGE = 60
+  local n, f = 0, AuctionIQ.Scan.Live
+  AuctionIQ.Scan.Live = function(...) n = n + 1; return f(...) end
+  STUB.Fire("BAG_UPDATE_DELAYED"); S.Refresh(); local first = n
+  S.Select(10); S.Select(11); local clicks = n - first
+  STUB.Fire("BAG_UPDATE_DELAYED"); S.Refresh(); local after = n - first
+  AuctionIQ.Scan.Live = f; S.ROW_AGE = -1
+  return { first = first, clicks = clicks, after = after }
+end)()""")
+check("craft list: a click reuses each row; bags changing work them out again", cr.first > 0 and cr.clicks == 0 and cr.after == cr.first)
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))

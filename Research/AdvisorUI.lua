@@ -1150,6 +1150,13 @@ end
 
 --- Measure the recipe (as an order or recraft when that's what's open) and evaluate it, with the
 --- simulation if one is on. Also works out the top gear.
+local gearCache, gearGen = {}, 0
+AUI.GEAR_AGE = 300
+function AUI.InvalidateGear() gearGen = gearGen + 1; gearCache = {} end
+for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED" }) do
+	CH.On(ev, AUI.InvalidateGear)
+end
+
 function AUI.Compute(recipeID)
 	local prof = CH.OpenProfessionID()
 	local opts = { professionID = prof }
@@ -1159,17 +1166,28 @@ function AUI.Compute(recipeID)
 		local rc = CH.Orders and CH.Orders.RecraftContext()
 		if rc then opts.allocationGUID, opts.recraftQuality = rc.guid, rc.quality end
 	end
-	local model, reason = CH.Advisor.Measure(recipeID, opts)
+	local M = CH.Measure
+	local model, reason = M("advisor: read recipe", CH.Advisor.Measure, recipeID, opts)
 	if not model then return nil, reason end
-	live = CH.Advisor.Evaluate(model)
+	live = M("advisor: work out", CH.Advisor.Evaluate, model)
 	local result = live
 	local d = AUI.SimDelta(recipeID)
-	if d then result = CH.Advisor.Evaluate(model, { sim = d }) end
-	AUI.AddHeldConc(result)
+	if d then result = M("advisor: simulate", CH.Advisor.Evaluate, model, { sim = d }) end
+	M("advisor: own reagents", AUI.AddHeldConc, result)
 	gearPick = nil
 	if not opts.order and CH.Gear then
-		local ok, g = pcall(CH.Gear.Best, model, (live.bestConc and not live.best) and "conc" or nil)
-		if ok then gearPick = g end
+		-- trying each gear set is a full search per set: keep the answer per recipe until your gear,
+		-- bags or skill change (or a few minutes pass, for prices)
+		local mode = (live.bestConc and not live.best) and "conc" or nil
+		local key = tostring(recipeID) .. ":" .. tostring(mode) .. ":" .. tostring(opts.allocationGUID)
+		local c = gearCache[key]
+		if c and c.gen == gearGen and time() - c.at < AUI.GEAR_AGE then
+			gearPick = c.pick or nil
+		else
+			local ok, g = M("advisor: gear", pcall, CH.Gear.Best, model, mode, nil, live.finishingPicks)
+			if ok then gearPick = g end
+			gearCache[key] = { gen = gearGen, at = time(), pick = gearPick or false }
+		end
 	end
 	return result
 end
