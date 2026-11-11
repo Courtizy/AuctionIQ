@@ -44,8 +44,8 @@ local COLS = {
 	buy = { { "Recipe", 12, 216, "name" }, { "Craft each", 232, 104, "craftEach" }, { "Cheapest", 340, 100, "buyPrice" },
 		{ "Saves", 444, 106, "buySave" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
-	orders = { { "Recipe", 62, 196, "name" }, { "Customer", 262, 96, "from", "LEFT" }, { "Profit", 362, 100, "profit" },
-		{ "", 466, 84, "concentration" } },
+	orders = { { "Recipe", 62, 150, "name" }, { "Customer", 216, 80, "from", "LEFT" }, { "Reagents", 300, 64, "reagentsPct" },
+		{ "Profit", 368, 96, "profit" }, { "", 468, 70, "concentration" } },
 	first = { { "Recipe", 12, 290, "name" }, { "Proceeds", 306, 120, "value" }, { "Point costs", 430, 120, "net" } },
 }
 function SUI.Columns(m) return COLS[m] end
@@ -58,6 +58,7 @@ local NAMES = { concentration = "Concentration needed", name = "name", profit = 
 	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
 	bestQ = "best quality", bestProfit = "profit of the best pick", bestCost = "cost of the best pick", bestPct = "margin of the best pick",
 	bestCan = "how many of the best pick you can make now",
+	reagentsPct = "reagents you hold enough of",
 	concentration = "Concentration points", craftEach = "what one costs to make", buyPrice = "cheapest listing",
 	resell = "what it resells for", flip = "buy and relist profit" }
 
@@ -1049,13 +1050,18 @@ local function refreshLists()
 			r.cells[1]:SetText(CH.Window.ItemIcon(d.item, 15) .. (d.current and "" or T.Color("muted", "[" .. (d.expansion or "older") .. "] ")) .. (d.name or "?")
 				.. (d.minQuality and (" " .. CH.Window.QualityIcon(d.minQuality, 14, d.tiers) .. "+") or "") .. kpTag(d.kp))
 			r.cells[2]:SetText(d.customer or d.from)
-			r.cells[3]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
+			-- have vs need: how many of the craft's reagents you hold enough of (the hover lists the short ones)
+			r.cells[3]:SetText(d.reagentsNeed and d.reagentsNeed > 0
+				and T.Color(d.reagentsHave >= d.reagentsNeed and "ok" or "bad", string.format("%d/%d", d.reagentsHave, d.reagentsNeed))
+				or T.Color("muted", "-"))
+			r.cells[4]:SetText(d.ok and money(d.profit) or T.Color("bad", d.learned == false and "not learned" or d.unpriced and "no price" or "can't reach"))
 			-- the Concentration the craft needs, as CraftSim: 0 when its reagents (and Shatter) reach the rank
-			r.cells[4]:SetText(d.ok and tostring(math.floor((d.concentration or 0) + 0.5)) or T.Color("muted", "-"))
+			r.cells[5]:SetText(d.ok and tostring(math.floor((d.concentration or 0) + 0.5)) or T.Color("muted", "-"))
 			-- already crafted: what's left is handing it in, not whether you can reach it
 			if SUI.ClaimState(d) == "turnin" then
-				r.cells[3]:SetText(T.Color("ok", "crafted"))
-				r.cells[4]:SetText("")
+				r.cells[3]:SetText("")
+				r.cells[4]:SetText(T.Color("ok", "crafted"))
+				r.cells[5]:SetText("")
 			end
 			table.insert(out, string.format("%s from=%s profit=%s kp=%s", d.name, d.from, d.profit and math.floor(d.profit) or "-", tostring(d.kp)))
 		elseif d then
