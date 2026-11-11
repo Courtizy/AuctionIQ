@@ -172,6 +172,15 @@ local function click(i)
 		return
 	end
 	-- a click selects the recipe and opens it; queueing is the strip's buttons, so it's always the craft shown there
+	if C_TradeSkillUI.OpenRecipe and C_Timer then
+		-- opening the recipe makes the advisor work it out and redraw this window next frame: draw
+		-- once then, not now and again then (each redraw builds the side card)
+		if r.recipeID ~= selected then qty = 1 end
+		selected = r.recipeID
+		C_TradeSkillUI.OpenRecipe(r.recipeID)
+		C_Timer.After(0, function() if SUI.drawnSel ~= selected then SUI.Refresh() end end)
+		return
+	end
 	SUI.Select(r.recipeID)
 	if C_TradeSkillUI.OpenRecipe then C_TradeSkillUI.OpenRecipe(r.recipeID) end
 end
@@ -1326,6 +1335,7 @@ end
 
 function SUI.Draw()
 	if not frame then return {} end
+	SUI.drawnSel = selected
 	if mode ~= "recipes" then status:SetWidth(W - 24); renderDetails(); return refreshLists() end
 	status:SetWidth(W - 24 - (SUI.ShowViews and SUI.viewsWidth or 0))
 	local rows = showTable()
