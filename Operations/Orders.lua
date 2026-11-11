@@ -135,10 +135,11 @@ CH.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
 O.seen = {}       -- [id as text] = when the game last listed it
 O.STALE = 10 * 60 -- an order not seen in the game's list for this long isn't treated as available
 
-local function remember(orders)
+local function remember(orders, into)
 	local now = time()
+	into = into or O.cache
 	for _, o in ipairs(orders or {}) do
-		if o.orderID then O.cache[tostring(o.orderID)] = o; O.seen[tostring(o.orderID)] = now end
+		if o.orderID then into[tostring(o.orderID)] = o; O.seen[tostring(o.orderID)] = now end
 	end
 end
 
@@ -189,7 +190,7 @@ local function request(orderType, prof, done, tries)
 		local E = Enum and Enum.CraftingOrderResult or {}
 		local cb = function(result)
 			if result == nil or result == (E.Ok or 0) then
-				remember(co.GetCrafterOrders and co.GetCrafterOrders())
+				remember(co.GetCrafterOrders and co.GetCrafterOrders(), O.incoming)
 				return done(true)
 			end
 			if (result == E.ThrottleViolation or result == E.Timeout) and (tries or 0) < 3 then
@@ -223,14 +224,21 @@ function O.Fetch(onDone)
 	O.fetching = true
 	local T = Enum and Enum.CraftingOrderType or {}
 	local types = { T.Npc or 3, T.Personal or 2, T.Public or 0, T.Guild or 1 }
+	-- the list on screen keeps the orders it has while the new ones come in, and swaps to the new
+	-- set once every kind is in (as CraftSim's does), rather than emptying and filling again
 	local fresh, got, i = {}, false, 0
-	local old = O.cache
-	O.cache = fresh
+	O.incoming = fresh
 	local function step()
 		i = i + 1
 		if not types[i] then
 			O.fetching = false
-			if not got then O.cache = old end -- nothing came back: keep what we had
+			O.incoming = nil
+			if got then
+				local co2 = C_CraftingOrders
+				local claimed = co2 and co2.GetClaimedOrder and co2.GetClaimedOrder()
+				if claimed then remember({ claimed }, fresh) end
+				O.cache = fresh
+			end
 			local n = #O.All()
 			if onDone then onDone(n, not got and "the game didn't answer; open the Crafting Orders tab and try again" or nil) end
 			return
