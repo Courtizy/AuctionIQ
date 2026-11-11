@@ -946,3 +946,48 @@ function A.MaxCraftable(result, r, concNow)
 	if max == math.huge then max = 0 end
 	return max, lines
 end
+
+--- The Concentration craft with the reagents you hold, as the game fills a slot by default (lowest
+--- rank first): what the profession window charges when you tick Concentrate without changing a
+--- reagent. The advisor's own Concentration mix can need a rank you don't hold; this one you can
+--- make now when the points cover it. A row like Evaluate's (fromBags = true), or nil.
+function A.HeldConcRow(result)
+	local model = result and result.model
+	if not model or result.order or result.sim or not model.supportsQualities or #model.qual == 0 then return nil end
+	local picks = {}
+	for i, slot in ipairs(model.qual) do
+		local left, row = slot.qty, {}
+		for q, id in ipairs(slot.items) do
+			local n = math.min(left, have(id))
+			if n > 0 then row[q] = n; left = left - n end
+		end
+		if left > 0 then return nil end
+		picks[i] = row
+	end
+	for _, slot in ipairs(model.fixed) do if have(slot.items[1]) < slot.qty then return nil end end
+	local op = operation(model, picks, false, {})
+	if not op then return nil end
+	local q = A.QualityAt(model, skillOf(op))
+	if q >= model.maxQ then return nil end
+	local opc = operation(model, picks, true, {})
+	local cc = opc and opc.concentrationCost
+	if not cc or cc <= 0 then return nil end
+	local c = cost(model, picks)
+	if not c then return nil end
+	local s = St().FromOperation(opc)
+	local s0 = model.stats0 or {}
+	s.mcExtra, s.resExtra, s.refundExtra, s.concReduce = s0.mcExtra, s0.resExtra, s0.refundExtra, s0.concReduce
+	local cq = q + 1
+	local item = model.outputs[cq] or model.output
+	local r = valueRow(model, { quality = cq, from = q, concentration = cc, picks = picks, skill = skillOf(op) }, s, item, c, {})
+	local avgConc, ing = St().AverageConcentration(cc, s)
+	r.avgConcentration, r.ingenuity = avgConc, ing
+	r.perPoint = r.profit and avgConc and avgConc > 0 and r.profit / avgConc or nil
+	r.fromBags = true
+	local Dc = CH.Decide
+	if Dc then
+		r.breakEven = Dc.BreakEven(result, r)
+		r.gain = Dc.ConcGain(r, result.best and result.best.profit)
+	end
+	return r
+end

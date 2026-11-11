@@ -820,6 +820,17 @@ run('STUB.qualityOffset = 12')
 mq = CH.Advisor.Analyze(10)
 check("quality from skill, not the game's quality ID", [r.quality for r in mq.rows.values()] == [1, 2, 2] and mq.best.item == 302 and mq.bestConc.perPoint == 27250)
 run('STUB.qualityOffset = nil')
+# the Concentration craft with what you hold: Concentrate ticked on the reagents the game fills in
+hc = L.eval("(function() local res = AuctionIQ.Advisor.Analyze(10); local h = AuctionIQ.Advisor.HeldConcRow(res); return { h = h, best = res.bestConc } end)()")
+check("held Concentration: a row with your own reagents, lowest rank first, and the points the game charges for them",
+      hc.h is None or (hc.h.fromBags and hc.h.concentration > 0 and hc.h.quality == hc.h["from"] + 1))
+ac = L.eval("""(function() local res = AuctionIQ.Advisor.Analyze(10); local n = #res.rows
+  local old = C_Item.GetItemCount; C_Item.GetItemCount = function(id) if id == 201 then return 2 end return 99 end
+  AuctionIQ.AdvisorUI.AddHeldConc(res); C_Item.GetItemCount = old
+  local h; for _, r in ipairs(res.rows) do if r.fromBags then h = r end end
+  return { before = n, after = #res.rows, h = h } end)()""")
+check("held Concentration: added when the advisor's Concentration mix needs a rank you don't hold",
+      ac.after == ac.before + 1 and ac.h is not None and ac.h.concentration > 0)
 
 # Dashboard and Ledger from TSM's saved data (read only)
 run(r"""

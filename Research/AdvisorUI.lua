@@ -1070,12 +1070,32 @@ function AUI.Compute(recipeID)
 	local result = live
 	local d = AUI.SimDelta(recipeID)
 	if d then result = CH.Advisor.Evaluate(model, { sim = d }) end
+	AUI.AddHeldConc(result)
 	gearPick = nil
 	if not opts.order and CH.Gear then
 		local ok, g = pcall(CH.Gear.Best, model, (live.bestConc and not live.best) and "conc" or nil)
 		if ok then gearPick = g end
 	end
 	return result
+end
+
+--- When no Concentration craft of a rank can be made now (its mix needs a rank of reagent you
+--- don't hold), add the one with your own reagents: what the profession window charges when you
+--- tick Concentrate. It goes right after that rank's other Concentration row.
+function AUI.AddHeldConc(result)
+	if not (result and result.rows and CH.Advisor.HeldConcRow) or result.order or result.sim then return end
+	local ok, h = pcall(CH.Advisor.HeldConcRow, result)
+	if not ok or not h then return end
+	local cn = concNow()
+	local at
+	for i, r in ipairs(result.rows) do
+		if r.concentration and r.quality == h.quality then
+			-- one you can make already, or the same craft: nothing to add
+			if CH.Advisor.MaxCraftable(result, r, cn) > 0 or r.concentration == h.concentration then return end
+			at = i
+		end
+	end
+	table.insert(result.rows, (at or #result.rows) + 1, h)
 end
 
 --- The result on screen (for the results log to compare against).
@@ -1304,10 +1324,12 @@ function AUI.Card(n, scan)
 		local on = AUI.IsSelected(x)
 		local label = W.QualityIcon(x.quality, 13, maxQ)
 			.. (x.concentration and ("  " .. W.ConcIcon(11) .. " " .. x.concentration) or mut("  no Conc."))
+			.. (x.fromBags and mut("  yours") or "")
 			.. (x.short and T.Color("bad", "  too low") or "")
 		local tip = AUI.BreakdownLines(result, x, 5)
 		local gpp = x.gain and x.gain.perPoint or x.perPoint
 		if x.concentration and gpp then table.insert(tip, { "Extra profit per Concentration point", money(gpp) }) end
+		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix above needs a rank you don't have.") }) end
 		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
 		qrows[#qrows + 1] = { label, money(x.profit), tip = tip, on = on,
 			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
@@ -1353,7 +1375,8 @@ function AUI.Card(n, scan)
 	if r then
 		rows[#rows + 1] = { "Break-even price", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
 		rows[#rows + 1] = { "Recover in a week", m and m.recover and pctText(m.recover) or mut("-"), tip = AUI.NextTip("recover") }
-		rows[#rows + 1] = { "Can make now", r.max and tostring(r.max) or mut("-") }
+		-- what limits it, reagent by reagent (and Concentration), on hover
+		rows[#rows + 1] = { "Can make now", r.max and tostring(r.max) or mut("-"), tip = AUI.BreakdownLines(result, r, 7) }
 		if scan and scan.perDay then rows[#rows + 1] = { "Gold a day", money(scan.perDay) } end
 		if cs and cs.paid then rows[#rows + 1] = { "You paid for yours", M(cs.paid) } end
 		-- buy it instead: the cheapest listing against what one costs to make
