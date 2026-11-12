@@ -72,7 +72,9 @@ Fc.Decisions = decisions
 
 --- Save a batch decision when it's queued. f = { item, recipe, name, quality, conc, n (crafts),
 --- itemsEach, costEach (reagents a craft, net of Resourcefulness), priceEach (sale price an item),
---- netEach (an item after the cut and deposit), daily (sales a day), leftWeek, profit, source }.
+--- netEach (an item after the cut and deposit), daily (sales a day), leftWeek, profit, source,
+--- plan (Decide.PlanRecord: what AuctionIQ suggested when you queued it) }. n is what you chose,
+--- and the forecast is always for n: the suggestion is kept beside it, never in its place.
 function Fc.SaveDecision(f, now)
 	if not (f and f.item and f.n and f.n > 0) then return nil end
 	local list = decisions()
@@ -85,6 +87,23 @@ function Fc.SaveDecision(f, now)
 	list[#list + 1] = f
 	while #list > Fc.KEEP do table.remove(list, 1) end
 	return f
+end
+
+--- How the batch you queued differs from the suggestion at the time, or nil when it doesn't (or
+--- there was none): { chose, suggested, action, strength, kind = "more" | "fewer" | "against", text }.
+--- "against" is making some when the suggestion was to hold off or skip.
+function Fc.Departure(d)
+	local p = d and d.plan
+	if not (p and p.suggested and d.n) then return nil end
+	local kind
+	if (p.action == "hold" or p.action == "skip") and d.n > 0 then kind = "against"
+	elseif d.n > p.suggested then kind = "more"
+	elseif d.n < p.suggested then kind = "fewer" end
+	if not kind then return nil end
+	local said = p.action == "hold" and "hold off" or p.action == "skip" and "skip it"
+		or p.action == "trial" and string.format("try %d", p.suggested) or tostring(p.suggested)
+	return { chose = d.n, suggested = p.suggested, action = p.action, strength = p.strength, kind = kind,
+		text = string.format("You chose %d (suggested %s)", d.n, said) }
 end
 
 --- The newest decision a craft of item on char at time t still fills, or nil.
@@ -136,10 +155,18 @@ function Fc.Explain(d, now)
 		reagents = { "Reagents cost less than forecast", "Reagents cost more than forecast" },
 		yield = { "Made more than expected (Multicraft)", "Made fewer than expected" } }
 	local takeaway = main and WORDS[main][causes[main] >= 0 and 1 or 2] or "On forecast so far"
+	-- measured against what you chose; the suggestion's forecast over the same days, for comparison
+	local departure = Fc.Departure(d)
+	local atSuggested
+	if departure then
+		local k = math.min(departure.suggested, d.crafts)
+		local kItems = k * (d.itemsEach or 1)
+		atSuggested = math.min(kItems, demand) * net - k * (d.costEach or 0)
+	end
 	if main and main ~= "price" and sold > 0 and math.abs(causes.price) < big * 0.25 then takeaway = takeaway .. "; the price held" end
 	return { forecast = forecast, actual = actual, miss = miss, causes = causes, sold = sold, made = d.made or 0, expItems = expItems,
 		soldForecast = soldForecast, left = (d.made or 0) - sold, leftWorth = ((d.made or 0) - sold) * net, days = days, main = main,
-		takeaway = takeaway, revenue = revenue, paid = paid }
+		takeaway = takeaway, revenue = revenue, paid = paid, departure = departure, atSuggested = atSuggested }
 end
 
 -- Match sales to crafts, oldest first per item. Each batch gets sold, revenue (after the cut),

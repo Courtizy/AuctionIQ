@@ -641,6 +641,7 @@ function D.Quantity(inp, opts)
 		out.changes = binding == "afford" and "more gold, or cheaper reagents"
 			or string.format("selling slower than about %s a day, or the price falling more than %d%%", D.RateText(daily / 2), math.floor(D.Scenario().price * 100 + 0.5))
 	end
+	if opts.noExplore then return out end
 	-- explore: the same scenarios for a few sizes and your own
 	local sizes, seen = {}, {}
 	for _, k in ipairs(D.EXPLORE) do sizes[#sizes + 1] = k; seen[k] = true end
@@ -662,6 +663,15 @@ function D.QuantityLabel(q)
 	if q.action == "hold" then return "Hold off" end
 	if q.action == "skip" then return "Skip" end
 	return "-"
+end
+
+--- What to keep of a quantity decision with the batch you queue, so results can be judged against
+--- what you chose and the suggestion told apart from it: { suggested (crafts; 0 for hold or skip),
+--- action, strength, canMake, canAfford, held }, or nil without a decision.
+function D.PlanRecord(q)
+	if not q or q.action == "unknown" then return nil end
+	return { suggested = q.n or 0, action = q.action, strength = q.strength, canMake = q.canMake,
+		canAfford = q.canAfford and math.min(q.canAfford, 999) or nil, held = q.held }
 end
 
 -- Posting advice -------------------------------------------------------------------------------
