@@ -466,12 +466,13 @@ G.CostEach = costEach
 
 --- How sales have gone lately, as a factor for the normal price and why. The sell-through rate is a
 --- Beta belief (Prob.SellThrough) that starts at the region's sale rate and moves toward your own
---- 30 days of sold and expired units. The price goes up (to +5%) only when it is likely that 80%+ of
+--- last 30 days (Ledger.SellThrough: the share of units sold, counted once per day with a sale or
+--- an expiry). The price goes up (to +5%) only when it is likely that 80%+ of
 --- posts sell, and down (to -10%) only when it is likely that under 40% do; the step grows with how
 --- sure it is. Otherwise 1 (no change).
 function G.Learn(id)
 	if not (CH.Ledger and CH.Ledger.Available()) then return 1 end
-	local sold, expired = CH.Ledger.SellThrough(id)
+	local sold, expired, detail = CH.Ledger.SellThrough(id)
 	if sold + expired == 0 then return 1 end
 	local st = CH.Prob.SellThrough(sold, expired, CH.Expect and CH.Expect.RegionRate(id) or 0.5)
 	local f, sure = 1, nil
@@ -479,8 +480,10 @@ function G.Learn(id)
 	elseif st.pDown > 0.6 then f, sure = 1 - 0.10 * (st.pDown - 0.6) / 0.4, st.pDown end
 	f = math.floor(f * 200 + 0.5) / 200 -- half-percent steps
 	if f == 1 then return 1 end
-	return f, string.format("sells %d%% of posts (%d sold, %d expired), %d%% sure: %+.1f%%", math.floor(st.mean * 100 + 0.5),
-		sold, expired, math.floor(sure * 100 + 0.5), (f - 1) * 100)
+	local what = detail and string.format("%d sold, %d expired over %d day%s", detail.sold, detail.expired, detail.days, detail.days == 1 and "" or "s")
+		or string.format("%.0f sold, %.0f expired", sold, expired)
+	return f, string.format("sells %d%% of posts (%s), %d%% sure: %+.1f%%", math.floor(st.mean * 100 + 0.5),
+		what, math.floor(sure * 100 + 0.5), (f - 1) * 100)
 end
 
 --- Posting prices and rules for an item: { min, normal, max, cap, undercut, duration, post, op, why,

@@ -899,7 +899,7 @@ function AUI.ExpectLines(d)
 	if d.p then
 		local b = d.belief
 		table.insert(out, { string.format("Sells %d%% of posts", math.floor(d.p * 100 + 0.5))
-			.. mut(b and b.n > 0 and string.format("  your %d posts + region", b.n) or "  region rate"), "" })
+			.. mut(b and b.n > 0 and string.format("  your %d day%s of posts + region", math.floor(b.n + 0.5), math.floor(b.n + 0.5) == 1 and "" or "s") or "  region rate"), "" })
 		if d.deposits >= 1 then table.insert(out, { "  Deposits lost to expiries", "-" .. M(d.deposits) }) end
 		table.insert(out, { string.format("  Gold tied up %.1f days at %s%%/day", d.days, tostring(CH.Expect.Setting("carry") * 100)), "-" .. M(d.carry) })
 		table.insert(out, { "Expected each", M(d.gross - d.deposits - d.carry) })
