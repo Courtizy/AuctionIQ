@@ -71,7 +71,7 @@ makes you a better goblin.
 4. **Read the craft card.** Pick a recipe and the card beside the profession window shows the quality to aim for, the reagents to use, the profit and where that estimate could go wrong. Flip the Concentrate switch to compare.
 5. **Queue it.** Add the craft to the queue. The shopping list fills in with the reagents you're missing.
 6. **Buy and post at the AH.** The panel beside the Auction House buys the shopping list, then posts what you've made, one click each.
-7. **Check the Dashboard** (`/aiq`) whenever you log in: it lists what to do next, biggest gold first.
+7. **Check the Dashboard** (`/aiq`) whenever you log in: it lists what deserves your attention, ranked by what acting now is expected to add.
 
 ## How the numbers work
 
@@ -94,6 +94,8 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 **Profit per craft.** Multicraft, Resourcefulness, Ingenuity and Concentration use the same formulas as [CraftSim](https://github.com/derfloh205/CraftSim): the extra items Multicraft gives on average, the reagents Resourcefulness hands back, and the Concentration Ingenuity refunds. Revenue is after the 5% AH cut, less the deposits you expect to lose to expired auctions and the cost of gold sitting on the AH while it sells.
 
 **Will it sell?** Each item's chance of selling starts from the region's sale rate (TSM) and moves toward your own record as you sell and expire. Gold a day counts at most 10 sales a day per item (`/aiq cap 20` to change), so a cheap item nobody buys in bulk can't top the list.
+
+**Dashboard ranking.** Do next cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
 

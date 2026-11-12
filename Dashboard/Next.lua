@@ -1,12 +1,52 @@
 -- Do next: the Today tab's ranked list of what to do now, from the same sources as the Report.
 -- Things that waste value while they wait (full Concentration, ready cooldowns, a selling window
--- about to open, gold sitting in the mail) come first; then stock work, biggest gold first.
+-- about to open, gold sitting in the mail) come first; then stock work.
+--
+-- One measure of gold ranks the cards: the expected gain from acting now, over the next week,
+-- after the AH cut and expected deposits (card.value, kind "gain"; card.gold is its amount).
+-- Other numbers a card knows (last month's sales, what the queue's reagents cost) are evidence
+-- (card.evidence), shown with the card but never ranked against a gain. Within a tier, cards with
+-- a gain come first, biggest first; cards without one keep the order they were found in, so a
+-- number of another kind never decides where they sit.
 local _, CH = ...
 
 local Next = {}
 CH.Next = Next
 
 local function name(id) return CH.LedgerUI and select(2, CH.LedgerUI.ItemText(id)) or ("item " .. tostring(id)) end
+
+Next.HORIZON_DAYS = 7
+
+--- A card's value: { kind, amount (copper), basis (where it comes from, in words) }, or nil without
+--- an amount. kinds: "gain" (what acting now adds over the next week, after fees: the only kind
+--- that ranks), "pastSales" (what your sales brought in), "cost" (gold it takes), "stock" (what
+--- stock is worth at market).
+function Next.Value(kind, amount, basis)
+	if not amount then return nil end
+	return { kind = kind, amount = amount, basis = basis }
+end
+
+-- What one item you hold brings when posted: its price after the cut, less expected lost deposits
+-- and gold tied up while it waits (Expect.Value). nil without a price.
+local function postedEach(id)
+	local price = id and CH.Prices.Get("chvalue", "i:" .. id)
+	if not price then return nil end
+	if CH.Expect and CH.Expect.Value then
+		local ok, ev = pcall(CH.Expect.Value, id, price)
+		if ok and ev then return math.max(0, ev) end
+	end
+	return price * CH.AH_CUT
+end
+
+-- What making n of an item adds: the best saved scan's profit a craft (after the cut, deposits and
+-- Resourcefulness; reagents at your cost basis) times the crafts n items take. nil without a scan.
+local function makeGain(id, n)
+	if not (CH.Queue and CH.Queue.ScanRowFor and n and n > 0) then return nil end
+	local _, _, r = CH.Queue.ScanRowFor(id)
+	if not (r and r.profit) then return nil end
+	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
+	return Next.Value("gain", r.profit * crafts, string.format("%d crafts at the last scan's profit", crafts))
+end
 
 -- Card buttons: each does the job itself where it can (queue the craft, open Auctioning).
 local function queueAct(label, charKey, char, row, conc, qty)
@@ -69,10 +109,20 @@ function Next.List(now)
 				end
 				local pick = conc or best
 				local n = conc and conc.concentration and conc.concentration > 0 and math.max(1, math.floor(cur / conc.concentration)) or 1
+				-- what the points add over making the same crafts without them (per expected point x points
+				-- a craft), not the Concentration craft's whole profit: the plain craft needs no points
+				local value
+				if conc then
+					local avg = conc.avgConcentration or conc.concentration
+					local each = conc.concGain or (gpp and avg and gpp * avg)
+					value = each and Next.Value("gain", each * n, string.format("%d crafts, what Concentration adds over the plain craft", n))
+				elseif best then
+					value = Next.Value("gain", best.profit, "one plain craft at the last scan's profit")
+				end
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
 					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
-					gold = conc and conc.concProfit * n or (best and best.profit), tier = 1,
+					value = value, tier = 1,
 					risk = pick and "the top-quality price holding while you sell " .. (conc and n or 1) or "which craft pays: scan the profession first",
 					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, unit = "crafts", conc = conc and true or nil, title = "Spend Concentration" } }
 						or { "operations", "professions", { char = c.name, title = "Spend Concentration" } },
@@ -124,6 +174,7 @@ function Next.List(now)
 				-- a cost, not a gain: it goes in the text, so the card doesn't read it as expected benefit
 				add({ title = "Buy reagents", detail = string.format("%d reagent%s for your queue, about %s: %s%s", #buys, #buys == 1 and "" or "s",
 					CH.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
+					evidence = Next.Value("cost", total, "the queue's shopping list at the listings you've seen"),
 					risk = "listings move: the AH's Shop queue buys at what's up when you get there",
 					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
 			end
@@ -146,8 +197,13 @@ function Next.List(now)
 		for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
+				-- what posting brings: the quantity Trade would post, each at what a listing is worth to you
+				local a = postCall(e.id)
+				local each = a and (a.qty or 0) > 0 and postedEach(e.id)
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
-					gold = e.gold, tier = 1, act = postAct("Post"),
+					value = each and Next.Value("gain", each * a.qty, string.format("%d posted, each after the cut and expected deposits", a.qty)) or nil,
+					evidence = Next.Value("pastSales", e.gold, string.format("%d sold in 30 days, before the cut", e.sold)),
+					tier = 1, act = postAct("Post"),
 					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
 					go = { "operations", "post", (function()
 						local a = postCall(e.id)
@@ -161,13 +217,16 @@ function Next.List(now)
 		local ok, r = pcall(CH.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
-				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left", name(e.id), e.sold), gold = e.gold, tier = 2,
+				local value = makeGain(e.id, e.sold)
+				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left%s", name(e.id), e.sold, value and "" or "; scan to price it"),
+					value = value, evidence = Next.Value("pastSales", e.gold, string.format("%d sold this week, after the cut", e.sold)), tier = 2,
 					risk = "whether this week's demand repeats", act = makeAct(e.id, e.sold),
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, unit = "items", title = "Restock" } } })
 			end
 			for _, e in ipairs(r.expired or {}) do
-				local unit = CH.Prices.Get("chvalue", "i:" .. e.id)
-				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n), gold = unit and unit * CH.AH_CUT * e.n, tier = 2,
+				local each = postedEach(e.id)
+				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n),
+					value = each and Next.Value("gain", each * e.n, string.format("%d reposted, each after the cut and expected deposits", e.n)) or nil, tier = 2,
 					risk = "it already expired once at this price", act = postAct("Repost"),
 					go = { "operations", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
 			end
@@ -179,8 +238,9 @@ function Next.List(now)
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
-				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d", name(e.id), e.held, e.target, e.short),
-					gold = e.value, tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
+				local value = makeGain(e.id, e.short)
+				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d%s", name(e.id), e.held, e.target, e.short, value and "" or "; scan to price it"),
+					value = value, evidence = Next.Value("stock", e.value, "the shortfall at market, after the cut"), tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, unit = "items", title = "Below stock target" } } })
 			end
 		end
@@ -194,10 +254,26 @@ function Next.List(now)
 			go = { "operations", "professions", { title = "Weekly knowledge" } } }) end
 	end
 
+	return Next.Order(out)
+end
+
+--- Sort cards: tier, then the expected gain (biggest first; a positive gain ahead of no estimate,
+--- and no estimate ahead of a loss), then the order they were found in. Only a "gain" value ranks; card.gold is set to its amount.
+local function class(g) return g == nil and 2 or g > 0 and 1 or 3 end
+function Next.Order(out)
+	for i, e in ipairs(out) do
+		e.found = e.found or i
+		local v = e.value
+		if v and v.kind ~= "gain" then e.evidence, e.value, v = e.evidence or v, nil, nil end
+		e.gold = v and v.amount or nil
+	end
 	table.sort(out, function(a, b)
 		if a.tier ~= b.tier then return a.tier < b.tier end
-		if (a.gold or 0) ~= (b.gold or 0) then return (a.gold or 0) > (b.gold or 0) end
-		return a.detail < b.detail
+		-- a gain first, then no estimate, then a loss (acting loses gold at the last scan's prices)
+		local ca, cb = class(a.gold), class(b.gold)
+		if ca ~= cb then return ca < cb end
+		if a.gold and a.gold ~= b.gold then return a.gold > b.gold end
+		return a.found < b.found
 	end)
 	return out
 end
@@ -219,9 +295,11 @@ function Next.Ranked(now, max)
 			table.insert(out, g[1])
 		else
 			local first = g[1]
-			local gold, names, ids = 0, {}, {}
+			-- only gains add up: a card in the group without one leaves the total as a lower bound
+			local gold, names, ids, priced = 0, {}, {}, 0
 			for i, e in ipairs(g) do
-				gold = gold + (e.gold or 0)
+				local v = e.value
+				if v and v.kind == "gain" then gold, priced = gold + v.amount, priced + 1 end
 				local f = e.go and e.go[3]
 				if f and f.id then ids[f.id] = true end
 				local n = e.go and e.go[3] and e.go[3].name
@@ -230,16 +308,15 @@ function Next.Ranked(now, max)
 			local more = #g > #names and string.format(" and %d more", #g - #names) or ""
 			table.insert(out, { title = string.format("%s %d items", first.title, #g),
 				detail = (#names > 0 and table.concat(names, ", ") .. more or (#g .. " items")) .. ". Biggest: " .. first.detail,
-				gold = gold > 0 and gold or nil, tier = first.tier, risk = first.risk, rows = g,
+				value = priced > 0 and Next.Value("gain", gold, priced < #g and string.format("%d of the %d items priced", priced, #g) or (first.value and first.value.basis)) or nil,
+				tier = first.tier, risk = first.risk, rows = g, found = first.found,
 				-- one item's button can't do them all: the card opens its view on the whole list
 				-- the exact items behind the card, so the view opens on that shortlist and nothing else
 				go = first.go and { first.go[1], first.go[2], { title = first.title .. ", " .. #g .. " items", ids = next(ids) and ids or nil } } })
 		end
 	end
-	table.sort(out, function(a, b)
-		if a.tier ~= b.tier then return a.tier < b.tier end
-		return (a.gold or 0) > (b.gold or 0)
-	end)
+	for i, e in ipairs(out) do e.found = i end
+	Next.Order(out)
 	local all = #out
 	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
 	return out, all

@@ -354,7 +354,19 @@ local function buildDashboard(p)
 			end
 			-- why, what it's worth, and what could make it wrong
 			local e = self.entry
-			if e and e.gold and e.gold > 0 then table.insert(lines, { "Expected benefit", CH.FormatMoney(e.gold) }) end
+			-- the modeled gain and the observed evidence, each labelled for what it is
+			if e and e.value then
+				table.insert(lines, { "Expected gain, next 7 days (modeled)", CH.FormatMoney(e.value.amount) })
+				if e.value.basis then table.insert(lines, { CH.Theme.Color("muted", "  " .. e.value.basis) }) end
+			elseif e and e.tier then
+				table.insert(lines, { CH.Theme.Color("muted", "No expected gain worked out: ranked by urgency, not gold") })
+			end
+			local ev = e and e.evidence
+			if ev and ev.amount then
+				local kind = ({ pastSales = "Your sales (observed)", cost = "Gold it takes", stock = "Stock at market" })[ev.kind] or "Evidence"
+				table.insert(lines, { kind, CH.FormatMoney(ev.amount) })
+				if ev.basis then table.insert(lines, { CH.Theme.Color("muted", "  " .. ev.basis) }) end
+			end
 			if e and e.risk then table.insert(lines, { CH.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
 			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
 			if #lines > 0 then CH.Window.Tooltip(self, lines) end
@@ -1061,7 +1073,8 @@ local function refreshDashboard()
 			if e then
 				local did = d.acted[e.title]
 				c.who:SetText(T.Color(e.tier == 1 and "accent" or "fg", e.title))
-				c.time:SetText(e.gold and e.gold > 0 and money(e.gold) or "")
+				-- the ranked number is a modeled gain: "+250g exp."; nothing when a card has none
+				c.time:SetText(e.gold and e.gold > 0 and ("+" .. money(e.gold) .. T.Color("muted", " exp.")) or "")
 				c.l1:SetText(e.detail)
 				-- after its button: one line of detail, then what happened (or why not)
 				if c.l1.SetMaxLines then c.l1:SetMaxLines(2) end
