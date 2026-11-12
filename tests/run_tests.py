@@ -2125,9 +2125,9 @@ check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier
 # Do next as decisions: the same action on several items is one card, four cards at most
 run("""STUB.oldNextList = AuctionIQ.Next.List
 AuctionIQ.Next.List = function() local out = {}
-  for i = 1, 9 do table.insert(out, { title = 'Repost', detail = 'Item ' .. i .. ' x1 came back unsold', gold = i * 10000, tier = 2, risk = 'it expired once',
+  for i = 1, 9 do table.insert(out, { title = 'Repost', detail = 'Item ' .. i .. ' x1 came back unsold', value = AuctionIQ.Next.Value('gain', i * 10000), tier = 2, risk = 'it expired once',
     go = { 'operations', 'post', { name = 'Item ' .. i, title = 'Repost' } } }) end
-  for _, t in ipairs({ 'Relist', 'Cooldown ready', 'Weekly knowledge', 'Rethink' }) do table.insert(out, { title = t, detail = t, tier = t == 'Relist' and 1 or 3, gold = 5 }) end
+  for _, t in ipairs({ 'Relist', 'Cooldown ready', 'Weekly knowledge', 'Rethink' }) do table.insert(out, { title = t, detail = t, tier = t == 'Relist' and 1 or 3, value = AuctionIQ.Next.Value('gain', 5) }) end
   return out end""")
 rk, allk = L.eval("AuctionIQ.Next.Ranked()")
 rk = list(rk.values())
@@ -2171,6 +2171,74 @@ check("do next: the button says what it did, for the card", acted[1] is True and
 qe = list(CH.db.queue.values())
 check("do next: its button queues that craft with Concentration for that character", len(qe) == 1 and qe[0].char == "Alt-Realm" and qe[0].qty == 3
       and qe[0].concentration == 300 and qe[0].reagents[1].slot == 1)
+# Do next ranks by one measure: the expected gain from acting now (a week, after fees)
+check("do next: Spend Concentration's gold is what the points add over the plain craft, not the whole profit (3 x (15,000 - 1,000))",
+      spend[0].gold == 42000 and spend[0].value.kind == "gain" and "plain craft" in spend[0].value.basis)
+run("""STUB.oldReport, STUB.oldAvail = AuctionIQ.Ledger.Report, AuctionIQ.Ledger.Available
+AuctionIQ.Ledger.Available = function() return true end
+AuctionIQ.Ledger.Report = function() return { restock = { { id = 100, sold = 2, gold = 9000000 }, { id = 777777, sold = 50, gold = 99000000 } },
+  expired = {}, stale = {} } end""")
+nr = {e.go[3].id: e for e in CH.Next.List().values() if e.title == "Restock"}
+check("do next: Restock's gain is the scan's profit for the crafts it takes; last week's sales are evidence, not gold",
+      nr[100].gold == 2 * 1000 and nr[100].evidence.kind == "pastSales" and nr[100].evidence.amount == 9000000)
+check("do next: a Restock with no scan has no gold, says to scan, and doesn't outrank a priced one on its past sales",
+      nr[777777].gold is None and "scan to price it" in nr[777777].detail
+      and [e.go[3].id for e in CH.Next.List().values() if e.title == "Restock"] == [100, 777777])
+run("AuctionIQ.Ledger.Report, AuctionIQ.Ledger.Available = STUB.oldReport, STUB.oldAvail")
+run("""STUB.oldTimes, STUB.oldAdvice, STUB.oldAvail = AuctionIQ.Ledger.SaleTimes, AuctionIQ.TradingUI.Advice, AuctionIQ.Ledger.Available
+AuctionIQ.Ledger.Available = function() return true end
+AuctionIQ.Ledger.SaleTimes = function() return { { id = 100, sold = 9, gold = 20000000, share = 0.9, bestHour = tonumber(date('%H', STUB.now)) } } end
+AuctionIQ.TradingUI.Advice = function() return { [100] = { action = 'post', qty = 6, reason = 'test' } } end""")
+pn = [e for e in CH.Next.List().values() if e.title == "Post now"]
+ev100 = L.eval("(AuctionIQ.Expect.Value(100, AuctionIQ.Prices.Get('chvalue', 'i:100')))")
+check("do next: Post now's gain is what Trade would post, each after the cut and expected deposits; 30-day sales are evidence",
+      len(pn) == 1 and abs(pn[0].gold - 6 * ev100) < 1 and pn[0].evidence.kind == "pastSales" and pn[0].evidence.amount == 20000000
+      and pn[0].go[3].qty == 6)
+run("AuctionIQ.Ledger.SaleTimes, AuctionIQ.TradingUI.Advice, AuctionIQ.Ledger.Available = STUB.oldTimes, STUB.oldAdvice, STUB.oldAvail")
+# the ordering rule, on made-up cards: within a tier, gains first (biggest first), then the rest as found
+ordered = L.eval("""(function()
+  local N = AuctionIQ.Next
+  local out = N.Order({
+    { title = 'Past', detail = 'a', tier = 1, evidence = N.Value('pastSales', 900000) },
+    { title = 'Small', detail = 'b', tier = 1, value = N.Value('gain', 100) },
+    { title = 'Cost', detail = 'c', tier = 1, value = N.Value('cost', 500000) },
+    { title = 'Big', detail = 'd', tier = 1, value = N.Value('gain', 2000) },
+    { title = 'Loss', detail = 'f', tier = 1, value = N.Value('gain', -500) },
+    { title = 'Later', detail = 'e', tier = 2, value = N.Value('gain', 99999999) } })
+  local t = {}; for i, e in ipairs(out) do t[i] = e.title .. '=' .. tostring(e.gold) end
+  return table.concat(t, ',') end)()""")
+check("do next order: gains rank biggest first; past sales and costs never decide the order; a loss goes last; tiers come first",
+      ordered == "Big=2000,Small=100,Past=nil,Cost=nil,Loss=-500,Later=99999999")
+bad = L.eval("""(function()
+  local N, u, bad = AuctionIQ.Next, AuctionIQ.Decide.RNG(7), 0
+  for run = 1, 200 do
+    local cards = {}
+    for i = 1, 8 do
+      local amt = math.floor(u() * 2e7) - 5e6
+      local kind = ({ 'gain', 'pastSales', 'cost', 'stock' })[1 + math.floor(u() * 4)]
+      cards[i] = { title = 't' .. i, detail = 'd', tier = 1 + math.floor(u() * 2), value = N.Value(kind, amt) }
+    end
+    local out = N.Order(cards)
+    for i = 2, #out do
+      local a, b = out[i - 1], out[i]
+      local pa, pb = a.gold and a.gold > 0, b.gold and b.gold > 0
+      if a.tier == b.tier and ((not pa and pb) or (pa and pb and a.gold < b.gold)) then bad = bad + 1 end
+      if a.tier > b.tier then bad = bad + 1 end
+    end
+  end
+  return bad end)()""")
+check("do next order (200 seeded random lists, gains and losses): a card without a positive gain never sits above one with a gain in its tier", bad == 0)
+grp = L.eval("""(function()
+  local N, old = AuctionIQ.Next, AuctionIQ.Next.List
+  N.List = function() return {
+    { title = 'Repost', detail = 'x1', tier = 2, value = N.Value('gain', 3000), go = { 'operations', 'post', { id = 1 } } },
+    { title = 'Repost', detail = 'x2', tier = 2, go = { 'operations', 'post', { id = 2 } } },
+    { title = 'Rethink', detail = 'y', tier = 2, evidence = N.Value('pastSales', 1e9) } } end
+  local r = N.Ranked()
+  N.List = old
+  return { r[1].title, r[1].gold, r[1].value.basis, r[2].title, r[2].gold } end)()""")
+check("do next grouped: only gains add up, the basis says how many were priced, and past sales don't lift a card",
+      grp[1] == "Repost 2 items" and grp[2] == 3000 and grp[3] == "1 of the 2 items priced" and grp[4] == "Rethink" and grp[5] is None)
 k = L.eval("{ AuctionIQ.Queue.ScanRowFor(100) }")
 check("do next: a restock finds the saved scan that makes the item", k[1] == "Alt-Realm" and k[3].recipeID == 10)
 run("AuctionIQ.UI.Page('today')")
