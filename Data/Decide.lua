@@ -532,6 +532,138 @@ function D.SuggestText(s)
 	return t .. string.format(" Left after a week: %d slow, %d expected, %d fast.", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left))
 end
 
+-- How many: what you can make, what you can afford, and what the evidence suggests ----------------
+-- Three numbers kept apart, so an attractive margin never reads as "make as many as you can":
+--   canMake    crafts the reagents (and Concentration) you hold cover now (the advisor's Max)
+--   canAfford  crafts your gold buys the missing reagents for, walking the listings you've seen
+--   suggested  Suggest's batch: pays at the downside price and leaves at most LEAN_DAYS of stock
+-- The suggestion is only as specific as the evidence: with a thin sales record (the region's figure,
+-- or few listed days of your own) it offers a small trial instead of a precise batch. It is never
+-- an instruction: Explore shows what 5, 10, 20 or your own number would do in the same scenarios.
+
+D.EXPLORE = { 5, 10, 20 }
+D.STRONG_DAYS = 10 -- listed days of your own before a suggestion is called well founded
+D.TRIAL_DAYS = 2   -- a trial batch: about this many days of sales
+
+--- How sure the sales evidence is: "strong" (mostly your own sales over enough listed days),
+--- "some" (your sales blended with the region's figure), "weak" (the region's figure alone, or
+--- no rate), and why in words.
+function D.Strength(demand)
+	if not demand or demand.source == "none" then return "weak", "no sales rate for it yet" end
+	if demand.source == "region" then return "weak", "only the region's figure: you haven't listed it lately" end
+	if demand.source == "own" and (demand.listed or 0) >= D.STRONG_DAYS then
+		return "strong", string.format("your own sales over %d listed days", demand.listed)
+	end
+	return "some", string.format("%d listed days of your own, blended with the region's figure", demand.listed or 0)
+end
+
+--- The most crafts whose missing reagents cost no more than gold (binary search; cost only grows
+--- with n). nil when gold is unknown.
+function D.Affordable(inp, gold, limit)
+	if not (inp and gold) then return nil end
+	limit = limit or 999
+	local function cash(n) local _, c = D.BatchCost(inp, n); return c end
+	if cash(1) > gold then return 0 end
+	if cash(limit) <= gold then return limit end
+	local lo, hi = 1, limit -- cash(lo) <= gold < cash(hi)
+	while hi - lo > 1 do
+		local mid = math.floor((lo + hi) / 2)
+		if cash(mid) <= gold then lo = mid else hi = mid end
+	end
+	return lo
+end
+
+--- The quantity decision for a craft. inp: BatchInputs. opts: canMake, gold (copper), held (items
+--- of the product you hold), concCrafts, gain, suggest (a Suggest result already worked out),
+--- custom (a quantity of your own to compare). Returns { canMake, canAfford, suggested, strength,
+--- why (strength's reason), demand, held, cover (days your stock lasts), action ("make" | "trial" |
+--- "hold" | "skip" | "unknown"), n (the suggestion, 0 when none), binding ("sales", "stock",
+--- "price", "afford", "reagents", "conc", "trial"), text, assumptions = { ... }, changes (what
+--- would change the conclusion), explore = { { n, slow, expected, fast } } }.
+function D.Quantity(inp, opts)
+	opts = opts or {}
+	if not inp then return nil end
+	local demand = inp.evidence and inp.evidence.demand
+	local held = opts.held or (inp.item and inp.have and inp.have(inp.item)) or 0
+	local daily = inp.daily or 0
+	local out = { canMake = opts.canMake, held = held, demand = demand, daily = daily, n = 0 }
+	out.strength, out.why = D.Strength(demand)
+	out.cover = daily > 0 and held / daily or nil
+	out.canAfford = D.Affordable(inp, opts.gold)
+	local sug = opts.suggest or D.Suggest(inp, { held = held, concCrafts = opts.concCrafts, gain = opts.gain })
+	out.suggested = sug and sug.n or 0
+	local perCraft = D.ItemsPerCraft(inp)
+	local M = CH.FormatMoney or tostring
+	local rateText = demand and CH.Demand and CH.Demand.Text(demand) or "no sales rate"
+	out.assumptions = {
+		string.format("Sales: %s", rateText),
+		string.format("Price: %s an item before the cut; the slow case has it %d%% lower", M(inp.price or 0), math.floor(D.Scenario().price * 100 + 0.5)),
+		string.format("Stock left after a week: at most %d days of sales", D.LEAN_DAYS),
+	}
+	if not sug then
+		out.action, out.binding = "unknown", nil
+		out.text = "No sale price for it yet: scan the AH, then look again."
+		out.changes = "a price for the item"
+	elseif sug.n == 0 and sug.limit == "stock" then
+		out.action, out.binding = "hold", "stock"
+		out.text = string.format("Hold off: your %d cover about %s at %s a day.", held, D.DaysText(out.cover or 0), D.RateText(daily))
+		out.changes = string.format("selling faster than %s a day, or your stock running under %d", D.RateText(daily), math.ceil(daily * D.LEAN_DAYS))
+	elseif sug.n == 0 and (sug.limit == "price" or sug.limit == "conc") then
+		out.action, out.binding = "skip", sug.limit
+		out.text = sug.why
+		out.changes = "a higher sale price, or cheaper reagents"
+	elseif sug.n == 0 then
+		-- no sale rate: nothing to size a batch from, so a small trial is the way to learn one
+		out.action, out.binding = "trial", "trial"
+		out.n = math.max(1, math.ceil(1 / math.max(perCraft, 0.01)))
+		out.text = string.format("No sales rate yet: try %d to learn how it sells.", out.n)
+		out.changes = "a week of your own sales of it"
+	else
+		local n, binding = sug.n, sug.limit == "price" and "price" or sug.limit == "conc" and "conc" or "sales"
+		if out.strength == "weak" then
+			-- a precise batch would claim more than the evidence knows: a trial of a couple of days' sales
+			local trial = math.max(1, math.ceil(daily * D.TRIAL_DAYS / math.max(perCraft, 0.01)))
+			if trial < n then n, binding = trial, "trial" end
+		end
+		if out.canAfford and out.canAfford < n then n, binding = out.canAfford, "afford" end
+		out.n, out.binding = n, binding
+		out.action = binding == "trial" and "trial" or "make"
+		if n == 0 then
+			out.action = "skip"
+			out.text = "You can't afford the reagents for one."
+		elseif binding == "trial" then
+			out.text = string.format("Try %d: the sales evidence is thin (%s), so start small and see how it sells.", n, out.why)
+		elseif binding == "afford" then
+			out.text = string.format("Make %d: your gold buys the reagents for %d of the %d the sales support.", n, n, sug.n)
+		else
+			out.text = string.format("Make %d: %s", n, sug.why)
+		end
+		out.changes = binding == "afford" and "more gold, or cheaper reagents"
+			or string.format("selling slower than about %s a day, or the price falling more than %d%%", D.RateText(daily / 2), math.floor(D.Scenario().price * 100 + 0.5))
+	end
+	-- explore: the same scenarios for a few sizes and your own
+	local sizes, seen = {}, {}
+	for _, k in ipairs(D.EXPLORE) do sizes[#sizes + 1] = k; seen[k] = true end
+	if opts.custom and opts.custom > 0 and not seen[opts.custom] then sizes[#sizes + 1] = opts.custom end
+	table.sort(sizes)
+	out.explore = {}
+	for _, k in ipairs(sizes) do
+		local sc = D.Scenarios(inp, k, { held = held })
+		out.explore[#out.explore + 1] = { n = k, slow = sc.slow, expected = sc.expected, fast = sc.fast, custom = k == opts.custom or nil }
+	end
+	return out
+end
+
+--- Short labels: "Make 8", "Try 3", "Hold off", "Skip", "-".
+function D.QuantityLabel(q)
+	if not q then return "-" end
+	if q.action == "make" then return "Make " .. q.n end
+	if q.action == "trial" then return "Try " .. q.n end
+	if q.action == "hold" then return "Hold off" end
+	if q.action == "skip" then return "Skip" end
+	return "-"
+end
+
 -- Posting advice -------------------------------------------------------------------------------
 -- For stock you hold in a posting group: post now, post fewer, or wait, with the price, quantity and
 -- reason. It never goes past your TSM operation (its cap, keep, min and max): the most it suggests

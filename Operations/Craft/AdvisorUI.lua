@@ -649,6 +649,23 @@ local function batchRow()
 	return shown, r
 end
 
+--- The batch inputs and Suggest's batch for a craft, without the simulation (that runs only when
+--- the batch pane asks for it): { inputs, suggest }, kept per craft.
+local suggestCache = {}
+function AUI.SuggestFor(result, r)
+	if not (result and r and CH.Decide) or result.order then return nil end
+	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0) }, ":")
+	local hit = suggestCache[key]
+	if hit then return hit end
+	local Dc = CH.Decide
+	local inp = Dc.BatchInputs(result, r)
+	if not inp then return nil end
+	local cf = r.concentration and Dc.ConcForecastFor(r, concNow())
+	hit = { inputs = inp, suggest = Dc.Suggest(inp, { gain = r.concentration and r.gain or nil, concCrafts = cf and cf.now or nil }) }
+	suggestCache[key] = hit
+	return hit
+end
+
 --- Batch outcomes for the selected craft (run once per row and kept): result, row, inputs, outcomes.
 function AUI.BatchFor(result, r)
 	if not (result and r and CH.Decide) or result.order then return nil end
@@ -656,11 +673,10 @@ function AUI.BatchFor(result, r)
 	local hit = batchCache[key]
 	if hit then return hit end
 	local Dc = CH.Decide
-	local inp = Dc.BatchInputs(result, r)
-	if not inp then return nil end
+	local s = AUI.SuggestFor(result, r)
+	if not s then return nil end
+	local inp, sug = s.inputs, s.suggest
 	-- how many to make, then the simulation for half that, that and double it (10, 30 and 100 without one)
-	local cf = r.concentration and Dc.ConcForecastFor(r, concNow())
-	local sug = Dc.Suggest(inp, { gain = r.concentration and r.gain or nil, concCrafts = cf and cf.now or nil })
 	local sizes
 	if sug and sug.n > 0 then
 		sizes = {}
@@ -672,6 +688,50 @@ function AUI.BatchFor(result, r)
 	local out = { inputs = inp, suggest = sug, sizes = Dc.Batch(inp, sizes and { sizes = sizes } or nil) }
 	batchCache[key] = out
 	return out
+end
+
+--- The quantity decision for the selected craft (Decide.Quantity): can make, can afford, the
+--- suggestion and the sizes to explore, with selQty as your own. Kept per craft, gold and quantity.
+local qtyCache = {}
+function AUI.QuantityFor(result, r)
+	local b = AUI.SuggestFor(result, r)
+	if not b then return nil end
+	local gold = GetMoney and GetMoney() or nil
+	local held = b.inputs.have and b.inputs.item and b.inputs.have(b.inputs.item) or 0
+	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0),
+		tostring(gold), held, selQty, r.max or "" }, ":")
+	local hit = qtyCache[key]
+	if hit then return hit end
+	hit = CH.Decide.Quantity(b.inputs, { canMake = r.max, gold = gold, held = held, suggest = b.suggest, custom = selQty })
+	qtyCache = { [key] = hit } -- one craft at a time: the card shows one
+	return hit
+end
+
+--- The quantity hover, in the four layers: what's observed, the analysis (each size's week), the
+--- suggestion with its assumptions and what would change it, and how to go your own way.
+function AUI.QuantityTip(q)
+	local T, M = CH.Theme, CH.FormatMoney
+	local mut = function(t) return T.Color("muted", t) end
+	local tip = { { "How many" } }
+	if not q then tip[2] = { mut("Needs a sale price and the reagents' prices.") }; return tip end
+	local function n(x) return x and tostring(x) or mut("?") end
+	tip[#tip + 1] = { T.Color("accent", "What AuctionIQ sees") }
+	tip[#tip + 1] = { "  You can make now", n(q.canMake) }
+	tip[#tip + 1] = { "  Your gold buys reagents for", q.canAfford and (q.canAfford >= 999 and "999+" or tostring(q.canAfford)) or mut("?") }
+	tip[#tip + 1] = { "  You hold", tostring(q.held) .. (q.cover and mut(string.format("  about %s of sales", CH.Decide.DaysText(q.cover))) or "") }
+	if q.demand then tip[#tip + 1] = { mut("  Sales: " .. CH.Demand.Text(q.demand)) } end
+	tip[#tip + 1] = { T.Color("accent", "Your week at each size") .. mut("  (modeled)") }
+	tip[#tip + 1] = { mut("  crafts: net expected · left after a week, slow / expected"), "" }
+	for _, e in ipairs(q.explore or {}) do
+		tip[#tip + 1] = { string.format("  %d%s", e.n, e.custom and " (yours)" or ""),
+			M(e.expected.net) .. mut(string.format("  ·  %d / %d left", math.floor(e.slow.left + 0.5), math.floor(e.expected.left + 0.5))) }
+	end
+	tip[#tip + 1] = { T.Color("accent", "Suggested") .. mut(string.format("  (evidence: %s)", q.strength)) }
+	tip[#tip + 1] = { "  " .. q.text }
+	for _, a in ipairs(q.assumptions or {}) do tip[#tip + 1] = { mut("  Assumes " .. a:sub(1, 1):lower() .. a:sub(2)) } end
+	if q.changes then tip[#tip + 1] = { mut("  Would change with " .. q.changes .. ".") } end
+	tip[#tip + 1] = { mut("Set any number with the stepper and Queue it: the suggestion is optional.") }
+	return tip
 end
 
 --- Lines for the batch pane: one per batch size, then where the inputs come from.
@@ -1611,6 +1671,13 @@ function AUI.Card(n, scan)
 	local rows = {}
 	if r then
 		rows[#rows + 1] = { "Break-even, each", m and m.breakEven and T.Color("gold", M(m.breakEven)) or mut(result.order and "order" or "-"), tip = AUI.NextTip("breakEven") }
+		-- how many: the suggestion (only as specific as the evidence), with can make / afford on hover
+		local q = not result.order and not result.sim and AUI.QuantityFor(result, r) or nil
+		if q then
+			local label = q.action == "trial" and "Suggested (thin evidence)" or "Suggested"
+			local color = (q.action == "make" and "ok") or (q.action == "trial" and "accent") or "muted"
+			rows[#rows + 1] = { label, T.Color(color, CH.Decide.QuantityLabel(q)), tip = AUI.QuantityTip(q) }
+		end
 		-- Max is a list column now; its reagent-by-reagent hover lives there
 		if scan and scan.perDay then
 			rows[#rows + 1] = { "Gold a day", money(scan.perDay), tip = AUI.PerDayTip(scan) }
