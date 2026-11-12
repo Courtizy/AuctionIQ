@@ -262,20 +262,21 @@ function St.Cash(from, to, char)
 	local L = CH.Ledger
 	local own = mine()
 	local c = { inflows = { auction = 0, other = 0, income = 0 }, outflows = { buys = 0, expenses = 0 } }
-	for _, r in ipairs(L.Records("Sales")) do
-		if within(r, from, to, char) then
-			if isAuction(r) then c.inflows.auction = c.inflows.auction + L.Net(r) else c.inflows.other = c.inflows.other + L.Net(r) end
+	-- each kind's records from `from` on, in time order, until past `to`
+	local function each(kind, f)
+		local list = L.ByTime(kind)
+		for i = L.From(list, from), #list do
+			local r = list[i]
+			if r.time >= to + 1 then break end
+			if within(r, from, to, char) then f(r) end
 		end
 	end
-	for _, r in ipairs(L.Records("Income")) do
-		if within(r, from, to, char) and not own[r.other] then c.inflows.income = c.inflows.income + r.amount end
-	end
-	for _, r in ipairs(L.Records("Buys")) do
-		if within(r, from, to, char) then c.outflows.buys = c.outflows.buys - r.amount end
-	end
-	for _, r in ipairs(L.Records("Expense")) do
-		if within(r, from, to, char) and not own[r.other] then c.outflows.expenses = c.outflows.expenses - r.amount end
-	end
+	each("Sales", function(r)
+		if isAuction(r) then c.inflows.auction = c.inflows.auction + L.Net(r) else c.inflows.other = c.inflows.other + L.Net(r) end
+	end)
+	each("Income", function(r) if not own[r.other] then c.inflows.income = c.inflows.income + r.amount end end)
+	each("Buys", function(r) c.outflows.buys = c.outflows.buys - r.amount end)
+	each("Expense", function(r) if not own[r.other] then c.outflows.expenses = c.outflows.expenses - r.amount end end)
 	c.inTotal = c.inflows.auction + c.inflows.other + c.inflows.income
 	c.outTotal = c.outflows.buys + c.outflows.expenses
 	c.classified = c.inTotal + c.outTotal

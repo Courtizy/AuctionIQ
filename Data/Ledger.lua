@@ -224,6 +224,103 @@ function Lg.Records(kind)
 end
 Lg.Build = record
 
+-- Records in time order ---------------------------------------------------------------------
+-- Most views want only a range (the last day, week, 30 days). TSM's records are usually in time
+-- order already; the view is then the records list itself. Otherwise it's a sorted copy, made once
+-- per records list (a new list whenever TSM's text changes), so a range is a binary search and a
+-- walk over just the records in it.
+local byTime = {}
+
+--- Putting one kind's records in time order, as steps: job.step(budgetMs) does up to that many
+--- milliseconds (all of it without a budget) and returns the list once done, else nil. Records
+--- already in order cost one check; in reverse order, a reversed copy; otherwise a merge sort
+--- (stable, so records with the same time keep TSM's order) that can stop between any two moves.
+function Lg.ByTimeJob(kind)
+	local recs = Lg.Records(kind)
+	local n, T = #recs, REC.time
+	local job = {}
+	local phase, i = "check", 2
+	local asc, desc = true, true
+	local a, b, width, lo, p, q, o -- merge sort state: from a into b, runs of `width`
+	function job.step(budget)
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		local function out() return t0 and clock() - t0 >= budget end
+		local c = byTime[kind]
+		if c and c.src == recs then return c.list end
+		while true do
+			if phase == "check" then
+				while i <= n do
+					local x, y = recs[i - 1][T], recs[i][T]
+					if y < x then asc = false elseif y > x then desc = false end
+					i = i + 1
+					if not (asc or desc) then break end
+					if i % 1024 == 0 and out() then return nil end
+				end
+				if asc then phase = "done"; a = recs
+				elseif desc then phase, i, a = "reverse", 1, {}
+				else phase, i, a = "copy", 1, {} end
+			elseif phase == "reverse" then
+				while i <= n do
+					a[i] = recs[n - i + 1]; i = i + 1
+					if i % 1024 == 0 and out() then return nil end
+				end
+				phase = "done"
+			elseif phase == "copy" then
+				while i <= n do
+					a[i] = recs[i]; i = i + 1
+					if i % 1024 == 0 and out() then return nil end
+				end
+				phase, b, width, lo = "merge", {}, 1, 1
+				p, q, o = nil, nil, nil
+			elseif phase == "merge" then
+				while width < n do
+					while lo <= n do
+						local mid, hi = math.min(lo + width, n + 1), math.min(lo + 2 * width, n + 1)
+						if not o then p, q, o = lo, mid, lo end
+						while o < hi do
+							if q >= hi or (p < mid and a[p][T] <= a[q][T]) then b[o] = a[p]; p = p + 1
+							else b[o] = a[q]; q = q + 1 end
+							o = o + 1
+							if o % 1024 == 0 and out() then return nil end
+						end
+						lo, o = hi, nil
+					end
+					a, b, width, lo = b, a, width * 2, 1
+				end
+				phase = "done"
+			else
+				break
+			end
+		end
+		-- the records changed while this ran: start over on the new ones
+		if Lg.Records(kind) ~= recs then return Lg.ByTimeJob(kind).step(t0 and math.max(0.01, budget - (clock() - t0)) or nil) end
+		byTime[kind] = { src = recs, list = a }
+		Lg.sorts = (Lg.sorts or 0) + 1
+		return a
+	end
+	return job
+end
+
+--- One kind's records, oldest first. Shared: read it, don't change it.
+function Lg.ByTime(kind)
+	local recs = Lg.Records(kind)
+	local c = byTime[kind]
+	if c and c.src == recs then return c.list end
+	return Lg.ByTimeJob(kind).step()
+end
+
+--- The first position in a time-ordered list at or after time t (#list + 1 when none is).
+function Lg.From(list, t)
+	if not t then return 1 end
+	local lo, hi, T = 1, #list + 1, REC.time
+	while lo < hi do
+		local mid = math.floor((lo + hi) / 2)
+		if list[mid][T] < t then lo = mid + 1 else hi = mid end
+	end
+	return lo
+end
+
 --- The gold a sale put in your bags: an auction sale after the AH cut, a vendor or trade sale as is.
 function Lg.Net(s)
 	if not s then return 0 end
@@ -291,28 +388,59 @@ local function dayOf(t) return math.floor(t / DAY) end
 
 --- Summarise TSM's accounting by day into AuctionIQ's own archive (days TSM still has are
 --- rebuilt, older days are kept). Transfers between your own characters aren't income or expense.
-function Lg.Archive()
+local ARCHIVE_KINDS = { "Sales", "Buys", "Income", "Expense" }
+
+--- The archive's work as steps: job.step(budgetMs) does up to that many milliseconds of it (all of
+--- it without a budget) and returns the archive's days once done, else nil. Records that change
+--- while it runs start it over, so it never mixes two versions of TSM's data.
+function Lg.ArchiveJob()
 	local mine = own()
 	local days = {}
+	local lists = {}
+	for i, k in ipairs(ARCHIVE_KINDS) do lists[i] = Lg.Records(k) end
 	local function d(t)
 		local k = dayOf(t)
-		days[k] = days[k] or { sales = 0, buys = 0, income = 0, expense = 0, sold = 0, items = {} }
-		return days[k]
+		local e = days[k]
+		if not e then e = { sales = 0, buys = 0, income = 0, expense = 0, sold = 0, items = {} }; days[k] = e end
+		return e
 	end
-	for _, r in ipairs(Lg.Records("Sales")) do
-		local e = d(r.time)
-		-- what reached your bags: auction sales after the cut (TSM records the price before it)
-		local net = Lg.Net(r)
-		e.sales, e.sold = e.sales + net, e.sold + r.quantity
-		if r.id then e.items[r.id] = (e.items[r.id] or 0) + net end
+	local k, i = 1, 1
+	local job = {}
+	function job.step(budget)
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		while k <= #lists do
+			local list, kind = lists[k], ARCHIVE_KINDS[k]
+			local n = #list
+			while i <= n do
+				local r = list[i]
+				if kind == "Sales" then
+					local e = d(r.time)
+					-- what reached your bags: auction sales after the cut (TSM records the price before it)
+					local net = Lg.Net(r)
+					e.sales, e.sold = e.sales + net, e.sold + r.quantity
+					if r.id then e.items[r.id] = (e.items[r.id] or 0) + net end
+				elseif kind == "Buys" then local e = d(r.time); e.buys = e.buys + r.amount
+				elseif kind == "Income" then if not mine[r.other] then local e = d(r.time); e.income = e.income + r.amount end
+				elseif not mine[r.other] then local e = d(r.time); e.expense = e.expense + r.amount end
+				i = i + 1
+				if t0 and i % 256 == 0 and clock() - t0 >= budget then return nil end
+			end
+			k, i = k + 1, 1
+		end
+		for j, kk in ipairs(ARCHIVE_KINDS) do
+			if Lg.Records(kk) ~= lists[j] then return Lg.ArchiveJob().step() end
+		end
+		return Lg.ArchiveCommit(days)
 	end
-	for _, r in ipairs(Lg.Records("Buys")) do local e = d(r.time); e.buys = e.buys + r.amount end
-	for _, r in ipairs(Lg.Records("Income")) do
-		if not mine[r.other] then local e = d(r.time); e.income = e.income + r.amount end
-	end
-	for _, r in ipairs(Lg.Records("Expense")) do
-		if not mine[r.other] then local e = d(r.time); e.expense = e.expense + r.amount end
-	end
+	return job
+end
+
+--- Summarise TSM's accounting by day into AuctionIQ's own archive, all at once.
+function Lg.Archive() return Lg.ArchiveJob().step() end
+
+--- Store a day summary built by ArchiveJob.
+function Lg.ArchiveCommit(days)
 	local s = store()
 	-- days archived before sales were counted after the AH cut: those TSM no longer has are
 	-- brought into line once (nearly all of them are auction sales)
@@ -354,16 +482,76 @@ function Lg.Summary(since)
 end
 
 -- Activity: one entry per character per mailbox visit (an hour), like TSM's log ----------------
--- The grouping walks every record (all history), so it's kept until TSM's records change: the
--- Records tables are replaced only when their text changes. A dashboard refresh then costs nothing.
+-- Only the newest visits show, so it walks back from the newest record of each kind, just far
+-- enough to be sure of them, and is kept until TSM's records change (the Records tables are
+-- replaced only when their text changes). ActivityNow is the same over every record.
 local activityCache
 function Lg.Activity(limit)
 	local sales, expired, buys = Lg.Records("Sales"), Lg.Records("Expired"), Lg.Records("Buys")
 	local c = activityCache
 	if c and c.sales == sales and c.expired == expired and c.buys == buys and c.limit == (limit or 50) then return c.out end
-	local out = Lg.ActivityNow(limit, sales, expired, buys)
+	local out = Lg.ActivityRecent(limit)
 	activityCache = { sales = sales, expired = expired, buys = buys, limit = limit or 50, out = out }
 	return out
+end
+
+-- newest first; equal times by character, so the order never depends on how the records came
+local function activityOrder(a, b)
+	if a.time ~= b.time then return a.time > b.time end
+	return (a.player or "") < (b.player or "")
+end
+
+local ACTIVITY_KINDS = {
+	{ "Sales", function(r) return r.source == "Auction" end, function(e, r) e.sold, e.gold = e.sold + r.quantity, e.gold + r.amount end },
+	{ "Expired", function() return true end, function(e, r) e.expired = e.expired + r.quantity end },
+	{ "Buys", function(r) return r.source == "Auction" end, function(e, r) e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end },
+}
+
+--- The newest `limit` visits, reading only the records that can be in them. Walking back through
+--- each kind until it has seen `limit` visits gives an hour that every one of the newest `limit`
+--- visits is at or after (there are already `limit` visits from then on), so older records can't
+--- change the answer.
+function Lg.ActivityRecent(limit)
+	limit = limit or 50
+	local lists = {}
+	for i, k in ipairs(ACTIVITY_KINDS) do lists[i] = Lg.ByTime(k[1]) end
+	local floor = -math.huge
+	for i, k in ipairs(ACTIVITY_KINDS) do
+		local list, ok, seen, n = lists[i], k[2], {}, 0
+		for j = #list, 1, -1 do
+			local r = list[j]
+			if ok(r) then
+				local h = math.floor(r.time / 3600)
+				local key = (r.player or "?") .. "@" .. h
+				if not seen[key] then
+					seen[key] = true; n = n + 1
+					if n >= limit then if h > floor then floor = h end break end
+				end
+			end
+		end
+	end
+	local groups, order = {}, {}
+	for i, k in ipairs(ACTIVITY_KINDS) do
+		local list, ok, add = lists[i], k[2], k[3]
+		for j = #list, 1, -1 do
+			local r = list[j]
+			local h = math.floor(r.time / 3600)
+			if h < floor then break end
+			if ok(r) then
+				local key = (r.player or "?") .. "@" .. h
+				local e = groups[key]
+				if not e then
+					e = { player = r.player, time = r.time, sold = 0, gold = 0, expired = 0, bought = 0, spent = 0 }
+					groups[key] = e; order[#order + 1] = e
+				end
+				if r.time > e.time then e.time = r.time end
+				add(e, r)
+			end
+		end
+	end
+	table.sort(order, activityOrder)
+	for i = #order, limit + 1, -1 do order[i] = nil end
+	return order
 end
 
 function Lg.ActivityNow(limit, sales, expired, buys)
@@ -385,7 +573,7 @@ function Lg.ActivityNow(limit, sales, expired, buys)
 	for _, r in ipairs(buys or Lg.Records("Buys")) do
 		if r.source == "Auction" then local e = g(r); e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end
 	end
-	table.sort(order, function(a, b) return a.time > b.time end)
+	table.sort(order, activityOrder)
 	for i = #order, (limit or 50) + 1, -1 do order[i] = nil end
 	return order
 end
@@ -659,7 +847,7 @@ local function itemStats()
 	end
 	return stats
 end
-function Lg.ClearStats() stats = nil; parsed = {}; work = {} end
+function Lg.ClearStats() stats = nil; parsed = {}; work = {}; byTime = {} end
 
 --- How many times an item expired since it last sold (TSM's numexpires).
 function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
@@ -718,13 +906,30 @@ end
 -- When things sell ---------------------------------------------------------------------------
 --- Your sales of each item by weekday and hour: { id, sold, gold, days = {[1..7]=n}, hours = {[0..23]=n},
 --- bestDay (1 = Sunday), bestHour (start of the best 4-hour window), share (of sales in that window) }.
+-- local weekday and hour by quarter hour (every time zone's offset is a whole number of quarter
+-- hours), so a sale's needs date() only the first time its quarter hour comes up
+local clockOf, clocks = {}, 0
+local function localClock(t)
+	local q = math.floor(t / 900)
+	local c = clockOf[q]
+	if not c then
+		if clocks > 20000 then clockOf, clocks = {}, 0 end
+		local d = date("*t", q * 900)
+		c = { wday = d.wday, hour = d.hour }
+		clockOf[q], clocks = c, clocks + 1
+	end
+	return c
+end
+
 function Lg.SaleTimes(since, char)
 	local t = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.id and s.time >= (since or -math.huge) and (not char or s.player == char) then
+	local list = Lg.ByTime("Sales")
+	for i = Lg.From(list, since), #list do
+		local s = list[i]
+		if s.id and (not char or s.player == char) then
 			local e = t[s.id]
 			if not e then e = { id = s.id, sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = e end
-			local d = date("*t", s.time)
+			local d = localClock(s.time)
 			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
 			e.days[d.wday] = (e.days[d.wday] or 0) + s.quantity
 			e.hours[d.hour] = (e.hours[d.hour] or 0) + s.quantity
@@ -766,8 +971,10 @@ end
 --- Per item: how often you're undercut and cancel, and by whom. { id, cancels, seen, beaten, rival, status }.
 function Lg.Competition(since)
 	local cancels = {}
-	for _, r in ipairs(Lg.Records("Cancelled")) do
-		if r.id and r.time >= (since or -math.huge) then cancels[r.id] = (cancels[r.id] or 0) + 1 end
+	local cl = Lg.ByTime("Cancelled")
+	for i = Lg.From(cl, since), #cl do
+		local r = cl[i]
+		if r.id then cancels[r.id] = (cancels[r.id] or 0) + 1 end
 	end
 	local ids = {}
 	for id in pairs(cancels) do ids[id] = true end
@@ -793,14 +1000,15 @@ function Lg.Report(now)
 	local day, week, fortnight = now - DAY, now - 7 * DAY, now - 14 * DAY
 	local r = { sold = 0, earned = 0, bought = 0, spent = 0, top = {}, restock = {}, expired = {}, stale = {} }
 	local byItem = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.time >= day then
-			r.sold, r.earned = r.sold + s.quantity, r.earned + Lg.Net(s)
-			if s.id then byItem[s.id] = (byItem[s.id] or 0) + Lg.Net(s) end
-		end
+	local sales, buys, expired = Lg.ByTime("Sales"), Lg.ByTime("Buys"), Lg.ByTime("Expired")
+	for i = Lg.From(sales, day), #sales do
+		local s = sales[i]
+		r.sold, r.earned = r.sold + s.quantity, r.earned + Lg.Net(s)
+		if s.id then byItem[s.id] = (byItem[s.id] or 0) + Lg.Net(s) end
 	end
-	for _, b in ipairs(Lg.Records("Buys")) do
-		if b.time >= day then r.bought, r.spent = r.bought + b.quantity, r.spent + b.amount end
+	for i = Lg.From(buys, day), #buys do
+		local b = buys[i]
+		r.bought, r.spent = r.bought + b.quantity, r.spent + b.amount
 	end
 	for id, g in pairs(byItem) do table.insert(r.top, { id = id, gold = g }) end
 	table.sort(r.top, function(a, b) return a.gold > b.gold end)
@@ -809,8 +1017,9 @@ function Lg.Report(now)
 	local held = {}
 	for _, e in ipairs(Lg.Inventory()) do if e.id then held[e.id] = e.total end end
 	local weekly = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.time >= week and s.id and (held[s.id] or 0) == 0 then
+	for i = Lg.From(sales, week), #sales do
+		local s = sales[i]
+		if s.id and (held[s.id] or 0) == 0 then
 			local e = weekly[s.id] or { id = s.id, sold = 0, gold = 0 }
 			weekly[s.id] = e
 			e.sold, e.gold = e.sold + s.quantity, e.gold + Lg.Net(s)
@@ -821,8 +1030,9 @@ function Lg.Report(now)
 	for i = #r.restock, 6, -1 do r.restock[i] = nil end
 	-- came back in the last day; and what has come back 3+ times in two weeks
 	local back, count = {}, {}
-	for _, e in ipairs(Lg.Records("Expired")) do
-		if e.id and e.time >= fortnight then
+	for i = Lg.From(expired, fortnight), #expired do
+		local e = expired[i]
+		if e.id then
 			count[e.id] = (count[e.id] or 0) + 1
 			if e.time >= day then back[e.id] = (back[e.id] or 0) + e.quantity end
 		end
@@ -835,13 +1045,48 @@ function Lg.Report(now)
 	return r
 end
 
+--- Everything the Dashboard and reports need after login, a few milliseconds a frame: parse TSM's
+--- records, put each kind in time order, build the day archive, then the snapshot, the activity
+--- list and the demand index (each small once the rest is ready). Then calls done.
+Lg.FRAME_MS = 6
+function Lg.WarmAll(done)
+	Lg.Warm(Lg.KINDS, function()
+		local k = 1
+		local job, sortJob
+		local clock = debugprofilestop or function() return 0 end
+		local function tick()
+			local t0 = clock()
+			local function left() return math.max(0.01, Lg.FRAME_MS - (clock() - t0)) end
+			-- time order for each kind, a few milliseconds at a time
+			while k <= #Lg.KINDS do
+				sortJob = sortJob or Lg.ByTimeJob(Lg.KINDS[k])
+				local ok, list = pcall(sortJob.step, left())
+				if ok and not list then C_Timer.After(0, tick); return end
+				k, sortJob = k + 1, nil
+				if clock() - t0 >= Lg.FRAME_MS then C_Timer.After(0, tick); return end
+			end
+			job = job or Lg.ArchiveJob()
+			local ok, daysDone = pcall(job.step, left())
+			if ok and not daysDone then C_Timer.After(0, tick); return end
+			-- the rest are small now: one frame each
+			local rest = {
+				function() CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end,
+				function() pcall(Lg.Activity, 40) end,
+				function() if CH.Demand then CH.Measure("demand index", pcall, CH.Demand.Warm) end end,
+			}
+			local i = 1
+			local function after()
+				if rest[i] then rest[i](); i = i + 1; C_Timer.After(0, after) elseif done then done() end
+			end
+			C_Timer.After(0, after)
+		end
+		C_Timer.After(0, tick)
+	end)
+end
+
 CH.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
 		if not Lg.Available() then return end
-		-- parse in the background first, so the archive and the first report find it ready
-		Lg.Warm(Lg.KINDS, function()
-			CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot)
-			if CH.Demand then CH.Measure("demand index", pcall, CH.Demand.Warm) end
-		end)
+		Lg.WarmAll()
 	end)
 end)

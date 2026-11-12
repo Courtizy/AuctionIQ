@@ -186,7 +186,8 @@ function UI.DashboardData(now)
 	if not next(CH.db.ledger and CH.db.ledger.days or {}) then L.Archive() end
 	local since = rangeStart(now)
 	local first = now
-	for _, r in ipairs(L.Records("Sales")) do if r.time < first then first = r.time end end
+	local sales, buys = L.ByTime("Sales"), L.ByTime("Buys")
+	if sales[1] and sales[1].time < first then first = sales[1].time end
 	since = since or first
 	local d = { since = since, now = now }
 	d.summary = L.Summary(since)
@@ -205,12 +206,11 @@ function UI.DashboardData(now)
 	local dayAgo = L.GoldSeries(now - 86400, now, 2)
 	d.dailyChange = dayAgo[2].v - dayAgo[1].v
 	local topSale, topBuy, spentItems = 0, 0, {}
-	for _, r in ipairs(L.Records("Sales")) do if r.time >= since and r.amount > topSale then topSale = r.amount end end
-	for _, r in ipairs(L.Records("Buys")) do
-		if r.time >= since then
-			if r.amount > topBuy then topBuy = r.amount end
-			if r.id then spentItems[r.id] = (spentItems[r.id] or 0) + r.amount end
-		end
+	for i = L.From(sales, since), #sales do local r = sales[i]; if r.amount > topSale then topSale = r.amount end end
+	for i = L.From(buys, since), #buys do
+		local r = buys[i]
+		if r.amount > topBuy then topBuy = r.amount end
+		if r.id then spentItems[r.id] = (spentItems[r.id] or 0) + r.amount end
 	end
 	local bi, bv = nil, 0
 	for id, v in pairs(spentItems) do if v > bv then bi, bv = id, v end end
