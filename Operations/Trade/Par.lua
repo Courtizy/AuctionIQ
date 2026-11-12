@@ -37,6 +37,9 @@ function Par.Weekly(now)
 	return t
 end
 
+--- Forget the weekly sales (/aiq cleanup), so the records it was built from can go.
+function Par.Clear() soldCache, soldAt, soldFrom = nil, nil, nil end
+
 --- The target for an item, and whether you set it by hand. nil when it has neither.
 function Par.Target(itemID, now)
 	if not itemID then return nil end

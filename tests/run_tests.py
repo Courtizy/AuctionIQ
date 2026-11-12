@@ -3880,6 +3880,93 @@ check("cleanup: saved data for a profession the character dropped goes (Tailorin
       and list(L.eval("STUB.cleanup.professions").values()) == ["Midnight Tailoring"])
 check("cleanup: when the game can't list your professions, nothing is dropped", len(L.eval("STUB.noProfs")) == 0)
 run("table.remove(AuctionIQ.db.postAdvice); AuctionIQ.db.scans = STUB.oldScans")
+
+# Clean up (temporary data): lets go of the session caches and rebuilds the same answers; never touches
+# what you keep. Prune history: TSM's rule (you choose the age, 365 to start, it asks first).
+run("""STUB.ser = function(v, seen)
+  if type(v) ~= 'table' then return tostring(v) end
+  local keys = {}
+  for k in pairs(v) do keys[#keys + 1] = k end
+  table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+  local out = {}
+  for _, k in ipairs(keys) do out[#out + 1] = tostring(k) .. '=' .. STUB.ser(v[k]) end
+  return '{' .. table.concat(out, ',') .. '}'
+end
+local db = AuctionIQ.db
+STUB.keepBefore = STUB.ser({ db.queue, db.settings, db.batches, db.decisions, db.batchForecasts, db.groups, db.ledger, db.competition, db.characters, db.par, db.alerts })
+local L = AuctionIQ.Ledger
+STUB.salesBefore = #L.Records('Sales')
+STUB.byTimeBefore = #L.ByTime('Sales')
+STUB.sumBefore = L.Summary(0).sales
+STUB.recBefore = AuctionIQ.Prices.Get and true
+STUB.tmpDone, STUB.tmpRebuilt = nil, false
+STUB.tmp = AuctionIQ.Cleanup.Temporary(function(r) STUB.tmpDone = r end, function() STUB.tmpRebuilt = true end)
+STUB.tmpSync = STUB.tmp.after == nil
+for _ = 1, 500 do STUB.RunTimers() end
+STUB.keepAfter = STUB.ser({ db.queue, db.settings, db.batches, db.decisions, db.batchForecasts, db.groups, db.ledger, db.competition, db.characters, db.par, db.alerts })
+STUB.salesAfter = #L.Records('Sales')
+STUB.byTimeAfter = #L.ByTime('Sales')
+STUB.sumAfter = L.Summary(0).sales""")
+check("clean up: it lets go of the session caches, measures memory after the collector has run over frames, then rebuilds",
+      L.eval("STUB.tmp.caches") >= 10 and L.eval("STUB.tmp.before") > 0 and L.eval("STUB.tmpSync")
+      and L.eval("STUB.tmpDone.after") > 0 and L.eval("STUB.tmpRebuilt"))
+check("clean up: queue, settings, groups, crafting records, decisions and history are exactly as they were",
+      L.eval("STUB.keepBefore") == L.eval("STUB.keepAfter"))
+check("clean up: TSM's records and their time order rebuild to the same thing, and so do the totals",
+      L.eval("STUB.salesBefore") == L.eval("STUB.salesAfter") and L.eval("STUB.salesAfter") > 0
+      and L.eval("STUB.byTimeBefore") == L.eval("STUB.byTimeAfter") and L.eval("STUB.sumBefore") == L.eval("STUB.sumAfter"))
+run("""STUB.cl = {}
+local oldPrint = AuctionIQ.Print
+AuctionIQ.Print = function(m) STUB.cl.msg = m end
+AuctionIQ.Cleanup.Report()
+for _ = 1, 500 do STUB.RunTimers() end
+AuctionIQ.Print = oldPrint""")
+cmsg = L.eval("STUB.cl.msg")
+check("clean up: the chat line says what it let go of, the memory, and that what you keep is untouched",
+      "caches" in cmsg and "MB" in cmsg and "untouched" in cmsg)
+
+run("""STUB.oldLedger, STUB.oldComp = AuctionIQ.db.ledger, AuctionIQ.db.competition
+local DAY = 86400
+local now = 400 * DAY + 3600
+STUB.pnow = now
+AuctionIQ.db.ledger = { days = {}, worth = {}, exclude = {}, net = true }
+for d = 0, 399 do AuctionIQ.db.ledger.days[d] = { sales = 100, buys = 0, income = 0, expense = 0, sold = 1, items = {} } end
+for d = 380, 399 do AuctionIQ.db.ledger.worth[d] = { gold = 1, inventory = 1 } end
+AuctionIQ.db.ledger.worth[10] = { gold = 1, inventory = 1 }
+AuctionIQ.db.competition = { [1] = { seen = 1, beaten = 0, by = {}, at = now - 2 * DAY }, [2] = { seen = 3, beaten = 1, by = { X = 1 }, at = now - 500 * DAY } }
+STUB.preview = AuctionIQ.Ledger.PruneHistory(365, false, now)
+STUB.daysAfterPreview = 0; for _ in pairs(AuctionIQ.db.ledger.days) do STUB.daysAfterPreview = STUB.daysAfterPreview + 1 end
+STUB.ptext = AuctionIQ.Cleanup.PruneText(365, now)
+STUB.shown = {}
+StaticPopupDialogs = {}
+StaticPopup_Show = function(name) table.insert(STUB.shown, name) end
+AuctionIQ.Cleanup.AskPrune()
+STUB.askDays = STUB.shown[1]
+STUB.daysDefault = AuctionIQ.Cleanup.PRUNE_DAYS
+local oldPrint = AuctionIQ.Print
+AuctionIQ.Print = function() end
+STUB.pruned = AuctionIQ.Cleanup.Prune(365, now)
+STUB.daysLeft = 0; STUB.oldest = math.huge
+for d in pairs(AuctionIQ.db.ledger.days) do STUB.daysLeft = STUB.daysLeft + 1; STUB.oldest = math.min(STUB.oldest, d) end
+-- the archive rebuilding from TSM's records doesn't bring pruned days back
+AuctionIQ.Ledger.ArchiveCommit({ [5] = { sales = 9, buys = 0, income = 0, expense = 0, sold = 1, items = {} }, [399] = { sales = 7, buys = 0, income = 0, expense = 0, sold = 1, items = {} } })
+STUB.back5, STUB.kept399 = AuctionIQ.db.ledger.days[5], AuctionIQ.db.ledger.days[399].sales
+STUB.again = AuctionIQ.Ledger.PruneHistory(365, false, now)
+AuctionIQ.Print = oldPrint
+StaticPopupDialogs, StaticPopup_Show = nil, nil""")
+pv = L.eval("STUB.preview")
+check("prune: TSM's default of 365 days, and it asks how many first",
+      L.eval("STUB.daysDefault") == 365 and L.eval("STUB.askDays") == "AUCTIONIQ_PRUNE_DAYS")
+check("prune: the preview counts what would go (35 day totals, 1 net worth day, 1 competition note) and removes nothing",
+      pv.days == 35 and pv.worth == 1 and pv.rivals == 1 and L.eval("STUB.daysAfterPreview") == 400)
+check("prune: the question says what goes, that crafting records stay, and that it can't be undone",
+      "35 days of sales totals" in L.eval("STUB.ptext") and "Crafting records stay" in L.eval("STUB.ptext") and "can't be undone" in L.eval("STUB.ptext"))
+check("prune: once confirmed, history older than 365 days goes and the last 365 stay",
+      L.eval("STUB.daysLeft") == 365 and L.eval("STUB.oldest") == 35 and L.eval("AuctionIQ.db.competition[2]") is None
+      and L.eval("AuctionIQ.db.competition[1]") is not None and L.eval("AuctionIQ.db.ledger.worth[10]") is None)
+check("prune: the archive doesn't bring pruned days back from TSM's records, and newer days still update",
+      L.eval("STUB.back5") is None and L.eval("STUB.kept399") == 7 and L.eval("STUB.again.days") == 0)
+run("AuctionIQ.db.ledger, AuctionIQ.db.competition = STUB.oldLedger, STUB.oldComp")
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
 print(f"\n{len(fails)} failed" if fails else "\nall passed")

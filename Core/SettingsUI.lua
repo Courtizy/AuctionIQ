@@ -81,8 +81,27 @@ function SUI.Build(p, fs, panel)
 		mp:SetScript("OnClick", function() S.Model(m[1], 1); SUI.Refresh() end)
 		p.model[i] = { key = m[1], value = v }
 	end
-	local note = fs(gen, 12, my - 24 - #S.MODEL * 24 - 8, 256, "LEFT", "GameFontDisableSmall")
-	note:SetText("The /aiq commands still work too.")
+	-- Saved data: the cleanup that only frees speed caches, and the prune that asks first
+	local dy = my - 24 - #S.MODEL * 24 - 4
+	fs(gen, 12, dy - 3, 70, "LEFT"):SetText("Saved data")
+	p.cleanup = T.Button(gen, "Clean up", 76, 18); p.cleanup:SetPoint("TOPLEFT", 82, dy)
+	p.cleanup:SetScript("OnClick", function()
+		say("Cleaning up...")
+		CH.Cleanup.Report(function(r)
+			say(string.format("Let go of %d caches and %d unused scans; addon memory %.1f MB, was %.1f. Nothing you keep was touched.",
+				r.caches, r.scans, r.after / 1024, r.before / 1024))
+		end)
+	end)
+	p.cleanup:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Clean up" },
+		{ "Lets go of what AuctionIQ keeps only for speed: prices, auction depth, TSM's parsed records and worked-out results. They rebuild when needed." },
+		{ "Your queue, settings, crafting records and history aren't touched." } }) end)
+	p.cleanup:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p.prune = T.Button(gen, "Prune history", 108, 18); p.prune:SetPoint("TOPLEFT", 162, dy)
+	p.prune:SetScript("OnClick", function() CH.Cleanup.AskPrune() end)
+	p.prune:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Prune history" },
+		{ "Removes AuctionIQ's day totals, net worth days and competition notes older than the days you choose (365 to start, as in TSM). It says what will go and asks first." },
+		{ "Crafting records stay: as in CraftSim, they go only when you drop the profession." } }) end)
+	p.prune:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	-- About: the logo, the version and where it lives
 	local ay0 = my - 24 - #S.MODEL * 24 - 26
 	local logo = gen:CreateTexture(nil, "ARTWORK")

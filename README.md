@@ -113,7 +113,11 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 
 Everything stays on your PC in `WTF\Account\<account>\SavedVariables\AuctionIQ.lua`. AuctionIQ reads TSM's saved data but never writes to it, and sends nothing anywhere.
 
-A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. `/aiq cleanup` runs it now and says what it freed. The days each item was listed are kept for 60 days, one small number per item per day.
+A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. The days each item was listed are kept for 60 days, one small number per item per day.
+
+**Clean up** (Settings, Saved data, or `/aiq cleanup`) also lets go of what AuctionIQ keeps only for speed: cached prices, auction depth, TSM's parsed records and their time order, demand, forecasts and the advisor's worked-out results. The game's collector then runs a few milliseconds a frame, and the chat line gives addon memory before and after. The figure counts every addon, and any garbage that was already waiting. TSM's records then come back in the background, so the next Dashboard isn't a cold one. Clean up never touches your queue, settings, groups, crafting records, decisions or history.
+
+**Prune history** follows TSM's rule for old data (TSM Settings, Accounting, Clear Old Data). You choose the age, 365 days to start, and it lists what will go and asks before removing anything. It covers AuctionIQ's own day-by-day sales totals, net worth days and competition notes. Days you prune stay gone even while TSM still has their records. Your TSM data is left alone; clear it in TSM if you want it gone there too. Crafting records follow CraftSim's rule instead: they stay with the character and go only when the profession does. `/aiq prune 365` does the same from chat.
 
 ## FAQ
 
@@ -141,7 +145,8 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 `/aiq cap <n>` - most of the region's sold a day counted per item, until your own sales take over (default 10)<br>
 `/aiq alerts` - chat alerts on or off<br>
 `/aiq minimap` - hide or show the minimap button<br>
-`/aiq cleanup` - run the saved data cleanup now (it also runs at every logout)<br>
+`/aiq cleanup` - let go of speed caches and run the saved data cleanup now (the saved part also runs at every logout)<br>
+`/aiq prune 365` - remove AuctionIQ history older than 365 days, after showing what goes and asking<br>
 `/aiq perf` - memory and time per event, for reporting slowness
 
 ## Roadmap

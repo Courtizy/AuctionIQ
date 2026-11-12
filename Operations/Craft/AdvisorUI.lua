@@ -1978,3 +1978,11 @@ for _, name in ipairs({ "Card", "SummaryLines", "BreakdownLines", "NextMove", "N
 		end
 	end
 end
+
+--- Drop every worked-out result kept for speed (/aiq cleanup). Each comes back the next time it's
+--- asked for. Returns how many caches were emptied.
+function AUI.ClearCaches()
+	AUI.InvalidateKnown(); AUI.InvalidateGear()
+	suggestCache, qtyCache, batchCache, nextCache = {}, {}, {}, {}
+	return 6
+end
