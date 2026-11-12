@@ -37,7 +37,7 @@ function SUI.Build(p, fs, panel)
 		p.general[i] = { b = b, key = o[1] }
 	end
 	local cy = -34 - #S.GENERAL * 24
-	fs(gen, 12, cy - 3, 170, "LEFT"):SetText("Gold a day: sold a day")
+	fs(gen, 12, cy - 3, 170, "LEFT"):SetText("Region sales: at most a day")
 	local minus = T.Button(gen, "-", 18, 18); minus:SetPoint("TOPLEFT", 186, cy)
 	p.cap = fs(gen, 204, cy - 3, 42, "CENTER")
 	local plus = T.Button(gen, "+", 18, 18); plus:SetPoint("TOPLEFT", 248, cy)

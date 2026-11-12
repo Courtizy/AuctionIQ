@@ -19,10 +19,11 @@ local function eligible(info)
 		and not info.isDummyRecipe
 end
 
---- How many of an item you'd sell a day: what the region sells, up to your own cap.
+--- How many of an item you'd sell a day: your own sales on the days you had it listed, blended
+--- with the region's figure (counted at most your cap) while your record is thin. See Demand.lua.
 function Sc.DailyUnits(itemID)
-	local sold = CH.Advisor.SoldPerDay(itemID) or 0
-	return math.min(sold, settings().dailyCap or 10)
+	if not itemID then return 0 end
+	return CH.Demand.Estimate(itemID).units
 end
 
 --- A craft's accounts, saved with the scan for the item tooltip: reagents (with what each cost at
@@ -203,6 +204,8 @@ local function summary(result)
 		-- priced with a reagent you craft: not used to price other crafts, so costs never loop
 		viaCraft = result.model and result.model.viaCraft or nil,
 		soldPerDay = CH.Advisor.SoldPerDay(item),
+		-- the sales a day gold a day counts, and where that comes from (Demand.SOURCE)
+		dailyUnits = item and units or nil, demandSource = item and CH.Demand.Estimate(item).source or nil,
 		perDay = perDay,
 		-- selling the reagents you hold beats crafting: what they'd bring after the cut
 		sellInstead = (function()
@@ -305,6 +308,7 @@ function Sc.Run(onStep, onDone)
 	local profID = CH.OpenProfessionID()
 	if not profID then return false end
 	if not CH.Prices.Available() then return false end
+	pcall(CH.Demand.Warm) -- the sales index, once, before the frame-budgeted work starts
 	local ids = Sc.Recipes()
 	local i, rows = 0, {}
 	Sc.models[profID] = Sc.models[profID] or {}

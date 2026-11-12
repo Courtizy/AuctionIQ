@@ -312,7 +312,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	elseif msg:match("^cap") then
 		local n = tonumber(msg:match("(%d+)"))
 		if n then CH.db.settings.scan.dailyCap = n end
-		CH.Print("gold a day counts up to " .. CH.db.settings.scan.dailyCap .. " sold a day per item. /aiq cap 20 to change.")
+		CH.Print("the region's sold a day counts at most " .. CH.db.settings.scan.dailyCap .. " a day per item until your own sales take over. /aiq cap 20 to change.")
 	elseif msg == "de" or msg:match("^de ") or msg:match("^disenchant") then
 		local a, b, c = msg:match("(%d+)%s+(%d+)%s+(%d+)")
 		if a then CH.Paths.SetDailyYield(2909, { dust = tonumber(a), shard = tonumber(b), crystal = tonumber(c) })
@@ -338,7 +338,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	elseif msg == "cleanup" then
 		CH.Cleanup.Report()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup drops saved data nothing uses (it also runs at logout).")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup drops saved data nothing uses (it also runs at logout).")
 	else
 		CH.UI.Toggle()
 	end

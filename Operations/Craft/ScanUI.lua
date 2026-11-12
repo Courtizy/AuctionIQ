@@ -369,7 +369,10 @@ local function hover(owner, i, col)
 	end
 	table.insert(lines, { T.Color("muted", "Counts use the scan's best reagents and finishing reagents, from bags, banks and the warband bank.") })
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
-	table.insert(lines, { string.format("Gold a day at up to %d sold", CH.db.settings.scan.dailyCap or 10), CH.FormatMoney(r.perDay) })
+	local dm = r.item and CH.Demand and CH.Demand.Estimate(r.item)
+	if dm then table.insert(lines, { "Sales a day (" .. CH.Demand.SOURCE[dm.source] .. ")", CH.Demand.Rate(dm.units) }) end
+	table.insert(lines, { "Gold a day", CH.FormatMoney(r.perDay) })
+	if dm then table.insert(lines, { T.Color("muted", CH.Demand.Text(dm)) }) end
 	local bc = r.bc
 	if bc and bc.buy then
 		table.insert(lines, { T.Color("accent", "Buy or craft, per item") })

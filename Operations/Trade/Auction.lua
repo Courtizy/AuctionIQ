@@ -54,6 +54,8 @@ function A.RecordOwned(list)
 	local items = {}
 	for _, a in ipairs(list) do items[a.id] = (items[a.id] or 0) + (a.qty or 1) end
 	store()[me()] = { at = time(), items = items, realm = realm() }
+	-- what's up today counts as a listed day for the demand estimate
+	if CH.Demand then CH.Demand.MarkAll(items) end
 end
 
 -- Results: { { price (each), qty, mine } }, mine = yours or any character on your account.
@@ -380,6 +382,7 @@ function A.Posted(id, n)
 	rec.at = rec.at or time()
 	rec.realm = realm()
 	store()[me()] = rec
+	if CH.Demand then CH.Demand.Mark(id) end
 end
 
 --- Ask the AH for your auctions; calls back with { { auctionID, id, qty, price } }.

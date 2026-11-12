@@ -93,7 +93,9 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 
 **Profit per craft.** Multicraft, Resourcefulness, Ingenuity and Concentration use the same formulas as [CraftSim](https://github.com/derfloh205/CraftSim): the extra items Multicraft gives on average, the reagents Resourcefulness hands back, and the Concentration Ingenuity refunds. Revenue is after the 5% AH cut, less the deposits you expect to lose to expired auctions and the cost of gold sitting on the AH while it sells.
 
-**Will it sell?** Each item's chance of selling starts from the region's sale rate (TSM) and moves toward your own record as you sell and expire. Gold a day counts at most 10 sales a day per item (`/aiq cap 20` to change), so a cheap item nobody buys in bulk can't top the list.
+**Will it sell?** Each item's chance of selling starts from the region's sale rate (TSM) and moves toward your own record as you sell and expire.
+
+**How many a day?** Batch sizes, gold a day, posting quantities and restocks all rest on how many you can expect to sell a day. AuctionIQ works it out from your own sales, but only on the days you had the item listed, since a day with nothing up says nothing about demand. A listed day is a day you sold, expired or cancelled one, or a day AuctionIQ saw it among your auctions. While you have only a few listed days, the estimate leans on TSM's region sold a day instead. That figure is every realm in the region, so it counts at most 10 a day (`/aiq cap 20` to change). After a few weeks of listing, your own pace takes over. Wherever the number appears it says which it is ("your sales", "your sales + region" or "region") and whether the cap applied.
 
 **Dashboard ranking.** Do next cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
@@ -105,7 +107,7 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 
 Everything stays on your PC in `WTF\Account\<account>\SavedVariables\AuctionIQ.lua`. AuctionIQ reads TSM's saved data but never writes to it, and sends nothing anywhere.
 
-A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. `/aiq cleanup` runs it now and says what it freed.
+A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. `/aiq cleanup` runs it now and says what it freed. The days each item was listed are kept for 60 days, one small number per item per day.
 
 ## FAQ
 
@@ -130,7 +132,7 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
 `/aiq results` - your craft results log<br>
 `/aiq basis` - cost reagents at what you hold, replacement, TSM's material cost or what you paid<br>
-`/aiq cap <n>` - most sales a day counted per item (default 10)<br>
+`/aiq cap <n>` - most of the region's sold a day counted per item, until your own sales take over (default 10)<br>
 `/aiq alerts` - chat alerts on or off<br>
 `/aiq minimap` - hide or show the minimap button<br>
 `/aiq cleanup` - run the saved data cleanup now (it also runs at every logout)<br>

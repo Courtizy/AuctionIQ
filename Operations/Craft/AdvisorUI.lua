@@ -690,9 +690,8 @@ function AUI.BatchLines(b)
 	end
 	local inp = b.inputs
 	local ev = CH.Decide.EvidenceText(inp.evidence)
-	local cap = CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
-	table.insert(out, string.format("Sales %s a day for %d days (%s, capped at your %d a day). Price spread: falls %s or more in 1 run of 10 (Scenarios).",
-		inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), CH.Decide.HORIZON, ev.volume:gsub("^Volume: ", ""), cap, pctText(CH.Decide.Scenario().price)))
+	table.insert(out, string.format("Sales for %d days at %s. Price spread: falls %s or more in 1 run of 10 (Scenarios).",
+		CH.Decide.HORIZON, (ev.volume:gsub("^Sales: ", "")), pctText(CH.Decide.Scenario().price)))
 	table.insert(out, "Procs from your stats. Cash counts only what sells; unsold stock is valued apart. " .. ev.rate .. ".")
 	return out
 end
@@ -1119,12 +1118,16 @@ function AUI.Show(recipeID, force)
 end
 
 --- Is the old standalone Advisor window on (Settings), instead of the Craft window's card?
---- Gold a day explained: profit per craft times how many a day the region sells (up to the cap).
+--- Gold a day explained: profit per craft times how many a day you can expect to sell (Demand.lua).
 function AUI.PerDayTip(scan)
 	local function mut(t) return CH.Theme.Color("muted", t) end
-	local cap = CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
 	local t = { { "Gold a day" },
-		{ mut("What this recipe could earn in a day if you only sold what the market takes: profit per craft, times how many the region sells a day, up to " .. cap .. ".") } }
+		{ mut("What this recipe could earn in a day if you only sold what the market takes: profit per craft, times the sales a day you can expect.") } }
+	local d = scan.item and CH.Demand and CH.Demand.Estimate(scan.item)
+	if d then
+		t[#t + 1] = { "Sales a day (" .. CH.Demand.SOURCE[d.source] .. ")", CH.Demand.Rate(d.units) }
+		t[#t + 1] = { mut(CH.Demand.Text(d)) }
+	end
 	if scan.soldPerDay then t[#t + 1] = { "Sold a day, region", string.format(scan.soldPerDay >= 100 and "%.0f" or "%.1f", scan.soldPerDay) } end
 	if scan.perPoint then t[#t + 1] = { mut("Concentration crafts count up to what a day's refill (about 250 points) pays for.") } end
 	t[#t + 1] = { mut("Use it to compare recipes: a big profit that sells once a week earns less than a small one that sells all day.") }

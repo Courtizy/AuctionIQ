@@ -192,6 +192,7 @@ function D.Evidence(id, now)
 	end
 	e.regionRate = CH.Expect and CH.Expect.RegionRate(id)
 	e.regionPerDay = CH.Advisor and CH.Advisor.SoldPerDay(id)
+	e.demand = CH.Demand and CH.Demand.Estimate(id, now)
 	if CH.Forecast then
 		local f, why = CH.Forecast.Shade(id, now)
 		if f then e.shade = { factor = f, why = why } end
@@ -226,8 +227,7 @@ function D.EvidenceText(e)
 	else
 		out.sales = "Your sales: none in 30 days"
 	end
-	out.volume = e.regionPerDay and string.format("Volume: region %s a day", e.regionPerDay % 1 == 0 and tostring(e.regionPerDay)
-		or string.format("%.1f", e.regionPerDay)) or "Volume: region not reported"
+	out.volume = "Sales: " .. (e.demand and CH.Demand.Text(e.demand) or "no sales rate")
 	if e.shade then out.shade = "Your record: " .. e.shade.why end
 	return out
 end

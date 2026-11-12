@@ -672,7 +672,7 @@ function P.Describe(plan)
 			.. " Perks that give extra materials are listed but not counted in the gold."))
 		return L
 	end
-	table.insert(L, T.Color("muted", string.format("Gold a day counts up to %d sold a day per item (/aiq cap to change) and a day's Concentration on the best recipe.",
+	table.insert(L, T.Color("muted", string.format("Gold a day counts your own sales a day where you've listed an item, else the region's figure up to %d a day (/aiq cap to change), and a day's Concentration on the best recipe.",
 		CH.db.settings.scan.dailyCap or 10)))
 	return L
 end
