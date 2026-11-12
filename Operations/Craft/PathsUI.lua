@@ -590,5 +590,11 @@ local function changed()
 	if CH.SpecOverlay then CH.SpecOverlay.Refresh() end
 end
 CH.Paths.Changed = changed
-CH.Presets.Changed = function() if PUI.IsShown() and not lastPlan then PUI.Refresh() end end
+-- While presets are worked out only the progress line changes: show it without refilling the page
+-- (the goal groups, knowledge and tree), which would read every recipe again once per preset.
+CH.Presets.Changed = function()
+	if not (PUI.IsShown() and not lastPlan) then return end
+	if CH.Presets.Running() and canPlan() then return render(PUI.PresetsText(PUI.Prof())) end
+	PUI.Refresh()
+end
 CH.On("TRAIT_NODE_CHANGED", function() C_Timer.After(0.2, changed) end)

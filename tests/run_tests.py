@@ -587,6 +587,19 @@ check("presets: the same draw for the same item and run (a fair head to head)",
 mean = L.eval("""(function() local s = 0 for r = 1, 4000 do s = s + AuctionIQ.Presets.Draw(r, 55, 1, 0.3) end return s / 4000 end)()""")
 check("presets: a price draw averages out to the price itself", abs(mean - 1) < 0.03)
 check("presets: a plan to show from a saved preset, without planning again", len(L.eval("AuctionIQ.Presets.AsPlan(2906, AuctionIQ.Presets.Get(2906, 'Flasks & Phials'))").steps) == len(fl.steps))
+memo_n = L.eval("""(function()
+  local P = AuctionIQ.Paths
+  local memo = {}
+  local a = P.Plan({ goal = "flasks", points = 20, sync = true, prof = 2906, memo = memo })
+  local n1 = P.stats.evals
+  local b = P.Plan({ goal = "flasks", points = 20, sync = true, prof = 2906, memo = memo })
+  local n2 = P.stats.evals
+  local c = P.Plan({ goal = "flasks", points = 20, sync = true, prof = 2906 })
+  local same = #a.steps == #b.steps and a.final == b.final and b.final == c.final and #c.steps == #a.steps
+  return n2 - n1, same
+end)()""")
+check("paths: a recipe at the same ranks is worked out once (a plan sharing the answers asks the advisor nothing new), same plan",
+      memo_n[0] == 0 and memo_n[1] is True)
 check("presets: not worked out with the profession closed", L.eval("(AuctionIQ.Presets.Build(2909, nil, true))") is None)
 run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.PathsUI.Open(); AuctionIQ.PathsUI.Pick('Flasks & Phials', { 10 })")
 pt = [plain(l) for l in CH.PathsUI.Text().split("\n")]

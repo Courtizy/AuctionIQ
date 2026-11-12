@@ -31,7 +31,8 @@ end
 --- (Light and Void potions), up to MAX. { { key, label, recipes, yield } }
 function Pr.Focuses(prof)
 	local out = {}
-	for _, g in ipairs(CH.Paths.GoalGroups(prof) or {}) do
+	local groups = CH.Paths.GoalGroups(prof) or {}
+	for _, g in ipairs(groups) do
 		if g.yield then
 			table.insert(out, { key = g.name, label = g.name, yield = true })
 		elseif g.name ~= "Other" and #g.recipes >= 1 then
@@ -40,7 +41,7 @@ function Pr.Focuses(prof)
 	end
 	-- then the branches, the bigger ones first, while there's room
 	local subs = {}
-	for _, g in ipairs(CH.Paths.GoalGroups(prof) or {}) do
+	for _, g in ipairs(groups) do
 		if not g.yield and g.name ~= "Other" then
 			for i, s in ipairs(g.subs or {}) do
 				if i <= 2 and #s.recipes >= 2 then
@@ -224,6 +225,9 @@ function Pr.Build(prof, onDone, sync)
 	local focuses = Pr.Focuses(prof)
 	if #focuses == 0 then return nil, "No recipes to build presets for yet." end
 	local done = {}
+	-- one set of advisor answers for every focus: they share recipes (Potions and Light potions)
+	-- and the same tree, so a recipe at the same stats is worked out once for the whole run
+	local memo = {}
 	running = { prof = prof, at = 0, of = #focuses }
 	local function finish()
 		local function saved(list)
@@ -248,7 +252,7 @@ function Pr.Build(prof, onDone, sync)
 			if not sync then return nextOne() end
 		end
 		local opts = { prof = prof, recipes = f.recipes, label = f.label, goal = f.yield and "disenchant" or f.label,
-			points = pointsFor(prof, f), sync = sync, onDone = (not sync) and got or nil }
+			points = pointsFor(prof, f), sync = sync, memo = memo, onDone = (not sync) and got or nil }
 		local plan, why = CH.Paths.Plan(opts)
 		if sync or not plan then got(plan) end
 		if sync then return nextOne() end

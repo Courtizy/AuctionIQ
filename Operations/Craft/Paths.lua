@@ -410,6 +410,78 @@ local function yieldValue(ctx, ranks)
 	return total, per, 0, total
 end
 
+-- One recipe worked out by the crafting advisor at these ranks, kept as the few numbers the planner
+-- uses. A full advisor result is large (every quality's rows, reagent picks, the model) and the
+-- planner asks for the same recipe at the same stats over and over: raising one node changes only
+-- the recipes under it, so every other recipe's answer for that candidate is the one it already had.
+-- Answers are kept per recipe in ctx.memo (shared by every plan a preset run makes), found first by
+-- the ranks of the nodes the recipe uses (cheap: no stat tables built), else by the stat change
+-- itself, so the advisor runs once per distinct change instead of once per candidate, recipe and step.
+local DELTA_FMT = "%s,%s,%s,%s,%s,%s,%s,%s,%s"
+local function deltaKey(d)
+	return string.format(DELTA_FMT, d.skill, d.multicraft, d.resourcefulness, d.ingenuity, d.craftingspeed,
+		d.mcExtra, d.resExtra, d.refundExtra, d.concReduce)
+end
+
+-- the nodes a recipe's stats come from, in a fixed order
+local function recipeNodes(ctx, id)
+	local list = ctx.nodesOf[id]
+	if list then return list end
+	list = {}
+	local data, seen = CH.Spec.Data(ctx.prof), {}
+	for _, perkID in ipairs(data and data.recipes[id] or {}) do
+		local n = data.nodes[perkID]
+		if n and ctx.tree.nodes[n.nodeID] and not seen[n.nodeID] then seen[n.nodeID] = true; list[#list + 1] = n.nodeID end
+	end
+	table.sort(list)
+	ctx.nodesOf[id] = list
+	return list
+end
+
+local keyBuf = {}
+local function ranksKey(ctx, ranks, id)
+	local list = recipeNodes(ctx, id)
+	for i, nodeID in ipairs(list) do keyBuf[i] = ranks[nodeID] or ctx.tree.nodes[nodeID].rank or -1 end
+	for i = #list + 1, #keyBuf do keyBuf[i] = nil end
+	return "r" .. table.concat(keyBuf, ",")
+end
+
+local function evaluate(ctx, ranks, id)
+	if not ctx.memo then ctx.memo = {} end
+	if not ctx.base then ctx.base, ctx.nodesOf, ctx.ranksNow = {}, {}, CH.Spec.Ranks(ctx.tree) end
+	local known = ctx.memo[id]
+	if not known then known = {}; ctx.memo[id] = known end
+	local rk = ranksKey(ctx, ranks, id)
+	local rec = known[rk]
+	if rec ~= nil then return rec end
+	local base = ctx.base[id]
+	if not base then
+		base = CH.Spec.RecipeStats(ctx.prof, ctx.tree, ctx.ranksNow, id)
+		ctx.base[id] = base
+	end
+	local delta = CH.Stats.Diff(CH.Spec.RecipeStats(ctx.prof, ctx.tree, ranks, id), base)
+	local k = deltaKey(delta)
+	rec = known[k]
+	if rec ~= nil then known[rk] = rec; return rec end
+	P.stats.evals = P.stats.evals + 1
+	local ok, r = pcall(CH.Advisor.Evaluate, ctx.models[id], { sim = delta, lean = true })
+	if ok and r then
+		local b, c = r.best, r.bestConc
+		local item = b and b.item or (c and c.item)
+		rec = { name = r.name, item = item, crafts = CH.Scan.DailyUnits(item) / (r.made or 1),
+			quality = b and b.quality, profit = b and b.profit, cost = b and b.cost,
+			perPoint = c and c.perPoint, concQ = c and c.quality, concProfit = c and c.profit,
+			conc = c and c.avgConcentration or (c and c.concentration) }
+	else
+		rec = false
+	end
+	known[k], known[rk] = rec, rec
+	return rec
+end
+
+--- How often the planner ran the crafting advisor, for tests and /aiq mem.
+P.stats = { evals = 0 }
+
 -- Gold a day for a set of recipes at these ranks. Each recipe sells only so many a day (its demand):
 -- plain crafts fill it, and a day's Concentration goes to the crafts where it adds the most gold per
 -- point over the plain craft it replaces, never more crafts than the demand.
@@ -417,23 +489,19 @@ local function value(ctx, ranks)
 	if ctx.yield then return yieldValue(ctx, ranks) end
 	local total, concBest, per, swaps = 0, 0, {}, {}
 	for _, id in ipairs(ctx.recipes) do
-		local m = ctx.models[id]
-		local delta = CH.Spec.Delta(ctx.prof, ctx.tree, ranks, id)
-		local ok, r = pcall(CH.Advisor.Evaluate, m, { sim = delta })
-		if ok and r then
-			local b, c = r.best, r.bestConc
-			local item = b and b.item or (c and c.item)
-			local crafts = CH.Scan.DailyUnits(item) / (r.made or 1)
-			local plain = b and b.profit and b.profit > 0 and b.profit or 0
+		local r = evaluate(ctx, ranks, id)
+		if r then
+			local crafts = r.crafts
+			local plain = r.profit and r.profit > 0 and r.profit or 0
 			local g = plain * crafts
 			total = total + g
-			if c and c.perPoint and c.perPoint > concBest then concBest = c.perPoint end
-			local pc = c and c.avgConcentration or (c and c.concentration)
-			if c and c.profit and pc and pc > 0 and c.profit > plain and crafts > 0 then
-				swaps[#swaps + 1] = { gain = (c.profit - plain) / pc, points = pc, crafts = crafts }
+			if r.perPoint and r.perPoint > concBest then concBest = r.perPoint end
+			local pc = r.conc
+			if r.concProfit and pc and pc > 0 and r.concProfit > plain and crafts > 0 then
+				swaps[#swaps + 1] = { gain = (r.concProfit - plain) / pc, points = pc, crafts = crafts }
 			end
-			per[id] = { quality = b and b.quality, profit = b and b.profit, perPoint = c and c.perPoint, perDay = g, name = r.name,
-				conc = pc, concQ = c and c.quality, cost = b and b.cost, crafts = crafts, item = item }
+			per[id] = { quality = r.quality, profit = r.profit, perPoint = r.perPoint, perDay = g, name = r.name,
+				conc = pc, concQ = r.concQ, cost = r.cost, crafts = crafts, item = r.item }
 		end
 	end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
@@ -512,7 +580,8 @@ local function makeCtx(opts)
 	local y = not ids and P.Yield(prof, opts.goal)
 	if y then ids, label = {}, y.name end
 	if not ids then ids, label = P.Match(opts.goal) end
-	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil, label = label }
+	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil, label = label,
+		memo = opts.memo or {} }
 	for _, id in ipairs(ids) do
 		local m = CH.Scan.Model(prof, id)
 		if m then ctx.models[id] = m; table.insert(ctx.recipes, id) end
@@ -538,7 +607,8 @@ function P.Worth(opts, ranks)
 end
 
 --- Builds a plan. opts: prof, goal (text) or recipes, points (extra beyond unspent), onDone(plan),
---- sync (run in one go, for tests). The work is spread over frames otherwise.
+--- sync (run in one go, for tests), memo (advisor answers to share between plans on the same tree).
+--- The work is spread over frames otherwise.
 function P.Plan(opts)
 	local ctx, why = makeCtx(opts)
 	if not ctx then return nil, why end

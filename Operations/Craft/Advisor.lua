@@ -877,8 +877,9 @@ function A.Evaluate(model, opts)
 		made = model.made, best = best, bestConc = bestConc, model = model, sim = delta, order = model.order,
 		finishingPicks = { plain = finPlain, conc = finConc } }
 	-- the decision numbers: break-even sale price, and what Concentration adds over the plain craft
+	-- (opts.lean leaves them out: the knowledge point planner only reads the best rows' profit)
 	local Dc = CH.Decide
-	if Dc then
+	if Dc and not opts.lean then
 		for _, r in ipairs(rows) do
 			r.breakEven = Dc.BreakEven(result, r)
 			if r.concentration then r.gain = Dc.ConcGain(r, best and best.profit) end

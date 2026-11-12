@@ -154,18 +154,30 @@ function S.Delta(professionID, tree, ranks, recipeID)
 	return CH.Stats.Diff(sim, now)
 end
 
---- Recipes a node touches.
+-- Which recipes each node touches, worked out once per profession's data: the data never changes,
+-- and the goal picker and planner ask for every node in turn (a full pass over the recipes each).
+local nodeIndex = setmetatable({}, { __mode = "k" })
+local NONE = {}
+
+--- Recipes a node touches: { [recipeID] = true }. Shared, so read it, don't change it.
 function S.NodeRecipes(professionID, nodeID)
 	local data = S.Data(professionID)
-	local out = {}
-	if not data then return out end
-	for recipeID, perks in pairs(data.recipes) do
-		for _, perkID in ipairs(perks) do
-			local n = data.nodes[perkID]
-			if n and n.nodeID == nodeID then out[recipeID] = true; break end
+	if not data then return NONE end
+	local index = nodeIndex[data]
+	if not index then
+		index = {}
+		for recipeID, perks in pairs(data.recipes) do
+			for _, perkID in ipairs(perks) do
+				local n = data.nodes[perkID]
+				if n then
+					index[n.nodeID] = index[n.nodeID] or {}
+					index[n.nodeID][recipeID] = true
+				end
+			end
 		end
+		nodeIndex[data] = index
 	end
-	return out
+	return index[nodeID] or NONE
 end
 
 --- What a node's perks give, as short text ("+30 Multicraft", "+5% Ingenuity refund").
