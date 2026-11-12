@@ -229,6 +229,10 @@ d = D.Cost(205, 10)
 check("order book: past the listings it's short and priced at the top one", d.short == 3 and d.cost == 20000 + 5 * 15000 + 3 * 15000)
 row = [r for r in CH.Queue.ShoppingList()[0].values() if r.itemID == 205][0]
 check("shopping list prices the buy from the order book", row.buy == 3 and row.cost == 35000 and row.source == "ah")
+check("one reagent price: the Craft card costs the same 3 from the same listings as the shopping list",
+      L.eval("AuctionIQ.Advisor.UnitsCost({ recipeID = 1 }, 205, 3)") == row.cost)
+check("one reagent price: with no listings seen it's your price source, as before",
+      L.eval("AuctionIQ.Advisor.UnitsCost({ recipeID = 1 }, 201, 2)") == L.eval("2 * AuctionIQ.Scan.ReagentPrice(201)") and L.eval("AuctionIQ.Scan.ReagentPrice(201)") is not None)
 tip = [plain(l) for l in CH.QueueUI.CostLines(row).values()]
 check("shopping cost hover says how far above the cheapest", tip[0] == "Buying 3 costs 3g 50s" and "17% above the cheapest listing" in tip and tip[-1] == "From your AH search")
 run("STUB.now = STUB.now + 16 * 60")

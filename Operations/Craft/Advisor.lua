@@ -29,7 +29,7 @@ local function reagentPrice(model, itemID)
 	if not (CH.Scan and CH.Scan.ReagentPrice) then return price("chmat", itemID) end
 	local p, via = CH.Scan.ReagentPrice(itemID, model and model.recipeID)
 	if via and model then model.viaCraft = true end
-	return p
+	return p, via
 end
 A.ReagentPrice = reagentPrice
 
@@ -49,9 +49,29 @@ local function heldInfo(model, id)
 	end
 	return h
 end
+-- What buying n of a reagent costs each, the way the shopping list prices it: walking the AH
+-- listings you've seen (a live search, else your last scan) for those n units. Only on the
+-- replacement basis (today's price), for a reagent you'd buy rather than craft; nil otherwise.
+local function listedEach(model, id, n, via)
+	if via or not (CH.Depth and CH.Depth.Cost) then return nil end -- crafting it is cheaper: that's its price
+	-- listings change: a minute at most, then look again
+	if not model.listedCache or time() - (model.listedAt or 0) > 60 then model.listedCache, model.listedAt = {}, time() end
+	local key = id * 100000 + n
+	local c = model.listedCache[key]
+	if c == nil then
+		local basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or "replacement"
+		local d = (basis == "replacement" or basis == "held") and CH.Depth.Cost(id, n)
+		c = d and d.source ~= "chmat" and d.unit or false
+		model.listedCache[key] = c
+	end
+	return c or nil
+end
+A.ListedEach = listedEach
+
 local function unitsCost(model, id, n)
 	if n <= 0 then return 0 end
-	local buy = reagentPrice(model, id)
+	local buy, via = reagentPrice(model, id)
+	buy = listedEach(model, id, n, via) or buy
 	if not (CH.Prices.CostBasis and CH.Prices.CostBasis() == "held") then return buy and n * buy end
 	local h = heldInfo(model, id)
 	local own = math.min(n, h.n)
@@ -1015,8 +1035,9 @@ function A.CostLines(result, picks, fin)
 				local id = slot.items[q]
 				local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
 				local total = unitsCost(result.model, id, n)
+				local listed = listedEach(result.model, id, n, via)
 				table.insert(out, A.HeldLine({ id = id, name = itemName(id), rank = q, tiers = #slot.items, n = n, unit = total and total / n or unit,
-					buy = unit, total = total, crafted = via }, result.model))
+					buy = listed or unit, listed = listed and true or nil, total = total, crafted = via }, result.model))
 			end
 		end
 	end
@@ -1024,8 +1045,9 @@ function A.CostLines(result, picks, fin)
 		local id = slot.items[1]
 		local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
 		local total = unitsCost(result.model, id, slot.qty)
-		table.insert(out, A.HeldLine({ id = id, name = itemName(id), n = slot.qty, unit = total and total / slot.qty or unit, buy = unit,
-			total = total, crafted = via }, result.model))
+		local listed = listedEach(result.model, id, slot.qty, via)
+		table.insert(out, A.HeldLine({ id = id, name = itemName(id), n = slot.qty, unit = total and total / slot.qty or unit, buy = listed or unit,
+			listed = listed and true or nil, total = total, crafted = via }, result.model))
 	end
 	for _, f in ipairs(fin or {}) do
 		table.insert(out, { id = f.itemID, name = itemName(f.itemID), n = 1, unit = f.cost, total = f.cost, finishing = true })
