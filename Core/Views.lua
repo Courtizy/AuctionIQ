@@ -524,7 +524,7 @@ function AV.Rescan(x)
 end
 
 --- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
-function AV.QueueScan(x, n, conc, inp)
+function AV.QueueScan(x, n, conc, inp, plan)
 	local e = CH.Queue and CH.Queue.FromScan(x.charKey, x.c, x.row, conc)
 	if not e then return false, "This scan is too old to queue from: scan the profession again." end
 	CH.Queue.AddEntry(e, n)
@@ -532,7 +532,7 @@ function AV.QueueScan(x, n, conc, inp)
 		local sc = CH.Decide.Scenarios(inp, n).expected
 		CH.Forecast.SaveDecision({ item = e.item, recipe = x.row.recipeID, name = x.name, char = x.char, quality = e.quality, conc = conc or nil,
 			n = n, itemsEach = CH.Decide.ItemsPerCraft(inp), costEach = sc.cost / n, priceEach = inp.price, netEach = sc.each,
-			daily = inp.daily, leftWeek = sc.left, profit = sc.items * sc.each - sc.cost, source = "the last scan", from = "craft" })
+			daily = inp.daily, leftWeek = sc.left, profit = sc.items * sc.each - sc.cost, source = "the last scan", from = "craft", plan = plan })
 	end
 	return true, string.format("Queued %d x %s%s for %s", n, x.name or "?", conc and " with Concentration" or "", x.char or "?")
 end
@@ -569,6 +569,9 @@ function AV.Selection(x, focus)
 	end
 	inp = inp or CH.Decide.ScanInputs(row, conc) or (conc and nil) or CH.Decide.ScanInputs(row)
 	sug = sug or (inp and CH.Decide.Suggest(inp, {}))
+	-- the same quantity decision as the Craft card (can make, can afford, suggested), so what the
+	-- pane suggests is what's saved beside the batch you queue
+	local q = inp and CH.Decide.Quantity(inp, { suggest = sug, gold = GetMoney and GetMoney() or nil, noExplore = true }) or nil
 	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
 	-- how many crafts: the Dashboard's number (in items or crafts, as it said), else the suggestion
 	local n, from
@@ -576,11 +579,11 @@ function AV.Selection(x, focus)
 		n = f.unit == "items" and math.max(1, math.ceil(f.qty / math.max(made, 0.01) - 1e-9)) or math.floor(f.qty)
 		from = f.unit == "items" and string.format("%d items from %s", f.qty, f.title or "Dashboard") or (f.title or "Dashboard")
 	else
-		n = sug and sug.n > 0 and sug.n or 1
+		n = q and q.n > 0 and q.n or sug and sug.n > 0 and sug.n or 1
 	end
 	local profit = live and lr.profit or (conc and row.concProfit or row.profit)
 	return { x = x, key = key, live = live, row = lr, conc = conc, canConc = canConc, n = n, from = from, made = made,
-		inputs = inp, suggest = sug, profit = profit, quality = live and lr.quality or (conc and row.concQuality or row.quality),
+		inputs = inp, suggest = sug, quantity = q, profit = profit, quality = live and lr.quality or (conc and row.concQuality or row.quality),
 		char = x.char, scanAt = x.scanAt, source = live and "live" or "scan" }
 end
 
@@ -599,7 +602,7 @@ function AV.QueueSelection(sel)
 		if not e then return false, "The profession window didn't take that craft." end
 		return true, string.format("Queued %d x %s (Q%d%s) for %s", n, x.name or "?", sel.row.quality or 0, sel.conc and ", Concentration" or "", x.char or "?")
 	end
-	return AV.QueueScan(x, n, sel.conc, sel.inputs)
+	return AV.QueueScan(x, n, sel.conc, sel.inputs, CH.Decide.PlanRecord(sel.quantity))
 end
 
 function AV.CraftDetail(d, ctx)
@@ -619,8 +622,11 @@ function AV.CraftDetail(d, ctx)
 		{ "AT RISK", sc and T.Color("bad", gold(sc.slow.atRisk)) or T.Color("muted", "-") },
 		{ "BREAK-EVEN", x.salePrice and T.Color("gold", gold(x.salePrice)) or T.Color("muted", "-") } }
 	local rows = {}
-	local suggested = sug and sug.n or nil
-	rows[#rows + 1] = { "Make", tostring(n) .. (suggested and suggested ~= n and T.Color("muted", string.format("  (suggested %d)", suggested)) or "") }
+	-- what you'll queue, and the suggestion beside it when they differ (both are saved with the batch)
+	local q = sel.quantity
+	local said = q and (q.action == "hold" and "hold off" or q.action == "skip" and "skip" or q.action == "trial" and ("try " .. q.n) or (q.action == "make" and tostring(q.n))) or nil
+	local differs = q and (((q.action == "hold" or q.action == "skip") and n > 0) or ((q.action == "make" or q.action == "trial") and q.n ~= n))
+	rows[#rows + 1] = { "Make", tostring(n) .. (said and differs and T.Color("muted", string.format("  (suggested %s)", said)) or "") }
 	if sc then rows[#rows + 1] = { "Left after a week", string.format("%d · %d · %d", whole(sc.slow.left), whole(sc.expected.left), whole(sc.fast.left)) } end
 	if x.cushion then rows[#rows + 1] = { "Estimate can fall", pct(x.cushion) } end
 	if sel.canConc then
@@ -680,6 +686,17 @@ function AV.ExplainLines(d, x)
 	table.insert(out, { T.Color("muted", string.format("Sold %d of %d made (%.0f forecast by now, %.1f made a craft expected). %d left, worth %s at the forecast price.",
 		x.sold, x.made, x.soldForecast, d.itemsEach or 0, x.left, M(x.leftWorth))) })
 	if d.source then table.insert(out, { T.Color("muted", "Sell rate from " .. d.source .. "; reagents at market when crafted.") }) end
+	-- your plan, not the suggestion, is what the forecast measures; the suggestion's, for comparison
+	local dep = x.departure
+	if dep then
+		table.insert(out, { T.Color("accent", dep.text) .. T.Color("muted", dep.strength and string.format("  (evidence: %s)", dep.strength) or "") })
+		table.insert(out, { T.Color("muted", "  The forecast above is for the crafts you chose."), "" })
+		if x.atSuggested and dep.kind ~= "against" then
+			table.insert(out, { T.Color("muted", string.format("  At the suggested %d, by now", dep.suggested)) .. T.Color("muted", "  (modeled)"), M(x.atSuggested) })
+		end
+	elseif d.plan then
+		table.insert(out, { T.Color("muted", "You queued what AuctionIQ suggested.") })
+	end
 	return out
 end
 

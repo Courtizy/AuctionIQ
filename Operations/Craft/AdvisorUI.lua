@@ -1843,7 +1843,8 @@ function AUI.QueueFrom(from, target, selQty, via)
 			CH.Forecast.SaveDecision({ item = target.item, recipe = from.recipeID, name = from.name, quality = target.quality,
 				conc = target.concentration and true or nil, n = selQty, itemsEach = CH.Decide.ItemsPerCraft(inp),
 				costEach = sc.cost / selQty, priceEach = inp.price, netEach = sc.each, daily = inp.daily, leftWeek = sc.left,
-				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis, from = via })
+				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis, from = via,
+				plan = CH.Decide.PlanRecord(AUI.QuantityFor(from, target)) })
 		end
 	end
 	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
