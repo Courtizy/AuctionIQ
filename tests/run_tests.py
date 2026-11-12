@@ -265,6 +265,16 @@ en = L.eval("""(function()
   ui.CraftRecipe = function() r.recipe = true end
   local e = AuctionIQ.Queue.AddEntry({ char = AuctionIQ.CharacterKey(), recipeID = 10, name = 'Test Enchant', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = {} }, 1)
   r.ok, r.why = AuctionIQ.Queue.Craft(e, 1)
+  -- three scrolls with the vellum split over stacks: no more than the targeted stack holds
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", nil, 10)
+  AuctionIQ.Queue.Clear()
+  local count0 = C_Item.GetItemCount
+  C_Item.GetItemCount = function(id, ...) if id == 38682 then return 5 end return count0(id, ...) end
+  C_Container.GetContainerItemInfo = function(bag, slot) return (bag == 1 and slot == 3) and { stackCount = 2 } or nil end
+  local e3 = AuctionIQ.Queue.AddEntry({ char = AuctionIQ.CharacterKey(), recipeID = 10, name = 'Test Enchant', reagents = { { itemID = 201, slot = 1, n = 2 } }, shop = {} }, 3)
+  r.ok3, r.note3 = AuctionIQ.Queue.Craft(e3, 3)
+  r.n3 = r.enchant and r.enchant.n
+  C_Item.GetItemCount = count0
   AuctionIQ.Queue.Clear()
   ui.GetRecipeInfo, ui.GetRecipeOutputItemData, C_Container, ui.CraftRecipe, ui.CraftEnchant, ItemLocation = oldInfo, oldOut, oldC, oldCR, nil, loc0
   return r
@@ -276,11 +286,22 @@ ea = L.eval("""(function()
     c.qualityItemIDs = nil; c.isEnchantingRecipe = true; c.qualityIDs = { 1001, 1002 }; return c end; return i end
   ui.GetRecipeSchematic = function(id, ...) local sch = oldSch(id, ...); if id == 10 and sch then local c = {}; for k, v in pairs(sch) do c[k] = v end; c.outputItemID = nil; return c end; return sch end
   ui.GetRecipeOutputItemData = function(id, reagents, guid, q) local m = { [1001] = 100, [1002] = 101 }; return m[q] and { itemID = m[q] } or nil end
+  local oldVel = STUB.prices["i:38682"]
+  STUB.prices["i:38682"] = oldVel or { formula_value = 300000 }
+  AuctionIQ.Prices.ClearCache()
   local res = AuctionIQ.Advisor.Analyze(10, { professionID = AuctionIQ.OpenProfessionID() })
   ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData = oldInfo, oldSch, oldOut
-  return { best = res and res.best and res.best.profit ~= nil, out1 = res and res.model.outputs[1] }
+  local b = res and res.best
+  local vel = res and AuctionIQ.Advisor.UnitsCost(res.model, 38682, 1)
+  local St = AuctionIQ.Stats
+  local want = b and vel and (b.required - vel) * St.RES_SAVE * (1 + (b.stats.resExtra or 0))
+  STUB.prices["i:38682"] = oldVel; AuctionIQ.Prices.ClearCache()
+  return { best = res and res.best and res.best.profit ~= nil, out1 = res and res.model.outputs[1], vel = vel,
+    resOk = want and math.abs(b.parts.saved - want) < 1e-6, hasVellum = vel and vel > 0 and b.required >= vel }
 end)()""")
+check("enchant: a batch on vellum is held to the targeted stack, and says so", en.ok3 is True and en.n3 == 2 and "one stack of Enchanting Vellum" in (en.note3 or ""))
 check("enchant: with no output item on the recipe, the scroll is priced and a ranked option comes back", ea.best and ea.out1 == 100)
+check("enchant: Resourcefulness saves on the reagents, not the vellum the scroll goes on", ea.hasVellum and ea.resOk)
 ec = L.eval("""(function()
   local ui = C_TradeSkillUI
   local oldInfo, oldSch, oldOut = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetRecipeOutputItemData
@@ -3202,6 +3223,16 @@ check("/aiq mem: memory after clearing garbage, then what's held", mp[0].startsw
 run("AuctionIQ.PerfReset(); STUB.Fire('BAG_UPDATE_DELAYED'); STUB.Fire('BAG_UPDATE_DELAYED')")
 pl = [str(x) for x in L.eval("AuctionIQ.PerfLines()").values()]
 check("/aiq perf: memory, then each event's calls and time", pl[0].startswith("AuctionIQ over the last") and any(x.startswith("  BAG_UPDATE_DELAYED: ") for x in pl))
+# Concentration preflight: a batch is held to what starts without counting on an Ingenuity refund
+run("STUB.oldChildP = C_TradeSkillUI.GetChildProfessionInfo; C_TradeSkillUI.GetChildProfessionInfo = function() return { professionID = 2906 } end")
+pf1 = L.eval("AuctionIQ.Queue.Preflight({ concentration = 300, shop = {} }, 1)")
+pf2 = L.eval("{ AuctionIQ.Queue.Preflight({ concentration = 300, shop = {} }, 2) }")
+check("preflight: one Concentration craft with 400 on hand starts", pf1 is True)
+check("preflight: two at 300 each with 400 on hand is held to one, and says why",
+      pf2[1] is False and pf2[3] == 1 and "600 Concentration for 2 crafts and have 400" in pf2[2] and "make 1 now" in pf2[2])
+check("preflight: a plain craft doesn't look at Concentration", L.eval("AuctionIQ.Queue.Preflight({ shop = {} }, 5)") is True)
+run("C_TradeSkillUI.GetChildProfessionInfo = STUB.oldChildP")
+check("preflight: when the game can't say how much Concentration there is, it doesn't block", L.eval("AuctionIQ.Queue.Preflight({ concentration = 300, shop = {} }, 2)") is True)
 # Cleanup: browse-only scans of items nothing uses aren't saved; searched, crafted and listed ones are
 run("""STUB.oldScans = AuctionIQ.db.scans
 AuctionIQ.db.scans = { [990001] = { at = time(), min = 5, market = 5, qty = 3, full = false },

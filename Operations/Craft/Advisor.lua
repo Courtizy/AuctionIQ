@@ -448,17 +448,28 @@ local function finCost(fin)
 	return c
 end
 
+-- What the vellum costs in a scroll's reagents: Resourcefulness never saves it (it's what the
+-- enchant goes on, not a reagent the craft can keep), so it comes out of what Resourcefulness counts.
+local function vellumCost(model)
+	for _, slot in ipairs(model.fixed or {}) do
+		if slot.vellum then return unitsCost(model, slot.items[1], slot.qty) or 0 end
+	end
+	return 0
+end
+
 -- A row's value: item price after cut (or the order's commission) and the average profit.
 local function valueRow(model, row, stats, item, costR, fin)
 	local key = model.outputKeys and model.outputKeys[row.quality]
 	local unit = key and CH.Prices.Get("chvalue", key) or price("chvalue", item)
 	local total = costR + finCost(fin)
+	-- the reagents Resourcefulness can save: all the required ones but the vellum
+	local saveable = math.max(0, costR - vellumCost(model))
 	row.cost, row.required, row.item, row.finishing, row.stats = total, costR, item, fin, stats
 	local order = model.order
 	if order then
 		-- Orders pay the commission; extra items from Multicraft go to the customer.
 		local s = St().Copy(stats); s.supports.multicraft = nil
-		local avg, parts = St().Average(0, 0, total, costR, s)
+		local avg, parts = St().Average(0, 0, total, saveable, s)
 		row.value = (order.commission or 0) + (order.rewards or 0)
 		row.profit, row.parts = row.value + avg, parts
 		row.short = order.minQuality and row.quality < order.minQuality or nil
@@ -473,7 +484,7 @@ local function valueRow(model, row, stats, item, costR, fin)
 	row.price = unit
 	local ev, detail = CH.Expect.Value(item, unit)
 	unit, row.ev = ev, detail
-	local avg, parts = St().Average(unit, model.made, total, costR, stats)
+	local avg, parts = St().Average(unit, model.made, total, saveable, stats)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
 	if model.recraftFrom then
 		local okey = model.outputKeys and model.outputKeys[model.recraftFrom]

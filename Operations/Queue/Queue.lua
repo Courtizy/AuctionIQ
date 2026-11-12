@@ -1026,10 +1026,18 @@ function Q.Craft(e, amount)
 		if not bag then return false, "no Enchanting Vellum in your bags" end
 		local loc = ItemLocation and ItemLocation.CreateFromBagAndSlot and ItemLocation:CreateFromBagAndSlot(bag, slot)
 		if not (loc and ui.CraftEnchant) then return false, "the game can't target the vellum" end
-		track(e, amount or 1)
+		-- the casts all go on the one bag slot targeted: never more than that stack holds
+		local n, note = amount or 1, nil
+		local info = C_Container.GetContainerItemInfo and C_Container.GetContainerItemInfo(bag, slot)
+		local stack = info and info.stackCount
+		if stack and stack < n then
+			n, note = stack, string.format("%d made: that's all one stack of Enchanting Vellum holds. Craft again for the rest.", stack)
+		end
+		track(e, n)
 		if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
-		ui.CraftEnchant(e.recipeID, amount or 1, reagents, loc, e.concentration ~= nil)
-		return true
+		ui.CraftEnchant(e.recipeID, n, reagents, loc, e.concentration ~= nil)
+		if note then CH.Print(note) end
+		return true, note
 	end
 	track(e, amount or 1)
 	if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
@@ -1055,11 +1063,39 @@ function Q.Preflight(e, amount)
 			if h < per * amount and not worst then worst = { id = s.itemID, need = per * amount, have = h, bags = bagsOnly } end
 		end
 	end
+	-- Concentration: every craft in the batch has to start with its full cost on hand. An
+	-- Ingenuity refund may land in time, but a batch can't count on it, so it's held to what
+	-- starts without one.
+	local cost = e.concentration
+	local points = cost and cost > 0 and Q.ConcentrationNow()
+	if points then
+		local fit = math.floor(points / cost)
+		if fit < can then can = fit end
+		if points < cost * amount and not worst then
+			worst = { conc = true, need = cost * amount, have = math.floor(points) }
+		end
+	end
 	if not worst then return true end
-	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(worst.id) or ("item " .. worst.id)
-	local why = string.format("you need %d %s%s and have %d", worst.need, name, worst.bags and " in your bags" or "", worst.have)
-	if can >= 1 then why = why .. string.format(": you can make %d now", can) end
+	local why
+	if worst.conc then
+		why = string.format("you need %d Concentration for %d craft%s and have %d", worst.need, amount, amount == 1 and "" or "s", worst.have)
+		if can >= 1 then why = why .. string.format(": you can make %d now (Ingenuity may refund enough for more, one at a time)", can) end
+	else
+		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(worst.id) or ("item " .. worst.id)
+		why = string.format("you need %d %s%s and have %d", worst.need, name, worst.bags and " in your bags" or "", worst.have)
+		if can >= 1 then why = why .. string.format(": you can make %d now", can) end
+	end
 	return false, why, can
+end
+
+--- The open profession's Concentration right now, or nil when the game can't say.
+function Q.ConcentrationNow()
+	local ui = C_TradeSkillUI
+	local info = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
+	local pid = info and info.professionID
+	local id = pid and pid ~= 0 and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(pid)
+	local c = id and id ~= 0 and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(id)
+	return c and c.quantity or nil
 end
 --- Whether a recipe is an enchant (cast on an item: for the AH, onto Enchanting Vellum).
 function Q.IsEnchant(recipeID)
