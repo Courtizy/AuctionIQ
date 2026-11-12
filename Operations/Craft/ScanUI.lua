@@ -35,17 +35,19 @@ local COLS = {
 	-- short tables: only the columns that rank the rows. The selected row's numbers are in the side
 	-- card, which answers the one question each view is for
 	-- the snapshot: the best pick (most profit a craft, with or without Concentration), what it
-	-- earns and costs, margin, and how many you can make now
-	craft = { { "Recipe", 12, 164, "name" }, { "Best", 180, 48, "bestQ", "CENTER" }, { "Profit", 230, 88, "bestProfit" },
-		{ "Cost", 320, 80, "bestCost" }, { "Margin", 402, 60, "bestPct" }, { "Max", 464, 86, "bestCan" } },
+	-- earns and costs, margin, which of its reagents you hold, and how many you can make now.
+	-- Every column ends by x 534, clear of the scroll bar at the table's right edge (TWR + 4)
+	craft = { { "Recipe", 12, 150, "name" }, { "Best", 164, 40, "bestQ", "CENTER" }, { "Profit", 206, 80, "bestProfit" },
+		{ "Cost", 288, 72, "bestCost" }, { "Margin", 362, 52, "bestPct" }, { "Have", 418, 50, "haveFrac", "CENTER" },
+		{ "Max", 472, 62, "bestCan" } },
 	conc = { { "Recipe", 12, 216, "name" }, { "With Conc.", 232, 112, "concProfit" }, { "Extra/pt", 348, 96, "gainPerPoint" },
-		{ "Max", 448, 102, "canMakeConc" } },
+		{ "Max", 448, 86, "canMakeConc" } },
 	buy = { { "Recipe", 12, 216, "name" }, { "Craft each", 232, 104, "craftEach" }, { "Cheapest", 340, 100, "buyPrice" },
-		{ "Saves", 444, 106, "buySave" } },
+		{ "Saves", 444, 90, "buySave" } },
 	-- like CraftSim's: who it's for, rewards, profit, what your reagents cost and the Concentration it takes
 	orders = { { "Recipe", 62, 150, "name" }, { "Customer", 216, 80, "from", "LEFT" }, { "Reagents", 300, 64, "reagentsPct" },
-		{ "Profit", 368, 96, "profit" }, { "", 468, 70, "concentration" } },
-	first = { { "Recipe", 12, 290, "name" }, { "Proceeds", 306, 120, "value" }, { "Point costs", 430, 120, "net" } },
+		{ "Profit", 368, 96, "profit" }, { "", 468, 66, "concentration" } },
+	first = { { "Recipe", 12, 290, "name" }, { "Proceeds", 306, 120, "value" }, { "Point costs", 430, 104, "net" } },
 }
 function SUI.Columns(m) return COLS[m] end
 local SORT = { craft = { key = "bestProfit" }, conc = { key = "gainPerPoint" }, buy = { key = "buySave" }, orders = { key = "default" }, first = { key = "net" } }
@@ -57,6 +59,7 @@ local NAMES = { concentration = "Concentration needed", name = "name", profit = 
 	canMake = "how many you can make now", canMakeConc = "how many you can make with Concentration now",
 	bestQ = "best quality", bestProfit = "profit of the best pick", bestCost = "cost of the best pick", bestPct = "margin of the best pick",
 	bestCan = "how many of the best pick you can make now",
+	haveFrac = "how many of the best pick's reagents you hold enough of",
 	reagentsPct = "whether you have the reagents",
 	concentration = "Concentration points", craftEach = "what one costs to make", buyPrice = "cheapest listing",
 	resell = "what it resells for", flip = "buy and relist profit" }
@@ -302,12 +305,67 @@ function SUI.OrderCellLines(d, col)
 	return nil
 end
 
+local function itemName(id)
+	if id == "concentration" then return "Concentration" end
+	return id and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)) or nil
+end
+
+--- The reagents one craft needs that you hold too few of, by name ("A, B"), any rank counting.
+--- acc: the craft's accounts. nil when you hold enough of all of them.
+function SUI.ShortNames(acc, recipeID)
+	local out = {}
+	for _, g in ipairs(CH.Scan.Needs(acc, recipeID) or {}) do
+		if g.have < g.need then out[#out + 1] = itemName(g.itemID) end
+	end
+	return #out > 0 and table.concat(out, ", ") or nil
+end
+
+--- Have and need for one craft, per reagent and rank, as CraftSim's reagent hover lists them: each
+--- reagent with what you hold of all its ranks against what the craft takes, and under it each rank
+--- (the scan's mix in the need). conc: the Concentration craft's reagents.
+function SUI.NeedLines(r, conc)
+	local T, Wn = CH.Theme, CH.Window
+	local acc = conc and r.concAccounts or r.accounts
+	local needs = CH.Scan.Needs(acc, r.recipeID)
+	local lines = { { T.Color("accent", r.name or "?"), T.Color("muted", conc and "With Concentration" or "Without Concentration") } }
+	if not needs then
+		lines[#lines + 1] = { T.Color("muted", "Scan the profession to see its reagents.") }
+		return lines
+	end
+	lines[#lines + 1] = { T.Color("muted", "Reagents for one craft"), T.Color("muted", "have / need") }
+	local mixed
+	for _, g in ipairs(needs) do
+		local enough = g.have >= g.need
+		lines[#lines + 1] = { Wn.ItemIcon(g.itemID, 14) .. " " .. (itemName(g.itemID) or "?"),
+			T.Color(enough and "ok" or "bad", string.format("%d / %d", g.have, g.need)) }
+		if #g.ranks > 1 then
+			for _, x in ipairs(g.ranks) do
+				local txt = x.need > 0 and string.format("%d / %d", x.have, x.need) or tostring(x.have)
+				lines[#lines + 1] = { "      " .. Wn.QualityIcon(x.rank, 13, x.tiers) .. T.Color("muted", " rank " .. (x.rank or "?")),
+					T.Color(x.need > 0 and (x.have >= x.need and "ok" or "gold") or "muted", txt) }
+			end
+		end
+		if enough and g.exact < 1 then mixed = true end
+	end
+	local can = conc and r.canMakeConc or r.canMake
+	if can then lines[#lines + 1] = { "Max you can make now", tostring(can) } end
+	local short = SUI.ShortNames(acc, r.recipeID)
+	if short then lines[#lines + 1] = { T.Color("bad", "Short of " .. short) } end
+	if mixed then
+		lines[#lines + 1] = { T.Color("muted", "Ranks count together: a reagent you hold at another rank than the scan picked fills in, which can change the quality.") }
+	end
+	return lines
+end
+
 --- A Recipes cell's own hover, in Book lines: the reagents column shows each reagent at what it
 --- costs you (the opportunity cost of yours), the profit columns the craft's statement and craft or
 --- sell. nil for the other cells (the recipe's general hover).
 function SUI.RecipeCellLines(r, col, v)
 	v = v or view
 	if not r or r.header then return nil end
+	if (v == "craft" and (col == 6 or col == 7)) or (v == "conc" and col == 4) then
+		return SUI.NeedLines(r, v == "conc" or (v == "craft" and r.bestConc))
+	end
 	local acc, title
 	-- craft: Profit (3) and Cost (4) explain the best pick, plain or with Concentration
 	if v == "craft" and (col == 3 or col == 4) then
@@ -356,18 +414,16 @@ local function hover(owner, i, col)
 		if r.gainPerPoint then table.insert(lines, { string.format("  Extra per expected point (%d points)", r.concentration or 0), CH.FormatMoney(r.gainPerPoint) }) end
 		table.insert(lines, { T.Color("muted", "  Whole profit per point (as CraftSim)"), CH.FormatMoney(r.perPoint) })
 	end
-	local function short(id)
-		if id == "concentration" then return "Concentration" end
-		return id and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)) or ("item " .. id)) or nil
-	end
+	local short = itemName
 	if r.canMake then
-		table.insert(lines, { "Max you can make now", r.canMake .. (r.canMake == 0 and r.shortItem and T.Color("muted", "  short of " .. short(r.shortItem))
+		local missing = r.canMake == 0 and SUI.ShortNames(r.accounts, r.recipeID)
+		table.insert(lines, { "Max you can make now", r.canMake .. (missing and T.Color("muted", "  short of " .. missing)
 			or (r.shortItem and T.Color("muted", "  until " .. short(r.shortItem) .. " runs out") or "")) })
 	end
 	if r.canMakeConc then
 		table.insert(lines, { "  with Concentration", r.canMakeConc .. (r.shortConc and T.Color("muted", "  until " .. short(r.shortConc) .. " runs out") or "") })
 	end
-	table.insert(lines, { T.Color("muted", "Counts use the scan's best reagents and finishing reagents, from bags, banks and the warband bank.") })
+	table.insert(lines, { T.Color("muted", "Counts use the scan's best reagents and finishing reagents, any rank of each, from bags, banks and the warband bank. Hover Have for each reagent.") })
 	table.insert(lines, { "Sold per day, region", r.soldPerDay and string.format("%.1f", r.soldPerDay) or "-" })
 	local dm = r.item and CH.Demand and CH.Demand.Estimate(r.item)
 	if dm then table.insert(lines, { "Sales a day (" .. CH.Demand.SOURCE[dm.source] .. ")", CH.Demand.Rate(dm.units) }) end
@@ -1390,6 +1446,13 @@ function SUI.Draw()
 		r.bestCost = useConc and (r.concCost or r.cost) or r.cost
 		r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
 		r.bestCan = useConc and r.canMakeConc or r.canMake
+		-- which reagents of the best pick you hold enough of for one craft, any rank counting
+		local needs = CH.Scan.Needs(useConc and r.concAccounts or r.accounts, r.recipeID)
+		if needs and #needs > 0 then
+			local got = 0
+			for _, g in ipairs(needs) do if g.have >= g.need then got = got + 1 end end
+			r.haveN, r.needN, r.haveFrac = got, #needs, got / #needs
+		end
 		-- the Concentration craft with your own reagents, when the best mix needs a rank you don't hold
 		-- (this expansion's recipes: each is worked out once until your bags or Concentration change)
 		if r.concProfit and r.current and (r.canMakeConc or 0) == 0 then
@@ -1444,7 +1507,8 @@ function SUI.Draw()
 				r.cells[3]:SetText(money(d.bestProfit))
 				r.cells[4]:SetText(d.bestCost and CH.FormatMoney(d.bestCost) or T.Color("muted", "-"))
 				r.cells[5]:SetText(d.bestPct and T.Color(d.bestPct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(d.bestPct * 100 + 0.5))) or T.Color("muted", "-"))
-				r.cells[6]:SetText(n(d.bestCan))
+				r.cells[6]:SetText(d.needN and T.Color(d.haveN == d.needN and "ok" or "bad", d.haveN .. "/" .. d.needN) or T.Color("muted", "-"))
+				r.cells[7]:SetText(n(d.bestCan))
 				table.insert(out, string.format("%s profit=%d", d.name, math.floor(d.bestProfit or 0)))
 			elseif view == "conc" then
 				r.cells[2]:SetText(CH.Window.QualityIcon(d.concQuality, 14, d.tiers) .. " " .. money(d.concProfit))

@@ -1742,9 +1742,33 @@ run("AuctionIQ.Prices.CostBasis('held')")
 rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
 bp2 = L.eval("""(function() local t = {}
   for _, c in ipairs(AuctionIQ.ScanUI.Columns and AuctionIQ.ScanUI.Columns('craft') or {}) do t[#t + 1] = c[1] end return t end)()""")
-check("scan list: Recipe, Best, Profit, Cost, Margin, Max", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Max"])
+check("scan list: Recipe, Best, Profit, Cost, Margin, Have, Max", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Have", "Max"])
+check("scan list: every column clears the scroll bar", all(L.eval("function(t) return t[2] + t[3] end")(c) <= 534
+      for k in ("craft", "conc", "buy", "orders", "first") for c in CH.ScanUI.Columns(k).values()))
+# have/need: the ranks of a reagent count together, and the one really short is named
+nd = L.eval("""(function()
+  local count0 = C_Item.GetItemCount
+  local stock = { [301] = 6, [302] = 5, [401] = 0, [501] = 4 }
+  C_Item.GetItemCount = function(id) return stock[id] or 0 end
+  local row = { name = 'Ench', recipeID = 9001, accounts = { sales = 1, reagents = {
+    { itemID = 302, n = 10, rank = 2, tiers = 2, ranks = { 301, 302 } },
+    { itemID = 401, n = 1 }, { itemID = 501, n = 4 } } } }
+  local can, _, short = AuctionIQ.Scan.Craftable(row)
+  local needs = AuctionIQ.Scan.Needs(row.accounts, row.recipeID)
+  local names = AuctionIQ.ScanUI.ShortNames(row.accounts, row.recipeID)
+  local lines = AuctionIQ.ScanUI.RecipeCellLines(row, 6, 'craft')
+  stock[401] = 1
+  local can2 = AuctionIQ.Scan.Craftable(row)
+  C_Item.GetItemCount = count0
+  return { can = can, short = short, shard = needs[1], names = names, nlines = #lines, can2 = can2 }
+end)()""")
+check("have/need: ranks 1 and 2 count together against the slot's need",
+      nd.shard.have == 11 and nd.shard.need == 10 and nd.shard.crafts == 1 and nd.shard.exact == 0)
+check("have/need: the reagent really short is the one named", nd.can == 0 and nd.short == 401 and nd.names == "item 401")
+check("have/need: the Have column hovers each reagent and rank", nd.nlines >= 7)
+check("have/need: holding the missing one, a mix of ranks makes the craft", nd.can2 == 1)
 check("scan: the Cost column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
-      and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 6, "craft") is None)
+      and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 5, "craft") is None)
 lv = L.eval("""(function()
   local saved = { name = 'x', profit = 20000, cost = 30000, perDay = 40000,
     accounts = { sales = 50000, mcGold = 0, resGold = 0, profit = 20000, cost = 30000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }
