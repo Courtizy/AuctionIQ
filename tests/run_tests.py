@@ -2836,8 +2836,9 @@ chars['Alt-Realm'] = { name = 'Alt', professions = { [2871] = prof('Khaz Algar A
 AuctionIQ.db.characters = chars""")
 cf = [x for x in L.eval("AuctionIQ.UI.RenderConcFooter()").values()]
 cfb = [[b for b in x.bars.values()] for x in cf]
-check("footer: a Concentration slot for every character with a current-expansion profession, fullest first",
-      [x.char for x in cf] == ["Luxaren", "Courtizy", "Verathis", "Serynko", "Velanthir", "Seyko"])
+check("footer: a Concentration slot for every character with a current-expansion profession, A to Z",
+      [x.char for x in cf] == ["Courtizy", "Luxaren", "Serynko", "Seyko", "Velanthir", "Verathis"]
+      and all([y.prof for y in b] == ["Midnight Alchemy", "Midnight Enchanting"] for b in cfb))
 check("footer: only the current expansion's professions, one bar each",
       all(len(b) == 2 and all(y.prof.startswith("Midnight") for y in b) and all(0 <= y.share <= 1 for y in b) for b in cfb))
 check("footer: older expansions' full Concentration isn't counted as wasted on the Dashboard",

@@ -963,7 +963,7 @@ end
 UI.TextBar = textBar
 
 --- The footer's Concentration, by character: every character with a current-expansion profession,
---- the one closest to full first. Each slot is the name in its class colour over one thin
+--- A to Z from the left. Each slot is the name in its class colour over one thin
 --- class-gradient bar a profession, sized to share the footer right of the help line, so the
 --- bars shrink as the warband grows. Returns what it drew, for the tests:
 --- { { char, width, bars = { { prof, cur, max, share } } } }.
@@ -999,13 +999,16 @@ function UI.RenderConcFooter()
 	local out = {}
 	if not (frame and frame.conc) then return out end
 	local T = CH.Theme
-	-- by character, fullest profession first within each
+	-- by character, A to Z from the left; each character's professions A to Z too
 	local by, order = {}, {}
 	for _, b in ipairs(UI.ConcentrationBars()) do
 		local g = by[b.key]
 		if not g then g = { char = b.char, class = b.class, list = {} }; by[b.key] = g; order[#order + 1] = g end
 		g.list[#g.list + 1] = b
 	end
+	local function az(a, b) local x, y = (a or ""):lower(), (b or ""):lower(); if x ~= y then return x < y end return (a or "") < (b or "") end
+	table.sort(order, function(a, b) return az(a.char, b.char) end)
+	for _, g in ipairs(order) do table.sort(g.list, function(a, b) return az(a.prof, b.prof) end) end
 	local n = #order
 	-- right of the help line's text (not its 300 wide box), clear of the resize grip
 	local help = frame.foot and frame.foot.GetStringWidth and frame.foot:GetStringWidth()
@@ -1025,7 +1028,7 @@ function UI.RenderConcFooter()
 		if g then
 			s:ClearAllPoints()
 			s:SetSize(w, 16)
-			s:SetPoint("BOTTOMRIGHT", -28 - (i - 1) * (w + UI.CONC_GAP), 5)
+			s:SetPoint("BOTTOMRIGHT", -28 - (n - i) * (w + UI.CONC_GAP), 5) -- the first name leftmost
 			s.name:ClearAllPoints(); s.name:SetPoint("LEFT", s, "LEFT", 0, 0); s.name:SetWidth(nameW)
 			-- the name, cut to the room it has (the tooltip has it whole)
 			local nm = g.char
