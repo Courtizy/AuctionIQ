@@ -485,11 +485,25 @@ P.stats = { evals = 0 }
 -- Gold a day for a set of recipes at these ranks. Each recipe sells only so many a day (its demand):
 -- plain crafts fill it, and a day's Concentration goes to the crafts where it adds the most gold per
 -- point over the plain craft it replaces, never more crafts than the demand.
-local function value(ctx, ranks)
+--
+-- The planner tries every node at every step, and a node changes only the recipes under it. So a
+-- try passes the node it raised (changed): recipes not under it keep the answer they had at the
+-- ranks before (ctx.cur, set by the last full call), and the try builds no per-recipe table, only
+-- the total. A full call (no changed) works out every recipe and returns the per-recipe table.
+local function value(ctx, ranks, changed)
 	if ctx.yield then return yieldValue(ctx, ranks) end
-	local total, concBest, per, swaps = 0, 0, {}, {}
+	local touched = changed and ctx.cur and CH.Spec.NodeRecipes(ctx.prof, changed) or nil
+	local cur = ctx.cur
+	local full = not touched
+	local nowRecs = full and {} or nil
+	local total, concBest, per = 0, 0, full and {} or nil
+	-- swap entries are reused from try to try: the planner makes thousands of tries
+	local swaps, pool, nsw = ctx.swaps or {}, ctx.swapPool or {}, 0
+	ctx.swaps, ctx.swapPool = swaps, pool
 	for _, id in ipairs(ctx.recipes) do
-		local r = evaluate(ctx, ranks, id)
+		local r
+		if touched and not touched[id] and cur[id] ~= nil then r = cur[id] else r = evaluate(ctx, ranks, id) end
+		if nowRecs then nowRecs[id] = r end
 		if r then
 			local crafts = r.crafts
 			local plain = r.profit and r.profit > 0 and r.profit or 0
@@ -498,12 +512,19 @@ local function value(ctx, ranks)
 			if r.perPoint and r.perPoint > concBest then concBest = r.perPoint end
 			local pc = r.conc
 			if r.concProfit and pc and pc > 0 and r.concProfit > plain and crafts > 0 then
-				swaps[#swaps + 1] = { gain = (r.concProfit - plain) / pc, points = pc, crafts = crafts }
+				nsw = nsw + 1
+				local w = pool[nsw]
+				if not w then w = {}; pool[nsw] = w end
+				w.gain, w.points, w.crafts = (r.concProfit - plain) / pc, pc, crafts
+				swaps[nsw] = w
 			end
-			per[id] = { quality = r.quality, profit = r.profit, perPoint = r.perPoint, perDay = g, name = r.name,
-				conc = pc, concQ = r.concQ, cost = r.cost, crafts = crafts, item = r.item }
+			if per then
+				per[id] = { quality = r.quality, profit = r.profit, perPoint = r.perPoint, perDay = g, name = r.name,
+					conc = pc, concQ = r.concQ, cost = r.cost, crafts = crafts, item = r.item }
+			end
 		end
 	end
+	for i = nsw + 1, #swaps do swaps[i] = nil end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
 	local left, concDay = CH.CONC_PER_HOUR * 24, 0
 	for _, w in ipairs(swaps) do
@@ -511,6 +532,7 @@ local function value(ctx, ranks)
 		local n = math.min(w.crafts, left / w.points)
 		concDay, left = concDay + n * w.points * w.gain, left - n * w.points
 	end
+	if nowRecs then ctx.cur = nowRecs end
 	return total + concDay, per, concBest, total
 end
 
@@ -633,10 +655,10 @@ function P.Plan(opts)
 					if to then
 						local from = ranks[nodeID]
 						ranks[nodeID] = to
-						local v, per = value(ctx, ranks)
+						local v = value(ctx, ranks, nodeID)
 						ranks[nodeID] = from
 						local gain = (v - now) / c
-						if not best or gain > best.rate then best = { node = nodeID, from = from, to = to, cost = c, rate = gain, v = v, per = per } end
+						if not best or gain > best.rate then best = { node = nodeID, from = from, to = to, cost = c, rate = gain, v = v } end
 						if not opts.sync then coroutine.yield() end
 					end
 				end
@@ -644,6 +666,8 @@ function P.Plan(opts)
 			if not best or best.rate <= 0 then break end
 			ranks[best.node] = best.to
 			left = left - best.cost
+			-- the step's full answer (and the recipes' answers the next tries build on)
+			best.v, best.per = value(ctx, ranks)
 			local changes = {}
 			for id, p in pairs(best.per) do
 				local o = nowPer[id]

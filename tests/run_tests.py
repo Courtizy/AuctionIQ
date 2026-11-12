@@ -507,6 +507,11 @@ check("spec: tree read with ranks, perks and parents", tree.nodes[900].rank == 0
 ranks = L.eval("{ [900] = 12, [901] = 3 }")
 d = CH.Spec.Delta(2906, tree, ranks, 11)
 check("spec: delta for a recipe at other ranks", d.skill == 12 and d.multicraft == 50 and abs(d.mcExtra - 0.25) < 1e-9 and d.resourcefulness == 30)
+cs = CH.Spec.CurrentStats(2906, tree, 11)
+rs = CH.Spec.RecipeStats(2906, tree, CH.Spec.Ranks(tree), 11)
+check("spec: current stats match RecipeStats at the tree's ranks, worked out once per tree",
+      all((cs[k] or 0) == (rs[k] or 0) for k in ("skill", "multicraft", "resourcefulness", "ingenuity", "mcExtra", "resExtra", "refundExtra", "concReduce"))
+      and L.eval("function(t) local S = AuctionIQ.Spec; local a = S.CurrentStats(2906, t, 11); return a == S.CurrentStats(2906, t, 11) and a ~= S.CurrentStats(2906, S.Read(2906), 11) end")(tree))
 check("goal text matches recipes by category", list(CH.Paths.Match("I want to sell potions")[0].values()) == [11]
       and list(CH.Paths.Match("flasks")[0].values()) == [10])
 plan = CH.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))

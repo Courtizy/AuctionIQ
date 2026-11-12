@@ -179,3 +179,16 @@ check("data addons: each profession's TOC loads on demand, after AuctionIQ, and 
       all("## LoadOnDemand: 1" in (d / (d.name + ".toc")).read_text() and "## Dependencies: AuctionIQ" in (d / (d.name + ".toc")).read_text()
           and all((d / l.strip()).exists() for l in (d / (d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua"))
           for d in (ROOT / "Professions").glob("AuctionIQ_*")))
+
+# The generated data writes each distinct node list once (as P[n]) and the recipes share it: most
+# recipes in a profession use the same few lists, so this keeps the data about a third smaller.
+sh = L.eval("""(function()
+  local lists, recipes = 0, 0
+  for _, data in pairs(STUB.freshSpec or {}) do
+    local seen = {}
+    for _, list in pairs(data.recipes) do recipes = recipes + 1; if not seen[list] then seen[list] = true; lists = lists + 1 end end
+  end
+  return lists, recipes end)()""")
+check(f"spec data: {sh[1]} recipes share {sh[0]} node lists, each written once",
+      sh[0] > 0 and sh[0] * 3 < sh[1]
+      and all((d / "Spec.lua").read_text().count("local P = {") == 1 for d in (ROOT / "Professions").glob("AuctionIQ_*")))

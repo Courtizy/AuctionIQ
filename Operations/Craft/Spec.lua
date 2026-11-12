@@ -147,9 +147,33 @@ function S.RecipeStats(professionID, tree, ranks, recipeID)
 	return out
 end
 
+-- What the tree gives each recipe at the tree's own ranks, worked out once per tree: a tree is read
+-- fresh whenever its ranks can have changed (S.Tree re-reads after a rank or currency event, or after
+-- a few seconds), and is never changed after S.Read builds it, so its identity is the cache key.
+-- A recipe scan asks for every recipe, and the Advisor for each one again when you open it.
+local current = setmetatable({}, { __mode = "k" })
+local NO_RANKS = {}
+
+--- RecipeStats at the tree's current ranks, cached by tree. Shared: read it, don't change it.
+function S.CurrentStats(professionID, tree, recipeID)
+	-- no tree, or its profession's data not loaded yet: nothing to keep (the answer would change)
+	if not (tree and S.Data(professionID)) then return S.RecipeStats(professionID, tree, NO_RANKS, recipeID) end
+	local byRecipe = current[tree]
+	if not byRecipe or byRecipe.prof ~= professionID then
+		byRecipe = { prof = professionID }
+		current[tree] = byRecipe
+	end
+	local s = byRecipe[recipeID]
+	if not s then
+		s = S.RecipeStats(professionID, tree, NO_RANKS, recipeID)
+		byRecipe[recipeID] = s
+	end
+	return s
+end
+
 --- Change in a recipe's stats if the tree had these ranks instead of the current ones.
 function S.Delta(professionID, tree, ranks, recipeID)
-	local now = S.RecipeStats(professionID, tree, S.Ranks(tree), recipeID)
+	local now = S.CurrentStats(professionID, tree, recipeID)
 	local sim = S.RecipeStats(professionID, tree, ranks, recipeID)
 	return CH.Stats.Diff(sim, now)
 end

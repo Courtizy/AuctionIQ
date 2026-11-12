@@ -373,7 +373,7 @@ function A.Measure(recipeID, opts)
 	local tree = profID and CH.Spec and CH.Spec.Tree(profID)
 	model.tree = tree
 	if tree then
-		local s = CH.Spec.RecipeStats(profID, tree, CH.Spec.Ranks(tree), recipeID)
+		local s = CH.Spec.CurrentStats(profID, tree, recipeID)
 		model.stats0.mcExtra, model.stats0.resExtra = s.mcExtra, s.resExtra
 		model.stats0.refundExtra, model.stats0.concReduce = s.refundExtra, s.concReduce
 	end

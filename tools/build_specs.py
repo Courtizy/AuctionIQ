@@ -183,10 +183,28 @@ def ser(v):
     return "{" + ",".join(parts) + "}"
 
 
+def shared_recipes(recipes):
+    """Recipes mostly share their node lists (Alchemy: 80 recipes, 12 lists). Writes each distinct
+    list once, as P[n], and the recipes point at them: the same data in about a third less memory.
+    The lists are read, never changed, so sharing them is safe."""
+    lists, index = [], {}
+    refs = {}
+    for rid in sorted(recipes):
+        key = tuple(recipes[rid])
+        if key not in index:
+            lists.append(list(key))
+            index[key] = len(lists)
+        refs[rid] = index[key]
+    head = "local P = {\n" + "".join(f" {ser(l)},\n" for l in lists) + "}\n"
+    body = "{" + ",".join(f"[{rid}]=P[{refs[rid]}]" for rid in sorted(refs)) + "}"
+    return head, body
+
+
 def write(data):
     for name, (line, nodes, recipes) in data.items():
-        body = "local CH = AuctionIQ\nCH.SpecData = CH.SpecData or {}\n"
-        body += f'CH.SpecData[{line}] = {{ name = "{name}",\n recipes = {ser(recipes)},\n nodes = {ser(nodes)},\n}}\n'
+        lists, refs = shared_recipes(recipes)
+        body = "local CH = AuctionIQ\nCH.SpecData = CH.SpecData or {}\n" + lists
+        body += f'CH.SpecData[{line}] = {{ name = "{name}",\n recipes = {refs},\n nodes = {ser(nodes)},\n}}\n'
         (OUT / f"AuctionIQ_{name}" / "Spec.lua").write_text(HEAD + body, encoding="utf-8")
         print(f"{name}: {len(nodes)} nodes, {len(recipes)} recipes")
 
