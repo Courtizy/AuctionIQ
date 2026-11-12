@@ -1,6 +1,8 @@
 -- Forecast vs actual: every craft saves what the advisor expected (cost, sale price, profit), later
 -- sales are matched to those crafts oldest first, and each item's record says how far its real sale
--- prices land from the forecast. The crafting advisor shades an item's expected sale price by that
+-- prices land from the forecast. Only crafted units are credited: stock you held before a craft and
+-- stock you bought afterwards are counted as selling first (see match below), so a resold stack
+-- never lifts a batch. The crafting advisor shades an item's expected sale price by that
 -- record, so items that keep falling short drop down the scan.
 local _, CH = ...
 
@@ -19,12 +21,13 @@ local function store()
 end
 Fc.Store = store
 
-local cache, cacheAt
+local cache, cacheAt, otherCache
 
 function Fc.Clear() cache, cacheAt = nil, nil end
 
 --- Save one craft: item made, how many, and the forecast at that moment. f = { cost (the whole
---- craft's reagents), profit (the advisor's expected profit for the craft), concentration }.
+--- craft's reagents), profit (the advisor's expected profit for the craft), concentration, held
+--- (how many of the item you held before the run of crafts this one starts) }.
 function Fc.Record(itemID, qty, f)
 	if not itemID or not qty or qty <= 0 then return nil end
 	f = f or {}
@@ -36,7 +39,7 @@ function Fc.Record(itemID, qty, f)
 	end
 	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
 		cost = cost, expectEach = value and value * CH.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
-		recipe = f.recipeID }
+		recipe = f.recipeID, held = f.held }
 	-- the batch decision this craft fills, if you queued one for this item on this character
 	local d = Fc.OpenDecision(itemID, b.char, b.at)
 	if d then
@@ -171,6 +174,14 @@ end
 
 -- Match sales to crafts, oldest first per item. Each batch gets sold, revenue (after the cut),
 -- and saleDays (sum over units of days from craft to sale).
+--
+-- Only crafted units are credited. Per item, in time order, AuctionIQ keeps a count of stock that
+-- isn't a batch's: what you held before a run of crafts (its first craft's `held`, less the units
+-- of earlier batches still unsold) and what you bought after the item's first batch (TSM's buys).
+-- A sale comes out of that stock first, then the batches oldest first. Which unit really sold
+-- can't be known, so this is the cautious reading: a batch is credited only with sales the other
+-- stock can't account for. Fc.OtherSold says how many went to other stock.
+-- Batches saved before `held` was recorded have no snapshot; for those only later buys count.
 local function match()
 	local now = time()
 	if cache and cacheAt and now - cacheAt < 60 then return cache end
@@ -181,38 +192,69 @@ local function match()
 		table.insert(byItem[b.id], b)
 	end
 	for _, list in pairs(byItem) do table.sort(list, function(a, c) return a.at < c.at end) end
-	local sales = {}
+	local otherSold = {}
+	-- one timeline per item: buys add other stock, a batch's snapshot resets it, sales take from it first
+	local events = {}
+	local function add(id, e) local t = events[id]; if not t then t = {}; events[id] = t end; t[#t + 1] = e end
 	if CH.Ledger and CH.Ledger.Available() then
 		for _, s in ipairs(CH.Ledger.Records("Sales")) do
-			if s.id and byItem[s.id] and s.quantity > 0 then table.insert(sales, s) end
+			if s.id and byItem[s.id] and s.quantity > 0 then add(s.id, { t = s.time, k = 3, s = s }) end
+		end
+		for _, r in ipairs(CH.Ledger.Records("Buys")) do
+			if r.id and byItem[r.id] and (r.quantity or 0) > 0 then add(r.id, { t = r.time, k = 1, n = r.quantity }) end
 		end
 	end
-	table.sort(sales, function(a, c) return a.time < c.time end)
-	-- a cursor per item skips batches already sold out, so the pass is about sales + batches
-	local cursor = {}
-	for _, s in ipairs(sales) do
-		local left = s.quantity
-		local each = CH.Ledger.Net(s) / s.quantity
-		local list = byItem[s.id]
-		local i = cursor[s.id] or 1
-		while list[i] and list[i].sold >= list[i].qty do i = i + 1 end
-		cursor[s.id] = i
-		for k = i, #list do
-			local b = list[k]
-			if left <= 0 or b.at > s.time then break end -- batches are oldest first: later ones aren't made yet
-			if b.sold < b.qty then
-				local n = math.min(left, b.qty - b.sold)
-				b.sold = b.sold + n
-				b.revenue = b.revenue + each * n
-				b.saleDays = b.saleDays + n * (s.time - b.at) / DAY
-				b.lastSale = s.time
-				left = left - n
+	for id, list in pairs(byItem) do for _, b in ipairs(list) do add(id, { t = b.at, k = 2, b = b }) end end
+	for id, ev in pairs(events) do
+		-- same second: a buy, then the craft, then a sale
+		table.sort(ev, function(a, c) if a.t ~= c.t then return a.t < c.t end return a.k < c.k end)
+		local list = byItem[id]
+		local other, started, i = 0, false, 1 -- other stock; any batch yet; first batch with units left
+		for _, e in ipairs(ev) do
+			if e.k == 1 then
+				if started then other = other + e.n end
+			elseif e.k == 2 then
+				local b = e.b
+				if b.held then
+					local unsold = 0
+					for _, x in ipairs(list) do
+						if x == b then break end
+						unsold = unsold + (x.qty - x.sold)
+					end
+					other = math.max(0, b.held - unsold)
+				end
+				started = true
+			elseif started then
+				local s = e.s
+				local left = s.quantity
+				local each = CH.Ledger.Net(s) / s.quantity
+				local skip = math.min(left, other)
+				other, left = other - skip, left - skip
+				otherSold[id] = (otherSold[id] or 0) + skip
+				while list[i] and list[i].sold >= list[i].qty do i = i + 1 end
+				for k = i, #list do
+					local b = list[k]
+					if left <= 0 or b.at > s.time then break end -- batches are oldest first: later ones aren't made yet
+					if b.sold < b.qty then
+						local n = math.min(left, b.qty - b.sold)
+						b.sold = b.sold + n
+						b.revenue = b.revenue + each * n
+						b.saleDays = b.saleDays + n * (s.time - b.at) / DAY
+						b.lastSale = s.time
+						left = left - n
+					end
+				end
+				-- what no batch or known stock accounts for (stock TSM never logged) goes to other stock too
+				if left > 0 then otherSold[id] = (otherSold[id] or 0) + left end
 			end
 		end
 	end
-	cache, cacheAt = byItem, now
+	cache, cacheAt, otherCache = byItem, now, otherSold
 	return byItem
 end
+
+--- Units of an item that sold out of stock you held or bought rather than a batch (match above).
+function Fc.OtherSold(id) match(); return otherCache and otherCache[id] or 0 end
 
 --- Batches of one item, oldest first, with what has sold of each.
 function Fc.Batches(id) return match()[id] or {} end

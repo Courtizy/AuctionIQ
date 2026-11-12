@@ -89,6 +89,22 @@ end
 local expect
 function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, profit = e.profit, name = e.name, item = e.item } or nil end
 
+-- How many of each item the craft can make you already hold, before it starts (all characters,
+-- the bank, mail and the AH, as Par.Held counts them), so the batch's results can leave that
+-- stock's sales out. The item a craft makes depends on its quality, so every quality's item.
+local function heldBefore(recipeID, r, q)
+	local ids = {}
+	if q and q.item then ids[q.item] = true end
+	for _, row in ipairs(r and r.rows or {}) do if row.item then ids[row.item] = true end end
+	local s = C_TradeSkillUI and C_TradeSkillUI.GetRecipeSchematic and C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+	if s and s.outputItemID then ids[s.outputItemID] = true end
+	local out = {}
+	local held = CH.Par and CH.Par.Held
+	if not held then return out end
+	for id in pairs(ids) do local ok, n = pcall(held, id); if ok and n then out[id] = n end end
+	return out
+end
+
 function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	local q = expect
 	expect = nil
@@ -96,7 +112,8 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	if r and r.recipeID ~= recipeID then r = nil end
 	-- a queued craft brings its own forecast: the card may be on another recipe, or on another mix
 	if q and q.recipeID == recipeID and not orderID then
-		pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate, expected = q.profit, cost = q.cost, name = q.name or (r and r.name) }
+		pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate, expected = q.profit, cost = q.cost, name = q.name or (r and r.name),
+			held = heldBefore(recipeID, r, q) }
 		return
 	end
 	local row
@@ -116,7 +133,8 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		items = row and CH.Decide and CH.Decide.Items(r.made, row.parts) or nil, expSaved = row and row.parts and row.parts.resGold or nil,
 		unit = row and row.unit or nil,
 		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
-		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil }
+		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil,
+		held = not order and heldBefore(recipeID, r, nil) or nil }
 end
 
 --- The craft just started, as logged (for tests and the results window).
@@ -169,8 +187,12 @@ function Lg.Result(data)
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
 	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
 	if CH.Forecast and data.itemID and not (pending and pending.order) then
+		-- what you held before this run of crafts: kept on its first craft only (the run's later crafts
+		-- add to it, and they are batches of their own)
+		local held = pending and pending.held and pending.held[data.itemID]
+		if held then pending.held[data.itemID] = nil end
 		CH.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
-			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID })
+			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID, held = held })
 	end
 	if pending then
 		e.cost = e.cost + (pending.cost or 0)
