@@ -23,37 +23,24 @@ makes you a better goblin.
 
 ## Features
 
-- **One window, four tabs**: everything a gold-maker needs, from the first scan to the final tally
-- **Know what's worth crafting**: every recipe ranked by profit, Concentration included
-- **Compare reagent costs**: the advisor looks for the cheapest mix for each quality
+- **One window, three tabs**: everything a gold-maker needs, from the first scan to the final tally
+- **Know what's worth crafting**: every recipe ranked by profit, Concentration included, for the expansion the profession window has open
+- **A craft card beside the profession window**: the best quality to aim for, an on/off Concentrate switch, work orders and the queue
+- **Compare reagent costs**: the advisor looks for the cheapest mix for each quality, priced from the AH listings you've seen, the same way the shopping list prices them
 - **Know where an estimate breaks**: break-even sale price per item, a downside scenario, what Concentration adds over the plain craft per point, and what each sales estimate rests on
 - **Analyze a batch**: the chance a week's sales pay back 10, 30 or 100 crafts, the cash that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
-- **A plan for every knowledge point**, drawn right on your profession trees
+- **Specialization presets**: a ready-made build for each thing a profession sells (Light or Void potions, Flasks, Disenchanting...), tested in market simulations on your own prices
+- **A tree calculator**: click nodes to try points of your own and see what they bring, with the weekly knowledge checklist one click away
 - **Plan crafting, shopping and auctions** across your warband
-- **Compare price sources**: your own AH scans side by side with TSM and Oribos Exchange
-- **Track sales, costs and estimated profit**, with 7, 30 and 90 day reports
+- **Track sales, costs and estimated profit**: statements and a full ledger
+- **Light on memory**: each profession's data loads only on characters that have it, and saved data nothing uses is cleared at logout
 
 | | The question it answers | Inside |
 |---|---|---|
 | <img src="Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What should I do next? | Next Move, Concentration, stock and work that needs you |
-| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Craft, Trade, Queue |
-| <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Overview, Revenue, Expenses, Profit, Performance |
-
-## Look and branding
-
-AuctionIQ is styled after [ToxiUI](https://toxiui.com)'s Dark look: graphite panels, black borders,
-soft shadows and Montserrat titles. Every title bar carries the brand, **AUCTIONIQ**,
-with the IQ in the theme colour.
-
-| You run | Theme colour (IQ, accent, active tab, selection) | Progress bars |
-|---|---|---|
-| ToxiUI | ToxiUI's theme colour, so it changes with your class as you swap characters (pink on a Paladin, blue on a Mage) | ToxiUI's class gradient, from its own settings |
-| ElvUI | ElvUI's value colour | A shade of that colour into it |
-| Neither | AuctionIQ blue `#3fc7eb` | AuctionIQ blue's gradient, `#0080d7` to `#00d8ff` |
-
-The Accounting tab keeps its plum and parchment, with the brand's IQ still in the theme colour.
-`/aiq theme` also takes ElvUI's backdrop and border colours. The full palette is in [THEME.md](THEME.md).
+| <img src="Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Craft (Compare crafts, Specialization), Trade (Ready to post, rules), Queue (queue, shopping, restock) |
+| <img src="Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger |
 
 ## AddOns
 
@@ -65,7 +52,9 @@ for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/
 1. Download the zip from [Releases](https://github.com/Courtizy/AuctionIQ/releases), or for now
    **Code > Download ZIP** on this page.
 2. Unzip it into `World of Warcraft\_retail_\Interface\AddOns` and make sure the folder is named
-   `AuctionIQ` (rename `AuctionIQ-main` if that's what you got).
+   `AuctionIQ` (rename `AuctionIQ-main` if that's what you got). From the code zip, also move each
+   folder in `AuctionIQ\Professions` (`AuctionIQ_Alchemy` and so on) up into `AddOns`; the release zip
+   already has them there.
 3. Log in and open each profession window once, so AuctionIQ learns your recipes.
 4. Type `/aiq` to open AuctionIQ. For crafting, open a profession and type `/aiq scan` to get started.
 
@@ -78,6 +67,9 @@ for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/
 `/aiq scan` - rank every recipe of the open profession<br>
 `/aiq basis` - cost reagents at replacement (chmat), TSM's material cost or what you paid<br>
 `/aiq plan <goal>` - knowledge point plan, e.g. `/aiq plan potions`<br>
+`/aiq settings` - open Settings<br>
+`/aiq cleanup` - clear saved data nothing uses (it also runs at logout)<br>
+`/aiq perf` - memory and time per event, for reporting slowness<br>
 `/aiq minimap` - hide or show the minimap button
 
 ## Roadmap
@@ -92,8 +84,9 @@ See the [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 Plain Lua, no libraries. The folders follow the tabs: `Dashboard`; `Operations` with `Craft` (advisor,
 scans, specializations, plans), `Trade` (posting, groups, markets) and `Queue` (queue, work orders,
 shopping, cooldowns); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
-settings, theme, windows, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
-statistics) sit underneath them. The look is described in [THEME.md](THEME.md).
+settings, theme, windows, cleanup, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
+statistics) sit underneath them. `Professions` holds one load-on-demand addon per profession
+(`AuctionIQ_Alchemy` and so on) with its specialization data.
 
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.
