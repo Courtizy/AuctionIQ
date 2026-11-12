@@ -104,20 +104,32 @@ local function build(now)
 	end
 	local F = L and L.F
 	local fid, fq, ft = F and F.id, F and F.quantity, F and F.time
-	for _, s in ipairs(sales or {}) do
+	-- only the window's records: each kind in time order, from the window's first day
+	local function window(kind)
+		if not avail then return {}, 1 end
+		local list = L.ByTime(kind)
+		return list, L.From(list, from * DAY)
+	end
+	local sl, si = window("Sales")
+	for i = si, #sl do
+		local s = sl[i]
 		local id, q, t = s[fid], s[fq], s[ft]
 		local day = t and math.floor(t / DAY)
-		if id and q and q > 0 and day and day >= from and day <= d then
+		if day and day > d then break end
+		if id and q and q > 0 and day and day >= from then
 			local e = item(id)
 			e.sold = e.sold + q
 			listedOn(e, day)
 		end
 	end
-	for _, list in ipairs({ expired or {}, cancelled or {} }) do
-		for _, r in ipairs(list) do
+	for _, kind in ipairs({ "Expired", "Cancelled" }) do
+		local list, start = window(kind)
+		for i = start, #list do
+			local r = list[i]
 			local id, t = r[fid], r[ft]
 			local day = t and math.floor(t / DAY)
-			if id and day and day >= from and day <= d then listedOn(item(id), day) end
+			if day and day > d then break end
+			if id and day and day >= from then listedOn(item(id), day) end
 		end
 	end
 	if CH.db and CH.db.exposure then

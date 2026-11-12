@@ -164,6 +164,12 @@ statistics) sit underneath them. `Professions` holds one load-on-demand addon pe
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.
 
+**Benchmarks:** `python3 tests/bench.py --quick` times scans, the advisor, the ledger and the Dashboard
+in the same harness (relative costs, not in-game frame times). TSM's records are read through a
+time-ordered view kept until they change (`Ledger.ByTime`, `Ledger.From`), so a range reads only the
+records in it. Login's warm-up (`Ledger.WarmAll`) parses them, orders them, builds the day archive and
+the indexes a few milliseconds a frame, so the Dashboard's first open finds them ready.
+
 **Releases:** tagging `v*` builds a release with the BigWigs packager.
 
 </details>

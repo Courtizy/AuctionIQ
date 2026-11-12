@@ -2927,6 +2927,195 @@ run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = [[itemStrin
 p2 = L.eval("(function() for _, r in ipairs(AuctionIQ.Ledger.Records('Sales')) do if r.id == 952 then return r.price end end end)()")
 check("ledger: an edited record of the same length is read again", p1 == 10000 and p2 == 90000)
 run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = STUB.oldSales; AuctionIQ.Ledger.ClearStats()""")
+# 6. ranges read from a time-ordered view: the same answers as walking every record, on records
+# in TSM's order, in reverse and shuffled (with ties), and the login work spread across frames
+run("""STUB.ledgerKeep = {}
+STUB.clockKeep = debugprofilestop
+debugprofilestop = function() return os.clock() * 1000 end
+for _, k in ipairs({ "Sales", "Buys", "Expired", "Cancelled", "Income", "Expense" }) do
+  local key = "r@Emerald Dream@internalData@csv" .. k
+  STUB.ledgerKeep[key] = TradeSkillMasterDB[key]
+end
+STUB.daysKeep = AuctionIQ.db.ledger and AuctionIQ.db.ledger.days
+function STUB.synthLedger(order)
+  math.randomseed(11)
+  local chars = { "Courtizy", "Luxaren", "Verathis" }
+  local s, b, e, c, inc, ex = {}, {}, {}, {}, {}, {}
+  for i = 1, 1500 do
+    local t = STUB.now - math.random(0, 120 * 24) * 3600 - (i % 3) * 5
+    s[#s + 1] = { t, string.format("i:%d,1,%d,%d,Buyer,%s,%d,%s", 300 + i % 40, 1 + i % 4, 1000 + (i * 37) % 90000, chars[1 + i % 3], t, i % 9 == 0 and "Vendor" or "Auction") }
+  end
+  for i = 1, 600 do
+    local t = STUB.now - math.random(0, 120 * 24) * 3600
+    b[#b + 1] = { t, string.format("i:%d,1,%d,%d,Seller,%s,%d,%s", 300 + i % 40, 1 + i % 3, 500 + i, chars[1 + i % 3], t, i % 5 == 0 and "Vendor" or "Auction") }
+    e[#e + 1] = { t - 60, string.format("i:%d,1,%d,%s,%d", 300 + i % 40, 1 + i % 2, chars[1 + i % 3], t - 60) }
+    c[#c + 1] = { t - 90, string.format("i:%d,1,1,%s,%d", 300 + i % 40, chars[1 + i % 3], t - 90) }
+    inc[#inc + 1] = { t, string.format("Quest,%d,%s,%s,%d", 100 + i, i % 7 == 0 and "Luxaren" or "Merchant", chars[1 + i % 3], t) }
+    ex[#ex + 1] = { t, string.format("Repair,%d,%s,%s,%d", 50 + i, i % 6 == 0 and "Verathis" or "Merchant", chars[1 + i % 3], t) }
+  end
+  local function csv(head, rows)
+    if order == "asc" then table.sort(rows, function(x, y) return x[1] < y[1] end)
+    elseif order == "desc" then table.sort(rows, function(x, y) return x[1] > y[1] end) end
+    local out = { head }
+    for _, r in ipairs(rows) do out[#out + 1] = r[2] end
+    return table.concat(out, "\\n")
+  end
+  local R = "r@Emerald Dream@internalData@csv"
+  TradeSkillMasterDB[R .. "Sales"] = csv("itemString,stackSize,quantity,price,otherPlayer,player,time,source", s)
+  TradeSkillMasterDB[R .. "Buys"] = csv("itemString,stackSize,quantity,price,otherPlayer,player,time,source", b)
+  TradeSkillMasterDB[R .. "Expired"] = csv("itemString,stackSize,quantity,player,time", e)
+  TradeSkillMasterDB[R .. "Cancelled"] = csv("itemString,stackSize,quantity,player,time", c)
+  TradeSkillMasterDB[R .. "Income"] = csv("type,amount,otherPlayer,player,time", inc)
+  TradeSkillMasterDB[R .. "Expense"] = csv("type,amount,otherPlayer,player,time", ex)
+  AuctionIQ.Ledger.ClearStats()
+end
+-- references: every record, the way these were computed before the time-ordered view
+function STUB.refSaleTimes(since, char)
+  local t = {}
+  for _, s in ipairs(AuctionIQ.Ledger.Records("Sales")) do
+    if s.id and s.time >= since and (not char or s.player == char) then
+      local x = t[s.id] or { sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = x
+      local d = date("*t", s.time)
+      x.sold, x.gold = x.sold + s.quantity, x.gold + s.amount
+      x.days[d.wday] = (x.days[d.wday] or 0) + s.quantity
+      x.hours[d.hour] = (x.hours[d.hour] or 0) + s.quantity
+    end
+  end
+  return t
+end
+function STUB.sameSaleTimes(since, char)
+  local ref, n = STUB.refSaleTimes(since, char), 0
+  for _, e in ipairs(AuctionIQ.Ledger.SaleTimes(since, char)) do
+    local r = ref[e.id]
+    if not r or r.sold ~= e.sold or r.gold ~= e.gold then return false end
+    for d = 1, 7 do if (r.days[d] or 0) ~= (e.days[d] or 0) then return false end end
+    for h = 0, 23 do if (r.hours[h] or 0) ~= (e.hours[h] or 0) then return false end end
+    n = n + 1
+  end
+  for _ in pairs(ref) do n = n - 1 end
+  return n == 0
+end
+function STUB.refCash(from, to)
+  local L, inc = AuctionIQ.Ledger, AuctionIQ.Ledger.Included
+  local own = {}; for _, c in ipairs(L.Characters()) do own[c.name] = true end
+  local function ok(r) return r.time >= from and r.time < to + 1 and (not r.player or inc(r.player)) end
+  local a, o, i, b, x = 0, 0, 0, 0, 0
+  for _, r in ipairs(L.Records("Sales")) do if ok(r) then if r.source == nil or r.source == "Auction" then a = a + L.Net(r) else o = o + L.Net(r) end end end
+  for _, r in ipairs(L.Records("Income")) do if ok(r) and not own[r.other] then i = i + r.amount end end
+  for _, r in ipairs(L.Records("Buys")) do if ok(r) then b = b - r.amount end end
+  for _, r in ipairs(L.Records("Expense")) do if ok(r) and not own[r.other] then x = x - r.amount end end
+  return a, o, i, b, x
+end
+function STUB.sameCash(from, to)
+  local c = AuctionIQ.Statements.Cash(from, to)
+  local a, o, i, b, x = STUB.refCash(from, to)
+  local function near(p, q) return math.abs(p - q) < 1e-6 * math.max(1, math.abs(q)) end
+  return near(c.inflows.auction, a) and near(c.inflows.other, o) and c.inflows.income == i and c.outflows.buys == b and c.outflows.expenses == x
+end
+function STUB.sameDashboard()
+  local now = STUB.now
+  for _, r in ipairs({ "1D", "1W", "1M", "3M", "1Y", "All" }) do
+    AuctionIQ.UI.SetRange(r)
+    local d = AuctionIQ.UI.DashboardData(now)
+    local since = d.since
+    local first, top, topB, spent = now, 0, 0, {}
+    for _, s in ipairs(AuctionIQ.Ledger.Records("Sales")) do if s.time < first then first = s.time end end
+    for _, s in ipairs(AuctionIQ.Ledger.Records("Sales")) do if s.time >= since and s.amount > top then top = s.amount end end
+    for _, s in ipairs(AuctionIQ.Ledger.Records("Buys")) do
+      if s.time >= since then if s.amount > topB then topB = s.amount end; if s.id then spent[s.id] = (spent[s.id] or 0) + s.amount end end
+    end
+    local bi, bv = nil, 0
+    for id, v in pairs(spent) do if v > bv then bi, bv = id, v end end
+    if r == "All" and since ~= first then return false, r end
+    if d.topSale ~= top or d.topBuy ~= topB or d.topSpentItem ~= bi then return false, r end
+  end
+  AuctionIQ.UI.SetRange("1M")
+  return true
+end
+function STUB.sameDays(a, b)
+  for k, x in pairs(a) do
+    local y = b[k]
+    if not y or math.abs(x.sales - y.sales) > 1e-6 or x.buys ~= y.buys or x.income ~= y.income or x.expense ~= y.expense or x.sold ~= y.sold then return false end
+    for id, g in pairs(x.items) do if math.abs(g - (y.items[id] or 0)) > 1e-6 then return false end end
+  end
+  for k in pairs(b) do if not a[k] then return false end end
+  return true
+end
+function STUB.sameActivity(limit)
+  local a, b = AuctionIQ.Ledger.ActivityRecent(limit), AuctionIQ.Ledger.ActivityNow(limit)
+  if #a ~= #b then return false end
+  for i = 1, #a do
+    for _, f in ipairs({ "player", "time", "sold", "gold", "expired", "bought", "spent" }) do if a[i][f] ~= b[i][f] then return false, i, f end end
+  end
+  return true
+end""")
+for order in ("asc", "desc", "shuffled"):
+    run(f"STUB.synthLedger('{order}')")
+    bt = L.eval("""(function()
+      local L = AuctionIQ.Ledger
+      local recs, list = L.Records("Sales"), L.ByTime("Sales")
+      local ok = #list == #recs
+      for i = 2, #list do if list[i].time < list[i - 1].time then ok = false end end
+      local n0 = L.sorts; L.ByTime("Sales"); local again = L.sorts == n0
+      return { ok = ok, same = list == recs, again = again }
+    end)()""")
+    check(f"time order ({order}): every record, oldest first, made once per records list"
+          + (" (TSM's own list when already in order)" if order == "asc" else ""),
+          bt.ok and bt.again and (bt.same if order == "asc" else not bt.same))
+    check(f"time order ({order}): sale times by weekday and hour, for any range and character, match every record's own date",
+          all(L.eval(f"STUB.sameSaleTimes(STUB.now - {d} * 86400{c})") for d in (1, 7, 30, 365) for c in ("", ", 'Luxaren'")))
+    check(f"time order ({order}): Cash Flow over a range matches walking every record",
+          all(L.eval(f"STUB.sameCash(STUB.now - {d} * 86400, STUB.now - {e} * 86400)") for d, e in ((1, 0), (7, 0), (30, 0), (90, 30), (400, 0))))
+    check(f"time order ({order}): the Dashboard's first sale, top sale, top buy and most-bought item match, every range", L.eval("STUB.sameDashboard()"))
+    check(f"time order ({order}): Activity reads only the newest records and lists the same visits", L.eval("STUB.sameActivity(40)") and L.eval("STUB.sameActivity(5)") and L.eval("STUB.sameActivity(100000)"))
+    ad = L.eval("""(function()
+      local L = AuctionIQ.Ledger
+      AuctionIQ.db.ledger.days = {}
+      local whole = L.ArchiveJob().step()
+      local copy = {}; for k, v in pairs(whole) do copy[k] = v end
+      AuctionIQ.db.ledger.days = {}
+      local job, steps, days = L.ArchiveJob(), 0, nil
+      repeat days = job.step(0.01); steps = steps + 1 until days or steps > 100000
+      return { same = STUB.sameDays(copy, days), steps = steps }
+    end)()""")
+    check(f"time order ({order}): the archive built a sliver at a time equals the archive built at once", ad.same and ad.steps > 1)
+    sj = L.eval("""(function()
+      local L = AuctionIQ.Ledger
+      local want = L.ByTime("Buys")
+      L.ClearStats()
+      local job, steps, list = L.ByTimeJob("Buys"), 0, nil
+      repeat list = job.step(0.001); steps = steps + 1 until list or steps > 100000
+      if #list ~= #want then return { ok = false } end
+      for i = 1, #list do if list[i].time ~= want[i].time then return { ok = false } end end
+      return { ok = true, steps = steps }
+    end)()""")
+    check(f"time order ({order}): sorting a sliver at a time gives the same order", sj.ok)
+# a stable sort: records with the same time keep TSM's order
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = "itemString,stackSize,quantity,price,otherPlayer,player,time,source\\n"
+  .. "i:1,1,1,1,B,A,50,Auction\\ni:2,1,1,1,B,A,10,Auction\\ni:3,1,1,1,B,A,50,Auction\\ni:4,1,1,1,B,A,30,Auction\\ni:5,1,1,1,B,A,50,Auction"
+AuctionIQ.Ledger.ClearStats()""")
+ids = [r.id for r in L.eval("AuctionIQ.Ledger.ByTime('Sales')").values()]
+check("time order: same-time records keep TSM's order", ids == [2, 4, 1, 3, 5])
+fr = L.eval("(function() local l = AuctionIQ.Ledger.ByTime('Sales'); local F = AuctionIQ.Ledger.From; return { F(l, 0), F(l, 10), F(l, 11), F(l, 50), F(l, 51), F(l, nil) } end)()")
+check("time order: From finds the first record at or after a time", list(fr.values()) == [1, 1, 2, 3, 6, 1])
+# login's warm-up: in frames, then the Dashboard's first open reads only what it needs
+run("STUB.synthLedger('shuffled'); AuctionIQ.db.ledger.days = {}")
+wu = L.eval("""(function()
+  local done, frames, worst = false, 0, 0
+  AuctionIQ.Ledger.FRAME_MS = 0.05
+  AuctionIQ.Ledger.WarmAll(function() done = true end)
+  while not done and frames < 100000 do STUB.RunTimers(); frames = frames + 1 end
+  AuctionIQ.Ledger.FRAME_MS = 6
+  local n0 = AuctionIQ.Ledger.sorts
+  AuctionIQ.Ledger.ByTime("Sales"); AuctionIQ.Ledger.ByTime("Buys")
+  return { done = done, frames = frames, days = next(AuctionIQ.db.ledger.days) ~= nil, sorted = AuctionIQ.Ledger.sorts == n0 }
+end)()""")
+check("login warm-up: time order, archive, activity and demand finish over many short frames, ready for the Dashboard",
+      wu.done and wu.frames > 10 and wu.days and wu.sorted)
+run("""for k, v in pairs(STUB.ledgerKeep) do TradeSkillMasterDB[k] = v end
+if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = STUB.daysKeep or {} end
+AuctionIQ.Ledger.ClearStats(); AuctionIQ.UI.SetRange("1M")
+debugprofilestop = STUB.clockKeep""")
 
 # Shopping: buy the queue's reagents at the AH, quoted first, confirmed on a second click
 run("""STUB.buys = {}

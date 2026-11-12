@@ -156,11 +156,29 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       t0 = os.clock(); AuctionIQ.Decide.Calibration(now); out.calib = (os.clock() - t0) * 1000
       AuctionIQ.db.batchForecasts = nil
       AuctionIQ.UI.SetRange("1M")
+      -- the first open with nothing warmed (the Dashboard opened before login's warm-up ran)
+      if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = {{}} end
+      t0 = os.clock(); AuctionIQ.UI.DashboardData(now); out.dashFirst = (os.clock() - t0) * 1000
+      -- login's warm-up, frame by frame, from freshly parsed records; then the first open
+      AuctionIQ.Ledger.ClearStats(); if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = {{}} end
+      local wworst, wframes, wdone = 0, 0, false
+      AuctionIQ.Ledger.WarmAll(function() wdone = true end)
+      while not wdone and wframes < 10000 do local t1 = os.clock(); STUB.RunTimers(); wworst = math.max(wworst, (os.clock() - t1) * 1000); wframes = wframes + 1 end
+      out.warmWorst, out.warmFrames = wworst, wframes
+      -- the same warm-up's own steps (time order, archive, activity, demand), with the records parsed
+      AuctionIQ.Ledger.ClearStats(); if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = {{}} end
+      for _, k in ipairs(AuctionIQ.Ledger.KINDS) do AuctionIQ.Ledger.Records(k) end
+      wworst, wframes, wdone = 0, 0, false
+      AuctionIQ.Ledger.WarmAll(function() wdone = true end)
+      while not wdone and wframes < 10000 do local t1 = os.clock(); STUB.RunTimers(); wworst = math.max(wworst, (os.clock() - t1) * 1000); wframes = wframes + 1 end
+      out.stepWorst, out.stepFrames = wworst, wframes
       t0 = os.clock(); AuctionIQ.UI.DashboardData(now); out.dashCold = (os.clock() - t0) * 1000
       t0 = os.clock(); for i = 1, 10 do AuctionIQ.UI.DashboardData(now) end; out.dashWarm = (os.clock() - t0) * 100
       local m1 = BENCH_MEM()
       for i = 1, 10 do AuctionIQ.UI.DashboardData(now) end
       out.dashGrowth = BENCH_MEM() - m1
+      t0 = os.clock(); AuctionIQ.Next.List(); out.nextFirst = (os.clock() - t0) * 1000
+      t0 = os.clock(); for i = 1, 5 do AuctionIQ.Next.List() end; out.nextWarm = (os.clock() - t0) * 200
       return out
     end)()""")
     size = f"{n} sales, 5 chars, {r.bytes // 1024} KB csv"
@@ -173,8 +191,15 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     rec("ledger", name, size, "demand index, cold", r.demandCold)
     rec("ledger", name, size, "demand, 1000 estimates warm", r.demandWarm)
     rec("ledger", name, size, "calibration, 200 forecasts", r.calib)
+    rec("ledger", name, size, "login warm-up, worst frame", r.warmWorst)
+    rec("ledger", name, size, "login warm-up, frames", r.warmFrames, "frames")
+    rec("ledger", name, size, "warm-up after parse, worst frame", r.stepWorst)
+    rec("ledger", name, size, "warm-up after parse, frames", r.stepFrames, "frames")
+    rec("ledger", name, size, "dashboard first open, nothing warmed", r.dashFirst)
     rec("ledger", name, size, "dashboard refresh cold", r.dashCold)
     rec("ledger", name, size, "dashboard refresh warm", r.dashWarm)
+    rec("ledger", name, size, "do next list, first", r.nextFirst)
+    rec("ledger", name, size, "do next list, warm", r.nextWarm)
     rec("ledger", name, size, "memory growth, 10 refreshes", r.dashGrowth, "MB")
 
 # 4. Queue and shopping list
