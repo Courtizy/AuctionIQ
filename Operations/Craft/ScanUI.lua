@@ -1184,7 +1184,7 @@ function SUI.RecipePanel(r, n, v)
 			off = not ok and (why:sub(1, 1):upper() .. why:sub(2) .. ".") or nil,
 			run = function() return SUI.QueueSelected(conc, n, r) end }
 	end
-	return { kicker = "CRAFT OR SELL?", title = r.name or "?", sub = verdict, subTip = csTip,
+	return { kicker = "CRAFT OR SELL?", title = r.name or "?", item = r.item or false, sub = verdict, subTip = csTip,
 		figures = figures, bar = cs and math.max(0, math.min(1, cs.craft / math.max(1, cs.craft + cs.sell))) or nil,
 		rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = srows },
 		note = T.Color("muted", HELD_NOTE), actions = { act(false) }, act = act }
@@ -1212,7 +1212,7 @@ function SUI.ConcPanel(r, n)
 		or extra > 0 and T.Color("ok", string.format("Worth it: +%s a craft, %s a point.", M(extra), M(r.gainPerPoint or 0)))
 		or T.Color("bad", "Not worth it: the plain craft earns as much.")
 	local p = SUI.RecipePanel(r, n, "craft")
-	return { kicker = "WORTH THE CONCENTRATION?", title = r.name or "?", sub = verdict,
+	return { kicker = "WORTH THE CONCENTRATION?", title = r.name or "?", item = r.concItem or r.item or false, sub = verdict,
 		figures = { figure("PLAIN", r.profit, plainBook, (r.profit or 0) >= 0 and "ok" or "bad"),
 			figure("WITH CONC.", r.concProfit, concBook, (r.concProfit or 0) >= 0 and "ok" or "bad"),
 			figure("EXTRA/PT", r.gainPerPoint, nil, (r.gainPerPoint or 0) >= 0 and "ok" or "bad") },
@@ -1233,7 +1233,7 @@ function SUI.BuyPanel(r, n)
 		or save > 0 and T.Color("ok", "Buy it: " .. M(save) .. " less than making it.")
 		or T.Color("ok", "Make it: " .. M(-save) .. " less than the cheapest listing.")
 	local p = SUI.RecipePanel(r, n, "craft")
-	return { kicker = "BUY IT OR MAKE IT?", title = r.name or "?", sub = verdict,
+	return { kicker = "BUY IT OR MAKE IT?", title = r.name or "?", item = r.item or false, sub = verdict,
 		figures = { figure("MAKE EACH", bc.craft, acc and (CH.ReagentBook(acc))), figure("BUY EACH", bc.buy),
 			save and { save > 0 and "BUYING SAVES" or "MAKING SAVES", T.Color("ok", M(math.abs(save))) } or { "SAVES", T.Color("muted", "-") } },
 		rows = { { "Resells for, after cut", bc.resell and M(bc.resell) or T.Color("muted", "-") },
@@ -1268,7 +1268,7 @@ function SUI.OrderPanel(d)
 			run = function() return SUI.Claim(d) end }
 	end
 	actions[#actions + 1] = { label = "Open order", tip = "Show it in the game's order window.", run = function() CH.Orders.Open(d.order, d.recipeID) end }
-	return { kicker = "TAKE THIS ORDER?", title = (d.name or "?") .. kpTag(d.kp), sub = verdict,
+	return { kicker = "TAKE THIS ORDER?", title = (d.name or "?") .. kpTag(d.kp), item = d.item or false, sub = verdict,
 		figures = { figure("PAYS", pays, SUI.OrderCellLines(d, 3)), figure("REAGENTS", d.ok and d.cost or nil, d.ok and SUI.OrderCellLines(d, 5) or nil),
 			figure("PROFIT", d.ok and d.profit or nil, d.ok and SUI.OrderCellLines(d, 4) or nil, (d.profit or 0) >= 0 and "ok" or "bad") },
 		rows = rows, section = { head = "REAGENTS YOU SUPPLY", rows = costLineRows(d.costLines) },
@@ -1284,7 +1284,7 @@ function SUI.FirstPanel(d)
 		or net >= 0 and T.Color("ok", "Free: selling it pays back the reagents, +" .. M(net) .. ".")
 		or T.Color("accent", "The knowledge point costs " .. M(-net) .. ".")
 	local lines = d.result and d.row and d.row.picks and CH.Advisor.CostLines(d.result, d.row.picks, d.row.finishing) or {}
-	return { kicker = "WORTH THE KNOWLEDGE?", title = (d.name or "?") .. kpTag(true), sub = verdict,
+	return { kicker = "WORTH THE KNOWLEDGE?", title = (d.name or "?") .. kpTag(true), item = d.item or false, sub = verdict,
 		figures = { figure("REAGENTS", d.cost), figure("SELLS FOR", d.value),
 			net and { net >= 0 and "POINT IS FREE" or "POINT COSTS", T.Color(net >= 0 and "ok" or "bad", M(math.abs(net))) } or { "POINT COSTS", T.Color("muted", "-") } },
 		rows = { { "Gives", T.Color("accent", "1 knowledge point") } },

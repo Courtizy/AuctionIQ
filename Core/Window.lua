@@ -563,7 +563,8 @@ W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue a
 --- on hover); a note; and buttons from the bottom up (the first, the main one, filled with the accent
 --- and lowest). opts: { rows = 6, srows = 5, buttons = 3, onAction = function(button) end,
 --- stepper = function(delta) end (a - and + beside the main button) }.
---- Fill it with W.DrawSidePanel(panel, d): d = { kicker, title, sub, figures = { { label, value, tip = lines } x3 },
+--- Fill it with W.DrawSidePanel(panel, d): d = { kicker, title, item (the title names this item: it
+--- takes the item's quality colour, white when unknown; no item, the theme colour), sub, figures = { { label, value, tip = lines } x3 },
 --- bar = 0..1, rows = { { label, value } }, section = { head, rows = { { label, value, tip = lines } }, toggle = { on, run, tip } }, note,
 --- actions = { { label, run, tip, off } } }. The blocks stack from the top, each as tall as its text.
 function W.SidePanel(parent, width, height, opts)
@@ -698,6 +699,22 @@ function W.SidePanel(parent, width, height, opts)
 	return det
 end
 
+W.WHITE = { 1, 1, 1 }
+--- An item's quality colour as { r, g, b }, or nil when the game doesn't know the item yet.
+function W.ItemColor(itemID)
+	local id = tonumber(itemID)
+	if not id or not C_Item or not C_Item.GetItemQualityByID then return nil end
+	local ok, q = pcall(C_Item.GetItemQualityByID, id)
+	if not ok or type(q) ~= "number" then return nil end
+	local c = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[q]
+	if c and c.r then return { c.r, c.g, c.b } end
+	if C_Item.GetItemQualityColor then
+		local r, g, b = C_Item.GetItemQualityColor(q)
+		if r then return { r, g, b } end
+	end
+	return nil
+end
+
 --- Fill a side panel (W.SidePanel) from d, with said (a line saying what the last action did) above
 --- the buttons. The blocks stack from the top as tall as their text. Shows the panel and returns d.
 function W.DrawSidePanel(det, d, said)
@@ -714,6 +731,9 @@ function W.DrawSidePanel(det, d, said)
 	det.kicker:SetText(d.kicker and T.Color("accent", d.kicker) or "")
 	y = y - 14
 	at(det.title, 12, y)
+	-- an item's name in its quality colour (white until the game knows it), else the theme colour
+	local tc = d.item and W.ItemColor(d.item) or (d.item == nil and T.accent) or W.WHITE
+	det.title:SetTextColor(tc[1], tc[2], tc[3])
 	det.title:SetText(d.title or "")
 	y = y - height(det.title, 17) - 2
 	at(det.sub, 12, y)

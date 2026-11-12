@@ -1721,7 +1721,7 @@ function AUI.Card(n, scan)
 	end
 	local warn = AUI.PostLines(result)
 	local itemID = (r and r.item) or (result.model and result.model.output)
-	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""),
+	return { kicker = "CRAFT OR SELL?", title = W.ItemIcon(itemID, 16) .. (result.name or "?") .. (result.sim and T.Color("bad", "  SIM") or ""), item = itemID or false,
 		sub = sub, subTip = tip, figures = figures, rows = rows,
 		bar = m and m.recover or nil,
 		section = { head = "QUALITY", rows = qrows, toggle = toggle },

@@ -751,31 +751,8 @@ function build()
 	frame.foot:ClearAllPoints()
 	frame.foot:SetPoint("BOTTOMLEFT", 12, 8) -- stays at the bottom when the window is resized
 	frame.foot:SetWidth(300)
-	-- Concentration on the fullest characters, as class-gradient bars along the footer
+	-- Concentration along the footer: a slot for every character, made in RenderConcFooter
 	frame.conc = {}
-	local prev
-	for i = 3, 1, -1 do
-		local s = CreateFrame("Frame", nil, frame)
-		s:SetSize(170, 14)
-		if prev then s:SetPoint("RIGHT", prev, "LEFT", -12, 0) else s:SetPoint("BOTTOMRIGHT", -28, 6) end
-		s.name = CH.Window.OneLine(fs(s, 0, -1, 70, "RIGHT", "GameFontHighlightSmall"))
-		s.back = s:CreateTexture(nil, "BACKGROUND")
-		s.back:SetPoint("LEFT", 76, 0)
-		s.back:SetSize(60, 6)
-		s.back:SetColorTexture(0, 0, 0, 0.6)
-		s.fill = s:CreateTexture(nil, "ARTWORK")
-		s.fill:SetPoint("LEFT", s.back, "LEFT", 0, 0)
-		s.fill:SetSize(60, 6)
-		s.value = CH.Window.OneLine(fs(s, 140, -1, 30, "LEFT", "GameFontDisableSmall"))
-		local hit = CreateFrame("Button", nil, s)
-		hit:SetAllPoints(s)
-		hit:SetScript("OnClick", function() UI.Go("operations", "professions") end)
-		hit:SetScript("OnEnter", function(self) if s.tip then CH.Window.Tooltip(self, s.tip) end end)
-		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		s:Hide()
-		frame.conc[i] = s
-		prev = s
-	end
 	frame:SetScript("OnShow", function(self)
 		CH.Window.Snap(self)
 		if CH.Par then CH.Par.Refresh() end
@@ -903,10 +880,11 @@ function UI.DashboardFigures(now)
 		elseif x.status == "buy reagents" then f.short = f.short + 1
 		else f.ready = f.ready + 1 end
 	end
+	local newest = UI.NewestExpansion()
 	for _, c in pairs(CH.db.characters or {}) do
-		for _, pr in pairs(c.professions or {}) do
+		for id, pr in pairs(c.professions or {}) do
 			local cur, max
-			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(pr, now) end
+			if CH.ConcentrationNow and UI.IsCurrentExpansion(id, pr, newest) then cur, max = CH.ConcentrationNow(pr, now) end
 			if cur and max and max > 0 and cur >= max then
 				f.conc = f.conc + 1
 				table.insert(f.concList, (c.name or "?") .. ": " .. (pr.name or "?"))
@@ -916,15 +894,49 @@ function UI.DashboardFigures(now)
 	return f
 end
 
---- Concentration on every character's professions, fullest first: { char, class, prof, cur, max,
---- hours (to full), best = { name, gain (gold per expected point over the plain craft) } }.
+-- "Midnight Alchemy" -> "Midnight": a profession line's expansion, from its name less its base's.
+local function expansionOf(p)
+	local name, parent = p and p.name, p and p.parent
+	if not (name and parent) or name == parent then return nil end
+	local i = name:find(parent, 1, true)
+	local pre = i and name:sub(1, i - 1):match("^%s*(.-)%s*$")
+	return pre ~= "" and pre or nil
+end
+
+--- The newest expansion any character's professions are from, as { id (its highest skill line),
+--- name ("Midnight") }, or nil before any profession with Concentration is seen.
+function UI.NewestExpansion()
+	local best
+	for _, c in pairs(CH.db and CH.db.characters or {}) do
+		for id, p in pairs(c.professions or {}) do
+			if type(id) == "number" and p.concMax and (not best or id > best.id) then best = { id = id, p = p } end
+		end
+	end
+	return best and { id = best.id, name = expansionOf(best.p) } or nil
+end
+
+--- Whether a character's profession line (by its skill line id) is the newest expansion's: older
+--- lines (Khaz Algar Alchemy once Midnight is out) keep their own Concentration, but it isn't
+--- what you're working on.
+function UI.IsCurrentExpansion(id, p, newest)
+	if not newest then return true end
+	local e = expansionOf(p)
+	if e and newest.name then return e == newest.name end
+	-- no names to go by: an expansion's lines sit together, a dozen or so ids apart
+	return type(id) == "number" and id > newest.id - 20
+end
+
+--- Concentration on every character's current-expansion professions, fullest first: { char,
+--- class, prof, cur, max, hours (to full), best = { name, gain (gold per expected point over the
+--- plain craft) } }.
 function UI.ConcentrationBars(now)
 	now = now or time()
 	local out = {}
+	local newest = UI.NewestExpansion()
 	for key, c in pairs(CH.db.characters or {}) do
-		for _, p in pairs(c.professions or {}) do
+		for id, p in pairs(c.professions or {}) do
 			local cur, max
-			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
+			if CH.ConcentrationNow and UI.IsCurrentExpansion(id, p, newest) then cur, max = CH.ConcentrationNow(p, now) end
 			if cur and max and max > 0 then
 				local best
 				for _, r in ipairs(p.scan and p.scan.rows or {}) do
@@ -950,27 +962,109 @@ local function textBar(share, width)
 end
 UI.TextBar = textBar
 
---- The footer's Concentration bars: the three fullest characters, each a class-gradient bar with
---- its points. Returns what it drew, for the tests: { { char, cur, max, share } }.
+--- The footer's Concentration, by character: every character with a current-expansion profession,
+--- the one closest to full first. Each slot is the name in its class colour over one thin
+--- class-gradient bar a profession, sized to share the footer right of the help line, so the
+--- bars shrink as the warband grows. Returns what it drew, for the tests:
+--- { { char, width, bars = { { prof, cur, max, share } } } }.
+UI.CONC_SLOT_MAX, UI.CONC_SLOT_MIN, UI.CONC_GAP = 150, 24, 8
+local function concSlot(i)
+	local s = frame.conc[i]
+	if s then return s end
+	s = CreateFrame("Frame", nil, frame)
+	s:SetSize(UI.CONC_SLOT_MAX, 16)
+	s.name = CH.Window.OneLine(fs(s, 0, -1, 60, "LEFT", "GameFontHighlightSmall"))
+	s.value = CH.Window.OneLine(fs(s, 0, -1, 30, "RIGHT", "GameFontDisableSmall"))
+	s.bars = {}
+	local hit = CreateFrame("Button", nil, s)
+	hit:SetAllPoints(s)
+	hit:SetScript("OnClick", function() UI.Go("operations", "professions") end)
+	hit:SetScript("OnEnter", function(self) if s.tip then CH.Window.Tooltip(self, s.tip) end end)
+	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	s:Hide()
+	CH.Theme.Fonts(s)
+	frame.conc[i] = s
+	return s
+end
+local function concBar(s, k)
+	local b = s.bars[k]
+	if b then return b end
+	b = { back = s:CreateTexture(nil, "BACKGROUND"), fill = s:CreateTexture(nil, "ARTWORK") }
+	b.back:SetColorTexture(0, 0, 0, 0.6)
+	s.bars[k] = b
+	return b
+end
+
 function UI.RenderConcFooter()
-	local slots = frame and frame.conc
 	local out = {}
-	if not slots then return out end
+	if not (frame and frame.conc) then return out end
 	local T = CH.Theme
-	local bars = UI.ConcentrationBars()
-	for i, s in ipairs(slots) do
-		local b = bars[i]
-		s:SetShown(b ~= nil)
-		if b then
-			local share = math.max(0, math.min(1, b.cur / b.max))
-			s.name:SetText(classColor(b.class) .. b.char .. "|r")
-			T.Gradient(s.fill)
-			s.fill:SetWidth(math.max(1, math.floor(60 * share + 0.5)))
-			s.fill:SetShown(share > 0)
-			s.value:SetText(b.cur >= b.max and T.Color("bad", tostring(b.cur)) or tostring(b.cur))
-			s.tip = { { (b.char or "?") .. "  " .. T.Color("muted", b.prof or "") }, { string.format("%d/%d Concentration", b.cur, b.max) },
-				{ b.hours == 0 and T.Color("bad", "Full: spend it before it's wasted.") or T.Color("muted", "Full in " .. b.hours .. "h.") } }
-			table.insert(out, { char = b.char, cur = b.cur, max = b.max, share = share })
+	-- by character, fullest profession first within each
+	local by, order = {}, {}
+	for _, b in ipairs(UI.ConcentrationBars()) do
+		local g = by[b.key]
+		if not g then g = { char = b.char, class = b.class, list = {} }; by[b.key] = g; order[#order + 1] = g end
+		g.list[#g.list + 1] = b
+	end
+	local n = #order
+	-- right of the help line's text (not its 300 wide box), clear of the resize grip
+	local help = frame.foot and frame.foot.GetStringWidth and frame.foot:GetStringWidth()
+	help = (type(help) == "number" and help > 0) and math.min(300, math.ceil(help)) or 300
+	local avail = W - 12 - help - 16 - 28
+	UI.concRoom = avail
+	local w = n > 0 and math.floor((avail + UI.CONC_GAP) / n) - UI.CONC_GAP or 0
+	w = math.max(UI.CONC_SLOT_MIN, math.min(UI.CONC_SLOT_MAX, w))
+	local showValue = w >= 110 -- the points beside the bars only when there's room for them
+	local nameW = math.floor(w * (showValue and 0.42 or 0.5))
+	local valueW = showValue and 26 or 0
+	local barW = math.max(8, w - nameW - 4 - (showValue and (valueW + 4) or 0))
+	for i = 1, math.max(n, #frame.conc) do
+		local g = order[i]
+		local s = g and concSlot(i) or frame.conc[i]
+		s:SetShown(g ~= nil)
+		if g then
+			s:ClearAllPoints()
+			s:SetSize(w, 16)
+			s:SetPoint("BOTTOMRIGHT", -28 - (i - 1) * (w + UI.CONC_GAP), 5)
+			s.name:ClearAllPoints(); s.name:SetPoint("LEFT", s, "LEFT", 0, 0); s.name:SetWidth(nameW)
+			-- the name, cut to the room it has (the tooltip has it whole)
+			local nm = g.char
+			s.name:SetText(classColor(g.class) .. nm .. "|r")
+			while #nm > 1 and (s.name:GetStringWidth() or 0) > nameW do
+				nm = nm:sub(1, -2)
+				s.name:SetText(classColor(g.class) .. nm .. "|r")
+			end
+			local np = #g.list
+			local bh = np > 1 and 3 or 6
+			local top = math.floor((np * bh + (np - 1)) / 2)
+			local drawn = { char = g.char, width = w, bars = {} }
+			local tip = { { classColor(g.class) .. g.char .. "|r" } }
+			local fullest = g.list[1]
+			for k = 1, math.max(np, #s.bars) do
+				local b = g.list[k]
+				local t = (b or s.bars[k]) and concBar(s, k)
+				if t then
+					t.back:SetShown(b ~= nil); t.fill:SetShown(false)
+					if b then
+						local share = math.max(0, math.min(1, b.cur / b.max))
+						local y = top - (k - 1) * (bh + 1)
+						t.back:ClearAllPoints(); t.back:SetPoint("TOPLEFT", s, "LEFT", nameW + 4, y); t.back:SetSize(barW, bh)
+						t.fill:ClearAllPoints(); t.fill:SetPoint("TOPLEFT", t.back, "TOPLEFT", 0, 0)
+						T.Gradient(t.fill)
+						t.fill:SetSize(math.max(1, math.floor(barW * share + 0.5)), bh)
+						t.fill:SetShown(share > 0)
+						drawn.bars[#drawn.bars + 1] = { prof = b.prof, cur = b.cur, max = b.max, share = share }
+						tip[#tip + 1] = { b.prof or "?", (b.cur >= b.max and T.Color("bad", tostring(b.cur)) or tostring(b.cur)) .. "/" .. tostring(b.max) }
+						tip[#tip + 1] = { b.hours == 0 and T.Color("bad", "  Full: spend it before it's wasted.") or T.Color("muted", "  Full in " .. b.hours .. "h."), "" }
+						if b.cur > fullest.cur then fullest = b end
+					end
+				end
+			end
+			s.value:ClearAllPoints(); s.value:SetPoint("RIGHT", s, "RIGHT", 0, 0); s.value:SetWidth(valueW)
+			s.value:SetShown(showValue)
+			s.value:SetText(showValue and (fullest.cur >= fullest.max and T.Color("bad", tostring(fullest.cur)) or tostring(fullest.cur)) or "")
+			s.tip = tip
+			out[#out + 1] = drawn
 		end
 	end
 	return out

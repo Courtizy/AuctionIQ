@@ -1117,7 +1117,7 @@ check("batch forecast: one sale in two overlapping forecasts' windows counts onc
       ov.checked == 2 and ov.inside == 1 and ov.under == 1)
 run("AuctionIQ.db.batchForecasts = nil")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.SetQty(1)')
-run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [1] = { name = 'Alchemy', conc = 500, concMax = 1000, concAt = time(),
+run("""AuctionIQ.db.characters['Be-Realm'] = { name = 'Be', professions = { [2906] = { name = 'Alchemy', conc = 500, concMax = 1000, concAt = time(),
   scan = { rows = { { name = 'Cheap Flask', recipeID = 99, item = 100, profit = 10, breakEven = 99999999, concProfit = 900, avgConcentration = 30 } } } } } }""")
 nx = [x for x in L.eval("AuctionIQ.Next.List()").values() if x.title == "Below break-even"]
 check("dashboard: a craft now under its break-even price gets a card that opens Scenarios",
@@ -1207,6 +1207,16 @@ cn = L.eval("""(function() local old, oldCount = C_TradeSkillUI.CraftRecipe, C_I
 check("Craft card: Craft crafts the picked rank now, with its reagents and Concentration, without queueing it",
       cn.ok and cn.got.id == 10 and cn.got.n == 2 and cn.got.conc == (L.eval("AuctionIQ.AdvisorUI.Current().rows[2].concentration ~= nil")) and cn.got.k > 0)
 run('STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)')
+# the card's item name: its quality colour, white while the game doesn't know it, never the theme's
+det_t = L.eval("AuctionIQ.ScanUI.lastDetail").title
+check("Craft card: an item's name is white until its quality is known", list(det_t.color.values()) == [1, 1, 1])
+run("STUB.items[999001] = { quality = 4 }")
+run("AuctionIQ.Window.DrawSidePanel(AuctionIQ.ScanUI.lastDetail, { title = 'Epic Thing', item = 999001 })")
+check("Craft card: an item's name takes its quality colour", [round(x, 2) for x in det_t.color.values()] == [0.64, 0.21, 0.93])
+run("AuctionIQ.Window.DrawSidePanel(AuctionIQ.ScanUI.lastDetail, { title = 'Pick a row' })")
+tc = L.eval("AuctionIQ.Theme.accent")
+check("Craft card: a title that isn't an item keeps the theme colour", list(det_t.color.values()) == [tc[1], tc[2], tc[3]])
+run("AuctionIQ.UI.Refresh()")
 run("AuctionIQ.ScanUI.SetQty(1); AuctionIQ.AdvisorUI.Show(10)")
 run('AuctionIQ.QueueUI.Show(); AuctionIQ.AdvisorUI.Show(10)')
 check("tabs: a recipe click while the Queue shows updates quietly", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown())
@@ -2761,9 +2771,33 @@ check("settings: TSM groups off", CH.Groups.Store().useTSM is False)
 run("AuctionIQ.Settings.UseTSM(true)")
 
 # layout: nothing outside its panel, no one-line text cut off, button labels fit
-cf = list(L.eval("AuctionIQ.UI.RenderConcFooter()").values())
-check("footer: up to three Concentration bars, fullest first", len(cf) <= 3 and all(0 <= b.share <= 1 for b in cf)
-      and all(cf[i].share >= 0 for i in range(len(cf))))
+# footer Concentration: every character, current expansion only, smaller as the warband grows
+run("""STUB.savedChars = AuctionIQ.db.characters
+local chars = {}
+local function prof(name, parent, conc) return { name = name, parent = parent, conc = conc, concMax = 1000, concAt = time() } end
+for i, n in ipairs({ 'Seyko', 'Velanthir', 'Serynko', 'Verathis', 'Courtizy', 'Luxaren' }) do
+  chars[n .. '-Realm'] = { name = n, class = 'DRUID', professions = {
+    [2906] = prof('Midnight Alchemy', 'Alchemy', 100 * i), [2909] = prof('Midnight Enchanting', 'Enchanting', 50 * i) } }
+end
+chars['Serynko-Realm'].professions[2871] = prof('Khaz Algar Alchemy', 'Alchemy', 1000)
+chars['Luxaren-Realm'].professions[2874] = prof('Khaz Algar Enchanting', 'Enchanting', 1000)
+chars['Alt-Realm'] = { name = 'Alt', professions = { [2871] = prof('Khaz Algar Alchemy', 'Alchemy', 1000) } }
+AuctionIQ.db.characters = chars""")
+cf = [x for x in L.eval("AuctionIQ.UI.RenderConcFooter()").values()]
+cfb = [[b for b in x.bars.values()] for x in cf]
+check("footer: a Concentration slot for every character with a current-expansion profession, fullest first",
+      [x.char for x in cf] == ["Luxaren", "Courtizy", "Verathis", "Serynko", "Velanthir", "Seyko"])
+check("footer: only the current expansion's professions, one bar each",
+      all(len(b) == 2 and all(y.prof.startswith("Midnight") for y in b) and all(0 <= y.share <= 1 for y in b) for b in cfb))
+check("footer: older expansions' full Concentration isn't counted as wasted on the Dashboard",
+      CH.UI.DashboardFigures().conc == 0)
+w6 = cf[0].width
+run("for i = 1, 8 do AuctionIQ.db.characters['More' .. i .. '-Realm'] = { name = 'More' .. i, professions = { [2913] = { name = 'Midnight Inscription', parent = 'Inscription', conc = 10, concMax = 1000, concAt = time() } } } end")
+cf14 = [x for x in L.eval("AuctionIQ.UI.RenderConcFooter()").values()]
+check("footer: with more characters every one still shows, on smaller slots that stay clear of the help line",
+      len(cf14) == 14 and cf14[0].width < w6 and 14 * cf14[0].width + 13 * L.eval("AuctionIQ.UI.CONC_GAP") <= L.eval("AuctionIQ.UI.concRoom") <= 920 - 12 - 16 - 28)
+run("AuctionIQ.db.characters = STUB.savedChars; AuctionIQ.UI.RenderConcFooter()")
+run("AuctionIQ.db.characters['Foot-Realm'] = { name = 'Foot', class = 'MAGE', professions = { [2906] = { name = 'Midnight Alchemy', parent = 'Alchemy', conc = 300, concMax = 1000, concAt = time() } } }; AuctionIQ.UI.RenderConcFooter()")
 L.execute((ROOT / "tests" / "layout_audit.lua").read_text())
 audit_all = []
 def audit(where):
