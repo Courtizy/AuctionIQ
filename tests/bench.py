@@ -165,7 +165,7 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       AuctionIQ.Ledger.WarmAll(function() wdone = true end)
       while not wdone and wframes < 10000 do local t1 = os.clock(); STUB.RunTimers(); wworst = math.max(wworst, (os.clock() - t1) * 1000); wframes = wframes + 1 end
       out.warmWorst, out.warmFrames = wworst, wframes
-      -- the same warm-up's own steps (time order, archive, activity, demand), with the records parsed
+      -- the same warm-up's own steps (time order, archive, demand), with the records parsed
       AuctionIQ.Ledger.ClearStats(); if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = {{}} end
       for _, k in ipairs(AuctionIQ.Ledger.KINDS) do AuctionIQ.Ledger.Records(k) end
       wworst, wframes, wdone = 0, 0, false
@@ -198,8 +198,8 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     rec("ledger", name, size, "dashboard first open, nothing warmed", r.dashFirst)
     rec("ledger", name, size, "dashboard refresh cold", r.dashCold)
     rec("ledger", name, size, "dashboard refresh warm", r.dashWarm)
-    rec("ledger", name, size, "do next list, first", r.nextFirst)
-    rec("ledger", name, size, "do next list, warm", r.nextWarm)
+    rec("ledger", name, size, "recommendations list, first", r.nextFirst)
+    rec("ledger", name, size, "recommendations list, warm", r.nextWarm)
     rec("ledger", name, size, "memory growth, 10 refreshes", r.dashGrowth, "MB")
 
 # 4. Queue and shopping list

@@ -481,103 +481,6 @@ function Lg.Summary(since)
 	return t
 end
 
--- Activity: one entry per character per mailbox visit (an hour), like TSM's log ----------------
--- Only the newest visits show, so it walks back from the newest record of each kind, just far
--- enough to be sure of them, and is kept until TSM's records change (the Records tables are
--- replaced only when their text changes). ActivityNow is the same over every record.
-local activityCache
-function Lg.Activity(limit)
-	local sales, expired, buys = Lg.Records("Sales"), Lg.Records("Expired"), Lg.Records("Buys")
-	local c = activityCache
-	if c and c.sales == sales and c.expired == expired and c.buys == buys and c.limit == (limit or 50) then return c.out end
-	local out = Lg.ActivityRecent(limit)
-	activityCache = { sales = sales, expired = expired, buys = buys, limit = limit or 50, out = out }
-	return out
-end
-
--- newest first; equal times by character, so the order never depends on how the records came
-local function activityOrder(a, b)
-	if a.time ~= b.time then return a.time > b.time end
-	return (a.player or "") < (b.player or "")
-end
-
-local ACTIVITY_KINDS = {
-	{ "Sales", function(r) return r.source == "Auction" end, function(e, r) e.sold, e.gold = e.sold + r.quantity, e.gold + r.amount end },
-	{ "Expired", function() return true end, function(e, r) e.expired = e.expired + r.quantity end },
-	{ "Buys", function(r) return r.source == "Auction" end, function(e, r) e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end },
-}
-
---- The newest `limit` visits, reading only the records that can be in them. Walking back through
---- each kind until it has seen `limit` visits gives an hour that every one of the newest `limit`
---- visits is at or after (there are already `limit` visits from then on), so older records can't
---- change the answer.
-function Lg.ActivityRecent(limit)
-	limit = limit or 50
-	local lists = {}
-	for i, k in ipairs(ACTIVITY_KINDS) do lists[i] = Lg.ByTime(k[1]) end
-	local floor = -math.huge
-	for i, k in ipairs(ACTIVITY_KINDS) do
-		local list, ok, seen, n = lists[i], k[2], {}, 0
-		for j = #list, 1, -1 do
-			local r = list[j]
-			if ok(r) then
-				local h = math.floor(r.time / 3600)
-				local key = (r.player or "?") .. "@" .. h
-				if not seen[key] then
-					seen[key] = true; n = n + 1
-					if n >= limit then if h > floor then floor = h end break end
-				end
-			end
-		end
-	end
-	local groups, order = {}, {}
-	for i, k in ipairs(ACTIVITY_KINDS) do
-		local list, ok, add = lists[i], k[2], k[3]
-		for j = #list, 1, -1 do
-			local r = list[j]
-			local h = math.floor(r.time / 3600)
-			if h < floor then break end
-			if ok(r) then
-				local key = (r.player or "?") .. "@" .. h
-				local e = groups[key]
-				if not e then
-					e = { player = r.player, time = r.time, sold = 0, gold = 0, expired = 0, bought = 0, spent = 0 }
-					groups[key] = e; order[#order + 1] = e
-				end
-				if r.time > e.time then e.time = r.time end
-				add(e, r)
-			end
-		end
-	end
-	table.sort(order, activityOrder)
-	for i = #order, limit + 1, -1 do order[i] = nil end
-	return order
-end
-
-function Lg.ActivityNow(limit, sales, expired, buys)
-	local groups, order = {}, {}
-	local function g(r)
-		local k = (r.player or "?") .. "@" .. math.floor(r.time / 3600)
-		if not groups[k] then
-			groups[k] = { player = r.player, time = r.time, sold = 0, gold = 0, expired = 0, bought = 0, spent = 0 }
-			table.insert(order, groups[k])
-		end
-		local e = groups[k]
-		if r.time > e.time then e.time = r.time end
-		return e
-	end
-	for _, r in ipairs(sales or Lg.Records("Sales")) do
-		if r.source == "Auction" then local e = g(r); e.sold, e.gold = e.sold + r.quantity, e.gold + r.amount end
-	end
-	for _, r in ipairs(expired or Lg.Records("Expired")) do local e = g(r); e.expired = e.expired + r.quantity end
-	for _, r in ipairs(buys or Lg.Records("Buys")) do
-		if r.source == "Auction" then local e = g(r); e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end
-	end
-	table.sort(order, activityOrder)
-	for i = #order, (limit or 50) + 1, -1 do order[i] = nil end
-	return order
-end
-
 -- Inventory -----------------------------------------------------------------------------------
 --- Every item you hold on this realm, from TSM's counts: { item, id, bags, bank, mail, ah, warband,
 --- total, value } sorted by value (AuctionIQ value x total). filter is a name keyword.
@@ -1046,8 +949,8 @@ function Lg.Report(now)
 end
 
 --- Everything the Dashboard and reports need after login, a few milliseconds a frame: parse TSM's
---- records, put each kind in time order, build the day archive, then the snapshot, the activity
---- list and the demand index (each small once the rest is ready). Then calls done.
+--- records, put each kind in time order, build the day archive, then the snapshot and the demand
+--- index (each small once the rest is ready). Then calls done.
 Lg.FRAME_MS = 6
 function Lg.WarmAll(done)
 	Lg.Warm(Lg.KINDS, function()
@@ -1071,7 +974,6 @@ function Lg.WarmAll(done)
 			-- the rest are small now: one frame each
 			local rest = {
 				function() CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end,
-				function() pcall(Lg.Activity, 40) end,
 				function() if CH.Demand then CH.Measure("demand index", pcall, CH.Demand.Warm) end end,
 			}
 			local i = 1
