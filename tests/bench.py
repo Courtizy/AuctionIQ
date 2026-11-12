@@ -214,6 +214,18 @@ if not r["none"]:
     rec("batch simulation", "normal", "default sizes and runs", "first run", r.one)
     rec("batch simulation", "normal", "default sizes and runs", "repeat (avg of 20)", r.avg)
 
+# 5b. How many to make: Suggest plus the explore sizes, which the Craft card's first draw pays (then kept)
+r = L.eval("""(function()
+  local res = AuctionIQ.Advisor.Analyze(11, { professionID = AuctionIQ.OpenProfessionID() })
+  local inp = AuctionIQ.Decide.BatchInputs(res, res.best)
+  if not inp then return { none = true } end
+  local D = AuctionIQ.Decide
+  local t0 = os.clock(); local sug = D.Suggest(inp, { held = 0 }); D.Quantity(inp, { gold = 1e9, suggest = sug, canMake = 50 })
+  return { one = (os.clock() - t0) * 1000 }
+end)()""")
+if not r["none"]:
+    rec("quantity decision", "normal", "suggest + 5/10/20 explore", "card first draw", r.one)
+
 # 6. SavedVariables size (AuctionIQDB as it stands after the runs above)
 size = L.eval("""(function()
   local seen, n = {}, 0

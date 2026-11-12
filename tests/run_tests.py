@@ -994,6 +994,63 @@ check("suggest: don't craft when a 10% fall stops it paying for its reagents", s
 run("STUB.cheap.daily = 0")
 check("suggest: no sale rate, no size", D.Suggest(L.eval("STUB.cheap"), L.eval("{ held = 0 }")).limit == "rate")
 check("suggest: a Concentration craft says what Concentration adds", "Concentration adds " in plain(D.SuggestText(D.Suggest(bi, L.eval("{ held = 0, gain = { gain = 400 } }")))))
+# How many: can make, can afford and the suggestion kept apart; the suggestion as specific as the evidence
+run("""STUB.qi = function(daily, demand, held) return { item = 990011, made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95,
+  daily = daily, seed = 3, reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = { demand = demand },
+  have = function(id) if id == 990011 then return held or 0 end return 0 end } end
+STUB.strong = { source = 'own', listed = 20, sold = 100, units = 5, weight = 0.8, window = 30, cap = 10 }
+STUB.region = { source = 'region', listed = 0, sold = 0, units = 5, region = 5, cap = 10, weight = 0, window = 30 }""")
+Q = lambda daily, dem, held, gold, extra="": D.Quantity(L.eval(f"STUB.qi({daily}, {dem}, {held})"), L.eval(f"{{ gold = {gold}, canMake = 3 {extra} }}"))
+q1 = Q(5, "STUB.strong", 0, 10**9)
+check("quantity: strong evidence, plenty of gold: the sales-backed batch (50), with can make (3) and can afford (999+) beside it",
+      q1.action == "make" and q1.n == 50 and q1.suggested == 50 and q1.canMake == 3 and q1.canAfford == 999 and q1.strength == "strong"
+      and D.QuantityLabel(q1) == "Make 50")
+q2 = Q(5, "STUB.strong", 0, 1000)
+check("quantity: gold buys reagents for 20 (50g each): the suggestion stops there and says why",
+      q2.canAfford == 20 and q2.n == 20 and q2.binding == "afford" and "your gold buys the reagents for 20 of the 50" in q2.text)
+q3 = Q(5, "STUB.region", 0, 10**9)
+check("quantity: only the region's figure: a trial of about two days' sales (10), not the precise 50",
+      q3.action == "trial" and q3.n == 10 and q3.suggested == 50 and q3.strength == "weak" and D.QuantityLabel(q3) == "Try 10"
+      and "thin" in q3.text)
+q4 = Q(5, "STUB.strong", 60, 10**9)
+check("quantity: 60 held at 5 a day: hold off, it covers about 12 days, and says what would change that",
+      q4.action == "hold" and q4.n == 0 and "Hold off: your 60 cover about 12 days at 5 a day" in q4.text and "selling faster than 5 a day" in q4.changes)
+q5 = Q(0, "nil", 0, 10**9)
+check("quantity: no sales rate: a small trial to learn one", q5.action == "trial" and q5.n == 1 and "No sales rate" in q5.text)
+run("STUB.qcheap = STUB.qi(5, STUB.strong, 0); STUB.qcheap.price = 55; STUB.qcheap.unit = 52")
+q6 = D.Quantity(L.eval("STUB.qcheap"), L.eval("{ gold = 1e9 }"))
+check("quantity: doesn't pay at the slow price: skip, and why", q6.action == "skip" and q6.n == 0 and q6.text.startswith("Don't craft"))
+q7 = Q(5, "STUB.strong", 0, 10**9, ", custom = 7")
+ex = [(e.n, e.custom) for e in q7.explore.values()]
+check("quantity: explore shows 5, 10 and 20 and your own number, each with its week", [n for n, _ in ex] == [5, 7, 10, 20] and ex[1][1] is True
+      and all(e.expected is not None and e.slow is not None for e in q7.explore.values()))
+check("quantity: assumptions name the sales rate's source and the downside price", any("Sales:" in a for a in q1.assumptions.values())
+      and any("lower" in a for a in q1.assumptions.values()))
+aff = L.eval("""(function()
+  local bad = 0
+  for gold = 0, 3000, 37 do
+    local inp = STUB.qi(5, STUB.strong, 0)
+    local a = AuctionIQ.Decide.Affordable(inp, gold, 200)
+    local brute = 0
+    for n = 1, 200 do local _, c = AuctionIQ.Decide.BatchCost(inp, n); if c <= gold then brute = n end end
+    if a ~= brute then bad = bad + 1 end
+  end
+  return bad end)()""")
+check("quantity: can afford matches a brute-force walk, for gold from 0 to 3,000", aff == 0)
+inv = L.eval("""(function()
+  local u, bad = AuctionIQ.Decide.RNG(23), 0
+  for run = 1, 200 do
+    local dem = ({ STUB.strong, STUB.region, nil })[1 + math.floor(u() * 3)]
+    local inp = STUB.qi(math.floor(u() * 12), dem, math.floor(u() * 40))
+    local gold = math.floor(u() * 5000)
+    local q = AuctionIQ.Decide.Quantity(inp, { gold = gold })
+    if q.n < 0 then bad = bad + 1 end
+    if q.action == "make" and (q.n > q.suggested or q.n > q.canAfford) then bad = bad + 1 end
+    if q.action == "trial" and q.suggested > 0 and q.n > q.suggested then bad = bad + 1 end
+    if (q.action == "hold" or q.action == "skip") and q.n ~= 0 then bad = bad + 1 end
+  end
+  return bad end)()""")
+check("quantity (200 seeded cases): the suggestion never exceeds what the sales support or your gold affords", inv == 0)
 check("advisor: back to the notes", CH.AdvisorUI.SetPane("notes") == "notes")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.SetQty(9); AuctionIQ.AdvisorUI.QueueSelected()')
 bg = CH.Queue.Budget()
@@ -1107,6 +1164,12 @@ check("Craft card: every row explains itself on hover, break-even first",
       all(r.tip is not None for r in lc.rows.values()) and plain(lc.rows[1][1]) == "Break-even, each" and lc.subTip is not None)
 check("Craft card: no week's recovery, no Max (it's a list column), no buy-one-instead",
       not any(plain(r[1]) in ("Recover in a week", "Can make now", "Buy one instead") for r in lc.rows.values()))
+srow = [r for r in lc.rows.values() if plain(r[1]).startswith("Suggested")]
+stip = [plain(l[1]) for l in srow[0].tip.values()] if srow else []
+check("Craft card: a Suggested row, with what AuctionIQ sees, each size's week, the suggestion and its assumptions on hover",
+      len(srow) == 1 and plain(srow[0][2]).split(" ")[0] in ("Make", "Try", "Hold", "Skip", "-")
+      and "What AuctionIQ sees" in stip and "  You can make now" in stip and any(t.startswith("Suggested") for t in stip)
+      and any(t.strip().startswith("Assumes sales:") for t in stip) and any("the suggestion is optional" in t for t in stip))
 fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = { buy = 1000, resell = 5000, flip = 4000 } })")
 fr = {plain(r[1]): r for r in fl.rows.values()}
 check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
