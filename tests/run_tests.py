@@ -2843,11 +2843,19 @@ check("footer: only the current expansion's professions, one bar each",
       all(len(b) == 2 and all(y.prof.startswith("Midnight") for y in b) and all(0 <= y.share <= 1 for y in b) for b in cfb))
 check("footer: older expansions' full Concentration isn't counted as wasted on the Dashboard",
       CH.UI.DashboardFigures().conc == 0)
-w6 = cf[0].width
+check("footer: full names, the bars 50 wide, in columns that fit right of the help line",
+      all(x.name == x.char for x in cf) and len({x.width for x in cf}) == 1
+      and max(x.col for x in cf) * cf[0].width + (max(x.col for x in cf) - 1) * L.eval("AuctionIQ.UI.CONC_GAP") <= L.eval("AuctionIQ.UI.concRoom"))
+rows6 = L.eval("AuctionIQ.UI.concRows")
+check("footer: two rows when one won't fit, A to Z along the top row first",
+      rows6 in (1, 2) and [x.row for x in cf] == sorted(x.row for x in cf)
+      and (rows6 == 1 or [x.col for x in cf] == [1, 2, 3, 1, 2, 3]))
 run("for i = 1, 8 do AuctionIQ.db.characters['More' .. i .. '-Realm'] = { name = 'More' .. i, professions = { [2913] = { name = 'Midnight Inscription', parent = 'Inscription', conc = 10, concMax = 1000, concAt = time() } } } end")
 cf14 = [x for x in L.eval("AuctionIQ.UI.RenderConcFooter()").values()]
-check("footer: with more characters every one still shows, on smaller slots that stay clear of the help line",
-      len(cf14) == 14 and cf14[0].width < w6 and 14 * cf14[0].width + 13 * L.eval("AuctionIQ.UI.CONC_GAP") <= L.eval("AuctionIQ.UI.concRoom") <= 920 - 12 - 16 - 28)
+per = max(x.col for x in cf14)
+check("footer: with more characters every one still shows, on two rows that stay clear of the help line",
+      len(cf14) == 14 and max(x.row for x in cf14) == 2 and per == 7
+      and per * cf14[0].width + (per - 1) * L.eval("AuctionIQ.UI.CONC_GAP") <= L.eval("AuctionIQ.UI.concRoom") <= 920 - 12 - 16 - 28)
 run("AuctionIQ.db.characters = STUB.savedChars; AuctionIQ.UI.RenderConcFooter()")
 run("AuctionIQ.db.characters['Foot-Realm'] = { name = 'Foot', class = 'MAGE', professions = { [2906] = { name = 'Midnight Alchemy', parent = 'Alchemy', conc = 300, concMax = 1000, concAt = time() } } }; AuctionIQ.UI.RenderConcFooter()")
 L.execute((ROOT / "tests" / "layout_audit.lua").read_text())

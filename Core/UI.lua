@@ -738,12 +738,12 @@ function build()
 	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildPerf, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
-		p:SetSize(W - 24, H - 48)
+		p:SetSize(W - 24, H - 48 - UI.FOOT_EXTRA)
 		-- the Report, Knowledge and Paths sit in a tab's table page, right of its nav
 		if b == buildPlan or b == buildPaths or b == buildPerf then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", 12 + 172, -36)
-			p:SetSize(W - 24 - 172, H - 48)
+			p:SetSize(W - 24 - 172, H - 48 - UI.FOOT_EXTRA)
 		end
 		b(p)
 	end
@@ -963,11 +963,14 @@ end
 UI.TextBar = textBar
 
 --- The footer's Concentration, by character: every character with a current-expansion profession,
---- A to Z from the left. Each slot is the name in its class colour over one thin
---- class-gradient bar a profession, sized to share the footer right of the help line, so the
---- bars shrink as the warband grows. Returns what it drew, for the tests:
---- { { char, width, bars = { { prof, cur, max, share } } } }.
+--- A to Z from the left. Each slot is the full name in its class colour beside one thin
+--- class-gradient bar a profession (50 wide). One row while they fit right of the help line, else
+--- two (A to Z along the top, then the bottom); only past two rows do the bars narrow and, last,
+--- the names get cut. Returns what it drew, for the tests:
+--- { { char, width, row, col, name (as shown), bars = { { prof, cur, max, share } } } }.
 UI.CONC_SLOT_MAX, UI.CONC_SLOT_MIN, UI.CONC_GAP = 150, 24, 8
+UI.CONC_BAR, UI.CONC_ROW = 50, 14 -- a bar's width, a row's height
+UI.FOOT_EXTRA = 20 -- the pages stop this much higher, leaving the footer room for two rows
 local function concSlot(i)
 	local s = frame.conc[i]
 	if s then return s end
@@ -1015,22 +1018,37 @@ function UI.RenderConcFooter()
 	help = (type(help) == "number" and help > 0) and math.min(300, math.ceil(help)) or 300
 	local avail = W - 12 - help - 16 - 28
 	UI.concRoom = avail
-	local w = n > 0 and math.floor((avail + UI.CONC_GAP) / n) - UI.CONC_GAP or 0
-	w = math.max(UI.CONC_SLOT_MIN, math.min(UI.CONC_SLOT_MAX, w))
-	local showValue = w >= 110 -- the points beside the bars only when there's room for them
-	local nameW = math.floor(w * (showValue and 0.42 or 0.5))
-	local valueW = showValue and 26 or 0
-	local barW = math.max(8, w - nameW - 4 - (showValue and (valueW + 4) or 0))
+	-- full names, the widest setting every slot's width, so the bars line up in columns
+	local nameW = 0
+	for i, g in ipairs(order) do
+		local s = concSlot(i)
+		s.name:SetWidth(400)
+		s.name:SetText(classColor(g.class) .. g.char .. "|r")
+		nameW = math.max(nameW, math.ceil(s.name:GetStringWidth() or 0))
+	end
+	-- one row while it fits, else two; past that the bars narrow, and last the names are cut
+	local GAP, ROWS = UI.CONC_GAP, 1
+	local barW = UI.CONC_BAR
+	local function width(perRow, nw, bw) return perRow * (nw + 4 + bw) + (perRow - 1) * GAP end
+	local perRow = n
+	if n > 1 and width(n, nameW, barW) > avail then ROWS = 2; perRow = math.ceil(n / 2) end
+	if perRow > 0 and width(perRow, nameW, barW) > avail then
+		barW = math.max(20, math.floor((avail - (perRow - 1) * GAP) / perRow) - nameW - 4)
+		if width(perRow, nameW, barW) > avail then nameW = math.max(8, math.floor((avail - (perRow - 1) * GAP) / perRow) - 4 - barW) end
+	end
+	local w = nameW + 4 + barW
+	UI.concRows = ROWS
 	for i = 1, math.max(n, #frame.conc) do
 		local g = order[i]
 		local s = g and concSlot(i) or frame.conc[i]
 		s:SetShown(g ~= nil)
 		if g then
+			-- A to Z along the top row, then the bottom one, in columns from the left
+			local row, col = math.floor((i - 1) / perRow), (i - 1) % perRow
 			s:ClearAllPoints()
-			s:SetSize(w, 16)
-			s:SetPoint("BOTTOMRIGHT", -28 - (n - i) * (w + UI.CONC_GAP), 5) -- the first name leftmost
+			s:SetSize(w, UI.CONC_ROW)
+			s:SetPoint("BOTTOMRIGHT", -28 - (perRow - 1 - col) * (w + GAP), 4 + (ROWS - 1 - row) * UI.CONC_ROW)
 			s.name:ClearAllPoints(); s.name:SetPoint("LEFT", s, "LEFT", 0, 0); s.name:SetWidth(nameW)
-			-- the name, cut to the room it has (the tooltip has it whole)
 			local nm = g.char
 			s.name:SetText(classColor(g.class) .. nm .. "|r")
 			while #nm > 1 and (s.name:GetStringWidth() or 0) > nameW do
@@ -1040,7 +1058,7 @@ function UI.RenderConcFooter()
 			local np = #g.list
 			local bh = np > 1 and 3 or 6
 			local top = math.floor((np * bh + (np - 1)) / 2)
-			local drawn = { char = g.char, width = w, bars = {} }
+			local drawn = { char = g.char, width = w, row = row + 1, col = col + 1, name = nm, bars = {} }
 			local tip = { { classColor(g.class) .. g.char .. "|r" } }
 			local fullest = g.list[1]
 			for k = 1, math.max(np, #s.bars) do
@@ -1063,9 +1081,7 @@ function UI.RenderConcFooter()
 					end
 				end
 			end
-			s.value:ClearAllPoints(); s.value:SetPoint("RIGHT", s, "RIGHT", 0, 0); s.value:SetWidth(valueW)
-			s.value:SetShown(showValue)
-			s.value:SetText(showValue and (fullest.cur >= fullest.max and T.Color("bad", tostring(fullest.cur)) or tostring(fullest.cur)) or "")
+			s.value:SetShown(false)
 			s.tip = tip
 			out[#out + 1] = drawn
 		end
