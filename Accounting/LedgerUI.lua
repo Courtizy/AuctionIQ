@@ -1,8 +1,8 @@
--- Ledger page of the main window, like TSM's, with sub-tabs: Overview (Report, Inventory); Revenue
--- (Sales, Other, Resale); Expenses (Purchases, Other, Expired, Cancelled); Profit (Product P&L,
--- Holdings, Overhead); Performance (Research/Views.lua: where forecasts missed). Filter by name, character and
--- time frame, sort by any column, hover an item for its tooltip. Data comes from CH.Ledger, which
--- reads TSM's saved accounting and never writes to it.
+-- Accounting's table page, also used by Operations. Accounting has two sub-tabs: Statements (Income
+-- Statement, Balance Sheet, Cash Flow, Product P&L, Inventory, Performance) and Ledger (All, with
+-- Sales, Other income, Purchases, Other expenses, Expired and Cancelled as its filters). Filter by
+-- name, character and time frame, sort by any column, hover an item for its tooltip. Data comes from
+-- CH.Ledger, which reads TSM's saved accounting and never writes to it.
 local _, CH = ...
 
 local LUI = {}
@@ -40,33 +40,23 @@ local ITEM_TIME = { { "Item", 0, 220 }, { "Character", 224, 90 }, { "Type", 318,
 local OTHER = { { "Type", 0, 180 }, { "Character", 184, 110 }, { "Other character", 298, 128 }, { "Amount", 430, 120 }, { "Time frame", 630, 94 } }
 local VIEWS = {
 	-- what you hold and what it's worth against what it cost; hover Held for where it is
-	inventory = { label = "Inventory", parent = "Inventory", sort = 5, cols = { { "Item", 0, 166 }, { "Held", 170, 46 }, { "Paid each", 220, 78 },
+	inventory = { label = "Inventory", parent = "Statements", sort = 5, cols = { { "Item", 0, 166 }, { "Held", 170, 46 }, { "Paid each", 220, 78 },
 		{ "Worth each", 302, 78 }, { "Value", 384, 90 }, { "Unrealized", 478, 84 }, { "Last sold", 566, 70 }, { "Days of stock", 640, 84 } } },
-	sales = { label = "Sales", parent = "Revenue", sort = 7, asc = true, cols = ITEM_TIME },
-	income = { label = "Other", parent = "Revenue", sort = 5, asc = true, cols = OTHER },
-	resale = { label = "Resale", parent = "Revenue", sort = 7, cols = { { "Item", 0, 200 }, { "Bought", 204, 56 }, { "Avg buy", 264, 90 },
-		{ "Sold", 358, 56 }, { "Avg sell", 418, 90 }, { "Avg profit", 512, 100 }, { "Total profit", 616, 108 } } },
-	purchases = { label = "Purchases", parent = "Expenses", sort = 7, asc = true, cols = ITEM_TIME },
-	expense = { label = "Other", parent = "Expenses", sort = 5, asc = true, cols = OTHER },
-	expired = { label = "Expired", parent = "Expenses", sort = 5, asc = true,
+	-- every record in one list, gold in and out; the views under it are its filters
+	all = { label = "All", parent = "Ledger", sort = 6, asc = true, cols = { { "Item or type", 0, 220 }, { "Character", 224, 90 }, { "Kind", 318, 96 },
+		{ "Qty", 418, 44 }, { "Amount", 466, 120 }, { "Time frame", 630, 94 } } },
+	sales = { label = "Sales", parent = "Ledger", sort = 7, asc = true, cols = ITEM_TIME },
+	income = { label = "Other income", parent = "Ledger", sort = 5, asc = true, cols = OTHER },
+	purchases = { label = "Purchases", parent = "Ledger", sort = 7, asc = true, cols = ITEM_TIME },
+	expense = { label = "Other expenses", parent = "Ledger", sort = 5, asc = true, cols = OTHER },
+	expired = { label = "Expired", parent = "Ledger", sort = 5, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
-	cancelled = { label = "Cancelled", parent = "Expenses", sort = 5, asc = true,
+	cancelled = { label = "Cancelled", parent = "Ledger", sort = 5, asc = true,
 		cols = { { "Item", 0, 300 }, { "Character", 304, 120 }, { "Qty", 428, 60 }, { "Deposit lost", 492, 134 }, { "Time frame", 630, 94 } } },
-	pl = { label = "Product P&L", parent = "Profit", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
+	pl = { label = "Product P&L", parent = "Statements", sort = 6, cols = { { "Item", 0, 196 }, { "Line", 200, 96 }, { "Sold", 300, 44 },
 		{ "Revenue", 348, 96 }, { "Cost (paid)", 448, 90 }, { "Realized profit", 542, 100 }, { "Margin", 646, 78 } } },
 	perf = { label = "Forecast accuracy", sort = 8, cols = { { "Item", 0, 196 }, { "Made", 200, 44 }, { "Sold", 248, 44 },
 		{ "Forecast each", 296, 90 }, { "Sold each", 390, 90 }, { "vs forecast", 484, 70 }, { "Days", 558, 44 }, { "Realized", 606, 118 } } },
-	dead = { label = "Dead stock", sort = 3, cols = { { "Item", 0, 196 }, { "Held", 200, 50 }, { "Tied up", 254, 96 },
-		{ "Last sold", 354, 92 }, { "Expired", 450, 54 }, { "Do", 508, 216 } } },
-	holdings = { label = "Holdings", parent = "Inventory", sort = 6, cols = { { "Item", 0, 196 }, { "Held", 200, 54 }, { "Paid each", 258, 88 },
-		{ "Worth each", 350, 88 }, { "Change", 442, 60 }, { "Unrealized", 506, 112 }, { "Days of stock", 622, 102 } } },
-	par = { label = "Stock targets", sort = 7, cols = { { "Item", 0, 220 }, { "Sold/week", 224, 70 }, { "Target", 298, 60 },
-		{ "Held", 362, 60 }, { "Short", 426, 60 }, { "Short worth", 490, 110 }, { "Set by", 604, 120 } } },
-	overhead = { label = "Overhead", parent = "Profit", sort = 3, cols = { { "Type", 0, 220 }, { "Count", 224, 70 }, { "Total", 298, 120 },
-		{ "Per day", 422, 110 }, { "Share", 536, 80 } } },
-	-- the old weekly briefing: off the nav (the statements replace it), still opened by /aiq report
-	report = { label = "Report", page = "briefing", cols = {} },
-	time = { label = "Gold per hour", sort = 2, cols = { { "Where", 0, 220 }, { "Hours", 224, 80 }, { "Share", 308, 80 } } },
 }
 -- Two tabs share this table page, each with sub-tabs across the top and their views in the left
 -- nav: Operations (Professions, Markets, Queue, Stock: what to craft, buy or post) and Accounting
@@ -74,15 +64,13 @@ local VIEWS = {
 -- Other modules fill theirs in with LUI.Register; LUI.Order sets the sub-tabs' order.
 local SECTIONS = {
 	ledger = { tabbed = true,
-		{ "Revenue", "sales" }, { "sales", sub = true }, { "income", sub = true }, { "resale", sub = true },
-		{ "Expenses", "purchases" }, { "purchases", sub = true }, { "expense", sub = true },
-		{ "expired", sub = true }, { "cancelled", sub = true },
-		{ "Inventory", "inventory" }, { "inventory", sub = true },
-		{ "Profit", "pl" }, { "pl", sub = true }, { "overhead", sub = true } },
+		{ "Statements", "statement" }, { "pl", sub = true }, { "inventory", sub = true },
+		{ "Ledger", "all" }, { "all", sub = true }, { "sales", sub = true }, { "income", sub = true }, { "purchases", sub = true },
+		{ "expense", sub = true }, { "expired", sub = true }, { "cancelled", sub = true } },
 	operations = {},
 }
 local section = "ledger"
-local lastView = { ledger = "inventory" }
+local lastView = { ledger = "statement" }
 LUI.SECTIONS = SECTIONS
 LUI.VIEWS = VIEWS
 
@@ -119,6 +107,19 @@ function LUI.Register(sec, views, nav, group)
 end
 
 --- Add a view to an existing sub-tab's nav, after its other views.
+--- Put view k in a group's nav at position i (1 is right under the group's head).
+function LUI.AddNavAt(sec, group, k, i)
+	local list = SECTIONS[sec]
+	if not list then return end
+	for j, n in ipairs(list) do
+		if not n.sub and n[1] == group then
+			table.insert(list, j + i, { k, sub = true })
+			if VIEWS[k] then VIEWS[k].parent = group end
+			return
+		end
+	end
+end
+
 function LUI.AddNav(sec, group, k)
 	local list = SECTIONS[sec]
 	if not list then return end
@@ -308,6 +309,29 @@ function LUI.Rows(v, opts)
 			.. CH.Theme.Color("muted", "   Hover Held for where it is.")
 	end
 
+	if v == "all" then
+		local T = CH.Theme
+		local inn, outg = 0, 0
+		local function add(r, kind, sign, label)
+			if not keepRec(r) then return end
+			local text, name
+			if r.id then text, name = LUI.ItemText(r.id) else text, name = r.source or "?", r.source or "?" end
+			if not (keepName(name) or keepName(kind)) then return end
+			-- gold moved between your own characters isn't income or spending
+			if not r.id and mine[r.other] then return end
+			local amt = sign * (r.amount or 0)
+			if amt >= 0 then inn = inn + amt else outg = outg - amt end
+			table.insert(out, { id = r.id, cells = { text, r.player or "?", T.Color("muted", label), r.id and r.quantity or "", signed(amt), LUI.Ago(r.time, now) },
+				sort = { name, r.player or "", label, r.quantity or 0, amt, now - r.time } })
+		end
+		for _, r in ipairs(L.Records("Sales")) do add(r, "sales", 1, "Sale") end
+		for _, r in ipairs(L.Records("Income")) do add(r, "other income", 1, "Other income") end
+		for _, r in ipairs(L.Records("Buys")) do add(r, "purchases", -1, "Purchase") end
+		for _, r in ipairs(L.Records("Expense")) do add(r, "other expenses", -1, "Other expense") end
+		return out, string.format("Gold in %s, out %s, net %s", money(inn), money(outg), signed(inn - outg))
+			.. T.Color("muted", "   Sales before the AH cut, as TSM records them. Filter with the views on the left.")
+	end
+
 	if v == "sales" or v == "purchases" then
 		local n, total = 0, 0
 		for _, r in ipairs(L.Records(v == "sales" and "Sales" or "Buys")) do
@@ -337,33 +361,6 @@ function LUI.Rows(v, opts)
 		local foot = "Total: " .. money(total)
 		if transfers > 0 then foot = foot .. CH.Theme.Color("muted", "   (plus " .. money(transfers) .. " moved between your characters)") end
 		return out, foot
-	end
-
-	if v == "resale" then
-		local items = {}
-		local function add(r, buy)
-			if not keepRec(r) or not r.id then return end
-			local e = items[r.id] or { bq = 0, bg = 0, sq = 0, sg = 0 }
-			items[r.id] = e
-			if buy then e.bq, e.bg = e.bq + r.quantity, e.bg + r.amount else e.sq, e.sg = e.sq + r.quantity, e.sg + r.amount end
-		end
-		for _, r in ipairs(L.Records("Buys")) do add(r, true) end
-		for _, r in ipairs(L.Records("Sales")) do add(r, false) end
-		local n, total = 0, 0
-		for id, e in pairs(items) do
-			if e.bq > 0 and e.sq > 0 then
-				local text, name = LUI.ItemText(id)
-				if keepName(name) then
-					local ab, as = e.bg / e.bq, e.sg / e.sq
-					local each = as - ab
-					local units = math.min(e.bq, e.sq)
-					n, total = n + units, total + each * units
-					table.insert(out, { id = id, cells = { text, e.bq, money(ab), e.sq, money(as), signed(each), signed(each * units) },
-						sort = { name, e.bq, ab, e.sq, as, each, each * units } })
-				end
-			end
-		end
-		return out, string.format("%d items resold   Total profit: %s", n, signed(total))
 	end
 
 	if v == "pl" then
@@ -408,77 +405,8 @@ function LUI.Rows(v, opts)
 		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
 	end
 
-	if v == "dead" then
-		local tied = 0
-		for _, e in ipairs(L.DeadStock(now, opts.days or 30, opts.char)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				tied = tied + e.value
-				table.insert(out, { id = e.id, cells = { text, e.held, money(e.value), e.lastSold and LUI.Ago(e.lastSold, now) or CH.Theme.Color("muted", "never"),
-					e.expired, CH.Theme.Color(e.expired >= 3 and "bad" or "muted", e.advice) },
-					sort = { name, e.held, e.value, e.lastSold and (now - e.lastSold) or math.huge, e.expired, e.advice } })
-			end
-		end
-		return out, string.format("%d items not moving, %s tied up", #out, money(tied))
-	end
 
-	if v == "holdings" then
-		local gain = 0
-		for _, e in ipairs(L.Holdings(now, opts.char)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				gain = gain + e.gain
-				table.insert(out, { id = e.id, cells = { text, e.held, money(e.paid), money(e.now),
-					CH.Theme.Color(e.pct >= 0 and "ok" or "bad", string.format("%+d%%", math.floor(e.pct * 100 + 0.5))), signed(e.gain),
-					e.daysOfStock and string.format("%.0f", e.daysOfStock) or CH.Theme.Color("muted", "no sales") },
-					sort = { name, e.held, e.paid, e.now, e.pct, e.gain, e.daysOfStock or math.huge } })
-			end
-		end
-		return out, "Unrealized gain on stock you bought: " .. signed(gain)
-	end
 
-	if v == "par" then
-		local short, worth = 0, 0
-		for _, e in ipairs(CH.Par.List(now)) do
-			local text, name = LUI.ItemText(e.id)
-			if keepName(name) then
-				if e.short > 0 then short, worth = short + 1, worth + e.value end
-				table.insert(out, { id = e.id, cells = { text, string.format("%.0f", e.weekly), e.target, e.held,
-					e.short > 0 and CH.Theme.Color("bad", e.short) or CH.Theme.Color("ok", "0"), e.short > 0 and money(e.value) or "",
-					e.manual and CH.Theme.Color("accent", "you") or CH.Theme.Color("muted", string.format("%d days at %d%%",
-						CH.Expect.Setting("cover"), math.floor(CH.Expect.Setting("service") * 100 + 0.5))) },
-					sort = { name, e.weekly, e.target, e.held, e.short, e.value, e.manual and 1 or 0 } })
-			end
-		end
-		return out, string.format("%d items below stock target, %s of stock to make or buy", short, money(worth))
-			.. CH.Theme.Color("muted", "   shift-click +1, ctrl-click -1, alt-click back to automatic")
-	end
-
-	if v == "overhead" then
-		local o = L.Overhead(since, opts.char)
-		local span = math.max(1, (now - (opts.days and since or (now - 365 * 86400))) / 86400)
-		for _, t in ipairs(o.types) do
-			if keepName(t.type) then
-				table.insert(out, { cells = { t.type, t.n, money(t.gold), money(t.gold / span),
-					o.total > 0 and string.format("%d%%", math.floor(t.gold / o.total * 100 + 0.5)) or "" },
-					sort = { t.type, t.n, t.gold, t.gold / span, t.gold } })
-			end
-		end
-		return out, string.format("Trading profit %s, overhead %s, after overhead %s", signed(o.profit), money(-o.total), signed(o.afterOverhead))
-	end
-
-	if v == "time" then
-		local x = CH.Planner.Time(opts.days and since or (now - 30 * 86400))
-		for k, h in pairs(x.kinds) do
-			if keepName(k) then
-				table.insert(out, { cells = { k, string.format("%.1f", h), x.hours > 0 and string.format("%d%%", math.floor(h / x.hours * 100 + 0.5)) or "" },
-					sort = { k, h, h } })
-			end
-		end
-		return out, string.format("%.1f hours", x.hours) .. (x.profit and ("   profit after overhead " .. signed(x.profit)) or "")
-			.. (x.perHour and ("   " .. signed(math.floor(x.perHour)) .. " an hour") or "")
-			.. CH.Theme.Color("muted", "   time counts while the AH, mailbox or a profession is open")
-	end
 
 	-- expired / cancelled
 	-- TSM doesn't record the deposit, so it's estimated from the vendor price and the item's duration
@@ -668,7 +596,7 @@ function LUI.Build(p, fs, panel)
 
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
-	p.exportButton:SetScript("OnClick", function() CH.ReportUI.Export(view, { filter = filter, char = char, days = days }) end)
+	p.exportButton:SetScript("OnClick", function() CH.Export.Export(view, { filter = filter, char = char, days = days }) end)
 	-- a view's own action in Export's place (Compare crafts: scan your professions)
 	p.actionButton = T.Button(body, "", 70, 20)
 	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
@@ -732,7 +660,6 @@ function LUI.Build(p, fs, panel)
 		hit:SetScript("OnClick", function(self)
 			-- a statement line opens the transactions behind it
 			if self.go then return CH.UI.Go(self.go[1], self.go[2]) end
-			if view == "par" and self.id then LUI.ParClick(self.id) end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
 		end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
@@ -746,7 +673,7 @@ function LUI.Build(p, fs, panel)
 	-- the selected row's detail, in a panel right of the table, for a view that has one: a kicker, a
 	-- headline, three figures, label and value rows, a section of rows (each explains itself on hover),
 	-- a note, and buttons from the bottom up (the first, the main one, lowest)
-	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { onAction = function(self)
+	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { rows = 7, srows = 6, onAction = function(self)
 		local ok, msg = self.run()
 		said = msg and { ok = ok, msg = msg } or nil
 		CH.UI.Refresh()
@@ -793,7 +720,7 @@ function LUI.Refresh()
 	local charLabel = char and (v.charLabel and v.charLabel(char) or char:match("^[^#]+")) or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
-	p.timeButton:SetShown(view ~= "inventory" and view ~= "par" and not (VIEWS[view] and VIEWS[view].noTime))
+	p.timeButton:SetShown(view ~= "inventory" and not (VIEWS[view] and VIEWS[view].noTime))
 
 	local act = v.action
 	p.actionButton:SetShown(act ~= nil)
@@ -954,7 +881,7 @@ function LUI.SetRows(n)
 	return ROWS
 end
 
---- Stock targets view: shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
+--- An item's stock target (Trade's item panel): shift-click raises an item's target by 1, ctrl-click lowers it, alt-click goes
 --- back to the automatic one (a week of sales).
 function LUI.ParClick(id, mod)
 	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")
@@ -1006,7 +933,7 @@ function LUI.Set(opts)
 		LUI.quietUntil = (GetTime and GetTime() or 0) + 1.5
 		if opts.filter == nil then opts.filter = focus.name or "" end
 	end
-	if opts.view then
+	if opts.view and VIEWS[opts.view] then
 		section = LUI.SectionOf(opts.view) or section
 		view = opts.view; lastView[section] = view
 		if VIEWS[view].parent then lastIn[VIEWS[view].parent] = view end

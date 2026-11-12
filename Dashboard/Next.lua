@@ -108,8 +108,6 @@ function Next.List(now)
 		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1,
 			go = { "operations", "professions", { char = cd.char, title = "Cooldown ready" } } }) end
 	end
-	local mail = CH.Mail and CH.Mail.WaitingAll() or 0
-	if mail > 0 then add({ title = "Collect mail", detail = "gold waiting in the mailbox", gold = mail, tier = 1 }) end
 	-- the queue's shopping list: what still has to be bought before queued crafts can start
 	if CH.Queue and CH.Queue.ShoppingList then
 		local ok, list, total = pcall(CH.Queue.ShoppingList)
@@ -176,7 +174,7 @@ function Next.List(now)
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
 					risk = "a cut may not sell it either: check who's undercutting",
-					go = { "operations", "dead", { name = name(e.id), id = e.id, title = "Rethink" } } })
+					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do

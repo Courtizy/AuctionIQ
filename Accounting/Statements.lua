@@ -66,7 +66,13 @@ local function mine()
 	return set
 end
 
-local function within(r, from, to, char) return r.time >= from and r.time < to + 1 and (not char or r.player == char) end
+-- In range and in scope: one character, or (none named) the characters the Dashboard includes, so
+-- the statement and the gold series it explains always cover the same characters
+local function within(r, from, to, char)
+	if r.time < from or r.time >= to + 1 then return false end
+	if char then return r.player == char end
+	return not r.player or CH.Ledger.Included(r.player)
+end
 local function isAuction(r) return r.source == nil or r.source == "Auction" end
 
 -- What one unit of an item cost you at time t: crafted at the reagent prices you paid, bought at
@@ -339,7 +345,7 @@ local function incomeRows(ctx)
 		{ "Cost of goods sold", kind = "head" },
 		{ "Crafted items", -s.cogs.crafted, kind = "line", go = { "ledger", "pl" },
 			tip = "What the crafts you sold cost to make: their reagents at what you paid in the 30 days before each sale (today's price for any you never bought), after Resourcefulness and Multicraft." },
-		{ "Resold items", -s.cogs.bought, kind = "line", go = { "ledger", "resale" }, tip = "What you paid for the items you bought and sold again." },
+		{ "Resold items", -s.cogs.bought, kind = "line", go = { "ledger", "purchases" }, tip = "What you paid for the items you bought and sold again." },
 		{ string.format("Gathered and looted (%d sold, no cost)", s.cogs.freeUnits), 0, kind = "line",
 			tip = "Items you sold that cost you nothing you recorded: gathered, looted or rewards. Their sales are all profit." },
 		{ s.cogs.backedShare and string.format("Backed by your purchase records: %d%% of that cost", math.floor(s.cogs.backedShare * 100 + 0.5)) or "No cost of goods sold yet",
@@ -376,7 +382,7 @@ local function balanceRows(ctx)
 		tip = "At your own sales rate over the last 30 days, what you hold sells in 7 days or less." })
 	table.insert(list, { string.format("Slow: 1 to 4 weeks (%d items)", b.liquid.n.slow), b.liquid.slow, kind = "sub", go = { "ledger", "inventory" },
 		tip = "At your sales rate, these take 1 to 4 weeks to sell." })
-	table.insert(list, { string.format("Dead or unsellable (%d items)", b.liquid.n.dead), b.liquid.dead, kind = "sub", go = { "operations", "dead" },
+	table.insert(list, { string.format("Dead or unsellable (%d items)", b.liquid.n.dead), b.liquid.dead, kind = "sub", go = { "operations", "post" },
 		tip = "None sold in 30 days, or over 4 weeks of stock at your sales rate. Gold you can't count on soon." })
 	table.insert(list, { "Of which listed on the auction house", b.listed.book, kind = "memo", go = { "operations", "post" }, tip = "Items on the AH now, valued the same way." })
 	-- one item can carry most of the value: say so, with what its value rests on
@@ -448,6 +454,7 @@ St.VIEWS = {
 }
 
 if LUI and LUI.Register then
-	LUI.Register("ledger", St.VIEWS, { "statement", "balance", "cashflow" }, "Reports")
-	LUI.Order("ledger", { "Reports", "Revenue", "Expenses", "Inventory", "Profit" })
+	LUI.Register("ledger", St.VIEWS, {})
+	for i, k in ipairs({ "statement", "balance", "cashflow" }) do LUI.AddNavAt("ledger", "Statements", k, i) end
+	LUI.Order("ledger", { "Statements", "Ledger" })
 end

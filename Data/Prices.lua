@@ -226,21 +226,63 @@ end
 -- ledger's records change or a minute passes, so a table of items doesn't walk the sales per row.
 local recent = { at = 0 }
 --- { [itemID] = { gold (after the cut), n (units), last (time) } } over the 30 days before now.
-function Prices.RecentSales(now)
+function Prices.RecentSales(now, sync)
 	now = now or time()
 	local records = CH.Ledger.Records("Sales")
-	if recent.records == records and math.abs(now - recent.at) < 60 then return recent.by end
+	-- the same records within ten minutes: the 30-day window has barely moved
+	if recent.records == records and math.abs(now - recent.at) < 600 then return recent.by end
+	-- in a click (Prices.Values for a tooltip or the advisor), don't walk every sale now: hand back
+	-- what we have (or nothing yet) and add them up over the next frames
+	if not sync and C_Timer and Prices.background then
+		Prices.RecentSalesSoon(now, records)
+		return recent.by or {}
+	end
 	local by, from = {}, now - 30 * 86400
+	local F, net = CH.Ledger.F, CH.Ledger.Net
+	local fid, fq, ft = F.id, F.quantity, F.time
 	for _, s in ipairs(records) do
-		if s.id and s.quantity > 0 and s.time >= from and s.time <= now then
-			local e = by[s.id]
-			if not e then e = { gold = 0, n = 0 }; by[s.id] = e end
-			e.gold, e.n = e.gold + CH.Ledger.Net(s), e.n + s.quantity
-			if not e.last or s.time > e.last then e.last = s.time end
+		-- by position: this walks every sale, and the lookup by name costs a call per field
+		local id, q, t = s[fid], s[fq], s[ft]
+		if id and q > 0 and t >= from and t <= now then
+			local e = by[id]
+			if not e then e = { gold = 0, n = 0 }; by[id] = e end
+			e.gold, e.n = e.gold + net(s), e.n + q
+			if not e.last or t > e.last then e.last = t end
 		end
 	end
 	recent.records, recent.at, recent.by = records, now, by
 	return by
+end
+
+--- Add up the 30-day sales a few thousand records a frame, then keep them as RecentSales does.
+Prices.background = true
+local building
+function Prices.RecentSalesSoon(now, records)
+	if building and building.records == records then return end
+	local b = { records = records, now = now, i = 0, by = {} }
+	building = b
+	local from = now - 30 * 86400
+	local F, net = CH.Ledger.F, CH.Ledger.Net
+	local fid, fq, ft = F.id, F.quantity, F.time
+	local function step()
+		if building ~= b then return end
+		local stop = math.min(#records, b.i + 5000)
+		for k = b.i + 1, stop do
+			local s = records[k]
+			local id, q, t = s[fid], s[fq], s[ft]
+			if id and q > 0 and t >= from and t <= now then
+				local e = b.by[id]
+				if not e then e = { gold = 0, n = 0 }; b.by[id] = e end
+				e.gold, e.n = e.gold + net(s), e.n + q
+				if not e.last or t > e.last then e.last = t end
+			end
+		end
+		b.i = stop
+		if stop < #records then return C_Timer.After(0, step) end
+		building = nil
+		recent.records, recent.at, recent.by = records, now, b.by
+	end
+	C_Timer.After(0, step)
 end
 
 --- Tooltip lines for Prices.Values: { label, money, labelColor, valueColor }.
@@ -258,3 +300,8 @@ function Prices.ValueLines(id, now)
 	return lines
 end
 
+
+-- add up the 30-day sales soon after login, so the first click or hover doesn't wait for them
+CH.On("PLAYER_LOGIN", function()
+	if C_Timer then C_Timer.After(15, function() if CH.Ledger and CH.Ledger.Available() then Prices.RecentSales() end end) end
+end)

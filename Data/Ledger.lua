@@ -69,53 +69,160 @@ function Lg.Holders()
 end
 
 -- CSV parsing ---------------------------------------------------------------------------------
-local parsed = {} -- [key] = { text, rows }: the text itself, so an edit of the same length is seen
-
-local function csv(key)
-	local db = tsm()
-	local text = db and db[key]
-	if type(text) ~= "string" then return {} end
-	local c = parsed[key]
-	if c and c.text == text then return c.rows end
-	local rows, header = {}, nil
-	for line in string.gmatch(text, "[^\n]+") do
-		local f = {}
-		for v in string.gmatch(line .. ",", "([^,]*),") do f[#f + 1] = v end
-		if not header then
-			header = f
-		else
-			local r = {}
-			for i, h in ipairs(header) do r[h] = f[i] end
-			table.insert(rows, r)
-		end
-	end
-	parsed[key] = { text = text, rows = rows }
-	return rows
-end
-
+-- TSM keeps its records as CSV text. Parsed, they used to cost about twenty times the text's
+-- size (a table per row with a field per column, kept twice); on a realm with years of records
+-- that's tens of MB. Now each row is one small array read through a shared metatable (r.time,
+-- r.amount ... as before), built straight from the text and kept once per text.
 local function num(v) return tonumber(v) or 0 end
 local function itemID(s) return tonumber((s or ""):match("^i:(%d+)")) end
 
---- TSM's records of one kind for this realm: "Sales", "Buys", "Income", "Expense", "Expired",
---- "Cancelled". Each row: time, player, other, item (itemString), id, quantity, price (each),
---- amount (total copper), source or type.
--- Normalized records, kept per parsed CSV (a new parse, when TSM's text changes, makes new ones).
-local normalized = setmetatable({}, { __mode = "k" })
+local parsed = {} -- [key] = { text, rows }: the text itself, so a changed text is parsed again
 
---- TSM's accounting records of one kind, normalized. Shared between callers: read them, don't change them.
-function Lg.Records(kind)
-	local rows = csv("r@" .. realm() .. "@internalData@csv" .. kind)
-	if normalized[rows] then return normalized[rows] end
+--- /aiq mem: each parsed TSM text, its size and rows.
+function Lg.ParsedCounts()
 	local out = {}
-	for _, r in ipairs(rows) do
-		local q = num(r.quantity)
-		local amount = r.amount and num(r.amount) or num(r.price) * q
-		table.insert(out, { time = num(r.time), player = r.player, other = r.otherPlayer, item = r.itemString,
-			id = itemID(r.itemString), quantity = q, price = num(r.price), amount = amount, source = r.source or r.type })
+	for key, c in pairs(parsed) do
+		table.insert(out, string.format("TSM %s: %d rows from %.1f MB of text", key:match("csv(%a+)$") or key:match("@(%a+)$") or key, #c.rows, #c.text / 1048576))
 	end
-	if rows[1] then normalized[rows] = out end
 	return out
 end
+
+--- Rows of the CSV under key, each built by build(field, col) where col maps a header name to its
+--- position: one pass over the text, nothing kept but what build returns.
+Lg.NONE = {}
+local work = {} -- [key] = a parse in progress: { text, rows, col, pos, nr, build, pat }
+
+-- Parses up to limit lines of a parse in progress (all of them when limit is nil), stopping early
+-- once budget milliseconds have gone. True when done.
+local function step(w, limit, budget)
+	local text, rows, build, col, pat = w.text, w.rows, w.build, w.col, w.pat
+	local find, sub, match = string.find, string.sub, string.match
+	local pos, nr, len, done = w.pos, w.nr, #text, 0
+	local f, n = {}, 0
+	local clock = budget and debugprofilestop
+	local stop = clock and clock() + budget
+	while pos <= len do
+		if limit and done >= limit then break end
+		if stop and done % 250 == 249 and clock() > stop then break end
+		local e = find(text, "\n", pos, true) or (len + 1)
+		if e > pos then
+			local line = sub(text, pos, e - 1)
+			-- the usual line has exactly the header's columns: one match pulls them all out at once
+			local g = pat and { match(line, pat) }
+			if g and g[1] then
+				nr = nr + 1; rows[nr] = build(g, col)
+			else
+				local k = 0
+				for v in string.gmatch(line .. ",", "([^,]*),") do k = k + 1; f[k] = v end
+				for i = k + 1, n do f[i] = nil end
+				n = k
+				if not col then
+					col = {}
+					for i = 1, k do col[f[i]] = i end
+					pat = "^" .. string.rep("([^,]*),", k - 1) .. "([^,]*)$"
+				else
+					nr = nr + 1; rows[nr] = build(f, col)
+				end
+			end
+			done = done + 1
+		end
+		pos = e + 1
+	end
+	w.pos, w.nr, w.col, w.pat = pos, nr, col, pat
+	return pos > len
+end
+
+local function begin(key, text, build)
+	local c = parsed[key]
+	local w = { text = text, rows = {}, build = build, pos = 1, nr = 0 }
+	-- TSM adds new records at the end: when the old text is the start of the new, only the added
+	-- lines are parsed (a new list, so callers caching by identity see the change)
+	if c and c.col and #text > #c.text and (text:sub(#c.text, #c.text) == "\n" or text:sub(#c.text + 1, #c.text + 1) == "\n")
+		and text:sub(1, #c.text) == c.text then
+		for i = 1, #c.rows do w.rows[i] = c.rows[i] end
+		w.col, w.pos, w.nr = c.col, #c.text + 1, #c.rows
+		w.pat = "^" .. string.rep("([^,]*),", #c.cols - 1) .. "([^,]*)$"
+	end
+	return w
+end
+
+local function finish(key, w)
+	local cols = {}
+	for name, i in pairs(w.col or {}) do cols[i] = name end
+	parsed[key] = { text = w.text, rows = w.rows, col = w.col, cols = cols }
+	work[key] = nil
+	return w.rows
+end
+
+local function csv(key, build)
+	local db = tsm()
+	local text = db and db[key]
+	-- no data: one shared empty list, so callers that cache by the list's identity still hit
+	if type(text) ~= "string" then return Lg.NONE end
+	local c = parsed[key]
+	if c and c.text == text then return c.rows end
+	-- a background parse of this same text is under way: finish it here
+	local w = work[key]
+	if not (w and w.text == text and w.build == build) then w = begin(key, text, build) end
+	step(w)
+	return finish(key, w)
+end
+
+--- Parses TSM's records a few thousand lines a frame, so the first window or report after login
+--- doesn't stall the game; then calls done. Anything that needs the records sooner finishes the
+--- parse itself.
+function Lg.Warm(kinds, done, perFrame)
+	local budget = not perFrame and 6 or nil -- milliseconds a frame, when no line count is given
+	perFrame = perFrame or 20000
+	local keys = {}
+	local i = 1
+	local function tick()
+		local db = tsm()
+		while i <= #kinds do
+			local kind = kinds[i]
+			local key = kind == "goldLog" and nil or ("r@" .. realm() .. "@internalData@csv" .. kind)
+			local text = key and db and db[key]
+			local c = key and parsed[key]
+			if type(text) ~= "string" or (c and c.text == text) then
+				i = i + 1
+			else
+				local w = work[key]
+				if not (w and w.text == text) then w = begin(key, text, Lg.Build); work[key] = w end
+				if step(w, perFrame, budget) then finish(key, w); i = i + 1 end
+				C_Timer.After(0, tick)
+				return
+			end
+		end
+		if done then done() end
+	end
+	tick()
+end
+Lg.KINDS = { "Sales", "Buys", "Income", "Expense", "Expired", "Cancelled" }
+
+-- A record: { time, player, other, item, id, quantity, price, amount, source } by position.
+local REC = { time = 1, player = 2, other = 3, item = 4, id = 5, quantity = 6, price = 7, amount = 8, source = 9 }
+Lg.F = REC -- positions, for loops over every record that want to skip the lookup by name
+local recordMeta = { __index = function(t, k) local i = REC[k]; if i then return rawget(t, i) end end }
+local function record(f, col)
+	local q = num(f[col.quantity])
+	local amount = col.amount and num(f[col.amount]) or num(f[col.price]) * q
+	local it = f[col.itemString]
+	return setmetatable({ num(f[col.time]), f[col.player], f[col.otherPlayer], it, itemID(it), q, num(f[col.price]), amount,
+		f[col.source] or f[col.type] }, recordMeta)
+end
+
+-- A gold log entry: { t, v } by position.
+local LOG = { t = 1, v = 2 }
+local logMeta = { __index = function(t, k) local i = LOG[k]; if i then return rawget(t, i) end end }
+local function logEntry(f, col) return setmetatable({ num(f[col.minute]) * 60, num(f[col.copper]) }, logMeta) end
+
+--- TSM's records of one kind for this realm: "Sales", "Buys", "Income", "Expense", "Expired",
+--- "Cancelled". Each row: time, player, other, item (itemString), id, quantity, price (each),
+--- amount (total copper), source or type. Shared between callers: read them, don't change them.
+function Lg.Records(kind)
+	return csv("r@" .. realm() .. "@internalData@csv" .. kind, record)
+end
+Lg.Build = record
 
 --- The gold a sale put in your bags: an auction sale after the AH cut, a vendor or trade sale as is.
 function Lg.Net(s)
@@ -126,13 +233,7 @@ function Lg.Net(s)
 end
 
 -- Gold history --------------------------------------------------------------------------------
-local function goldLog(scope)
-	local out = {}
-	for _, r in ipairs(csv("s@" .. scope .. "@internalData@goldLog")) do
-		table.insert(out, { t = num(r.minute) * 60, v = num(r.copper) })
-	end
-	return out
-end
+local function goldLog(scope) return csv("s@" .. scope .. "@internalData@goldLog", logEntry) end
 
 Lg.WARBAND = "Warband"
 
@@ -153,9 +254,7 @@ local function logs()
 		if Lg.Included(c.name) then table.insert(out, { name = c.name, log = goldLog(c.key) }) end
 	end
 	if Lg.Included(Lg.WARBAND) then
-		local wb = {}
-		for _, r in ipairs(csv("g@ @internalData@warbankGoldLog")) do table.insert(wb, { t = num(r.minute) * 60, v = num(r.copper) }) end
-		table.insert(out, { name = Lg.WARBAND, log = wb })
+		table.insert(out, { name = Lg.WARBAND, log = csv("g@ @internalData@warbankGoldLog", logEntry) })
 	end
 	return out
 end
@@ -255,7 +354,19 @@ function Lg.Summary(since)
 end
 
 -- Activity: one entry per character per mailbox visit (an hour), like TSM's log ----------------
+-- The grouping walks every record (all history), so it's kept until TSM's records change: the
+-- Records tables are replaced only when their text changes. A dashboard refresh then costs nothing.
+local activityCache
 function Lg.Activity(limit)
+	local sales, expired, buys = Lg.Records("Sales"), Lg.Records("Expired"), Lg.Records("Buys")
+	local c = activityCache
+	if c and c.sales == sales and c.expired == expired and c.buys == buys and c.limit == (limit or 50) then return c.out end
+	local out = Lg.ActivityNow(limit, sales, expired, buys)
+	activityCache = { sales = sales, expired = expired, buys = buys, limit = limit or 50, out = out }
+	return out
+end
+
+function Lg.ActivityNow(limit, sales, expired, buys)
 	local groups, order = {}, {}
 	local function g(r)
 		local k = (r.player or "?") .. "@" .. math.floor(r.time / 3600)
@@ -267,11 +378,11 @@ function Lg.Activity(limit)
 		if r.time > e.time then e.time = r.time end
 		return e
 	end
-	for _, r in ipairs(Lg.Records("Sales")) do
+	for _, r in ipairs(sales or Lg.Records("Sales")) do
 		if r.source == "Auction" then local e = g(r); e.sold, e.gold = e.sold + r.quantity, e.gold + r.amount end
 	end
-	for _, r in ipairs(Lg.Records("Expired")) do local e = g(r); e.expired = e.expired + r.quantity end
-	for _, r in ipairs(Lg.Records("Buys")) do
+	for _, r in ipairs(expired or Lg.Records("Expired")) do local e = g(r); e.expired = e.expired + r.quantity end
+	for _, r in ipairs(buys or Lg.Records("Buys")) do
 		if r.source == "Auction" then local e = g(r); e.bought, e.spent = e.bought + r.quantity, e.spent + r.amount end
 	end
 	table.sort(order, function(a, b) return a.time > b.time end)
@@ -548,7 +659,7 @@ local function itemStats()
 	end
 	return stats
 end
-function Lg.ClearStats() stats = nil; parsed = {} end
+function Lg.ClearStats() stats = nil; parsed = {}; work = {} end
 
 --- How many times an item expired since it last sold (TSM's numexpires).
 function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
@@ -579,27 +690,6 @@ function Lg.DeadStock(now, days, char)
 					or "Slow: lower the price"
 				table.insert(out, { id = e.id, held = e.total, value = e.value, lastSold = ls, expired = ex, advice = advice })
 			end
-		end
-	end
-	return out
-end
-
---- Your stock against what you paid: { id, held, paid (each), now (each), gain, pct, daysOfStock }.
-function Lg.Holdings(now, char)
-	now = now or time()
-	local paid = Lg.Paid()
-	local sold30 = {}
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.id and s.time >= now - 30 * DAY then sold30[s.id] = (sold30[s.id] or 0) + s.quantity end
-	end
-	local out = {}
-	for _, e in ipairs(Lg.Inventory(nil, char)) do
-		local p = e.id and paid[e.id]
-		if p and e.unit then
-			local gain = (e.unit - p.each) * e.total
-			local perDay = (sold30[e.id] or 0) / 30
-			table.insert(out, { id = e.id, held = e.total, paid = p.each, now = e.unit, gain = gain,
-				pct = p.each > 0 and (e.unit - p.each) / p.each or 0, daysOfStock = perDay > 0 and e.total / perDay or nil })
 		end
 	end
 	return out
@@ -747,6 +837,10 @@ end
 
 CH.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
-		if Lg.Available() then pcall(Lg.Archive); pcall(Lg.Snapshot) end
+		if not Lg.Available() then return end
+		-- parse in the background first, so the archive and the first report find it ready
+		Lg.Warm(Lg.KINDS, function()
+			CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot)
+		end)
 	end)
 end)

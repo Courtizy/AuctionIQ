@@ -8,7 +8,7 @@ CH.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 CH.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 1, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
+local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -108,16 +108,115 @@ function CH.On(event, fn)
 	pcall(frame.RegisterEvent, frame, event) -- an event this game version doesn't have is skipped, not an error
 end
 
-frame:SetScript("OnEvent", function(_, event, ...)
+-- What AuctionIQ spends its time on, for /aiq perf: per event (and the tooltip hook), calls and
+-- milliseconds, since login or the last /aiq perf reset.
+local perf = { since = time and time() or 0, by = {} }
+CH.perf = perf
+local clock = debugprofilestop
+function CH.Measure(name, fn, ...)
+	if not clock then return fn(...) end
+	local t0 = clock()
+	local a, b, c = fn(...)
+	local p = perf.by[name]
+	if not p then p = { calls = 0, ms = 0, max = 0 }; perf.by[name] = p end
+	local dt = clock() - t0
+	p.calls, p.ms, p.max = p.calls + 1, p.ms + dt, math.max(p.max, dt)
+	return a, b, c
+end
+
+--- Add a timing measured by hand (ms) under name, as CH.Measure does.
+function CH.MeasureAdd(name, dt)
+	local p = perf.by[name]
+	if not p then p = { calls = 0, ms = 0, max = 0 }; perf.by[name] = p end
+	p.calls, p.ms, p.max = p.calls + 1, p.ms + dt, math.max(p.max, dt)
+end
+
+local function dispatch(event, ...)
 	for _, fn in ipairs(handlers[event] or {}) do
 		fn(event, ...)
 	end
+end
+frame:SetScript("OnEvent", function(_, event, ...)
+	CH.Measure(event, dispatch, event, ...)
 end)
+
+--- The /aiq perf report lines: AuctionIQ's memory and its costliest events since login or reset.
+function CH.PerfLines()
+	local out = {}
+	local name = addonName
+	if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+	local getMem = (C_AddOns and C_AddOns.GetAddOnMemoryUsage) or GetAddOnMemoryUsage
+	local kb = getMem and getMem(name)
+	local secs = time() - (perf.since or time())
+	table.insert(out, string.format("AuctionIQ over the last %d min: %s memory", math.floor(secs / 60 + 0.5), kb and string.format("%.1f MB", kb / 1024) or "?"))
+	local list = {}
+	for ev, p in pairs(perf.by) do list[#list + 1] = { ev = ev, p = p } end
+	table.sort(list, function(a, b) return a.p.ms > b.p.ms end)
+	for i = 1, math.min(8, #list) do
+		local x = list[i]
+		table.insert(out, string.format("  %s: %d calls, %.0f ms total, %.1f ms each, slowest %.0f ms", x.ev, x.p.calls, x.p.ms, x.p.ms / x.p.calls, x.p.max))
+	end
+	if not list[1] then table.insert(out, "  nothing measured yet") end
+	return out
+end
+
+function CH.PerfReset() perf.by, perf.since = {}, time() end
+
+-- SavedVariables versions. Each step brings data saved by an older build up to the next version;
+-- CH.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
+CH.DB_VERSION = 2
+CH.MIGRATIONS = {
+	-- 1 -> 2: the mail feature was removed; craft records (batches) get a bounded history
+	[2] = function(db)
+		db.mail = nil
+	end,
+}
+CH.BATCHES_KEEP_DAYS, CH.BATCHES_MAX = 180, 5000
+
+function CH.Migrate(db)
+	local v = tonumber(db.version) or 1
+	for to = v + 1, CH.DB_VERSION do
+		local step = CH.MIGRATIONS[to]
+		if step then
+			local ok, err = pcall(step, db)
+			if not ok then CH.Print("couldn't update saved data to version " .. to .. ": " .. tostring(err)); return db end
+		end
+		db.version = to
+	end
+	return db
+end
+
+--- Every load: queue entries from older builds get the fields the queue relies on (an entry that
+--- names no recipe is dropped), steps waiting on the game from an earlier session are cleared
+--- (GetTime restarts with the client), and old craft records are trimmed.
+function CH.Tidy(db, now)
+	now = now or (time and time()) or 0
+	local keep = {}
+	for _, e in ipairs(db.queue or {}) do
+		if type(e) == "table" and e.recipeID then
+			e.reagents, e.shop = e.reagents or {}, e.shop or {}
+			e.qty = tonumber(e.qty) or 1
+			e.char = e.char or "?"
+			if e.orderID then e.orderID = tostring(e.orderID) end
+			e.pending, e.pendingAt, e.confirmed = nil, nil, nil
+			if e.qty > 0 then keep[#keep + 1] = e end
+		end
+	end
+	db.queue = keep
+	local b = db.batches
+	if type(b) == "table" then
+		local cut, out = now - CH.BATCHES_KEEP_DAYS * 86400, {}
+		for _, x in ipairs(b) do if (x.at or now) >= cut then out[#out + 1] = x end end
+		while #out > CH.BATCHES_MAX do table.remove(out, 1) end
+		db.batches = out
+	end
+	return db
+end
 
 CH.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
 	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
-	CH.db = AuctionIQDB
+	CH.db = CH.Tidy(CH.Migrate(AuctionIQDB))
 end)
 
 CH.On("PLAYER_LOGIN", function()
@@ -132,7 +231,24 @@ SLASH_AUCTIONIQ1 = "/aiq"
 SLASH_AUCTIONIQ2 = "/auctioniq"
 SlashCmdList.AUCTIONIQ = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
-	if msg == "tooltip" then
+	if msg == "perf" then
+		for _, l in ipairs(CH.PerfLines()) do CH.Print(l) end
+		return
+	elseif msg == "mem" then
+		-- what AuctionIQ holds once the garbage is cleared, and what it's made of
+		local getMem = (C_AddOns and C_AddOns.GetAddOnMemoryUsage) or GetAddOnMemoryUsage
+		if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+		local before = getMem and getMem(addonName) or 0
+		collectgarbage("collect")
+		if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+		local after = getMem and getMem(addonName) or 0
+		CH.Print(string.format("memory %.1f MB, %.1f MB after clearing garbage", before / 1024, after / 1024))
+		for _, l in ipairs(CH.MemLines and CH.MemLines() or {}) do CH.Print("  " .. l) end
+		return
+	elseif msg == "perf reset" then
+		CH.PerfReset(); CH.Print("perf counters reset.")
+		return
+	elseif msg == "tooltip" then
 		CH.db.settings.tooltip = not CH.db.settings.tooltip
 		CH.Print("tooltip lines " .. (CH.db.settings.tooltip and "on" or "off"))
 	elseif msg == "coins" then
@@ -170,6 +286,17 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
 	elseif msg == "orders" then
 		CH.Orders.Debug()
+	elseif msg == "shatter" then
+		-- what Shatter could take, and how many of each you hold in bags / everywhere
+		local ids = CH.Queue.ShatterCandidates()
+		CH.Print(#ids .. " items Shatter can take" .. (#ids == 0 and " (open your enchanting window first)" or ":"))
+		for _, id in ipairs(ids) do
+			local bags = C_Item.GetItemCount(id) or 0
+			local all = C_Item.GetItemCount(id, true, false, true, true) or 0
+			CH.Print(string.format("  %s (%d): %d in bags, %d in all", CH.Advisor.ItemName(id), id, bags, all))
+		end
+		local id, bag, slot = CH.Queue.ShatterItem()
+		CH.Print("would use: " .. (id and (CH.Advisor.ItemName(id) .. (bag and (" in bag " .. bag .. " slot " .. slot) or " (not in your bags)")) or "nothing"))
 	elseif msg == "queue" then
 		CH.QueueUI.Toggle()
 	elseif msg == "scan" then
@@ -196,25 +323,22 @@ SlashCmdList.AUCTIONIQ = function(msg)
 			or "as a starting guess until you disenchant something"
 		CH.Print(string.format("disenchanting plans count %.0f Eversinging Dust, %.0f Radiant Shards and %.0f Dawn Crystals a day, %s.",
 			d.dust, d.shard, d.crystal, src))
-	elseif msg == "today" or msg == "dashboard" then CH.UI.Page("today")
-	elseif msg == "research" then CH.UI.Page("operations", "scenarios")
-	elseif msg == "operations" or msg == "ops" then CH.UI.Page("operations")
-	elseif msg == "markets" or msg == "market" then CH.UI.Page("markets")
-	elseif msg == "crafting" or msg == "professions" then CH.UI.Page("crafting")
-	elseif msg == "trading" or msg == "groups" then CH.UI.Page("trading")
-	elseif msg == "analytics" or msg == "performance" then CH.UI.Page("analytics")
-	elseif msg == "production" or msg == "shopping" then CH.UI.Page("operations", msg == "shopping" and "shopping" or "queue")
+	elseif msg == "dashboard" then CH.UI.Page("today")
+	elseif msg == "operations" or msg == "craft" then CH.UI.Page("operations", "scenarios")
+	elseif msg == "trade" then CH.UI.Page("operations", "post")
+	elseif msg == "shopping" then CH.UI.Page("operations", "shopping")
 	elseif msg:match("^scenario") then
 		local r, p = msg:match("^scenarios?%s+(%d+)%s+(%d+)")
 		if r and CH.AnalyticsViews then CH.AnalyticsViews.SetScenario(tonumber(r) / 100, tonumber(p) / 100) end
 		CH.UI.Page("operations", "scenarios")
-	elseif msg == "report" or msg == "brief" or msg == "briefing" then CH.UI.Page("report")
-	elseif msg == "accounting" or msg == "ledger" or msg == "books" then CH.UI.Page("ledger")
-	elseif msg == "settings" or msg == "options" or msg == "config" then CH.UI.Page("settings")
+	elseif msg == "accounting" then CH.UI.Page("ledger")
+	elseif msg == "settings" then CH.UI.Page("settings")
 	elseif msg == "advisor" then
 		CH.AdvisorUI.ToggleSetting()
+	elseif msg == "cleanup" then
+		CH.Cleanup.Report()
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations or accounting opens that tab (research, markets, crafting, trading and analytics still work); /aiq report opens the Report in Accounting. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's.")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets how many a day you'd sell of one item. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup drops saved data nothing uses (it also runs at logout).")
 	else
 		CH.UI.Toggle()
 	end

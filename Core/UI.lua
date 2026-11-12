@@ -3,7 +3,7 @@ local _, CH = ...
 
 local UI = {}
 CH.UI = UI
-local frame, text
+local frame
 local W, H = 920, 600
 local MIN_W, MAX_W, MIN_H, MAX_H = 920, 1800, 600, 1200 -- the corner grip resizes within these
 local pages, pageButtons = {}, {}
@@ -107,127 +107,6 @@ function UI.CraftingText(now)
 	return table.concat(out, "\n")
 end
 
---- The briefing as text: gold, Concentration, best crafts. Also used by the tests.
-function UI.BriefingText(now)
-	now = now or time()
-	local chars, out = sortedCharacters(), {}
-	local T = CH.Theme
-	local function item(id) return CH.LedgerUI and CH.LedgerUI.ItemText(id) or ("item " .. id) end
-	if CH.Ledger and CH.Ledger.Available() then
-		local ok, r = pcall(CH.Ledger.Report, now)
-		if ok and r then
-			table.insert(out, T.Color("accent", "Last 24 hours") .. T.Color("muted", "  from TSM's accounting"))
-			table.insert(out, string.format("   Sold %d for %s, bought %d for %s, cash %s", r.sold, CH.FormatMoney(r.earned), r.bought,
-				CH.FormatMoney(r.spent), T.Color(r.earned - r.spent >= 0 and "ok" or "bad", CH.FormatMoney(r.earned - r.spent))))
-			local mailGold = CH.Mail and CH.Mail.WaitingAll() or 0
-			if mailGold > 0 then
-				local _, by = CH.Mail.WaitingAll()
-				local parts = {}
-				for name, g in pairs(by) do table.insert(parts, name .. " " .. CH.FormatMoney(g)) end
-				table.sort(parts)
-				table.insert(out, "   Waiting in mail " .. CH.FormatMoney(mailGold) .. T.Color("muted", "  " .. table.concat(parts, ", ")))
-			end
-			if r.worth then
-				local tk = CH.Alerts and CH.Alerts.InTokens(math.abs(r.worth))
-				table.insert(out, "   Net worth (gold + stock) " .. T.Color(r.worth >= 0 and "ok" or "bad", (r.worth > 0 and "+" or "") .. CH.FormatMoney(r.worth))
-					.. (tk and T.Color("muted", "  (" .. tk .. ")") or ""))
-			end
-			for _, t in ipairs(r.top) do table.insert(out, "   " .. item(t.id) .. "  " .. CH.FormatMoney(t.gold)) end
-			local below = CH.Par and CH.Par.List(now) or {}
-			table.sort(below, function(a, b) return a.value > b.value end)
-			local nShort = 0
-			for _, e in ipairs(below) do if e.short > 0 then nShort = nShort + 1 end end
-			if nShort > 0 then
-				table.insert(out, "")
-				table.insert(out, T.Color("accent", "Below stock target") .. T.Color("muted", "  " .. nShort .. " items; the Queue's Fill crafts up to target"))
-				local shown = 0
-				for _, e in ipairs(below) do
-					if e.short > 0 and shown < 6 then
-						shown = shown + 1
-						table.insert(out, string.format("   %s  %d of %d, short %d", item(e.id), e.held, e.target, e.short))
-					end
-				end
-			end
-			local hour, wday = tonumber(date("%H", now)), tonumber(date("%w", now)) + 1
-			local postNow = {}
-			for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do
-				local ahead = (e.bestHour - hour) % 24
-				if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then table.insert(postNow, e) end
-			end
-			table.sort(postNow, function(a, b) return a.gold > b.gold end)
-			if #postNow > 0 then
-				table.insert(out, "")
-				table.insert(out, T.Color("accent", "Post now") .. T.Color("muted", "  their best selling hours start soon"))
-				for i, e in ipairs(postNow) do
-					if i > 5 then break end
-					table.insert(out, string.format("   %s  %d%% of sales from %02d:00", item(e.id), math.floor(e.share * 100 + 0.5), e.bestHour))
-				end
-			end
-			if #r.restock > 0 then
-				table.insert(out, "")
-				table.insert(out, T.Color("accent", "Restock") .. T.Color("muted", "  sold this week, none left on any character"))
-				for _, e in ipairs(r.restock) do
-					table.insert(out, string.format("   %s  %d sold, %s", item(e.id), e.sold, CH.FormatMoney(e.gold)))
-				end
-			end
-			if #r.expired > 0 or #r.stale > 0 then
-				table.insert(out, "")
-				table.insert(out, T.Color("accent", "Came back unsold"))
-				for i, e in ipairs(r.expired) do
-					if i > 5 then break end
-					table.insert(out, string.format("   %s  x%d  %s", item(e.id), e.n, T.Color("muted", "repost it")))
-				end
-				for i, e in ipairs(r.stale) do
-					if i > 4 then break end
-					table.insert(out, string.format("   %s  %s", item(e.id),
-						T.Color("bad", e.times .. " expiries in 2 weeks: cut the price, vendor it or stop making it")))
-				end
-			end
-			table.insert(out, "")
-		end
-	end
-	local total = 0
-	for _, c in ipairs(chars) do total = total + (c.gold or 0) end
-	table.insert(out, CH.Theme.Color("accent", "Gold") .. "  " .. CH.FormatMoney(total) .. " across " .. #chars .. " characters")
-	for _, c in ipairs(chars) do
-		table.insert(out, "   " .. classColor(c.class) .. (c.name or c.key) .. "|r  " .. CH.FormatMoney(c.gold or 0))
-	end
-
-	craftSections(out, chars, now)
-
-	if CH.Planner then
-		local up = CH.Planner.Upcoming(now, 7)
-		if #up > 0 then
-			table.insert(out, "")
-			table.insert(out, T.Color("accent", "Coming up"))
-			for i, e in ipairs(up) do
-				if i > 4 then break end
-				table.insert(out, "   " .. e.date:sub(6) .. "  " .. e.name .. (e.hint and T.Color("muted", "  " .. e.hint) or ""))
-			end
-		end
-		local left = 0
-		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
-		if left > 0 then
-			table.insert(out, "")
-			table.insert(out, T.Color("accent", "Knowledge") .. "  " .. left .. " weekly sources not ticked yet " .. T.Color("muted", "(Plan page)"))
-		end
-	end
-
-	local cds = CH.Cooldowns and CH.Cooldowns.All(now) or {}
-	if #cds > 0 then
-		table.insert(out, "")
-		table.insert(out, CH.Theme.Color("accent", "Cooldowns"))
-		for i, cd in ipairs(cds) do
-			if i > 6 then break end
-			local when = cd.ready and CH.Theme.Color("ok", "ready")
-				or ("in " .. math.ceil(((cd.readyAt or now) - now) / 3600) .. "h")
-			table.insert(out, string.format("   %s%s|r %s  %s", classColor(cd.class), cd.char or "?", cd.name or "?", when))
-		end
-	end
-	return table.concat(out, "\n")
-end
-
--- Window -------------------------------------------------------------------------------------
 local function fs(parent, x, y, w, justify, template)
 	local f = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
 	f:SetPoint("TOPLEFT", x, y)
@@ -631,30 +510,6 @@ local function buildLedger(p)
 	CH.LedgerUI.Build(p, fs, panel)
 end
 
-local function buildBriefing(p)
-	local T = CH.Theme
-	pages.briefing = p
-	CH.ReportUI.Build(p, fs, panel)
-	local scroll = CreateFrame("ScrollFrame", nil, p)
-	scroll:SetPoint("TOPLEFT", 4, -176)
-	local RW = W - 24 - 172 - 16 -- the Report sits in the Accounting tab, right of its nav
-	scroll:SetPoint("BOTTOMRIGHT", -4, 0)
-	scroll:EnableMouseWheel(true)
-	scroll:SetScript("OnMouseWheel", function(self, delta)
-		local y = math.max(0, math.min(self:GetVerticalScrollRange(), self:GetVerticalScroll() - delta * 40))
-		self:SetVerticalScroll(y)
-	end)
-	local child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(RW, 10)
-	scroll:SetScrollChild(child)
-	text = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	text:SetPoint("TOPLEFT")
-	text:SetWidth(RW)
-	text:SetJustifyH("LEFT")
-	text:SetSpacing(4)
-	text:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
-end
-
 -- Three tabs, each answering one question. Dashboard: what should I do next? Operations: what should
 -- I craft, buy or post (Craft, Trade, Queue)? Accounting: what happened, and what should
 -- I learn from it (Overview, Revenue, Expenses, Profit, Performance)? The AH, profession and mailbox
@@ -668,14 +523,7 @@ local function frameOf(pg)
 	if pg == "settings" and settingsView == "groups" then return "groups" end
 	return FRAME[pg]
 end
--- old tab names (commands, other modules, saved links) and where they live now
--- (Research was a tab until its views moved: Markets and Professions to Operations, Performance to
--- Accounting. A view named with it opens wherever it lives now.)
-local OLD = { dashboard = { "today" }, groups = { "settings", "groups" }, plan = { "operations", "professions" }, paths = { "operations", "paths" },
-	crafting = { "operations", "scenarios" }, professions = { "operations", "scenarios" }, markets = { "operations", "compare" },
-	analytics = { "ledger", "overview" }, performance = { "ledger", "overview" }, research = { "operations" },
-	trading = { "operations", "post" }, briefing = { "ledger", "report" }, report = { "ledger", "report" }, accounting = { "ledger" } }
-UI.TABS, UI.OLD = TABS, OLD
+UI.TABS = TABS
 
 --- Where a { tab, view } opens, in words: "Operations > Craft".
 function UI.PlaceName(go)
@@ -741,8 +589,9 @@ function UI.SetScale(scale)
 	settings().scale = scale
 	if frame then
 		local old = frame:GetScale() or 1
-		pin(old, scale)
-		frame:SetScale(scale)
+		local new = CH.Window.PixelScale() * scale -- whole screen pixels per unit at size 1
+		pin(old, new)
+		CH.Window.Pixel(frame, scale)
 	end
 	return scale
 end
@@ -795,11 +644,12 @@ function UI.AddSizer(f)
 	end
 	grip:SetScript("OnMouseDown", function(self)
 		local x, y = GetCursorPosition()
-		self.fromX, self.fromY, self.fromScale, self.fromW, self.fromH = x, y, f:GetScale() or 1, W, H
+		self.fromX, self.fromY, self.fromScale, self.fromW, self.fromH = x, y, settings().scale or 1, W, H
+		self.fromPx = f:GetEffectiveScale() or 1 -- screen pixels per window unit, as the drag starts
 		self.scaling = IsShiftKeyDown and IsShiftKeyDown()
 		self:SetScript("OnUpdate", function(g)
 			local cx, cy = GetCursorPosition()
-			local px = (UIParent:GetEffectiveScale() or 1) * g.fromScale -- screen pixels per window unit
+			local px = g.fromPx
 			if g.scaling then
 				UI.SetScale(g.fromScale * (1 + (cx - g.fromX) / px / W))
 			else
@@ -819,7 +669,7 @@ function UI.AddSizer(f)
 	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.sizer = grip
 	local saved = CH.db and CH.db.settings.window
-	if saved and saved.scale and saved.scale ~= 1 then f:SetScale(saved.scale) end
+	CH.Window.Pixel(f, saved and saved.scale or 1)
 	return grip
 end
 
@@ -873,12 +723,12 @@ function build()
 	local function buildPaths(p) pages.paths = p; CH.PathsUI.Build(p) end
 	local function buildPerf(p) pages.perf = p; if CH.Performance then CH.Performance.Build(p, fs) end end
 	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
-	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildBriefing, buildPerf, buildSettings }) do
+	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildPerf, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
 		p:SetSize(W - 24, H - 48)
 		-- the Report, Knowledge and Paths sit in a tab's table page, right of its nav
-		if b == buildBriefing or b == buildPlan or b == buildPaths or b == buildPerf then
+		if b == buildPlan or b == buildPaths or b == buildPerf then
 			p:ClearAllPoints()
 			p:SetPoint("TOPLEFT", 12 + 172, -36)
 			p:SetSize(W - 24 - 172, H - 48)
@@ -914,7 +764,8 @@ function build()
 		frame.conc[i] = s
 		prev = s
 	end
-	frame:SetScript("OnShow", function()
+	frame:SetScript("OnShow", function(self)
+		CH.Window.Snap(self)
 		if CH.Par then CH.Par.Refresh() end
 		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
 		UI.Refresh()
@@ -938,7 +789,7 @@ local function drawChart(d, data)
 	local plotW = cw - left - 12
 	for i, g in ipairs(d.grid) do
 		local frac = (i - 1) / (#d.grid - 1)
-		local y = top - ch * frac
+		local y = math.floor(top - ch * frac + 0.5) -- on a whole pixel, so the gridlines stay crisp
 		g:ClearAllPoints()
 		g:SetPoint("TOPLEFT", chart, "TOPLEFT", left, y)
 		g:SetPoint("TOPRIGHT", chart, "TOPRIGHT", -12, y)
@@ -989,7 +840,7 @@ function UI.ChartHover(x)
 	if d.hoverIndex ~= best then
 		d.hoverIndex = best
 		d.mark:ClearAllPoints()
-		d.mark:SetPoint("CENTER", d.chart, "TOPLEFT", p[1], p[2])
+		d.mark:SetPoint("CENTER", d.chart, "TOPLEFT", math.floor(p[1] + 0.5), math.floor(p[2] + 0.5))
 		d.mark:Show()
 		d.vline:ClearAllPoints()
 		d.vline:SetPoint("TOPLEFT", d.chart, "TOPLEFT", p[1], d.chartTop)
@@ -1102,7 +953,7 @@ function UI.RenderConcFooter()
 			local share = math.max(0, math.min(1, b.cur / b.max))
 			s.name:SetText(classColor(b.class) .. b.char .. "|r")
 			T.Gradient(s.fill)
-			s.fill:SetWidth(math.max(1, 60 * share))
+			s.fill:SetWidth(math.max(1, math.floor(60 * share + 0.5)))
 			s.fill:SetShown(share > 0)
 			s.value:SetText(b.cur >= b.max and T.Color("bad", tostring(b.cur)) or tostring(b.cur))
 			s.tip = { { (b.char or "?") .. "  " .. T.Color("muted", b.prof or "") }, { string.format("%d/%d Concentration", b.cur, b.max) },
@@ -1263,7 +1114,6 @@ function UI.Refresh()
 	-- a view that is a page of its own (the Report, Professions) shows beside the nav
 	local def = FRAME[page] == "ledger" and CH.LedgerUI.ViewDef()
 	local beside = def and def.page
-	local report = beside == "briefing"
 	for k, p in pairs(pages) do p:SetShown(k == frameOf(page) or k == beside) end
 	UI.LayoutSubTabs()
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
@@ -1276,11 +1126,6 @@ function UI.Refresh()
 	elseif beside == "paths" then refreshLedger(); return CH.PathsUI.Refresh()
 	elseif beside == "perf" then refreshLedger(); return CH.Performance.Refresh()
 	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
-	elseif report then
-		refreshLedger()
-		CH.ReportUI.Refresh()
-		text:SetText(UI.BriefingText())
-		text:GetParent():SetHeight(text:GetStringHeight() + 10)
 	else return refreshLedger() end
 end
 
@@ -1307,7 +1152,7 @@ function UI.LayoutSubTabs()
 		end
 		b:SetShown(g ~= nil)
 	end
-	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, briefing = 12 + 172, perf = 12 + 172 }) do
+	for k, left in pairs({ ledger = 12, plan = 12 + 172, paths = 12 + 172, perf = 12 + 172 }) do
 		local p = pages[k]
 		if p then
 			p:ClearAllPoints()
@@ -1324,7 +1169,6 @@ end
 
 --- Open a tab, and optionally one of its views: UI.Go("operations", "par").
 local function choose(tab, view, focus)
-	if OLD[tab] then tab, view = OLD[tab][1], view or OLD[tab][2] end
 	if not FRAME[tab] then return false end
 	-- a view that moved tabs (stock targets and dead stock to Trading, say) opens where it lives now
 	local home = view and FRAME[tab] == "ledger" and CH.LedgerUI.SectionOf and CH.LedgerUI.SectionOf(view)
@@ -1338,7 +1182,9 @@ end
 --- Open a tab and view; focus (optional) hands over what a recommendation is about: { name, id, char,
 --- qty, title }, so the view opens on it.
 function UI.Go(tab, view, focus)
-	if choose(tab, view, focus) and frame then UI.Refresh() end
+	local ok = choose(tab, view, focus)
+	if ok and frame then UI.Refresh() end
+	return ok
 end
 
 --- Show a tab: "today" (the Dashboard), "operations" or "ledger" (Accounting),

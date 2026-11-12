@@ -1,0 +1,10 @@
+## Interface: 120105
+## Title: AuctionIQ Blacksmithing
+## Notes: AuctionIQ's Blacksmithing data: its specialization tree. Loads only on characters with Blacksmithing.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Spec.lua

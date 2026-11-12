@@ -24,6 +24,17 @@ function CH.CraftAccounts(id)
 	return found, foundAcc, at
 end
 
+--- Break-even for an item you craft, from the newest scan: the sale price per item, before the cut,
+--- that gets back what the reagents cost you (what you paid for those you hold, today's price for
+--- the rest). Returns the price and the scan row, or nil. For the auctioning side to check a list
+--- price against.
+function CH.BreakEvenFor(id)
+	local row, acc = CH.CraftAccounts(id)
+	if not row then return nil end
+	local be = (row.concItem == id and acc == row.concAccounts) and row.concBreakEven or row.breakEven
+	return be, row
+end
+
 -- Lines are { left, right, right colour, left colour }. A left text starting with spaces is a
 -- line item under the heading above it; four spaces is a detail under a line item.
 local function cutPct() return string.format("AH cut (%d%%)", math.floor((1 - CH.AH_CUT) * 100 + 0.5)) end
@@ -31,6 +42,7 @@ local function cutPct() return string.format("AH cut (%d%%)", math.floor((1 - CH
 -- A craft as a statement: revenue (sales, Multicraft, the cut), then reagents itemised, then profit.
 local function craftLines(lines, row, acc, at)
 	local T, m = CH.Theme, CH.FormatMoney
+	local isConc = acc == row.concAccounts
 	local how = acc.concentration and string.format("with Concentration (%d)", acc.concentration) or "without Concentration"
 	table.insert(lines, { "Crafting, per craft", T.Color("muted", how .. (at and date and date(", scan %H:%M", at) or "")) })
 	-- revenue, before the cut
@@ -72,6 +84,9 @@ local function craftLines(lines, row, acc, at)
 	if acc.avgConcentration and acc.avgConcentration > 0 then
 		table.insert(lines, { string.format("  Per Concentration point (%d)", acc.avgConcentration), m(acc.profit / acc.avgConcentration), good })
 	end
+	-- the lowest price that gets back what the reagents cost you: list under it and you lose gold
+	local be = isConc and row.concBreakEven or row.breakEven
+	if be then table.insert(lines, { "Break-even, each", m(be), "accent" }) end
 end
 
 --- Craft or sell, live: crafting and selling the item (buying only the reagents you're short of)
@@ -285,6 +300,6 @@ end
 if TooltipDataProcessor and Enum and Enum.TooltipDataType then
 	-- A price lookup must never break someone's tooltip, so errors are swallowed here.
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
-		pcall(onItemTooltip, tooltip)
+		CH.Measure("item tooltip", pcall, onItemTooltip, tooltip)
 	end)
 end

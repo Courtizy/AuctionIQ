@@ -1,5 +1,16 @@
 package-as: AuctionIQ
 
+# each profession's data is its own addon, loaded on demand for the professions a character has
+move-folders:
+  AuctionIQ/Professions/AuctionIQ_Alchemy: AuctionIQ_Alchemy
+  AuctionIQ/Professions/AuctionIQ_Blacksmithing: AuctionIQ_Blacksmithing
+  AuctionIQ/Professions/AuctionIQ_Enchanting: AuctionIQ_Enchanting
+  AuctionIQ/Professions/AuctionIQ_Engineering: AuctionIQ_Engineering
+  AuctionIQ/Professions/AuctionIQ_Inscription: AuctionIQ_Inscription
+  AuctionIQ/Professions/AuctionIQ_Jewelcrafting: AuctionIQ_Jewelcrafting
+  AuctionIQ/Professions/AuctionIQ_Leatherworking: AuctionIQ_Leatherworking
+  AuctionIQ/Professions/AuctionIQ_Tailoring: AuctionIQ_Tailoring
+
 ignore:
   - tests
   - tools

@@ -1,0 +1,10 @@
+## Interface: 120105
+## Title: AuctionIQ Engineering
+## Notes: AuctionIQ's Engineering data: its specialization tree. Loads only on characters with Engineering.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Spec.lua

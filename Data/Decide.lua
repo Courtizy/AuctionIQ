@@ -90,9 +90,46 @@ function D.BreakEvenParts(parts, estimate)
 	return { price = factor * estimate, estimate = estimate, factor = factor, cushion = 1 - factor }
 end
 
+--- What this craft's reagents cost you: what you paid for those you hold (today's buy price when
+--- the ledger doesn't know), and today's buy price for the rest. Returns the cost and how much of it
+--- is what you paid; nil when the reagents can't be listed.
+function D.SpentCost(result, r)
+	if not (CH.Queue and CH.Queue.FromRow and CH.Scan and CH.Scan.ReagentPrice) then return nil end
+	local ok, e = pcall(CH.Queue.FromRow, result, r)
+	if not (ok and e and e.shop and e.shop[1]) then return nil end
+	local P = CH.Prices
+	local total, paidPart = 0, 0
+	for _, sh in ipairs(e.shop) do
+		local n = sh.n or 0
+		local unit = CH.Scan.ReagentPrice(sh.itemID, result.recipeID)
+		if not unit then return nil end
+		local own = math.min(n, P.Held and P.Held(sh.itemID) or 0)
+		local pe = own > 0 and P.PaidEach and P.PaidEach(sh.itemID)
+		if pe then paidPart = paidPart + own * pe else own = 0 end
+		total = total + (own > 0 and own * pe or 0) + (n - own) * unit
+	end
+	return total, paidPart
+end
+
+--- Break-even: the sale price per item that gets back what the reagents cost you (what you paid for
+--- those you hold, today's price for the rest), after the cut, Multicraft, Resourcefulness and
+--- deposits. today: the same at today's prices for every reagent; paid: how much was what you paid.
 function D.BreakEven(result, r)
 	local parts = D.RowParts(result, r)
-	return parts and D.BreakEvenParts(parts, r.price)
+	if not parts then return nil end
+	local spent, paid = D.SpentCost(result, r)
+	local be
+	if spent then
+		local p2 = {}
+		for k, v in pairs(parts) do p2[k] = v end
+		p2.consumed = spent
+		be = D.BreakEvenParts(p2, r.price)
+		if be then be.paid = paid and paid > 0 and paid or nil; be.spent = spent end
+	end
+	local today = D.BreakEvenParts(parts, r.price)
+	be = be or today
+	if be and today then be.today = today.price end
+	return be
 end
 
 --- Profit a craft at sale price x (per item, before the cut): a straight line through the break-even.
@@ -595,14 +632,27 @@ function D.SaveAdvice(id, a, now)
 	now = now or time()
 	local day = math.floor(now / 86400)
 	local list = adviceLog()
-	for i = #list, math.max(1, #list - 200), -1 do
-		local e = list[i]
-		if e.id == id and e.day == day then return e end
+	-- today's entries by item, built once per day and log (a table of items asks for each)
+	local idx = D.adviceIndex
+	if not idx or idx.list ~= list or idx.day ~= day then
+		idx = { list = list, day = day, by = {} }
+		for i = #list, math.max(1, #list - 200), -1 do
+			local e = list[i]
+			if e.day == day and not idx.by[e.id] then idx.by[e.id] = e end
+		end
+		D.adviceIndex = idx
 	end
+	if idx.by[id] then return idx.by[id] end
 	local e = { at = now, day = day, id = id, action = a.action, qty = a.qty, price = a.price, daily = a.daily, up = a.up,
 		cap = a.cap, enough = a.enough, reason = a.reason }
 	list[#list + 1] = e
-	while #list > D.ADVICE_KEEP do table.remove(list, 1) end
+	idx.by[id] = e
+	-- trim the oldest in one move, not one table.remove (a full shift) per entry
+	if #list > D.ADVICE_KEEP + 100 then
+		local cut = #list - D.ADVICE_KEEP
+		for i = 1, D.ADVICE_KEEP do list[i] = list[i + cut] end
+		for i = #list, D.ADVICE_KEEP + 1, -1 do list[i] = nil end
+	end
 	return e
 end
 
@@ -749,13 +799,39 @@ function D.Calibration(now)
 	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
 	local sales = CH.Ledger.Records("Sales")
 	local out = { checked = 0, inside = 0, under = 0, over = 0 }
+	-- each item's sales once, so every forecast walks only its own item's sales
+	local byItem, want = {}, {}
+	for _, f in ipairs(forecasts()) do if f.item then want[f.item] = true end end
+	local fid = CH.Ledger.F and CH.Ledger.F.id
+	for _, s in ipairs(sales) do
+		local id = fid and s[fid] or s.id
+		if id and want[id] then
+			local l = byItem[id]
+			if not l then l = {}; byItem[id] = l end
+			l[#l + 1] = s
+		end
+	end
+	-- each sale counts once: toward the newest forecast for its item whose window it falls in, so
+	-- two overlapping batches of one item never both claim the same sale
+	local span = D.HORIZON * 86400
+	local fsByItem, got = {}, {}
 	for _, f in ipairs(forecasts()) do
-		local to = f.at + D.HORIZON * 86400
-		if to <= now then
-			local got = 0
-			for _, s in ipairs(sales) do
-				if s.id == f.item and s.time >= f.at and s.time < to then got = got + CH.Ledger.Net(s) end
+		if f.item then fsByItem[f.item] = fsByItem[f.item] or {}; table.insert(fsByItem[f.item], f) end
+	end
+	for id, fs in pairs(fsByItem) do
+		table.sort(fs, function(a, b) return a.at < b.at end)
+		for _, s in ipairs(byItem[id] or {}) do
+			local t = s.time
+			for k = #fs, 1, -1 do
+				local f = fs[k]
+				if f.at <= t and t < f.at + span then got[f] = (got[f] or 0) + CH.Ledger.Net(s); break end
 			end
+		end
+	end
+	for _, f in ipairs(forecasts()) do
+		local to = f.at + span
+		if to <= now then
+			local got = got[f] or 0
 			out.checked = out.checked + 1
 			if got >= (f.p10 or 0) and got <= (f.p90 or math.huge) then out.inside = out.inside + 1 end
 			if got < (f.p50 or 0) then out.under = out.under + 1 else out.over = out.over + 1 end

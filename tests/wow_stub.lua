@@ -10,7 +10,16 @@ function UnitClass() return "Druid", "DRUID" end
 function GetRealmName() return "Emerald Dream" end
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 SlashCmdList, UISpecialFrames, RAID_CLASS_COLORS = {}, {}, { DRUID = { colorStr = "ffff7c0a" } }
-C_AddOns = { GetAddOnMetadata = function() return "test" end }
+C_AddOns = { GetAddOnMetadata = function() return "test" end,
+	-- the profession data addons: the tests hand their sources in STUB.addonFiles
+	LoadAddOn = function(name)
+		local files = STUB.addonFiles and STUB.addonFiles[name]
+		if not files then return false, "MISSING" end
+		STUB.addonsLoaded = STUB.addonsLoaded or {}
+		STUB.addonsLoaded[name] = true
+		for _, f in ipairs(files) do assert(loadstring(f[2], f[1]))() end
+		return true
+	end }
 C_Timer = { After = function(_, fn) table.insert(timers, fn) end }
 function STUB.RunTimers() local t = timers; timers = {}; for _, fn in ipairs(t) do fn() end end
 
@@ -30,18 +39,50 @@ local function textWidth(t, font)
 end
 STUB.TextWidth = textWidth
 
+-- Geometry off the whole-unit grid: where a SetPoint offset or a size isn't a whole number, by
+-- the addon's file and line. A window scaled to whole pixels per unit is pixel-perfect only when
+-- everything on it sits on whole units.
+STUB.frac = {}
+local function whole(...)
+	for i = 1, select("#", ...) do
+		local v = select(i, ...)
+		if type(v) == "number" and math.abs(v - math.floor(v + 0.5)) > 1e-6 then
+			local where = "?"
+			for lvl = 3, 8 do
+				local info = debug.getinfo(lvl, "Sl")
+				if info and info.short_src and not info.short_src:find("stub") and not info.short_src:find("audit") then where = info.short_src .. ":" .. (info.currentline or 0); break end
+			end
+			STUB.frac[where] = v
+			return
+		end
+	end
+end
+STUB.whole = whole
+
 local function newFrame(parent, kind, template)
 	local f = { shown = false, scripts = {}, parent = parent, kind = kind, xmlTemplate = template, kids = {}, texts = {}, w = 0, h = 0, points = {} }
 	if type(parent) == "table" and type(rawget(parent, "kids")) == "table" then table.insert(parent.kids, f) end
 	table.insert(STUB.frames, f)
-	function f:RegisterEvent(e) events[e] = events[e] or {}; table.insert(events[e], self) end
+	-- as in WoW, registering an event a frame already has does nothing (it fires once per frame)
+	function f:RegisterEvent(e) events[e] = events[e] or {}; for _, x in ipairs(events[e]) do if x == self then return end end; table.insert(events[e], self) end
 	function f:SetScript(k, fn) self.scripts[k] = fn end
-	function f:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+	-- scale chain, as in WoW: a frame's effective scale is its own times its parent's; UIParent's is
+	-- the UI scale (STUB.uiScale)
+	function f:GetChildren() return unpack(rawget(self, "kids") or {}) end
+	function f:SetScale(v) self.scale = v end
+	function f:GetScale() return rawget(self, "scale") or 1 end
+	function f:GetEffectiveScale()
+		if self == UIParent then return STUB.uiScale or 1 end
+		local p = rawget(self, "parent")
+		local ps = (type(p) == "table" and p.GetEffectiveScale) and p:GetEffectiveScale() or (STUB.uiScale or 1)
+		return (rawget(self, "scale") or 1) * ps
+	end
+	function f:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 	function f:ClearAllPoints() self.point = nil; self.points = {} end
 	function f:SetAllPoints() self.fill = true end
-	function f:SetSize(w, h) self.w, self.h = w or self.w, h or self.h end
-	function f:SetWidth(w) self.w = w end
-	function f:SetHeight(h) self.h = h end
+	function f:SetSize(w, h) whole(w, h); self.w, self.h = w or self.w, h or self.h end
+	function f:SetWidth(w) whole(w); self.w = w end
+	function f:SetHeight(h) whole(h); self.h = h end
 	function f:GetWidth() return self.w end
 	function f:GetHeight() return self.h end
 	function f:GetParent() return self.parent end
@@ -61,8 +102,8 @@ local function newFrame(parent, kind, template)
 		function fs:GetStringHeight() return 100 end
 		function fs:GetStringWidth() return textWidth(self.t, self.font) end
 		function fs:GetParent() return f end
-		function fs:SetWidth(w) self.w = w end
-		function fs:SetPoint(...) self.point = { ... }; table.insert(self.points, { ... }) end
+		function fs:SetWidth(w) whole(w); self.w = w end
+		function fs:SetPoint(...) whole(select(2, ...)); self.point = { ... }; table.insert(self.points, { ... }) end
 		function fs:ClearAllPoints() self.point = nil; self.points = {} end
 		function fs:SetFontObject(o) self.font = o end
 		function fs:SetWordWrap(v) self.wrap = v end
@@ -75,8 +116,18 @@ local function newFrame(parent, kind, template)
 		return fs
 	end
 	function f:CreateTexture()
-		local t = {}
+		local t = { shown = true }
+		if not rawget(f, "texs") then rawset(f, "texs", {}) end
+		table.insert(rawget(f, "texs"), t)
 		function t:SetVertexColor(r, g, b) self.vc = { r, g, b } end
+		function t:SetPoint(...) whole(select(2, ...)); self.pt = { ... } end
+		function t:ClearAllPoints() self.pt = nil end
+		function t:SetSize(w, h) whole(w, h); self.w, self.h = w, h end
+		function t:SetWidth(w) whole(w); self.w = w end
+		function t:SetHeight(h) whole(h); self.h = h end
+		function t:Show() self.shown = true end
+		function t:Hide() self.shown = false end
+		function t:SetShown(v) self.shown = v and true or false end
 		return setmetatable(t, { __index = function() return function() end end })
 	end
 	f.TitleText = f:CreateFontString()
@@ -85,6 +136,7 @@ local function newFrame(parent, kind, template)
 end
 function CreateFrame(kind, name, parent, template) local f = newFrame(parent, kind, template); if name then _G[name] = f end; return f end
 UIParent = newFrame()
+function GetPhysicalScreenSize() return STUB.screenW or 1920, STUB.screenH or 1080 end
 UIParent.w, UIParent.h = 1920, 1080
 function Mixin(t) return t end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
@@ -95,6 +147,7 @@ function Minimap:GetCenter() return 100, 100 end
 function Minimap:GetEffectiveScale() return 1 end
 function GetCursorPosition() return 200, 100 end
 BackdropTemplateMixin = {}
+function debugprofilestop() return os.clock() * 1000 end
 
 function STUB.Fire(event, ...)
 	for _, f in ipairs(events[event] or {}) do f.scripts.OnEvent(f, event, ...) end
@@ -104,6 +157,7 @@ end
 -- so AuctionIQ must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
 for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1, [211] = 2, [212] = 6, [221] = 3, [222] = 8 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
+STUB.prices["i:38682"] = { mat = 1 * 10000 } -- Enchanting Vellum
 STUB.prices["i:301"] = { formula_value = 100 * 10000 }
 STUB.prices["i:302"] = { formula_value = 300 * 10000, sold = 5 }
 STUB.prices["i:301"].sold = 5
@@ -156,7 +210,7 @@ C_TradeSkillUI = {
 	CloseTradeSkill = function() STUB.closed = true end,
 	GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = "Midnight" }, { professionID = 2871, expansionName = "Khaz Algar" } } end,
 	GetTradeSkillLineForRecipe = function(id)
-		if id == 11 then return 2871, "Khaz Algar Alchemy", 171 end
+		if id == 11 and STUB.oldLine11 then return 2871, "Khaz Algar Alchemy", 171 end
 		return 2906, "Midnight Alchemy", 171
 	end,
 	GetCategoryInfo = function(id) return ({ [50] = { name = "Potions" }, [60] = { name = "Flasks" } })[id] end,
@@ -228,7 +282,7 @@ end
 function hooksecurefunc(t, name, fn)
 	if type(t) == "string" then t, name, fn = _G, t, name end
 	local orig = t[name]
-	t[name] = function(...) local r = { orig(...) }; fn(...); return table.unpack(r) end
+	t[name] = function(...) local r = { orig(...) }; fn(...); return (table.unpack or unpack)(r) end
 end
 unpack = unpack or table.unpack
 

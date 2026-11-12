@@ -1,4 +1,4 @@
-"""Builds Research/Specs/Spec<Profession>.lua from Blizzard's own game tables (DB2), as wago.tools
+"""Builds Professions/AuctionIQ_<Profession>/Spec.lua from Blizzard's own game tables (DB2), as wago.tools
 publishes them as CSV. Re-run after a patch:
 
     python3 tools/build_specs.py            # downloads the tables it needs into tools/db2/
@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DB2 = Path(__file__).resolve().parent / "db2"
-OUT = ROOT / "Research" / "Specs"
+OUT = ROOT / "Professions"
 TABLES = ["SkillLine", "SkillLineXTraitTree", "SkillLineAbility", "TraitNode", "TraitNodeXTraitNodeEntry", "TraitNodeEntry",
           "TraitDefinition", "TraitCond", "TraitNodeXTraitCond", "ProfessionTrait", "ProfessionTraitXEffect", "ProfessionEffect",
           "ProfessionEffectType", "ProfessionTraitXLabel", "SpellLabel"]
@@ -185,9 +185,9 @@ def ser(v):
 
 def write(data):
     for name, (line, nodes, recipes) in data.items():
-        body = "local _, CH = ...\nCH.SpecData = CH.SpecData or {}\n"
+        body = "local CH = AuctionIQ\nCH.SpecData = CH.SpecData or {}\n"
         body += f'CH.SpecData[{line}] = {{ name = "{name}",\n recipes = {ser(recipes)},\n nodes = {ser(nodes)},\n}}\n'
-        (OUT / f"Spec{name}.lua").write_text(HEAD + body, encoding="utf-8")
+        (OUT / f"AuctionIQ_{name}" / "Spec.lua").write_text(HEAD + body, encoding="utf-8")
         print(f"{name}: {len(nodes)} nodes, {len(recipes)} recipes")
 
 

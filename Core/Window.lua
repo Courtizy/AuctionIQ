@@ -34,6 +34,68 @@ function W.CloseOnEscape(f, name)
 	end)
 end
 
+-- Pixel-perfect windows. A window is scaled so one of its units is a whole number of screen pixels
+-- (k, the nearest whole number to what the UI's own scale gives, at least 1), and its top-left
+-- corner is nudged onto a whole pixel. With every card, row and line laid out on whole units, each
+-- edge then lands on a pixel: no blurred borders, and no 1 px gaps or overlaps where neighbours round
+-- differently. On a pixel-perfect ElvUI scale k is 1 and nothing changes size.
+local scaled = {}
+
+--- Screen pixels per UI unit at UIParent's scale, and the physical screen height (nil without them).
+local function pixelRatio()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	local parent = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()
+	if type(h) ~= "number" or h <= 0 or type(parent) ~= "number" or parent <= 0 then return nil end
+	return parent * h / 768, h, parent
+end
+
+--- The scale that makes a window's unit a whole number of pixels (1 without screen info).
+function W.PixelScale()
+	local ratio, h, parent = pixelRatio()
+	if not ratio then return 1 end
+	return math.max(1, math.floor(ratio + 0.5)) * 768 / h / parent
+end
+
+--- Scale a window to whole pixels, times user (the main window's size setting, which is pixel-perfect
+--- at 1), and keep it so when the UI scale or the screen changes.
+function W.Pixel(f, user)
+	if not (f and f.SetScale) then return f end
+	f.aiqUserScale = user
+	f:SetScale(W.PixelScale() * (user or 1))
+	scaled[f] = true
+	if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
+	return f
+end
+
+--- Nudge a window by under a pixel so its top-left corner sits on a whole screen pixel.
+function W.Snap(f)
+	if not f then return end
+	local l, t = f.GetLeft and f:GetLeft(), f.GetTop and f:GetTop()
+	local s = f.GetEffectiveScale and f:GetEffectiveScale()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	if type(l) ~= "number" or type(t) ~= "number" or type(s) ~= "number" or s <= 0 or type(h) ~= "number" or h <= 0 then return end
+	local ppu = s * h / 768
+	local dx = (math.floor(l * ppu + 0.5) - l * ppu) / ppu
+	local dy = (math.floor(t * ppu + 0.5) - t * ppu) / ppu
+	if math.abs(dx) < 1e-3 and math.abs(dy) < 1e-3 then return end
+	local p, rel, rp, x, y = f:GetPoint(1)
+	if not p then return end
+	f:SetPoint(p, rel, rp, (x or 0) + dx, (y or 0) + dy)
+end
+
+local function rescale()
+	for f in pairs(scaled) do
+		f:SetScale(W.PixelScale() * (tonumber(rawget(f, "aiqUserScale")) or 1))
+		if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
+		if f:IsShown() then W.Snap(f) end
+	end
+	if W.Arrange then W.Arrange() end
+end
+if CH.On then
+	CH.On("UI_SCALE_CHANGED", rescale)
+	CH.On("DISPLAY_SIZE_CHANGED", rescale)
+end
+
 function W.New(name, title, width, height)
 	local T = CH.Theme
 	T.Sync()
@@ -46,8 +108,10 @@ function W.New(name, title, width, height)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", f.StartMoving)
-	f:SetScript("OnDragStop", f.StopMovingOrSizing)
+	f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); W.Snap(self) end)
 	f:SetPoint("CENTER")
+	W.Pixel(f)
+	f:HookScript("OnShow", function(self) W.Snap(self) end)
 	f:Hide()
 	W.CloseOnEscape(f, name)
 
@@ -60,7 +124,7 @@ function W.New(name, title, width, height)
 	T.AccentTexture(rule)
 	rule:SetPoint("BOTTOMLEFT", 1, 0)
 	rule:SetPoint("BOTTOMRIGHT", -1, 0)
-	rule:SetHeight(2) -- ToxiUI's accent line under the title bar
+	rule:SetHeight(T.Px(f, 2)) -- ToxiUI's accent line under the title bar
 	f.rule = rule
 	-- the brand alone, no icon: AUCTIONIQ with IQ in the theme colour
 	f.title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -192,9 +256,9 @@ function W.ScrollBar(parent, x, y, h, noCount)
 		track:SetShown(scrolls)
 		thumb:SetShown(scrolls)
 		if not scrolls then count:SetText(""); bar.text = nil; return end
-		local th = math.max(12, h * shown / total)
+		local th = math.floor(math.max(12, h * shown / total) + 0.5)
 		local room = h - th
-		local at = total > shown and room * offset / (total - shown) or 0
+		local at = total > shown and math.floor(room * offset / (total - shown) + 0.5) or 0
 		thumb:ClearAllPoints()
 		thumb:SetPoint("TOPLEFT", x, y - at)
 		thumb:SetHeight(th)
@@ -340,6 +404,7 @@ end
 local function buildStrip()
 	local T = CH.Theme
 	strip = CreateFrame("Frame", "AuctionIQTabs", UIParent)
+	W.Pixel(strip)
 	strip:SetFrameStrata("HIGH")
 	strip:SetSize(10, 22)
 	strip:Hide()
@@ -369,6 +434,7 @@ function W.Arrange()
 	local labels = {}
 	if f and f:IsShown() then
 		W.Place(f)
+		W.Snap(f)
 		if not strip then buildStrip() end
 		strip:ClearAllPoints()
 		strip:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -1)
@@ -400,11 +466,18 @@ function W.Arrange()
 		q:ClearAllPoints()
 		if p then
 			q:SetPoint(p[1], UIParent, p[3], p[4], p[5])
-		elseif strip and strip:IsShown() then
-			q:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -4)
+		elseif f and f:IsShown() then
+			-- beside the Craft window, the two side by side; under it when the screen has no room
+			local right, sw, qw = f.GetRight and f:GetRight(), UIParent.GetWidth and UIParent:GetWidth(), q.GetWidth and q:GetWidth()
+			if type(right) == "number" and type(sw) == "number" and type(qw) == "number" and right + 4 + qw > sw then
+				q:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -4)
+			else
+				q:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+			end
 		else
 			q:SetPoint("CENTER", 0, 80)
 		end
+		W.Snap(q)
 	end
 	return labels
 end
@@ -458,6 +531,12 @@ function W.CloseTabs()
 end
 
 --- Pop the queue out of the tabs, or put it back.
+--- Once: forget where the popped-out queue was dragged, so it opens beside the Craft window.
+function W.ResetQueueSpot()
+	local s = ws()
+	if s and not s.queueBeside then s.queueBeside = true; s.queuePoint = nil end
+end
+
 function W.ToggleQueuePop()
 	local s = ws()
 	s.popQueue = not s.popQueue
@@ -519,13 +598,17 @@ function W.SidePanel(parent, width, height, opts)
 	det.kicker = text(IW, "LEFT", "GameFontNormalSmall")
 	T.TitleFont(det.kicker, 10, "bold")
 	det.title = text(IW, "LEFT", "GameFontNormalLarge", 2)
+	det.title:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) -- the theme colour, not the game's gold
 	T.TitleFont(det.title, 15, "black")
 	det.sub = text(IW, "LEFT", "GameFontDisableSmall", 2)
 	det.subHit = tipHit()
 	det.figures = {}
-	local FW = math.floor(IW / 3)
+	-- the three figures: the middle one (Cost, and how many a craft makes) a little wider
+	local FX = { 0, math.floor(IW * 0.30), math.floor(IW * 0.72) }
+	local FWS = { FX[2], FX[3] - FX[2], IW - FX[3] }
+	det.FX, det.FWS = FX, FWS
 	for k = 1, 3 do
-		local f = { label = text(FW - 4, "LEFT", "GameFontDisableSmall"), value = text(FW - 4, "LEFT", "GameFontHighlightLarge"), hit = tipHit() }
+		local f = { label = text(FWS[k] - 4, "LEFT", "GameFontDisableSmall"), value = text(FWS[k] - 4, "LEFT", "GameFontHighlightLarge"), hit = tipHit() }
 		T.TitleFont(f.label, 9, "bold")
 		T.TitleFont(f.value, 15, "black")
 		det.figures[k] = f
@@ -562,8 +645,17 @@ function W.SidePanel(parent, width, height, opts)
 	-- a switch on the section's head line (Concentrate on or off)
 	det.toggle = text(120, "RIGHT", "GameFontNormalSmall")
 	T.TitleFont(det.toggle, 10, "bold")
+	-- the switch itself: a track that fills with the accent when on, and a knob that slides right
+	det.switch = CreateFrame("Frame", nil, det)
+	det.switch:SetSize(26, 12)
+	det.switch.track = det.switch:CreateTexture(nil, "ARTWORK")
+	det.switch.track:SetAllPoints()
+	det.switch.knob = det.switch:CreateTexture(nil, "OVERLAY")
+	det.switch.knob:SetSize(10, 10)
+	det.switch:Hide()
 	det.toggleHit = tipHit()
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
+	det.noteHit = tipHit()
 	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
 	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
 	-- the buttons, bottom up: the main one (accent, a little taller), then the others, dark
@@ -632,14 +724,14 @@ function W.DrawSidePanel(det, d, said)
 	det.subHit.tip = d.subTip or false
 	det.subHit:SetShown(d.subTip ~= nil and subH > 0)
 	if subH > 0 then y = y - subH - 2 end
-	local FW = math.floor(det.IW / 3)
+	local FX, FWS = det.FX, det.FWS
 	local anyFig = d.figures and d.figures[1]
 	y = y - 2
 	for k, f in ipairs(det.figures) do
 		local x = d.figures and d.figures[k]
-		at(f.label, 12 + (k - 1) * FW, y); at(f.value, 12 + (k - 1) * FW, y - 12)
+		at(f.label, 12 + FX[k], y); at(f.value, 12 + FX[k], y - 12)
 		f.label:SetText(x and x[1] or ""); f.value:SetText(x and x[2] or "")
-		f.hit:ClearAllPoints(); f.hit:SetPoint("TOPLEFT", 10 + (k - 1) * FW, y + 2); f.hit:SetSize(FW, 32)
+		f.hit:ClearAllPoints(); f.hit:SetPoint("TOPLEFT", 10 + FX[k], y + 2); f.hit:SetSize(FWS[k], 32)
 		f.hit.tip = x and x.tip or false
 		f.hit:SetShown(x ~= nil and x.tip ~= nil)
 	end
@@ -648,7 +740,7 @@ function W.DrawSidePanel(det, d, said)
 	det.track:ClearAllPoints(); det.track:SetPoint("TOPLEFT", 12, y)
 	det.fill:ClearAllPoints(); det.fill:SetPoint("TOPLEFT", 12, y)
 	det.track:SetShown(bar ~= nil); det.fill:SetShown(bar ~= nil and bar > 0)
-	if bar then det.fill:SetWidth(math.max(1, det.IW * bar)); y = y - 12 end
+	if bar then det.fill:SetWidth(math.max(1, math.floor(det.IW * bar + 0.5))); y = y - 12 end
 	local shown = 0
 	for k, r in ipairs(det.rows) do
 		local x = d.rows and d.rows[k]
@@ -668,9 +760,20 @@ function W.DrawSidePanel(det, d, said)
 	at(det.head, 12, y - 6)
 	det.head:SetText(sec and T.Color("accent", sec.head or "") or "")
 	local tg = sec and sec.toggle
-	at(det.toggle, det.width - 132, y - 6)
-	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE") or "")
-	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 136, y - 2); det.toggleHit:SetSize(128, 16)
+	at(det.toggle, det.width - 164, y - 6)
+	det.toggle:SetText(tg and T.Color(tg.on and "accent" or "muted", "CONCENTRATE  " .. (tg.on and "ON" or "OFF")) or "")
+	local sw = det.switch
+	sw:ClearAllPoints(); sw:SetPoint("TOPLEFT", det.width - 38, y - 5)
+	if tg then
+		local c = tg.on and T.accent or T.line
+		sw.track:SetColorTexture(c[1], c[2], c[3], 1)
+		local k = tg.on and T.bg or T.muted
+		sw.knob:SetColorTexture(k[1], k[2], k[3], 1)
+		sw.knob:ClearAllPoints(); sw.knob:SetPoint(tg.on and "RIGHT" or "LEFT", sw, tg.on and "RIGHT" or "LEFT", tg.on and -1 or 1, 0)
+	end
+	sw:SetShown(tg ~= nil)
+	if tg then sw.isOn = tg.on == true else sw.isOn = nil end
+	det.toggleHit:ClearAllPoints(); det.toggleHit:SetPoint("TOPLEFT", det.width - 168, y - 2); det.toggleHit:SetSize(160, 16)
 	det.toggleHit.tip = tg and tg.tip or false
 	det.toggleHit.run = tg and tg.run or false
 	det.toggleHit:SetShown(tg ~= nil)
@@ -697,6 +800,9 @@ function W.DrawSidePanel(det, d, said)
 	-- the note, in what's left above the buttons
 	at(det.note, 12, y)
 	det.note:SetText(d.note or "")
+	det.noteHit:ClearAllPoints(); det.noteHit:SetPoint("TOPLEFT", 10, y + 2); det.noteHit:SetSize(det.IW, 26)
+	det.noteHit.tip = d.noteTip or false
+	det.noteHit:SetShown(d.noteTip ~= nil)
 	local nb = 0
 	local by = 0
 	for k, b in ipairs(det.buttons) do

@@ -30,7 +30,7 @@ makes you a better goblin.
 - **Analyze a batch**: the chance a week's sales pay back 10, 30 or 100 crafts, the cash that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points at a glance
 - **A plan for every knowledge point**, drawn right on your profession trees
-- **Plan crafting, shopping, auctions and mail** across your warband
+- **Plan crafting, shopping and auctions** across your warband
 - **Compare price sources**: your own AH scans side by side with TSM and Oribos Exchange
 - **Track sales, costs and estimated profit**, with 7, 30 and 90 day reports
 
@@ -72,7 +72,7 @@ for pricing and sales history; [Oribos Exchange](https://www.curseforge.com/wow/
 ## Chat Commands
 
 `/aiq` - open or close the window<br>
-`/aiq dashboard`, `research`, `operations`, `accounting` - open a tab<br>
+`/aiq dashboard`, `operations` (or `craft`, `trade`, `shopping`), `accounting` - open a tab<br>
 `/aiq advisor` - crafting advisor on or off<br>
 `/aiq queue` - craft queue and shopping list<br>
 `/aiq scan` - rank every recipe of the open profession<br>
@@ -89,9 +89,11 @@ See the [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 <details>
 <summary>Code layout, tests and releases</summary>
 
-Plain Lua, no libraries. Folders `Dashboard`, `Operations` and `Accounting` follow the tabs; `Research`
-holds the crafting advisor, scans, specializations and the views that fill Operations › Professions and
-Markets and Accounting › Performance. `Core` and `Data` sit underneath them. The look is described in [THEME.md](THEME.md).
+Plain Lua, no libraries. The folders follow the tabs: `Dashboard`; `Operations` with `Craft` (advisor,
+scans, specializations, plans), `Trade` (posting, groups, markets) and `Queue` (queue, work orders,
+shopping, cooldowns); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
+settings, theme, windows, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
+statistics) sit underneath them. The look is described in [THEME.md](THEME.md).
 
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.

@@ -49,7 +49,7 @@ function SUI.Build(p, fs, panel)
 	local groupsBtn = T.Button(gen, "Edit groups", 110, 18)
 	groupsBtn:SetPoint("TOPLEFT", 156, gy + 2)
 	groupsBtn:SetScript("OnClick", function() CH.UI.Go("settings", "groups") end)
-	groupsBtn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The group tree: which items are in which group, their prices, and mail routes (right-click a group)." } }) end)
+	groupsBtn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The group tree: which items are in which group and their prices." } }) end)
 	groupsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	p.useTSM = T.Button(gen, "", 80, 18); p.useTSM:SetPoint("TOPLEFT", 186, gy - 24)
 	fs(gen, 12, gy - 27, 170, "LEFT"):SetText("Use TSM's groups")
@@ -203,7 +203,12 @@ function SUI.Build(p, fs, panel)
 			SUI.Refresh()
 		end)
 		r.del = T.Button(src, "x", 18, 18); r.del:SetPoint("TOPLEFT", 556, y)
-		r.del:SetScript("OnClick", function() if r.key then S.DeleteSource(r.key); say("Deleted " .. r.key .. "."); SUI.Refresh() end end)
+		r.del:SetScript("OnClick", function()
+			if not r.key then return end
+			local ok, why = S.DeleteSource(r.key)
+			if ok then say("Deleted " .. r.key .. ".") else say("Can't delete " .. r.key .. ": " .. tostring(why), true) end
+			SUI.Refresh()
+		end)
 		p.sources[i] = r
 	end
 	CH.Window.Wheel(src, SRC_ROWS, function() return srcOffset end, function(v) srcOffset = v end, function() return #S.Sources() end, SUI.Refresh)

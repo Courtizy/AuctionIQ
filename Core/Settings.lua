@@ -265,9 +265,34 @@ function S.SetSource(name, formula)
 	return true
 end
 
+--- Custom sources and operations whose formulas name this source, as "source x" / "operation y".
+function S.UsedBy(name)
+	local out = {}
+	local function uses(f)
+		if type(f) ~= "string" then return false end
+		f = " " .. f:lower() .. " "
+		return f:find("[^%w_]" .. name:gsub("%p", "%%%0") .. "[^%w_]") ~= nil
+	end
+	for other, f in pairs(CH.Formula.Custom()) do
+		if other ~= name and uses(f) then out[#out + 1] = "source " .. other end
+	end
+	local store = CH.Groups and CH.Groups.Store and CH.Groups.Store()
+	for op, def in pairs(store and store.ops or {}) do
+		local hit = false
+		if type(def) == "table" then for _, v in pairs(def) do if uses(v) then hit = true end end end
+		if hit then out[#out + 1] = "operation " .. op end
+	end
+	table.sort(out)
+	return out
+end
+
+--- Delete a custom source. Refused while another source or an operation still uses it, since
+--- their prices would quietly go blank: returns false and what uses it.
 function S.DeleteSource(name)
 	local c = CH.Formula.Custom()
-	if c[name] == nil then return false end
+	if c[name] == nil then return false, "no such source" end
+	local used = S.UsedBy(name)
+	if #used > 0 then return false, name .. " is still used by " .. table.concat(used, ", ") .. ": change those first" end
 	c[name] = nil
 	return true
 end

@@ -135,6 +135,7 @@ end
 
 -- Title bars and accent rules that follow the theme colour when it changes.
 local brandTitles, accentTex = {}, {}
+local btnFonts -- the button lettering font objects (T.ButtonFonts)
 
 --- Put the brand in a title bar: the wordmark in Montserrat Black, then the window's name in grey.
 --- It follows the theme colour if that changes while you play.
@@ -157,6 +158,7 @@ end
 function T.Follow()
 	T.Use(T.palette)
 	for _, t in ipairs(accentTex) do t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1) end
+	if btnFonts then T.ButtonFonts() end
 	for _, fs in ipairs(brandTitles) do
 		local name = rawget(fs, "aiqName")
 		fs:SetText(T.Wordmark() .. (type(name) == "string" and name ~= "" and ("  " .. T.Color("muted", name)) or ""))
@@ -179,7 +181,8 @@ function T.Use(name)
 	T.bgAlpha = pal.bgAlpha
 	local brand, from = T.ThemeHex()
 	T.hex.brand, T.brand, T.themeFrom = brand, hex(brand), from
-	if pal.themeAccent then T.hex.accent = brand; T.accent = hex(brand) end
+	-- the theme colour (ElvUI/ToxiUI) for the accent, and for what was gold emphasis too
+	if pal.themeAccent then T.hex.accent = brand; T.accent = hex(brand); T.hex.gold = brand; T.gold = hex(brand) end
 	if T.Sync then T.Sync() end
 end
 
@@ -190,6 +193,35 @@ end
 
 local FLAT = "Interface\\Buttons\\WHITE8X8"
 local BACKDROP = { bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 }
+
+-- Pixel-perfect borders: a border is one SCREEN pixel, whatever the UI scale or the window's own size
+-- setting. In frame units that's 768 / (screen height x the frame's effective scale); a 1-unit edge
+-- would be 1.2 or 0.8 pixels at most scales and come out blurred or uneven.
+local edges = {}
+local function backdropFor(edge)
+	local k = math.floor(edge * 1000 + 0.5)
+	if not edges[k] then edges[k] = { bgFile = FLAT, edgeFile = FLAT, edgeSize = k / 1000 } end
+	return edges[k]
+end
+function T.PixelEdge(frame)
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	local s = frame and frame.GetEffectiveScale and frame:GetEffectiveScale()
+	if type(h) ~= "number" or h <= 0 or type(s) ~= "number" or s <= 0 then return 1 end
+	return 768 / (h * s)
+end
+
+--- Re-fit every plain-backdrop panel under a frame to one screen pixel (after its scale changed).
+function T.Edges(frame)
+	if not frame or T.Elv() then return end
+	local function walk(f)
+		if type(f.aiqBg) == "string" and type(f.aiqEdge) == "number" and f.SetBackdrop then
+			local e = T.PixelEdge(f)
+			if math.abs(e - f.aiqEdge) > 1e-3 then f.aiqEdge = e; f:SetBackdrop(backdropFor(e)); T.Tint(f) end
+		end
+		if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do walk(c) end end
+	end
+	walk(frame)
+end
 
 -- ElvUI, when it's loaded: its own templates, fonts and value colour, so AuctionIQ looks like
 -- the rest of the UI. ToxiUI hooks ElvUI's SetTemplate, so its shadows and noise come along too.
@@ -240,7 +272,8 @@ function T.Panel(frame, bg, alpha)
 		return frame
 	end
 	if not frame.SetBackdrop then Mixin(frame, BackdropTemplateMixin) end
-	frame:SetBackdrop(BACKDROP)
+	frame.aiqEdge = T.PixelEdge(frame)
+	frame:SetBackdrop(backdropFor(frame.aiqEdge))
 	T.Tint(frame)
 	return frame
 end
@@ -274,6 +307,23 @@ function T.Repaint(root)
 end
 
 -- A flat text button that turns gold on hover (ElvUI: its button skin, or its close button for "x").
+-- Button lettering in the theme colour (ElvUI's buttons use the game's gold font otherwise): one
+-- font object each for normal, hover and the dark label on a main button's fill, recoloured when
+-- the theme colour changes.
+function T.ButtonFonts()
+	if not CreateFont then return nil end
+	if not btnFonts then
+		btnFonts = { normal = CreateFont("AuctionIQButtonFont"), hover = CreateFont("AuctionIQButtonHover"), dark = CreateFont("AuctionIQButtonDark") }
+		for _, f in pairs(btnFonts) do if f.CopyFontObject and GameFontNormal then f:CopyFontObject(GameFontNormal) end end
+	end
+	if btnFonts.normal.SetTextColor then
+		btnFonts.normal:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
+		btnFonts.hover:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
+		btnFonts.dark:SetTextColor(0.03, 0.03, 0.04)
+	end
+	return btnFonts
+end
+
 function T.Button(parent, label, w, h)
 	local E = T.Elv()
 	if E then
@@ -289,6 +339,8 @@ function T.Button(parent, label, w, h)
 			b:SetSize(w or 20, h or 20)
 			b:SetText(label)
 			S:HandleButton(b)
+			local f = T.ButtonFonts()
+			if f and b.SetNormalFontObject then b:SetNormalFontObject(f.normal); b:SetHighlightFontObject(f.hover) end
 			return b
 		end
 	end
@@ -302,12 +354,13 @@ function T.Button(parent, label, w, h)
 	-- hover: the accent border and text; a main action (T.Primary) keeps its dark label on the fill
 	b:SetScript("OnEnter", function(self)
 		self:SetBackdropBorderColor(T.accent[1], T.accent[2], T.accent[3], 1)
-		if not self.aiqPrimary then fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end
+		if not self.aiqPrimary then fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end
 	end)
 	b:SetScript("OnLeave", function(self)
 		self:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1)
-		if self.aiqPrimary then fs:SetTextColor(0.03, 0.03, 0.04) else fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end
+		if self.aiqPrimary then fs:SetTextColor(0.03, 0.03, 0.04) else fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end
 	end)
+	fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
 	return b
 end
 
@@ -338,12 +391,24 @@ function T.Primary(b)
 	t:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 0.92)
 	b.aiqFill = t
 	b.aiqPrimary = true
+	local f = T.ButtonFonts and T.ButtonFonts()
+	if f and b.SetNormalFontObject and not b.text then b:SetNormalFontObject(f.dark); b:SetHighlightFontObject(f.dark) end
 	local fs = b.text or (b.GetFontString and b:GetFontString())
 	if fs and fs.SetTextColor then
 		T.TitleFont(fs, nil, "bold")
 		fs:SetTextColor(0.03, 0.03, 0.04)
 	end
 	return b
+end
+
+--- n screen pixels, in a region's units at its scale: a 1 px line stays one crisp pixel at any UI
+--- scale instead of blurring across two or vanishing.
+function T.Px(region, n)
+	n = n or 1
+	local scale = region and region.GetEffectiveScale and region:GetEffectiveScale()
+	local h = GetPhysicalScreenSize and select(2, GetPhysicalScreenSize())
+	if type(scale) ~= "number" or scale <= 0 or type(h) ~= "number" or h <= 0 then return n end
+	return n * 768 / h / scale
 end
 
 --- A card as the design draws it: a dark block (#1a1a1a) with a black 1 px border, behind a table or a
@@ -354,7 +419,8 @@ function T.BorderCard(parent, x, y, w, h, layer)
 	bg:SetSize(w, h)
 	bg:SetColorTexture(0.102, 0.102, 0.102, 0.94)
 	local edges = {}
-	for k, e in ipairs({ { 0, 0, w, 1 }, { 0, -(h - 1), w, 1 }, { 0, 0, 1, h }, { w - 1, 0, 1, h } }) do
+	local p = T.Px(parent)
+	for k, e in ipairs({ { 0, 0, w, p }, { 0, -(h - p), w, p }, { 0, 0, p, h }, { w - p, 0, p, h } }) do
 		local t = parent:CreateTexture(nil, layer or "BACKGROUND", nil, 2)
 		t:SetPoint("TOPLEFT", x + e[1], y + e[2])
 		t:SetSize(e[3], e[4])
@@ -365,7 +431,7 @@ function T.BorderCard(parent, x, y, w, h, layer)
 	--- Move and resize the card with its border.
 	function bg.Place(_, nx, ny, nw, nh)
 		bg:ClearAllPoints(); bg:SetPoint("TOPLEFT", nx, ny); bg:SetSize(nw, nh)
-		for k, e in ipairs({ { 0, 0, nw, 1 }, { 0, -(nh - 1), nw, 1 }, { 0, 0, 1, nh }, { nw - 1, 0, 1, nh } }) do
+		for k, e in ipairs({ { 0, 0, nw, p }, { 0, -(nh - p), nw, p }, { 0, 0, p, nh }, { nw - p, 0, p, nh } }) do
 			edges[k]:ClearAllPoints(); edges[k]:SetPoint("TOPLEFT", nx + e[1], ny + e[2]); edges[k]:SetSize(e[3], e[4])
 		end
 	end

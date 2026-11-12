@@ -87,6 +87,6 @@ CH.On("TOKEN_MARKET_PRICE_UPDATED", readToken)
 
 CH.On("PLAYER_LOGIN", function()
 	if C_WowTokenPublic and C_WowTokenPublic.UpdateMarketPrice then C_WowTokenPublic.UpdateMarketPrice() end
-	C_Timer.After(20, function() pcall(Al.Check) end)
-	if C_Timer.NewTicker then C_Timer.NewTicker(300, function() pcall(Al.Check) end) end
+	C_Timer.After(20, function() CH.Measure("alerts check", pcall, Al.Check) end)
+	if C_Timer.NewTicker then C_Timer.NewTicker(300, function() CH.Measure("alerts check", pcall, Al.Check) end) end
 end)
