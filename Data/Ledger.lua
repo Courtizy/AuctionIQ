@@ -841,6 +841,7 @@ CH.On("PLAYER_LOGIN", function()
 		-- parse in the background first, so the archive and the first report find it ready
 		Lg.Warm(Lg.KINDS, function()
 			CH.Measure("ledger archive", pcall, Lg.Archive); CH.Measure("ledger snapshot", pcall, Lg.Snapshot)
+			if CH.Demand then CH.Measure("demand index", pcall, CH.Demand.Warm) end
 		end)
 	end)
 end)

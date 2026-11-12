@@ -148,6 +148,9 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       t0 = os.clock(); AuctionIQ.Ledger.Records("Sales"); out.parseWarm = (os.clock() - t0) * 1000
       out.mem = BENCH_MEM() - m0
       t0 = os.clock(); AuctionIQ.Prices.RecentSales(now, true); out.recent = (os.clock() - t0) * 1000
+      AuctionIQ.Demand.Clear()
+      t0 = os.clock(); AuctionIQ.Demand.Warm(now); out.demandCold = (os.clock() - t0) * 1000
+      t0 = os.clock(); for i = 1, 1000 do AuctionIQ.Demand.Estimate(300 + i % 400, now) end; out.demandWarm = (os.clock() - t0) * 1000
       AuctionIQ.db.batchForecasts = {{}}
       for i = 1, 200 do AuctionIQ.db.batchForecasts[i] = {{ at = now - (8 + i % 60) * 86400, item = 300 + (i % 400), p10 = 1, p50 = 2, p90 = 3 }} end
       t0 = os.clock(); AuctionIQ.Decide.Calibration(now); out.calib = (os.clock() - t0) * 1000
@@ -167,6 +170,8 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     rec("ledger", name, size, "parse warm (cached)", r.parseWarm)
     rec("ledger", name, size, "parsed records memory", r.mem, "MB")
     rec("ledger", name, size, "recent sales totals", r.recent)
+    rec("ledger", name, size, "demand index, cold", r.demandCold)
+    rec("ledger", name, size, "demand, 1000 estimates warm", r.demandWarm)
     rec("ledger", name, size, "calibration, 200 forecasts", r.calib)
     rec("ledger", name, size, "dashboard refresh cold", r.dashCold)
     rec("ledger", name, size, "dashboard refresh warm", r.dashWarm)

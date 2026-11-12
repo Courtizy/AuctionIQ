@@ -953,8 +953,8 @@ check("profit hover keeps the whole profit per point for CraftSim, and the extra
 pl6 = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
 check("profit hover: margin is profit over proceeds, and the break-even price", ("Margin  profit / proceeds", "26%") in pl6 and ("Break-even sale price", "223g per item") in pl6)
 ev = D.EvidenceText(D.Evidence(302))
-check("evidence: source and how much of the sell rate is yours", ev.price.startswith("Price: TSM, ") and "none known" in ev.rate and ev.volume.startswith("Volume: region"))
-check("evidence: the advisor's source line names it", "Sell rate:" in plain(CH.AdvisorUI.SourceLine(res)) and "Volume: region" in plain(CH.AdvisorUI.SourceLine(res)))
+check("evidence: source and how much of the sell rate is yours", ev.price.startswith("Price: TSM, ") and "none known" in ev.rate and ev.volume.startswith("Sales: 5 a day: the region's 5 a day; you haven't listed it"))
+check("evidence: the advisor's source line names it", "Sell rate:" in plain(CH.AdvisorUI.SourceLine(res)) and "Sales: " in plain(CH.AdvisorUI.SourceLine(res)))
 cf = D.ConcForecast(100, 30, 0.5, 15)
 check("Concentration forecast: 3 now, exact chance of a 4th (2 refunds in 3) and a 5th (4 in 4)",
       cf.now == 3 and abs(cf.chance[1] - 0.5) < 1e-12 and abs(cf.chance[2] - 0.0625) < 1e-12)
@@ -2894,8 +2894,13 @@ check("Reports nav: Performance after the statements; the old Performance sub-ta
       rep[:6] == ["statement", "balance", "cashflow", "pl", "inventory", "overview"] and "Performance" not in nav and "batches" not in nav)
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[6]) != "-"}
-check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[6]) == "50"
-      and any(plain(l[1]).startswith("Make 50: ") for l in made["Test Flask"].cellTip(6).values()))
+# Make: one listed day with no sale pulls the demand under the region's 5 a day:
+# (0 sold + 5 days x 5) / (1 day + 5) = 4.2 a day, so 41 crafts where the region alone gave 50
+dm302 = L.eval("AuctionIQ.Demand.Estimate(302)")
+check("Compare crafts: the demand behind Make is the blend of your listed day with the region's figure",
+      dm302.sold == 0 and dm302.listed == 1 and dm302.source == "blend" and abs(dm302.units - 25 / 6) < 1e-9)
+check("Compare crafts: a Make column from each scan, the scenarios on hover", "Test Flask" in made and plain(made["Test Flask"].cells[6]) == "41"
+      and any(plain(l[1]).startswith("Make 41: ") for l in made["Test Flask"].cellTip(6).values()))
 # Compare crafts hover: the craft's name shows the item, every other column what it is and how it was worked out
 ft = made["Test Flask"]
 def money_of(t):
@@ -3305,6 +3310,85 @@ check("preflight: two at 300 each with 400 on hand is held to one, and says why"
 check("preflight: a plain craft doesn't look at Concentration", L.eval("AuctionIQ.Queue.Preflight({ shop = {} }, 5)") is True)
 run("C_TradeSkillUI.GetChildProfessionInfo = STUB.oldChildP")
 check("preflight: when the game can't say how much Concentration there is, it doesn't block", L.eval("AuctionIQ.Queue.Preflight({ concentration = 300, shop = {} }, 2)") is True)
+# Demand: your own sales on the days you had an item listed, blended with the region's figure (at most
+# your cap) while your record is thin. Records are stubbed here: { time, _, _, _, id, quantity } by position.
+run("""STUB.dm = { recs = { Sales = {}, Expired = {}, Cancelled = {} } }
+STUB.dm.oldRecords, STUB.dm.oldAvail, STUB.dm.oldExp = AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Available, AuctionIQ.db.exposure
+STUB.dm.oldCap = AuctionIQ.db.settings.scan.dailyCap
+AuctionIQ.db.settings.scan.dailyCap = 10
+AuctionIQ.Ledger.Available = function() return true end
+AuctionIQ.Ledger.Records = function(kind) return STUB.dm.recs[kind] or AuctionIQ.Ledger.NONE end
+AuctionIQ.db.exposure = {}
+STUB.prices["i:880001"] = { formula_value = 10000, sold = 340 } -- popular across the region
+STUB.prices["i:880002"] = { formula_value = 10000, sold = 4 }
+-- records change identity, as TSM's do when their text changes
+function STUB.dmSet(kind, rows) STUB.dm.recs[kind] = rows end
+function STUB.dmDay(k) return (math.floor(STUB.now / 86400) - k) * 86400 + 3600 end""")
+E = lambda i: L.eval(f"AuctionIQ.Demand.Estimate({i})")
+e1, e2 = E(880001), E(880002)
+check("demand: never listed, the region's figure stands in, counted at your cap, and says so",
+      e1.source == "region" and e1.units == 10 and e1.capped and e2.units == 4 and not e2.capped
+      and "counted as 10 (your cap)" in CH.Demand.Text(e1) and "haven't listed it" in CH.Demand.Text(e1))
+check("demand: no region figure and no record is no sales rate, not a guess", E(880003).source == "none" and E(880003).units == 0)
+# 20 days listed (recorded), 2 sold a day on 10 of them: your record carries it, the cap doesn't
+run("""local sales = {}
+for k = 0, 19 do AuctionIQ.Demand.Mark(880001, STUB.dmDay(k)) end
+for k = 0, 9 do sales[#sales + 1] = { STUB.dmDay(k), nil, nil, nil, 880001, 2 } end
+STUB.dmSet('Sales', sales)""")
+e = E(880001)
+check("demand: 20 listed days, 20 sold: your own pace with a little of the capped region (20 + 5 x 10) / 25 = 2.8",
+      e.source == "own" and e.listed == 20 and e.sold == 20 and abs(e.units - 70 / 25) < 1e-9 and "your 20 sold over 20 days listed" in CH.Demand.Text(e))
+# days you weren't listed don't count as no demand: older sales outside the listed days change nothing
+before = E(880001).units
+run("AuctionIQ.Demand.Mark(880001, STUB.dmDay(45))") # outside the 30-day window
+check("demand: a listed day outside the window doesn't count", abs(E(880001).units - before) < 1e-12)
+# a sale, an expiry or a cancel is a listed day too
+run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
+e = E(880002)
+check("demand: expiry and cancel days are listed days with no sale: (0 + 5 x 4) / (2 + 5)",
+      e.source == "blend" and e.listed == 2 and e.sold == 0 and abs(e.units - 20 / 7) < 1e-9)
+# properties over seeded random records: more sales never lower it; it stays between your rate and the prior
+bad = L.eval("""(function()
+  local u, bad = AuctionIQ.Decide.RNG(19), 0
+  for run = 1, 200 do
+    AuctionIQ.db.exposure = {}
+    local listed, sales = 1 + math.floor(u() * 29), {}
+    for k = 0, listed - 1 do AuctionIQ.Demand.Mark(880002, STUB.dmDay(k)) end
+    local sold = 0
+    for k = 0, listed - 1 do local q = math.floor(u() * 6); if q > 0 then sold = sold + q; sales[#sales + 1] = { STUB.dmDay(k), nil, nil, nil, 880002, q } end end
+    STUB.dmSet('Sales', sales); STUB.dmSet('Expired', {}); STUB.dmSet('Cancelled', {})
+    local e = AuctionIQ.Demand.Estimate(880002)
+    local own, prior = sold / listed, 4
+    if e.units < math.min(own, prior) - 1e-9 or e.units > math.max(own, prior) + 1e-9 then bad = bad + 1 end
+    local more = {}; for i, s in ipairs(sales) do more[i] = s end
+    more[#more + 1] = { STUB.dmDay(0), nil, nil, nil, 880002, 3 }
+    STUB.dmSet('Sales', more)
+    if AuctionIQ.Demand.Estimate(880002).units < e.units - 1e-12 then bad = bad + 1 end
+  end
+  return bad end)()""")
+check("demand (200 seeded records): between your rate and the capped region figure, and more sales never lower it", bad == 0)
+# recording listed days: once a day, in order, and only KEEP days are saved
+run("""AuctionIQ.db.exposure = {}
+for k = 100, 0, -1 do AuctionIQ.Demand.Mark(880004, STUB.dmDay(k)) end
+AuctionIQ.Demand.Mark(880004, STUB.dmDay(0)); AuctionIQ.Demand.Mark(880004, STUB.dmDay(50))
+STUB.dmGone = AuctionIQ.Demand.Prune()""")
+days = list(L.eval("AuctionIQ.db.exposure[880004]").values())
+check("demand: listed days are saved once each, in order, and pruned to the last 60",
+      len(days) == 60 and days == sorted(days) and len(set(days)) == 60)
+run("AuctionIQ.db.exposure = {}; AuctionIQ.Auction.RecordOwned({ { id = 880005, qty = 2 } })")
+check("demand: your live auctions mark today as a listed day", len(list(L.eval("AuctionIQ.db.exposure[880005] or {}").values())) == 1)
+run("AuctionIQ.db.exposure = {}; AuctionIQ.Auction.Posted(880006, 1)")
+b0 = L.eval("(function() AuctionIQ.Demand.Warm(); return AuctionIQ.Demand.builds end)()")
+run("AuctionIQ.Demand.Mark(880007)")
+e7 = E(880007)
+check("demand: a new listed day updates the index in place, without walking the sales again",
+      e7.listed == 1 and L.eval("AuctionIQ.Demand.builds") == b0)
+check("demand: a confirmed post marks today as a listed day", len(list(L.eval("AuctionIQ.db.exposure[880006] or {}").values())) == 1)
+check("demand: the scan's daily units are the estimate's", CH.Scan.DailyUnits(880001) == E(880001).units and CH.Scan.DailyUnits(None) == 0)
+ev = D.EvidenceText(D.Evidence(880001))
+check("demand: the evidence line says where the sales a day come from", ev.volume.startswith("Sales: ") and "region" in ev.volume)
+run("""AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Available, AuctionIQ.db.exposure = STUB.dm.oldRecords, STUB.dm.oldAvail, STUB.dm.oldExp
+AuctionIQ.db.settings.scan.dailyCap = STUB.dm.oldCap; AuctionIQ.Demand.Clear()""")
 # Cleanup: browse-only scans of items nothing uses aren't saved; searched, crafted and listed ones are
 run("""STUB.oldScans = AuctionIQ.db.scans
 AuctionIQ.db.scans = { [990001] = { at = time(), min = 5, market = 5, qty = 3, full = false },
