@@ -108,6 +108,7 @@ local function newFrame(parent, kind, template)
 		function fs:SetFontObject(o) self.font = o end
 		function fs:SetWordWrap(v) self.wrap = v end
 		function fs:SetMaxLines(n) self.maxLines = n end
+		function fs:SetTextColor(r, g, b) self.color = { r, g, b } end
 		function fs:Hide() self.hidden = true end
 		function fs:Show() self.hidden = false end
 		function fs:SetShown(v) self.hidden = not v end
@@ -313,6 +314,8 @@ STUB.bagItems = { [0] = { "item:404" } }
 local function idOf(link) return tonumber(tostring(link):match("item:(%d+)")) end
 C_Item.GetItemInfoInstant = function(link) local id = idOf(link); local it = STUB.items[id]; return id, nil, nil, it and it.loc, nil, 19, 2 end
 C_Item.GetItemStats = function() return {} end
+C_Item.GetItemQualityByID = function(id) local it = STUB.items[id]; return it and it.quality end
+ITEM_QUALITY_COLORS = { [1] = { r = 1, g = 1, b = 1 }, [2] = { r = 0.12, g = 1, b = 0 }, [3] = { r = 0, g = 0.44, b = 0.87 }, [4] = { r = 0.64, g = 0.21, b = 0.93 } }
 C_TooltipInfo = { GetHyperlink = function(link) local it = STUB.items[idOf(link)]
 	return { lines = { { leftText = it and it.skill and ("Equip: +" .. it.skill .. " Alchemy Skill") or "" } } } end }
 function GetInventoryItemLink(_, slot) return STUB.worn[slot] end

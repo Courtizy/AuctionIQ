@@ -660,7 +660,7 @@ function AV.CraftDetail(d, ctx)
 	actions[#actions + 1] = { label = "Rescan " .. (x.prof or "profession"), tip = "Scan every recipe of " .. (x.prof or "this profession") .. " again with today's prices. "
 		.. "Log in as " .. (x.char or "?") .. ", open the profession at a crafting table, then press this (or Scan in the profession window's AuctionIQ bar).",
 		run = function() return AV.Rescan(x) end }
-	return { kicker = live and "NEXT MOVE  ·  LIVE" or "NEXT MOVE", title = string.format("Craft %d x %s", n, x.name or "?"),
+	return { kicker = live and "NEXT MOVE  ·  LIVE" or "NEXT MOVE", title = string.format("Craft %d x %s", n, x.name or "?"), item = x.id or false,
 		sub = (live and T.Color("ok", "Live") or (T.Color("muted", string.format("%s, scanned %s ago", x.char or "?", age))))
 			.. T.Color("muted", string.format("  ·  Q%s%s  ·  ~%d items", tostring(sel.quality or "?"), sel.conc and " Conc." or "", whole(n * made))),
 		figures = figures, rows = rows, section = { head = "IF PRICES MOVE", rows = srows }, note = T.Color("muted", note),

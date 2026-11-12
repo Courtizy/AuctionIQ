@@ -183,7 +183,7 @@ function TUI.PostDetail(d)
 			if CH.AuctionUI and CH.AuctionUI.PostScan then CH.AuctionUI.PostScan() end
 			return true, "Building your post list at the AH."
 		end }
-	return { kicker = "NEXT MOVE", title = name, sub = T.Color("muted", r.path or ""),
+	return { kicker = "NEXT MOVE", title = name, item = r.id or false, sub = T.Color("muted", r.path or ""),
 		figures = { { "PRICE", r.price and T.Color("gold", M(r.price)) or T.Color("muted", "-") },
 			{ "AH NOW", r.ah and M(r.ah) or T.Color("muted", "no scan") },
 			{ "WORTH", T.Color("gold", M((r.price or 0) * (a and a.qty or 0) * CH.AH_CUT)) } },
