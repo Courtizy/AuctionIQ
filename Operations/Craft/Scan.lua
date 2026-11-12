@@ -31,11 +31,18 @@ end
 local function accounts(result, r)
 	if not r or not r.profit then return nil end
 	local reagents = {}
+	-- every rank of a reagent with ranks, so what you hold counts whatever rank it is
+	local ranksOf = {}
+	for _, slot in ipairs(result.qual or {}) do
+		if slot.items and #slot.items > 1 then
+			for _, id in ipairs(slot.items) do ranksOf[id] = slot.items end
+		end
+	end
 	local ok, e = pcall(CH.Queue.FromRow, result, r)
 	for _, s in ipairs(ok and e and e.shop or {}) do
 		local unit, via = Sc.ReagentPrice(s.itemID, result.recipeID)
 		table.insert(reagents, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers, cost = unit and unit * s.n,
-			crafted = via and via.char or nil })
+			crafted = via and via.char or nil, ranks = ranksOf[s.itemID] })
 	end
 	local p = r.parts or {}
 	return { quality = r.quality, concentration = r.concentration, avgConcentration = r.avgConcentration,
@@ -521,21 +528,96 @@ function Sc.Results(profID)
 	return p and p.scan
 end
 
+local function held(id)
+	return C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
+end
+
+-- Scans saved before the ranks were kept: each reagent's ranks from the recipe's schematic, which
+-- the game answers for a known recipe without the profession open. itemID -> { rank 1 ID, rank 2 ID, ... }
+local schematicCache = {}
+local function schematicRanks(recipeID)
+	local hit = schematicCache[recipeID]
+	if hit ~= nil then return hit or nil end
+	local out = false
+	if recipeID and C_TradeSkillUI and C_TradeSkillUI.GetRecipeSchematic then
+		local ok, sch = pcall(C_TradeSkillUI.GetRecipeSchematic, recipeID, false)
+		if ok and sch and sch.reagentSlotSchematics then
+			out = {}
+			for _, slot in ipairs(sch.reagentSlotSchematics) do
+				local ids = {}
+				for _, rg in ipairs(slot.reagents or {}) do if rg.itemID then ids[#ids + 1] = rg.itemID end end
+				if #ids > 1 then for _, id in ipairs(ids) do out[id] = ids end end
+			end
+		end
+	end
+	schematicCache[recipeID] = out
+	return out or nil
+end
+
+--- What one craft needs against what you hold, per reagent (bags, bank, reagent bank, warband
+--- bank), like CraftSim's have/need: the ranks of a reagent count together, since the game takes
+--- any mix of them. acc: a scan row's accounts. Returns a list of
+--- { itemID, need, have, crafts, exact, ranks = { { itemID, rank, tiers, need, have } } }, where
+--- crafts is how many crafts what you hold covers at any rank and exact how many at the scan's own
+--- ranks (fewer when you'd fill in with other ranks, which can change the quality). nil without reagents.
+function Sc.Needs(acc, recipeID)
+	if not acc or not acc.reagents or #acc.reagents == 0 then return nil end
+	local fallback
+	local groups, byKey = {}, {}
+	for _, rg in ipairs(acc.reagents) do
+		local need = rg.n or 1
+		if need > 0 then
+			local ranks = rg.ranks
+			if not ranks and (rg.tiers or 0) > 1 then
+				fallback = fallback or schematicRanks(recipeID) or {}
+				ranks = fallback[rg.itemID]
+			end
+			local key = ranks and ranks[1] or rg.itemID
+			local g = byKey[key]
+			if not g then
+				g = { itemID = rg.itemID, need = 0, have = 0, ranks = {} }
+				for q, id in ipairs(ranks or { rg.itemID }) do
+					local h = held(id)
+					g.ranks[q] = { itemID = id, rank = ranks and q or nil, tiers = ranks and #ranks or nil, need = 0, have = h }
+					g.have = g.have + h
+				end
+				byKey[key] = g
+				groups[#groups + 1] = g
+			end
+			g.need = g.need + need
+			local found
+			for _, x in ipairs(g.ranks) do
+				if x.itemID == rg.itemID then x.need = x.need + need; found = true end
+			end
+			if not found then
+				local h = held(rg.itemID)
+				table.insert(g.ranks, { itemID = rg.itemID, rank = rg.rank, tiers = rg.tiers, need = need, have = h })
+				g.have = g.have + h
+			end
+		end
+	end
+	for _, g in ipairs(groups) do
+		g.crafts = math.floor(g.have / g.need)
+		local exact = math.huge
+		for _, x in ipairs(g.ranks) do
+			if x.need > 0 then exact = math.min(exact, math.floor(x.have / x.need)) end
+		end
+		g.exact = exact == math.huge and g.crafts or exact
+	end
+	return groups
+end
+
 --- How many times you can make a scanned recipe now from what you own (bags, bank, reagent bank,
---- warband bank), with the reagents and finishing reagents the scan picked as best. With
---- Concentration it is also capped by the points you have. Returns plain, withConc, and the
---- reagent that runs out first for each (its item ID).
+--- warband bank), with the reagents and finishing reagents the scan picked as best, any rank of
+--- each counting (see Sc.Needs). With Concentration it is also capped by the points you have.
+--- Returns plain, withConc, and the reagent that runs out first for each (its item ID).
 function Sc.Craftable(r, concNow)
 	local function count(acc)
-		if not acc or not acc.reagents or #acc.reagents == 0 then return nil end
+		local groups = Sc.Needs(acc, r.recipeID)
+		if not groups then return nil end
 		local n, short = math.huge, nil
-		for _, rg in ipairs(acc.reagents) do
-			local need = rg.n or 1
-			if need > 0 then
-				local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(rg.itemID, true, false, true, true) or 0
-				local k = math.floor(have / need)
-				if k < n then n, short = k, rg.itemID end
-			end
+		for _, g in ipairs(groups) do
+			if g.crafts < n then n, short = g.crafts, g.itemID end
 		end
 		return n == math.huge and 0 or n, short
 	end
