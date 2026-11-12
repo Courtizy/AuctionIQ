@@ -3389,6 +3389,56 @@ AuctionIQ.Log.Started(10, 1, false, { { itemID = 202, quantity = 1, dataSlotInde
 check("craft log: customer-provided reagents aren't your cost", L.eval("AuctionIQ.Log.Pending().cost") < L.eval("(function() local x = AuctionIQ.Prices.Get('chmat', 'i:202'); return x end)()") or L.eval("AuctionIQ.Log.Pending().cost") == 0)
 run("C_CraftingOrders = STUB.oldCO; AuctionIQ.Log.Clear()")
 
+# batch results credit only crafted units: stock held before a craft and stock bought after it sell first
+run("""STUB.atKeep = { sales = TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"], buys = TradeSkillMasterDB["r@Emerald Dream@internalData@csvBuys"],
+  batches = AuctionIQ.db.batches, decisions = AuctionIQ.db.decisions }
+function STUB.attrib(batches, sales, buys)
+  local s, b = { "itemString,stackSize,quantity,price,otherPlayer,player,time,source" }, { "itemString,stackSize,quantity,price,otherPlayer,player,time,source" }
+  for _, r in ipairs(sales) do s[#s + 1] = string.format("i:960,1,%d,%d,Buyer,Courtizy,%d,Auction", r[2], r[3] or 10000, r[1]) end
+  for _, r in ipairs(buys or {}) do b[#b + 1] = string.format("i:960,1,%d,500,Seller,Courtizy,%d,Auction", r[2], r[1]) end
+  TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = table.concat(s, "\\n")
+  TradeSkillMasterDB["r@Emerald Dream@internalData@csvBuys"] = table.concat(b, "\\n")
+  AuctionIQ.Ledger.ClearStats()
+  AuctionIQ.db.batches, AuctionIQ.db.decisions = {}, nil
+  for _, x in ipairs(batches) do table.insert(AuctionIQ.db.batches, { at = x[1], id = 960, qty = x[2], held = x[3], cost = 100 * x[2], expectEach = 9500 }) end
+  AuctionIQ.Forecast.Clear()
+  local out = {}
+  for i, x in ipairs(AuctionIQ.Forecast.Batches(960)) do out[i] = { sold = x.sold, revenue = x.revenue } end
+  out.other = AuctionIQ.Forecast.OtherSold(960)
+  return out
+end""")
+T = "STUB.now - 20 * 86400"
+base = L.eval(f"STUB.attrib({{ {{ {T}, 10, 0 }} }}, {{}}, {{}})")
+resold = L.eval(f"STUB.attrib({{ {{ {T}, 10, 0 }} }}, {{ {{ {T} + 7200, 20, 30000 }} }}, {{ {{ {T} + 3600, 20 }} }})")
+check("batch results: a bought stack that sells after a craft doesn't lift the batch's revenue",
+      base[1].revenue == 0 and resold[1].revenue == 0 and resold[1].sold == 0 and resold.other == 20)
+held = L.eval(f"STUB.attrib({{ {{ {T}, 10, 15 }} }}, {{ {{ {T} + 3600, 15 }}, {{ {T} + 7200, 5 }} }})")
+check("batch results: the 15 you already held sell before the 10 you crafted; the next 5 are the batch's",
+      held[1].sold == 5 and held.other == 15 and abs(held[1].revenue - 5 * 10000 * 0.95) < 1e-6)
+two = L.eval(f"STUB.attrib({{ {{ {T}, 10, 0 }}, {{ {T} + 86400, 10, 10 }} }}, {{ {{ {T} + 2 * 86400, 12 }} }})")
+check("batch results: what you held before a craft doesn't count an earlier batch's unsold units twice",
+      two[1].sold == 10 and two[2].sold == 2 and two.other == 0)
+old = L.eval(f"STUB.attrib({{ {{ {T}, 10 }} }}, {{ {{ {T} + 7200, 8 }} }}, {{ {{ {T} - 86400, 50 }}, {{ {T} + 3600, 3 }} }})")
+check("batch results: a batch from before the snapshot counts only buys after it, not your whole buying history",
+      old[1].sold == 5 and old.other == 3)
+sh = L.eval(f"(function() STUB.attrib({{ {{ {T}, 10, 0 }} }}, {{ {{ {T} + 7200, 10, 30000 }} }}, {{ {{ {T} + 3600, 10 }} }}); return AuctionIQ.Forecast.Shade(960, STUB.now) end)()")
+check("batch results: resold stock no longer moves the advisor's price shading for the crafted item", sh is None)
+run(f"STUB.attrib({{ {{ {T}, 10, 15 }} }}, {{ {{ {T} + 3600, 15 }}, {{ {T} + 7200, 5 }} }})")
+xl = [plain(l[1]) for l in L.eval(f"AuctionIQ.AnalyticsViews.ExplainLines({{ item = 960, name = 'X', crafts = 1, n = 1, itemsEach = 1 }}, {{ days = 1, takeaway = 'x', forecast = 0, actual = 0, causes = {{ price = 0, sell = 0, yield = 0, reagents = 0 }}, sold = 5, made = 10, soldForecast = 5, left = 5, leftWorth = 0 }})").values()]
+check("batch results: the hover says how many sales went to stock you held or bought", any("15 sold of this item came out of stock you held or bought" in t for t in xl))
+# the craft log keeps what you held before the run, on its first craft only
+run("""STUB.oldParHeld = AuctionIQ.Par.Held; AuctionIQ.Par.Held = function(id) return id == 302 and 7 or 0 end
+AuctionIQ.Log.Clear(); AuctionIQ.db.batches = {}; AuctionIQ.Forecast.Clear()
+AuctionIQ.Log.Expect({ recipeID = 10, item = 302, cost = 100, profit = 50, name = "Test Flask" })
+AuctionIQ.Log.Started(10, 2, false, nil, nil)""")
+run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 }); STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })')
+hb = [b.held for b in L.eval("AuctionIQ.db.batches").values()]
+check("craft log: a batch saves what you held before the run of crafts, on the first craft only", hb == [7, None])
+run("""AuctionIQ.Par.Held = STUB.oldParHeld
+TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"], TradeSkillMasterDB["r@Emerald Dream@internalData@csvBuys"] = STUB.atKeep.sales, STUB.atKeep.buys
+AuctionIQ.db.batches, AuctionIQ.db.decisions = STUB.atKeep.batches, STUB.atKeep.decisions
+AuctionIQ.Ledger.ClearStats(); AuctionIQ.Forecast.Clear(); AuctionIQ.Log.Clear()""")
+
 # posting: a confirmed post counts toward the cap before the owned list comes back
 run("AuctionIQ.db.auctions = {}; AuctionIQ.Auction.Posted(971, 5)")
 check("auctions: fresh posts count before the owned list updates", L.eval("AuctionIQ.Auction.Listed(971)") == 5)

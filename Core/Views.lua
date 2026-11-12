@@ -686,6 +686,11 @@ function AV.ExplainLines(d, x)
 	table.insert(out, { T.Color("muted", string.format("Sold %d of %d made (%.0f forecast by now, %.1f made a craft expected). %d left, worth %s at the forecast price.",
 		x.sold, x.made, x.soldForecast, d.itemsEach or 0, x.left, M(x.leftWorth))) })
 	if d.source then table.insert(out, { T.Color("muted", "Sell rate from " .. d.source .. "; reagents at market when crafted.") }) end
+	-- only crafted units are credited: say how many sales went to stock you held or bought instead
+	local other = CH.Forecast.OtherSold and CH.Forecast.OtherSold(d.item) or 0
+	if other > 0 then
+		table.insert(out, { T.Color("muted", string.format("%d sold of this item came out of stock you held or bought, so they aren't counted here.", other)) })
+	end
 	-- your plan, not the suggestion, is what the forecast measures; the suggestion's, for comparison
 	local dep = x.departure
 	if dep then
