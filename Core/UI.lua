@@ -222,7 +222,6 @@ function UI.DashboardData(now)
 		local ok, c = pcall(CH.Statements.Cash, since, now)
 		if ok and c and c.change then d.cash = c end
 	end
-	d.activity = L.Activity(40)
 	return d
 end
 
@@ -283,7 +282,7 @@ function UI.LedgerRows(view, filter)
 end
 
 -- Building ------------------------------------------------------------------------------------
-local CARDS = 4 -- Do next cards: two columns of two (the wheel scrolls to more)
+local CARDS = 4 -- Recommendations cards: two columns of two
 
 local function buildDashboard(p)
 	local T = CH.Theme
@@ -309,24 +308,17 @@ local function buildDashboard(p)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		d.figures[f[1]] = { value = v, sub = sub, hit = hit }
 	end
-	-- Do next, the page's main block: what to do now, each card with a button that does it
+	-- Recommendations, the page's main block: what deserves attention now, each card with a button
+	-- that does it
 	local top = panel(p, 0, -54, PW, 172)
 	d.top = top
-	-- Do next is the page's main block: the accent line along its top, like the Next Move cards
+	-- the accent line along its top, like the Next Move cards
 	d.topAccent = top:CreateTexture(nil, "OVERLAY")
 	d.topAccent:SetPoint("TOPLEFT", 1, -1)
 	d.topAccent:SetPoint("TOPRIGHT", -1, -1)
 	d.topAccent:SetHeight(2)
 	T.AccentTexture(d.topAccent)
-	d.heading = fs(top, 10, -8, 400, "LEFT", "GameFontNormal")
-	d.mode = "next"
-	d.modeButtons = {}
-	for i, m in ipairs({ { "next", "Do next" }, { "activity", "Activity" } }) do
-		local b = T.Button(top, m[2], 80, 18)
-		b:SetPoint("TOPRIGHT", -8 - (2 - i) * 84, -6)
-		b:SetScript("OnClick", function() d.mode, d.logOffset = m[1], 0; UI.Refresh() end)
-		d.modeButtons[m[1]] = b
-	end
+	d.heading = fs(top, 10, -8, PW - 20, "LEFT", "GameFontNormal")
 	d.cards = {}
 	local CW = math.floor((PW - 24) / 2)
 	for i = 1, CARDS do
@@ -384,10 +376,7 @@ local function buildDashboard(p)
 		c.act:Hide()
 		d.cards[i] = c
 	end
-	d.logOffset = 0
 	d.acted = {} -- [card title] = { ok, msg } after its button was pressed
-	top:EnableMouseWheel(true)
-	top:SetScript("OnMouseWheel", function(_, delta) d.logOffset = math.max(0, d.logOffset - delta * 2); UI.Refresh() end)
 
 	-- gold: the chart and its stats on the left, sales and expenses on the right
 	local y0 = -234
@@ -1166,18 +1155,16 @@ local function refreshDashboard()
 	local wc = data.worthChange
 	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
 	d.note:SetText("Cash profit counts reagents as spent, like TSM.\nNet worth change counts stock you still hold.")
-	-- left column: Do next, or the activity log
-	for k, b in pairs(d.modeButtons) do colorButton(b, k == d.mode) end
-	if d.mode == "next" then
+	-- Recommendations: the few decisions that matter most
+	do
 		-- the few decisions that matter most, one card per kind of action: no list to scroll
 		local list, all = CH.Next.Ranked(nil, #d.cards)
-		d.logOffset = 0
 		local urgent = 0
 		for _, e in ipairs(list) do if e.tier == 1 then urgent = urgent + 1 end end
-		d.heading:SetText("Do next" .. T.Color("muted", #list == 0 and "  nothing waiting"
+		d.heading:SetText("Recommendations" .. T.Color("muted", #list == 0 and "  nothing waiting"
 			or string.format("  the %d that matter most%s", #list, all > #list and string.format(" (of %d)", all) or "")))
 		for i, c in ipairs(d.cards) do
-			local e = list[i + d.logOffset]
+			local e = list[i]
 			c.hit.go = e and e.go
 			c.hit.entry = e
 			c.act.run = e and e.act and e.act.run
@@ -1199,27 +1186,6 @@ local function refreshDashboard()
 				c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
 			end
 		end
-	else
-	d.heading:SetText("Activity" .. T.Color("muted", "  what sold, bought and expired, newest first"))
-	for i, c in ipairs(d.cards) do
-		c.hit.go = nil
-		c.hit.entry = nil
-		c.act.run = nil
-		c.act:Hide()
-		local a = data.activity[i + d.logOffset]
-		if a then
-			c.who:SetText(a.player or "?")
-			c.time:SetText(T.Color("muted", date and date("%b %d %H:%M", a.time) or ""))
-			c.l1:SetText(a.expired > 0 and (a.expired .. T.Color("muted", " expired")) or "")
-			local sold = a.sold > 0 and (a.sold .. T.Color("muted", " sold  ") .. money(a.gold)) or ""
-			local bought = a.bought > 0 and (a.bought .. T.Color("muted", " bought  ") .. money(a.spent)) or ""
-			c.l2:SetText(sold ~= "" and sold or bought)
-			local net = a.gold - a.spent
-			c.l3:SetText(net ~= 0 and T.Color(net >= 0 and "ok" or "bad", money(net, true)) or "")
-		else
-			c.who:SetText(""); c.time:SetText(""); c.l1:SetText(""); c.l2:SetText(""); c.l3:SetText("")
-		end
-	end
 	end
 	return data
 end

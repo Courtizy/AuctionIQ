@@ -1332,8 +1332,7 @@ check("ledger: auction sales count after the 5% cut, vendor and trade sales as t
 check("dashboard: top sale, top purchase, 52 week high and low", d.topSale == 6000000 and d.topBuy == 1000000 and d.high == 10000000 and 0 < d.low <= d.high)
 run("AuctionIQ.UI.SetRange('All')")
 check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 10450000)
-act = list(LG.Activity(10).values())
-check("activity log: grouped by character and hour", act[0].player == "Courtizy" and act[0].sold == 2 and act[0].expired == 1 and sum(a.bought for a in act) == 10)
+check("activity log: gone from the addon (the Dashboard shows Recommendations only)", L.eval("AuctionIQ.Ledger.Activity == nil and AuctionIQ.Ledger.ActivityRecent == nil and AuctionIQ.Ledger.ActivityNow == nil"))
 inv = {e.id: e for e in LG.Inventory().values()}
 v302 = CH.Prices.Get("chvalue", "i:302")
 check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4 and inv[302].bags == 3 and inv[302].mail == 1 and inv[301].warband == 2 and inv[302].value == v302 * 4)
@@ -2265,6 +2264,9 @@ c2risk = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].l2:GetText()")
 check("Do next: the cards show the reason and the biggest uncertainty, with no list to scroll",
       plain(c2who) == "Repost 9 items" and plain(c2risk) == "Risk: it expired once"
       and "matter most" in plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")))
+check("Dashboard: the block is called Recommendations, with no Do next or Activity buttons beside it",
+      plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")).startswith("Recommendations")
+      and L.eval("AuctionIQ.UI.Pages().dashboard.d.modeButtons") is None and L.eval("AuctionIQ.UI.DashboardData(STUB.now).activity") is None)
 run("AuctionIQ.Next.List = STUB.oldNextList")
 wc = L.eval("AuctionIQ.UI.Pages().dashboard.d.whatChanged")
 check("What changed: the change in gold and up to three moves behind it, each opening Accounting",
@@ -3062,14 +3064,6 @@ function STUB.sameDays(a, b)
   end
   for k in pairs(b) do if not a[k] then return false end end
   return true
-end
-function STUB.sameActivity(limit)
-  local a, b = AuctionIQ.Ledger.ActivityRecent(limit), AuctionIQ.Ledger.ActivityNow(limit)
-  if #a ~= #b then return false end
-  for i = 1, #a do
-    for _, f in ipairs({ "player", "time", "sold", "gold", "expired", "bought", "spent" }) do if a[i][f] ~= b[i][f] then return false, i, f end end
-  end
-  return true
 end""")
 for order in ("asc", "desc", "shuffled"):
     run(f"STUB.synthLedger('{order}')")
@@ -3089,7 +3083,6 @@ for order in ("asc", "desc", "shuffled"):
     check(f"time order ({order}): Cash Flow over a range matches walking every record",
           all(L.eval(f"STUB.sameCash(STUB.now - {d} * 86400, STUB.now - {e} * 86400)") for d, e in ((1, 0), (7, 0), (30, 0), (90, 30), (400, 0))))
     check(f"time order ({order}): the Dashboard's first sale, top sale, top buy and most-bought item match, every range", L.eval("STUB.sameDashboard()"))
-    check(f"time order ({order}): Activity reads only the newest records and lists the same visits", L.eval("STUB.sameActivity(40)") and L.eval("STUB.sameActivity(5)") and L.eval("STUB.sameActivity(100000)"))
     ad = L.eval("""(function()
       local L = AuctionIQ.Ledger
       AuctionIQ.db.ledger.days = {}
@@ -3132,7 +3125,7 @@ wu = L.eval("""(function()
   AuctionIQ.Ledger.ByTime("Sales"); AuctionIQ.Ledger.ByTime("Buys")
   return { done = done, frames = frames, days = next(AuctionIQ.db.ledger.days) ~= nil, sorted = AuctionIQ.Ledger.sorts == n0 }
 end)()""")
-check("login warm-up: time order, archive, activity and demand finish over many short frames, ready for the Dashboard",
+check("login warm-up: time order, archive and demand finish over many short frames, ready for the Dashboard",
       wu.done and wu.frames > 10 and wu.days and wu.sorted)
 run("""for k, v in pairs(STUB.ledgerKeep) do TradeSkillMasterDB[k] = v end
 if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = STUB.daysKeep or {} end
