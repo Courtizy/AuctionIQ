@@ -857,9 +857,15 @@ function AUI.BuyNowLines(c)
 	if not d or d.source == "chmat" then return out end
 	local from = d.source == "ah" and ("AH search " .. CH.Scans.Age(d.age) .. (d.age and d.age >= 60 and " ago" or ""))
 		or ("AH scan " .. CH.Scans.Age(d.age) .. " old")
+	local mut = function(t) return CH.Theme.Color("muted", t) end
+	-- priced from the listings already (as the shopping list does): say where from
+	if c.listed then
+		table.insert(out, { mut("   priced from your " .. from), "" })
+		if (d.short or 0) > 0 then table.insert(out, { CH.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
+		return out
+	end
 	local unit = math.floor(d.unit + 0.5)
 	if c.unit and math.abs(unit - c.unit) < 0.005 * c.unit then return out end
-	local mut = function(t) return CH.Theme.Color("muted", t) end
 	table.insert(out, { mut("   buy now, " .. from), mut(CH.FormatMoney(unit) .. " ea  " .. CH.FormatMoney(d.cost)) })
 	if (d.short or 0) > 0 then table.insert(out, { CH.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
 	return out
