@@ -16,7 +16,7 @@ local _, CH = ...
 
 local D = {}
 CH.Decide = D
-D.FEW = 5 -- fewer of your own posts than this and the region's numbers carry the estimate
+D.FEW = 5 -- fewer days of your own posts than this and the region's numbers carry the estimate
 
 -- Parts and scenarios ----------------------------------------------------------------------------
 
@@ -187,8 +187,8 @@ function D.Evidence(id, now)
 	if CH.Ledger and CH.Ledger.Available() then
 		local v = CH.Prices.Values(id, now)
 		if v.realized then e.sales = { n = v.n, last = v.lastSale } end
-		local sold, expired = CH.Ledger.SellThrough(id)
-		e.posts = { sold = sold or 0, expired = expired or 0 }
+		local sold, expired, detail = CH.Ledger.SellThrough(id)
+		e.posts = { sold = sold or 0, expired = expired or 0, detail = detail }
 	end
 	e.regionRate = CH.Expect and CH.Expect.RegionRate(id)
 	e.regionPerDay = CH.Advisor and CH.Advisor.SoldPerDay(id)
@@ -197,7 +197,8 @@ function D.Evidence(id, now)
 		local f, why = CH.Forecast.Shade(id, now)
 		if f then e.shade = { factor = f, why = why } end
 	end
-	local own = e.posts and (e.posts.sold + e.posts.expired) or 0
+	-- your own evidence in days with a sale or an expiry (Ledger.SellThrough), rounded
+	local own = e.posts and math.floor(e.posts.sold + e.posts.expired + 0.5) or 0
 	e.ownPosts = own
 	if own < D.FEW then e.fallback = e.regionRate and "region sale rate" or nil end
 	return e
@@ -211,16 +212,16 @@ function D.EvidenceText(e)
 	out.price = "Price: TSM, " .. (D.BASIS[e.basis] or "no TSM price")
 		.. (e.scan and (", your AH scan " .. age(e.scan.age) .. " old") or " (TSM doesn't tell addons how old its data is)")
 	if e.ownPosts >= D.FEW then
-		out.rate = string.format("Sell rate: your %d posts in 30 days", e.ownPosts)
+		out.rate = string.format("Sell rate: your record on %d days in 30", e.ownPosts)
 	elseif e.fallback then
-		out.rate = e.ownPosts > 0 and string.format("Sell rate: only %d of your posts, so mostly the %s", e.ownPosts, e.fallback)
-			or ("Sell rate: none of your posts, so the " .. e.fallback)
+		out.rate = e.ownPosts > 0 and string.format("Sell rate: your record on only %d day%s, so mostly the %s", e.ownPosts, e.ownPosts == 1 and "" or "s", e.fallback)
+			or ("Sell rate: none of your posts in 30 days, so the " .. e.fallback)
 	else
-		out.rate = e.ownPosts > 0 and string.format("Sell rate: only %d of your posts and no region rate", e.ownPosts)
+		out.rate = e.ownPosts > 0 and string.format("Sell rate: your record on only %d day%s and no region rate", e.ownPosts, e.ownPosts == 1 and "" or "s")
 			or "Sell rate: none known, so proceeds are the price after the cut"
 	end
-	out.basis = e.ownPosts >= D.FEW and string.format("%d of your posts", e.ownPosts)
-		or e.fallback and (e.ownPosts > 0 and string.format("only %d of your posts, mostly the %s", e.ownPosts, e.fallback) or ("the " .. e.fallback .. ", none of your posts"))
+	out.basis = e.ownPosts >= D.FEW and string.format("your record on %d days", e.ownPosts)
+		or e.fallback and (e.ownPosts > 0 and string.format("your record on only %d day%s, mostly the %s", e.ownPosts, e.ownPosts == 1 and "" or "s", e.fallback) or ("the " .. e.fallback .. ", none of your posts"))
 		or "no sale rate yet"
 	if e.sales then
 		out.sales = string.format("Your sales: %d in 30 days", e.sales.n)

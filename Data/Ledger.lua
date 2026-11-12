@@ -722,27 +722,32 @@ function Lg.LastSold()
 	return t
 end
 
--- Per item: last sale, expiries since it, and 30-day sold and expired units (both in units, so a
--- stack that partly sells and partly expires counts right). Rebuilt at most once a minute.
+-- Per item: last sale, expiries since it, and over the last 30 days the auction units sold and
+-- expired and the days with any of either. Rebuilt at most once a minute.
 local stats, statsAt
 local function itemStats()
 	local now = GetTime and GetTime() or 0
 	if stats and statsAt and now - statsAt < 60 then return stats end
 	stats, statsAt = {}, now
 	local cut = time() - 30 * DAY
-	local function e(id) local x = stats[id]; if not x then x = { last = 0, since = 0, sold30 = 0, exp30 = 0, n = 0, gold = 0 }; stats[id] = x end return x end
+	local function e(id) local x = stats[id]; if not x then x = { last = 0, since = 0, sold30 = 0, exp30 = 0, days30 = {}, ndays = 0, n = 0, gold = 0 }; stats[id] = x end return x end
+	local function day(x, t)
+		local d = math.floor(t / DAY)
+		if not x.days30[d] then x.days30[d] = true; x.ndays = x.ndays + 1 end
+	end
 	for _, s in ipairs(Lg.Records("Sales")) do
 		if s.id then
 			local x = e(s.id)
 			if s.time > x.last then x.last = s.time end
-			if s.time >= cut then x.sold30 = x.sold30 + s.quantity end
+			-- only auction sales are posts that sold: a vendor, trade or mail sale was never listed
+			if s.time >= cut and (s.source == nil or s.source == "Auction") then x.sold30 = x.sold30 + s.quantity; day(x, s.time) end
 			x.n, x.gold = x.n + s.quantity, x.gold + (s.amount or 0)
 		end
 	end
 	for _, r in ipairs(Lg.Records("Expired")) do
 		if r.id then
 			local x = e(r.id)
-			if r.time >= cut then x.exp30 = x.exp30 + math.max(1, r.quantity or 1) end
+			if r.time >= cut then x.exp30 = x.exp30 + math.max(1, r.quantity or 1); day(x, r.time) end
 		end
 	end
 	for _, r in ipairs(Lg.Records("Expired")) do
@@ -758,8 +763,24 @@ function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 
 --- Your average sale price for an item, or nil.
 function Lg.AvgSell(id) local x = itemStats()[id]; return x and x.n > 0 and x.gold / x.n or nil end
 
---- Sold units and expiries in the last 30 days: sold, expired.
-function Lg.SellThrough(id) local x = itemStats()[id]; return x and x.sold30 or 0, x and x.exp30 or 0 end
+--- Your sell-through over the last 30 days as evidence for a Beta belief: sold, expired, detail.
+---
+--- The share is by units: of the auction units that sold or expired, the share that sold. How much
+--- that share counts is the number of days with a sale or an expiry, not the number of units: units
+--- in one stack, or one stack TSM records as several rows, sell or expire together and are not
+--- independent tries. So sold + expired = days (at most SELL_DAYS, the window), split by the unit
+--- share. One expired stack of 20 is one day against the item, not 20. detail = { units sold, units
+--- expired, days }.
+Lg.SELL_DAYS = 30
+function Lg.SellThrough(id)
+	local x = itemStats()[id]
+	if not x then return 0, 0, { sold = 0, expired = 0, days = 0 } end
+	local units = x.sold30 + x.exp30
+	local detail = { sold = x.sold30, expired = x.exp30, days = x.ndays }
+	if units <= 0 or x.ndays <= 0 then return 0, 0, detail end
+	local share = x.sold30 / units
+	return x.ndays * share, x.ndays * (1 - share), detail
+end
 
 --- Stock that isn't moving: held items with no sale in `days` days or 3+ expiries in that time.
 --- { id, held, value, lastSold, expired, advice }.

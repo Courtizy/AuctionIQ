@@ -285,10 +285,11 @@ function LUI.Rows(v, opts)
 						else table.insert(lines, { "Last sale", T.Color("muted", "none on record") }) end
 						table.insert(lines, { "Sold in 7 days", tostring(sold7[e.id] or 0) })
 						table.insert(lines, { "Sold in 30 days", string.format("%d (%.1f a day)", sold30[e.id] or 0, perDay) })
-						local sold, expired = 0, 0
-						if L.SellThrough then sold, expired = L.SellThrough(e.id) end
-						if (sold or 0) + (expired or 0) > 0 then
-							table.insert(lines, { "Sell-through, 30 days", string.format("%d%% (%d sold, %d expired)", math.floor(sold / (sold + expired) * 100 + 0.5), sold, expired) })
+						local sold, expired, st = 0, 0, nil
+						if L.SellThrough then sold, expired, st = L.SellThrough(e.id) end
+						if (sold or 0) + (expired or 0) > 0 and st then
+							table.insert(lines, { "Sell-through, 30 days", string.format("%d%% (%d sold, %d expired, over %d day%s)", math.floor(sold / (sold + expired) * 100 + 0.5),
+								st.sold, st.expired, st.days, st.days == 1 and "" or "s") })
 						end
 						local rate = CH.Expect and CH.Expect.RegionRate and CH.Expect.RegionRate(e.id)
 						local perDayRegion = CH.Advisor and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(e.id)

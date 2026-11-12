@@ -3442,6 +3442,63 @@ check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1
 check("prob: Poisson quantile (2 a day for 7 days at 90% is 19)", P.PoissonQuantile(14, 0.9) == 19 and P.PoissonQuantile(0, 0.9) == 0
       and P.PoissonQuantile(1, 0.5) == 1)
 check("prob: big means use the normal approximation", abs(P.PoissonQuantile(10000, 0.9) - 10128) <= 1 and abs(P.NormInv(0.975) - 1.95996) < 1e-4)
+# sell-through counts days of evidence, not units: a stack sells or expires together
+run("""STUB.stKeep = { TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"], TradeSkillMasterDB["r@Emerald Dream@internalData@csvExpired"] }
+function STUB.setST(sales, expired)
+  local s, e = { "itemString,stackSize,quantity,price,otherPlayer,player,time,source" }, { "itemString,stackSize,quantity,player,time" }
+  for _, r in ipairs(sales) do s[#s + 1] = string.format("i:%d,1,%d,1000,Buyer,Courtizy,%d,%s", r[1], r[2], r[3], r[4] or "Auction") end
+  for _, r in ipairs(expired) do e[#e + 1] = string.format("i:%d,1,%d,Courtizy,%d", r[1], r[2], r[3]) end
+  TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"] = table.concat(s, "\\n")
+  TradeSkillMasterDB["r@Emerald Dream@internalData@csvExpired"] = table.concat(e, "\\n")
+  AuctionIQ.Ledger.ClearStats()
+end
+function STUB.st(id) local a, b, d = AuctionIQ.Ledger.SellThrough(id); return { a, b, d.sold, d.expired, d.days } end""")
+t0 = "math.floor(STUB.now / 86400) * 86400 - 5 * 86400 + 3600"
+run(f"STUB.setST({{}}, {{ {{ 950, 20, {t0} }} }})")
+one = list(L.eval("STUB.st(950)").values())
+bel = L.eval("AuctionIQ.Prob.SellThrough(select(1, AuctionIQ.Ledger.SellThrough(950)), select(2, AuctionIQ.Ledger.SellThrough(950)), 0.5)")
+old = L.eval("AuctionIQ.Prob.SellThrough(0, 20, 0.5)")
+check("sell-through: one expired stack of 20 is one day against the item, not 20 failures",
+      one[0] == 0 and abs(one[1] - 1) < 1e-12 and one[3] == 20 and one[4] == 1
+      and abs(bel.mean - 2 / 5) < 1e-9 and old.mean < 0.1 and old.pDown > 0.99 and bel.pDown < 0.7)
+run(f"STUB.setST({{}}, {{ {{ 950, 1, {t0} }} }})")
+check("sell-through: so one expired stack weighs the same as one expired unit", list(L.eval("STUB.st(950)").values())[:2] == one[:2])
+# property: a day's sales and expiries, split into any number of rows, give the same belief
+bad = L.eval(f"""(function()
+  math.randomseed(23)
+  local bad = 0
+  for trial = 1, 200 do
+    local days, rows1, rowsN, rowsE1, rowsEN = math.random(1, 12), {{}}, {{}}, {{}}, {{}}
+    for d = 1, days do
+      local t = {t0} - d * 86400
+      local q, x = math.random(0, 30), math.random(0, 30)
+      if q > 0 then
+        rows1[#rows1 + 1] = {{ 951, q, t }}
+        local left = q
+        while left > 0 do local k = math.random(1, left); rowsN[#rowsN + 1] = {{ 951, k, t + math.random(0, 3000) }}; left = left - k end
+      end
+      if x > 0 then
+        rowsE1[#rowsE1 + 1] = {{ 951, x, t + 4000 }}
+        local left = x
+        while left > 0 do local k = math.random(1, left); rowsEN[#rowsEN + 1] = {{ 951, k, t + 4000 + math.random(0, 3000) }}; left = left - k end
+      end
+    end
+    STUB.setST(rows1, rowsE1); local a = STUB.st(951)
+    STUB.setST(rowsN, rowsEN); local b = STUB.st(951)
+    if math.abs(a[1] - b[1]) > 1e-9 or math.abs(a[2] - b[2]) > 1e-9 or a[1] + a[2] > 30 + 1e-9 then bad = bad + 1 end
+  end
+  return bad
+end)()""")
+check("sell-through (200 seeded ledgers): splitting a day's stacks into any number of rows doesn't move the belief, and it never counts more than 30 days", bad == 0)
+run(f"STUB.setST({{ {{ 952, 6, {t0} }}, {{ 952, 50, {t0} + 60, 'Vendor' }} }}, {{ {{ 952, 2, {t0} + 86400 }} }})")
+v = list(L.eval("STUB.st(952)").values())
+check("sell-through: only auction sales count as posts that sold (a vendor sale was never listed)",
+      v[2] == 6 and v[3] == 2 and v[4] == 2 and abs(v[0] - 2 * 6 / 8) < 1e-12 and abs(v[1] - 2 * 2 / 8) < 1e-12)
+run(f"STUB.rows = {{}}; for d = 1, 20 do STUB.rows[d] = {{ 953, 3, {t0} - d * 86400 }} end; STUB.setST(STUB.rows, {{}})")
+lf3 = L.eval("AuctionIQ.Groups.Learn(953)")
+check("sell-through: Learn says what it rests on: units and the days they came on", lf3[0] > 1 and "60 sold, 0 expired over 20 days" in lf3[1])
+run("""TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"], TradeSkillMasterDB["r@Emerald Dream@internalData@csvExpired"] = STUB.stKeep[1], STUB.stKeep[2]
+AuctionIQ.Ledger.ClearStats()""")
 st = P.SellThrough(16, 4, 0.5)
 check("prob: sell-through belief", abs(st.mean - 18 / 24) < 1e-9 and st.n == 20 and 0 < st.pUp < 1 and st.pDown < 0.01)
 run("""
