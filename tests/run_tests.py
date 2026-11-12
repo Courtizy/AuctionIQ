@@ -1389,6 +1389,37 @@ b3 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
 d777 = list(L.eval("AuctionIQ.Forecast.Decisions()").values())[0]
 check("batch decision: crafts fill it up to the crafts queued, then stop linking", b1.decision == d777.key and b2.decision == d777.key
       and b3.decision is None and d777.crafts == 2 and d777.made == 2 and d777.paid == 24)
+# the plan you ran against the suggestion: both saved, the forecast for what you chose
+pr = L.eval("AuctionIQ.Decide.PlanRecord({ n = 8, action = 'make', strength = 'strong', canMake = 30, canAfford = 5000, held = 2 })")
+check("plan record: the suggestion, its evidence and the limits kept, can afford capped at 999",
+      pr.suggested == 8 and pr.action == "make" and pr.strength == "strong" and pr.canMake == 30 and pr.canAfford == 999 and pr.held == 2)
+check("plan record: nothing to keep without a suggestion", L.eval("AuctionIQ.Decide.PlanRecord({ action = 'unknown' })") is None
+      and L.eval("AuctionIQ.Decide.PlanRecord(nil)") is None)
+run("""AuctionIQ.db.decisions = nil
+for i = #AuctionIQ.db.batches, 1, -1 do if AuctionIQ.db.batches[i].id == 777 then table.remove(AuctionIQ.db.batches, i) end end
+AuctionIQ.Forecast.Clear()""")
+dd = CH.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Departed', n = 20, itemsEach = 1, costEach = 10, netEach = 20, daily = 100, plan = { suggested = 8, action = 'make', strength = 'some' } }"), L.eval("STUB.now") - 86400)
+run("local d = AuctionIQ.Forecast.Decisions()[1]; d.crafts, d.made, d.paid, d.first = 20, 20, 200, STUB.now - 86400")
+dep = L.eval("AuctionIQ.Forecast.Departure(AuctionIQ.Forecast.Decisions()[1])")
+check("departure: queue 20 when 8 was suggested says so", dep.kind == "more" and dep.text == "You chose 20 (suggested 8)")
+xd = L.eval("AuctionIQ.Forecast.Explain(AuctionIQ.Forecast.Decisions()[1], STUB.now)")
+check("departure: the forecast is for the 20 you chose; the suggested 8 is modeled beside it",
+      xd.expItems == 20 and abs(xd.forecast - (20 * 20 - 200)) < 1e-6 and abs(xd.atSuggested - (8 * 20 - 80)) < 1e-6 and xd.departure.suggested == 8)
+el = [plain(l[1]) for l in L.eval("AuctionIQ.AnalyticsViews.ExplainLines(AuctionIQ.Forecast.Decisions()[1], AuctionIQ.Forecast.Explain(AuctionIQ.Forecast.Decisions()[1], STUB.now))").values()]
+check("departure: the batch's hover says what you chose against what was suggested, and that the forecast is yours",
+      any(t.startswith("You chose 20 (suggested 8)") and "evidence: some" in t for t in el)
+      and any("forecast above is for the crafts you chose" in t for t in el) and any("At the suggested 8" in t for t in el))
+dep_of = L.eval("function(n, s, a) return AuctionIQ.Forecast.Departure({ n = n, plan = { suggested = s, action = a } }) end")
+check("departure: fewer than suggested", dep_of(3, 8, "make").kind == "fewer" and dep_of(3, 8, "make").text == "You chose 3 (suggested 8)")
+check("departure: making some after hold off or skip goes against it, in its words",
+      dep_of(5, 0, "hold").kind == "against" and dep_of(5, 0, "hold").text == "You chose 5 (suggested hold off)"
+      and dep_of(5, 0, "skip").text == "You chose 5 (suggested skip it)")
+check("departure: a trial reads as one", dep_of(10, 2, "trial").text == "You chose 10 (suggested try 2)")
+check("departure: none when you queued the suggestion, or there was none", dep_of(8, 8, "make") is None
+      and L.eval("AuctionIQ.Forecast.Departure({ n = 8 })") is None)
+run("AuctionIQ.Forecast.Decisions()[1].plan.suggested = 20")
+el2 = [plain(l[1]) for l in L.eval("AuctionIQ.AnalyticsViews.ExplainLines(AuctionIQ.Forecast.Decisions()[1], AuctionIQ.Forecast.Explain(AuctionIQ.Forecast.Decisions()[1], STUB.now))").values()]
+check("departure: queueing the suggestion says so, with no comparison", "You queued what AuctionIQ suggested." in el2 and not any("At the suggested" in t for t in el2))
 run("""AuctionIQ.db.decisions = nil
 for i = #AuctionIQ.db.batches, 1, -1 do if AuctionIQ.db.batches[i].id == 777 then table.remove(AuctionIQ.db.batches, i) end end
 AuctionIQ.Forecast.Clear()""")
@@ -2091,6 +2122,13 @@ x = sel.x
 nq = L.eval("AuctionIQ.Queue.Count()")
 okq = L.eval("function(s) return AuctionIQ.AnalyticsViews.QueueSelection(s) end")(sel)
 check("one selection: queueing while live goes through the advisor's own queueing", okq and L.eval("AuctionIQ.Queue.Count()") > nq)
+lastd = L.eval("(function() local l = AuctionIQ.Forecast.Decisions(); return l[#l] end)()")
+check("one selection: the queued batch keeps the suggestion beside what you chose",
+      lastd.n == sel.n and lastd.plan is not None and lastd.plan.suggested is not None and lastd.plan.action in ("make", "trial", "hold", "skip"))
+# here the Dashboard handed off 20 (Restock) and your gold buys reagents for fewer: both show, both are saved
+check("one selection: a hand-off's quantity is yours, and the pane shows the suggestion beside it when they differ",
+      sel.quantity is not None and sel["from"] == "Restock" and sel.n == 20 and sel.quantity.n < 20
+      and rows["Make"] == "20  (suggested %d)" % sel.quantity.n and lastd.plan.suggested == sel.quantity.n)
 if sel.canConc:
     run("AuctionIQ.AnalyticsViews.SetConc(AuctionIQ.LedgerUI.lastDetail.selection.x, true); AuctionIQ.UI.Refresh()")
     det_c = L.eval("AuctionIQ.LedgerUI.lastDetail")
