@@ -181,9 +181,11 @@ environment, on every pull request.
 in the same harness (relative costs, not in-game frame times). TSM's records are read through a
 time-ordered view kept until they change (`Ledger.ByTime`, `Ledger.From`), so a range reads only the
 records in it. Login's warm-up (`Ledger.WarmAll`) parses them, orders them, builds the day archive,
-each item's sell-through stats (`Ledger.StatsJob`) and the indexes a few milliseconds a frame, so the
-Dashboard's first open finds them ready. The sell-through stats are kept until TSM's records change or a
-record they counted ages out of the 30 days.
+each item's sell-through stats (`Ledger.StatsJob`), when each item sells over 30 days
+(`Ledger.SaleTimesJob`) and the indexes a few milliseconds a frame, so the Dashboard's first open finds
+them ready. Each is kept until TSM's records change or a record it counted ages out of its window. Stock
+targets read only the last two weeks of the time-ordered sales, and the Recommendations list looks up
+each item's best scan row from one index per refresh.
 
 **Releases:** tagging `v*` builds a release with the BigWigs packager.
 

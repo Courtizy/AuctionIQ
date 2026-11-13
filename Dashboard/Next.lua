@@ -61,9 +61,18 @@ function Next.ClearAlternatives() altCache = setmetatable({}, { __mode = "k" }) 
 -- on gives no gold and says so. Returns the value, a note ("" when none) and the scan row, whose
 -- options (Decide.Alternatives) the cards shown add later: they read live stock and sale values per
 -- reagent, too slow for every card the list considers.
+-- The best scan row per item, looked up once per list (Queue.ScanRowIndex) rather than once per card.
+local rowIndex
+local function scanRowFor(id)
+	if not (CH.Queue and CH.Queue.ScanRowIndex) then return nil end
+	rowIndex = rowIndex or CH.Queue.ScanRowIndex()
+	local x = rowIndex[id]
+	if x then return x[1], x[2], x[3] end
+end
+
 local function makeGain(id, n)
-	if not (CH.Queue and CH.Queue.ScanRowFor and n and n > 0) then return nil, "" end
-	local _, _, r = CH.Queue.ScanRowFor(id)
+	if not (n and n > 0) then return nil, "" end
+	local _, _, r = scanRowFor(id)
 	if not (r and r.profit) then return nil, "" end
 	local D = CH.Decide
 	if r.at and D and D.SCAN_STALE and time() - r.at > D.SCAN_STALE then
@@ -148,7 +157,7 @@ end
 -- Queue enough crafts to make n of an item, from the best saved scan that makes it.
 local function makeAct(id, n)
 	if not (CH.Queue and n and n > 0) then return nil end
-	local k, c, r = CH.Queue.ScanRowFor(id)
+	local k, c, r = scanRowFor(id)
 	if not r then return nil end
 	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
 	return queueAct("Queue " .. crafts, k, c, r, false, crafts)
@@ -160,6 +169,7 @@ end
 --- act.run() returns ok and a line saying what happened (or why it couldn't), shown on the card.
 function Next.List(now)
 	now = now or time()
+	rowIndex = nil
 	local out = {}
 	local function add(e) table.insert(out, e) end
 
@@ -331,6 +341,7 @@ function Next.List(now)
 			go = { "operations", "professions", { title = "Weekly knowledge" } } }) end
 	end
 
+	rowIndex = nil
 	return Next.Order(out)
 end
 

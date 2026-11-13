@@ -111,6 +111,23 @@ function Q.FromScan(charKey, char, row, conc)
 		reagents = acc.queue, shop = shop, qty = 0 }
 end
 
+--- Every item's best saved scan row, in one pass: { [itemID] = { charKey, char, row } }. The same
+--- picks as ScanRowFor, for a list that asks about many items at once.
+function Q.ScanRowIndex()
+	local idx = {}
+	for k, c in pairs(CH.db.characters or {}) do
+		for _, p in pairs(c.professions or {}) do
+			for _, r in ipairs(p.scan and p.scan.rows or {}) do
+				local b = r.item and idx[r.item]
+				if r.item and r.accounts and r.accounts.queue and (not b or (r.profit or 0) > (b[3].profit or 0)) then
+					idx[r.item] = { k, c, r }
+				end
+			end
+		end
+	end
+	return idx
+end
+
 --- The best saved scan row, on any character, that makes an item: charKey, char, row, or nil.
 function Q.ScanRowFor(itemID)
 	local bk, bc, br

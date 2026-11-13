@@ -755,6 +755,7 @@ end
 -- whenever its text changes) and no record counted in the 30 days has aged out of them: the first
 -- one to age out is `statsEdge`. One walk over every sale, so worth not repeating.
 local stats, statsSales, statsExpired, statsEdge
+local saleTimes = { n = 0, by = {} } -- Lg.SaleTimes, kept per sales list
 local function statsFresh(sales, expiredRecs)
 	return stats and statsSales == sales and statsExpired == expiredRecs and (not statsEdge or time() - 30 * DAY <= statsEdge)
 end
@@ -827,7 +828,7 @@ local function itemStats()
 	if statsFresh(Lg.Records("Sales"), Lg.Records("Expired")) then return stats end
 	return Lg.StatsJob().step()
 end
-function Lg.ClearStats() stats = nil; parsed = {}; work = {}; byTime = {} end
+function Lg.ClearStats() stats = nil; parsed = {}; work = {}; byTime = {}; saleTimes = { n = 0, by = {} } end
 
 --- How many times an item expired since it last sold (TSM's numexpires).
 function Lg.NumExpires(id) local x = itemStats()[id]; return x and x.since or 0 end
@@ -917,35 +918,54 @@ local function localClock(t)
 	return c
 end
 
-function Lg.SaleTimes(since, char)
-	local t = {}
+--- When each item sells, from `since` (optionally one character's sales), as steps: job.step(budgetMs)
+--- does up to that many milliseconds (all of it without a budget) and returns { id, sold, gold, days,
+--- hours, bestDay, bestHour, share } per item once built, else nil. The answer is kept while the sales
+--- list is the same and the window starts at the same sale (it depends on nothing else): the
+--- Dashboard and Trade both ask for the last 30 days on each refresh, and login's warm-up builds it.
+function Lg.SaleTimesJob(since, char)
 	local list = Lg.ByTime("Sales")
-	for i = Lg.From(list, since), #list do
-		local s = list[i]
-		if s.id and (not char or s.player == char) then
-			local e = t[s.id]
-			if not e then e = { id = s.id, sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = e end
-			local d = localClock(s.time)
-			e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
-			e.days[d.wday] = (e.days[d.wday] or 0) + s.quantity
-			e.hours[d.hour] = (e.hours[d.hour] or 0) + s.quantity
+	local from = Lg.From(list, since)
+	local key = (char or "") .. "|" .. from
+	local t, i = {}, from
+	local job = {}
+	function job.step(budget)
+		if saleTimes.list ~= list or saleTimes.n ~= #list then saleTimes.list, saleTimes.n, saleTimes.by = list, #list, {} end
+		if saleTimes.by[key] then return saleTimes.by[key] end
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		while i <= #list do
+			local s = list[i]
+			if s.id and (not char or s.player == char) then
+				local e = t[s.id]
+				if not e then e = { id = s.id, sold = 0, gold = 0, days = {}, hours = {} }; t[s.id] = e end
+				local d = localClock(s.time)
+				e.sold, e.gold = e.sold + s.quantity, e.gold + s.amount
+				e.days[d.wday] = (e.days[d.wday] or 0) + s.quantity
+				e.hours[d.hour] = (e.hours[d.hour] or 0) + s.quantity
+			end
+			i = i + 1
+			if t0 and i % 256 == 0 and clock() - t0 >= budget then return nil end
 		end
-	end
-	local out = {}
-	for _, e in pairs(t) do
-		local bd, bv = 1, -1
-		for d = 1, 7 do if (e.days[d] or 0) > bv then bd, bv = d, e.days[d] or 0 end end
-		local bh, hv = 0, -1
-		for h = 0, 23 do
-			local w = 0
-			for k = 0, 3 do w = w + (e.hours[(h + k) % 24] or 0) end
-			if w > hv then bh, hv = h, w end
+		local out = {}
+		for _, e in pairs(t) do
+			local bd, bv = 1, -1
+			for d = 1, 7 do if (e.days[d] or 0) > bv then bd, bv = d, e.days[d] or 0 end end
+			local bh, hv = 0, -1
+			for h = 0, 23 do
+				local w = 0
+				for k = 0, 3 do w = w + (e.hours[(h + k) % 24] or 0) end
+				if w > hv then bh, hv = h, w end
+			end
+			e.bestDay, e.bestHour, e.share = bd, bh, e.sold > 0 and hv / e.sold or 0
+			table.insert(out, e)
 		end
-		e.bestDay, e.bestHour, e.share = bd, bh, e.sold > 0 and hv / e.sold or 0
-		table.insert(out, e)
+		saleTimes.by[key] = out
+		return out
 	end
-	return out
+	return job
 end
+function Lg.SaleTimes(since, char) return Lg.SaleTimesJob(since, char).step() end
 
 -- Competition --------------------------------------------------------------------------------
 local function rivals()
@@ -1048,7 +1068,7 @@ Lg.FRAME_MS = 6
 function Lg.WarmAll(done)
 	Lg.Warm(Lg.KINDS, function()
 		local k = 1
-		local job, sortJob, statsJob
+		local job, sortJob, statsJob, timesJob
 		local clock = debugprofilestop or function() return 0 end
 		local function tick()
 			local t0 = clock()
@@ -1068,6 +1088,10 @@ function Lg.WarmAll(done)
 			statsJob = statsJob or Lg.StatsJob()
 			local sok, built = pcall(statsJob.step, left())
 			if sok and not built then C_Timer.After(0, tick); return end
+			-- when each item sells, over the 30 days the Dashboard and Trade read
+			timesJob = timesJob or Lg.SaleTimesJob(time() - 30 * DAY)
+			local tok, times = pcall(timesJob.step, left())
+			if tok and not times then C_Timer.After(0, tick); return end
 			-- the rest are small now: one frame each
 			local rest = {
 				function() CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end,

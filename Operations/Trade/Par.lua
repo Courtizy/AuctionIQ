@@ -17,28 +17,31 @@ local function store()
 	return CH.db.par
 end
 
-local soldCache, soldAt, soldFrom
---- Units sold per week per item over the last two weeks: { [itemID] = n }. Kept until the sales
---- change or five minutes pass (it's asked once per item in a list).
+local soldCache, soldFrom, soldN, soldStart, soldNow
+--- Units sold per week per item over the last two weeks: { [itemID] = n }. Read from the sales in
+--- time order (Ledger.ByTime), only the two weeks' worth; the same answer while the sales list is
+--- the same and the two weeks start at the same sale (it's asked once per item in a list).
 function Par.Weekly(now)
 	now = now or time()
-	local records = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Records("Sales") or nil
-	if soldCache and soldFrom == records and math.abs(now - soldAt) < 300 then return soldCache end
-	local t = {}
-	if records then
-		local F = CH.Ledger.F
-		local since = now - 14 * DAY
-		for _, s in ipairs(records) do
-			local id = s[F.id]
-			if id and s[F.time] >= since then t[id] = (t[id] or 0) + s[F.quantity] / 2 end
-		end
+	local L = CH.Ledger
+	local list = L and L.Available() and L.ByTime and L.ByTime("Sales") or nil
+	if not list then soldCache, soldFrom = {}, nil; return soldCache end
+	-- asked once per item in a list, at the same time: the same list and the same moment need no search
+	if soldCache and soldFrom == list and soldN == #list and soldNow == now then return soldCache end
+	local start = L.From(list, now - 14 * DAY)
+	if soldCache and soldFrom == list and soldN == #list and soldStart == start then soldNow = now; return soldCache end
+	local t, F = {}, L.F
+	for i = start, #list do
+		local s = list[i]
+		local id = s[F.id]
+		if id then t[id] = (t[id] or 0) + s[F.quantity] / 2 end
 	end
-	soldCache, soldAt, soldFrom = t, now, records
+	soldCache, soldFrom, soldN, soldStart, soldNow = t, list, #list, start, now
 	return t
 end
 
 --- Forget the weekly sales (/aiq cleanup), so the records it was built from can go.
-function Par.Clear() soldCache, soldAt, soldFrom = nil, nil, nil end
+function Par.Clear() soldCache, soldFrom, soldN, soldStart, soldNow = nil, nil, nil, nil, nil end
 
 --- The target for an item, and whether you set it by hand. nil when it has neither.
 function Par.Target(itemID, now)
