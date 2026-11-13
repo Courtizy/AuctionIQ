@@ -20,6 +20,18 @@ local words, MAIN, YIELD, EVERYTHING = P.Words, P.MAIN, P.YIELD, P.EVERYTHING
 
 local STEP = 5
 local MAX_RECIPES = 20
+-- In the background a plan works this many milliseconds a frame, then carries on next frame. One
+-- advisor run can take a few ms, so a frame ends a little over this at most.
+P.BUDGET_MS = 3
+local clock = debugprofilestop
+
+-- Inside a background plan's coroutine, pause for the next frame once this frame's budget is used.
+-- Never called under a pcall inside the coroutine (Lua 5.1 can't yield across one).
+local function breathe(ctx)
+	if ctx.co and clock and coroutine.running() == ctx.co and clock() - ctx.frameStart >= P.BUDGET_MS then
+		coroutine.yield()
+	end
+end
 local STOP = { i = true, want = true, to = true, sell = true, make = true, craft = true, the = true, ["and"] = true,
 	a = true, of = true, some = true, more = true, my = true, on = true, ["for"] = true, with = true, like = true, ["i'd"] = true,
 	focus = true, mostly = true, into = true, get = true, go = true, be = true, just = true }
@@ -267,6 +279,7 @@ local function evaluate(ctx, ranks, id)
 		rec = false
 	end
 	known[k], known[rk] = rec, rec
+	breathe(ctx) -- an advisor run is the planner's costly step: the frame may be used up
 	return rec
 end
 
@@ -314,6 +327,7 @@ local function value(ctx, ranks, changed)
 					conc = pc, concQ = r.concQ, cost = r.cost, crafts = crafts, item = r.item }
 			end
 		end
+		if full then breathe(ctx) end -- a full pass is every recipe: room to stop between them
 	end
 	for i = nsw + 1, #swaps do swaps[i] = nil end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
@@ -450,7 +464,7 @@ function P.Plan(opts)
 						ranks[nodeID] = from
 						local gain = (v - now) / c
 						if not best or gain > best.rate then best = { node = nodeID, from = from, to = to, cost = c, rate = gain, v = v } end
-						if not opts.sync then coroutine.yield() end
+						breathe(ctx)
 					end
 				end
 			end
@@ -480,7 +494,9 @@ function P.Plan(opts)
 		plan.text = P.Describe(plan)
 	end)
 
+	if not opts.sync then ctx.co = work end
 	local function resume()
+		ctx.frameStart = clock and clock() or 0
 		local ok, err = coroutine.resume(work)
 		if not ok then plan.error = err; if opts.onDone then opts.onDone(plan) end; return end
 		if coroutine.status(work) == "dead" then
@@ -494,7 +510,8 @@ function P.Plan(opts)
 		if not ok then return nil, err end
 		return plan
 	end
-	resume()
+	-- start next frame: whatever asked for the plan (opening the page, the last preset) has had this one
+	C_Timer.After(0, resume)
 	return plan
 end
 
