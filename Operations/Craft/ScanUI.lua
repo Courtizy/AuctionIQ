@@ -1204,7 +1204,7 @@ function SUI.RecipePanel(r, n, v)
 	if acc then rbook, rcost = CH.ReagentBook(acc) end
 	local cs = acc and CH.CraftOrSell(acc)
 	-- every option side by side (craft, sell the reagents, buy and relist, keep), one basis
-	local alt = acc and CH.Decide.Alternatives(acc, { bc = r.bc, at = r.at })
+	local alt = acc and CH.Decide.Alternatives(acc, { bc = r.bc, at = r.at, item = r.item })
 	local csTip = alt and CH.Decide.AlternativesLines(alt) or {}
 	if cs then for _, l in ipairs(CH.CraftOrSellBook(acc)) do csTip[#csTip + 1] = l end
 	elseif not alt then csTip = { { "Craft or sell?" }, { T.Color("muted", "You hold none of this craft's reagents, so there's nothing to sell instead.") } } end

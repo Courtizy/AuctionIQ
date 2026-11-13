@@ -1638,7 +1638,7 @@ function AUI.Card(n, scan)
 	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
 	local cs = acc and CH.CraftOrSell(acc)
 	-- every option side by side (craft, sell the reagents, buy and relist, keep), one basis
-	local alt = acc and CH.Decide.Alternatives(acc, { bc = scan and scan.bc, at = scan and scan.at })
+	local alt = acc and CH.Decide.Alternatives(acc, { bc = scan and scan.bc, at = scan and scan.at, item = scan and scan.item })
 	local sub
 	if alt then
 		local text, color = CH.Decide.AlternativesText(alt)

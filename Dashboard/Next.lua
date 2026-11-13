@@ -40,12 +40,51 @@ end
 
 -- What making n of an item adds: the best saved scan's profit a craft (after the cut, deposits and
 -- Resourcefulness; reagents at your cost basis) times the crafts n items take. nil without a scan.
+-- A scan row's options, kept a minute per row (they read what you hold and sale values per reagent,
+-- and the list asks for the same rows on every refresh).
+Next.ALT_SECONDS = 60
+local altCache = setmetatable({}, { __mode = "k" })
+function Next.AlternativesFor(r, now)
+	local D = CH.Decide
+	if not (r and r.accounts and D and D.Alternatives) then return nil end
+	now = now or time()
+	local c = altCache[r]
+	if c and now - c.at < Next.ALT_SECONDS then return c.alt end
+	local alt = D.Alternatives(r.accounts, { bc = CH.Scan and CH.Scan.BuyOrCraft and CH.Scan.BuyOrCraft(r) or nil, at = r.at, item = r.item, now = now })
+	altCache[r] = { at = now, alt = alt }
+	return alt
+end
+function Next.ClearAlternatives() altCache = setmetatable({}, { __mode = "k" }) end
+
+-- What making n of an item adds: the best saved scan's profit a craft (after the cut, deposits and
+-- Resourcefulness; reagents at your cost basis) times the crafts n items take. A scan too old to act
+-- on gives no gold and says so. Returns the value, a note ("" when none) and the scan row, whose
+-- options (Decide.Alternatives) the cards shown add later: they read live stock and sale values per
+-- reagent, too slow for every card the list considers.
 local function makeGain(id, n)
-	if not (CH.Queue and CH.Queue.ScanRowFor and n and n > 0) then return nil end
+	if not (CH.Queue and CH.Queue.ScanRowFor and n and n > 0) then return nil, "" end
 	local _, _, r = CH.Queue.ScanRowFor(id)
-	if not (r and r.profit) then return nil end
+	if not (r and r.profit) then return nil, "" end
+	local D = CH.Decide
+	if r.at and D and D.SCAN_STALE and time() - r.at > D.SCAN_STALE then
+		return nil, "; refresh first: the profession scan is " .. (CH.Scans and CH.Scans.Age and CH.Scans.Age(time() - r.at) or "old") .. " old: rescan it", r
+	end
 	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
-	return Next.Value("gain", r.profit * crafts, string.format("%d crafts at the last scan's profit", crafts))
+	return Next.Value("gain", r.profit * crafts, string.format("%d crafts at the last scan's profit", crafts)), "", r
+end
+
+--- Add a shown card's options: the note naming a better option than making it, or why to refresh.
+function Next.AddAlternatives(e, now)
+	if not (e and e.scanRow) or e.alternatives then return e end
+	local alt = Next.AlternativesFor(e.scanRow, now)
+	if not alt then return e end
+	e.alternatives = alt
+	local note = alt.verdict == "refresh" and ("; refresh first: " .. table.concat(alt.stale, "; "))
+		or alt.verdict == "sell" and "; selling your reagents earns more"
+		or alt.verdict == "flip" and "; buying it out to relist pays more"
+		or alt.verdict == "keep" and "; at today's prices crafting loses" or nil
+	if note and not e.detail:find(note, 1, true) and not e.detail:find("refresh first", 1, true) then e.detail = e.detail .. note end
+	return e
 end
 
 -- Card buttons: each does the job itself where it can (queue the craft, open Auctioning).
@@ -217,8 +256,9 @@ function Next.List(now)
 		local ok, r = pcall(CH.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
-				local value = makeGain(e.id, e.sold)
-				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left%s", name(e.id), e.sold, value and "" or "; scan to price it"),
+				local value, note, row = makeGain(e.id, e.sold)
+				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left%s", name(e.id), e.sold, (value or note ~= "") and note or "; scan to price it"),
+					scanRow = row,
 					value = value, evidence = Next.Value("pastSales", e.gold, string.format("%d sold this week, after the cut", e.sold)), tier = 2,
 					risk = "whether this week's demand repeats", act = makeAct(e.id, e.sold),
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, unit = "items", title = "Restock" } } })
@@ -238,8 +278,9 @@ function Next.List(now)
 		end
 		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
 			if e.short > 0 then
-				local value = makeGain(e.id, e.short)
-				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d%s", name(e.id), e.held, e.target, e.short, value and "" or "; scan to price it"),
+				local value, note, row = makeGain(e.id, e.short)
+				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d%s", name(e.id), e.held, e.target, e.short, (value or note ~= "") and note or "; scan to price it"),
+					scanRow = row,
 					value = value, evidence = Next.Value("stock", e.value, "the shortfall at market, after the cut"), tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, unit = "items", title = "Below stock target" } } })
 			end
@@ -319,5 +360,7 @@ function Next.Ranked(now, max)
 	Next.Order(out)
 	local all = #out
 	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
+	-- the cards shown say when another option beats making the item
+	for _, e in ipairs(out) do Next.AddAlternatives(e, now) end
 	return out, all
 end

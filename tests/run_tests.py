@@ -2424,6 +2424,39 @@ check("do next: Restock's gain is the scan's profit for the crafts it takes; las
 check("do next: a Restock with no scan has no gold, says to scan, and doesn't outrank a priced one on its past sales",
       nr[777777].gold is None and "scan to price it" in nr[777777].detail
       and [e.go[3].id for e in CH.Next.List().values() if e.title == "Restock"] == [100, 777777])
+# Recommendations use the same options: a scan too old to act on says refresh; a better option is named
+dn = L.eval("""(function()
+  local rows = AuctionIQ.db.characters['Alt-Realm'].professions[99].scan.rows
+  local r = rows[1]
+  local out = {}
+  local function card()
+    for _, e in ipairs(AuctionIQ.Next.List()) do
+      if e.title == 'Restock' and e.go[3].id == 100 then AuctionIQ.Next.AddAlternatives(e); return e end
+    end
+  end
+  r.at = time() - 13 * 3600; AuctionIQ.Next.ClearAlternatives()
+  local c = card(); out.oldGold, out.oldDetail = c.gold, c.detail
+  r.at = time(); AuctionIQ.Next.ClearAlternatives()
+  local P = AuctionIQ.Prices
+  local oH, oS, oBC = P.Held, P.SellValue, AuctionIQ.Scan.BuyOrCraft
+  -- you hold the reagents, and they'd sell for far more than the craft brings; no listing to buy out
+  r.accounts.sales = 100
+  P.Held = function() return 2 end; P.SellValue = function() return 1000000 end
+  AuctionIQ.Scan.BuyOrCraft = function() return nil end; AuctionIQ.Next.ClearAlternatives()
+  c = card(); out.sellDetail, out.sellAlt = c.detail, c.alternatives and c.alternatives.verdict
+  AuctionIQ.Scan.BuyOrCraft = function() return { buy = 1, resell = 5000001, flip = 5000000 } end; AuctionIQ.Next.ClearAlternatives()
+  c = card(); out.flipDetail = c.detail
+  AuctionIQ.Scan.BuyOrCraft = oBC
+  P.Held, P.SellValue = oH, oS
+  r.at, r.accounts.sales = nil, nil; AuctionIQ.Next.ClearAlternatives()
+  return out
+end)()""")
+check("recommendations: a Restock from a scan over 12 hours old has no gold and says to rescan first",
+      dn.oldGold is None and "refresh first: the profession scan is 13 hr old" in dn.oldDetail)
+check("recommendations: when selling your reagents beats crafting, the card says so",
+      "selling your reagents earns more" in dn.sellDetail and dn.sellAlt == "sell")
+check("recommendations: when buying the item out to relist pays more than making it, the card says so",
+      "buying it out to relist pays more" in dn.flipDetail)
 run("AuctionIQ.Ledger.Report, AuctionIQ.Ledger.Available = STUB.oldReport, STUB.oldAvail")
 run("""STUB.oldTimes, STUB.oldAdvice, STUB.oldAvail = AuctionIQ.Ledger.SaleTimes, AuctionIQ.TradingUI.Advice, AuctionIQ.Ledger.Available
 AuctionIQ.Ledger.Available = function() return true end

@@ -993,7 +993,7 @@ end
 D.SCAN_STALE = 12 * 3600 -- a profession scan older than this: rescan before acting on it
 
 --- acc: a scan row's accounts (Scan.Accounts). opts: { bc = Scan.BuyOrCraft, at = when the row was
---- scanned, now }. Returns { options = { { key, label, gain, note } } best first, best, runnerUp,
+--- scanned, item (to look up a price the scan didn't keep), now }. Returns { options = { { key, label, gain, note } } best first, best, runnerUp,
 --- verdict (craft, sell, flip, keep or refresh), even (the top two are within CRAFT_OR_SELL_EVEN),
 --- stale = { reasons }, cs (CraftOrSell), items, basis } or nil without the craft's accounts.
 function D.Alternatives(acc, opts)
@@ -1031,7 +1031,9 @@ function D.Alternatives(acc, opts)
 	if opts.at and now - opts.at > D.SCAN_STALE then
 		stale[#stale + 1] = "the profession scan is " .. (CH.Scans and CH.Scans.Age and CH.Scans.Age(now - opts.at) or "old") .. " old: rescan it"
 	end
-	if not acc.sales or acc.sales <= 0 then stale[#stale + 1] = "there's no price for the item: scan the AH or check TSM" end
+	-- no sale value in the scan, and none now either (an older scan may not have kept it)
+	local priced = (acc.sales or 0) > 0 or (opts.item and CH.Prices.Get("chvalue", "i:" .. opts.item))
+	if not priced then stale[#stale + 1] = "there's no price for the item: scan the AH or check TSM" end
 	local verdict = #stale > 0 and "refresh" or best.key
 	return { options = options, best = best, runnerUp = second, verdict = verdict, even = even, stale = stale, cs = cs,
 		items = items, basis = "gold against keeping what you hold, at today's prices after the AH cut" }
