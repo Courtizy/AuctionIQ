@@ -982,3 +982,93 @@ function D.Calibration(now)
 	end
 	return out.checked > 0 and out or nil
 end
+
+-- Alternatives -----------------------------------------------------------------------------------
+-- What you could do about one craft, side by side on one basis: gold gained against keeping what
+-- you hold (or doing nothing, when you hold none of its reagents), at today's prices after the AH
+-- cut, deposits and the wait to sell, for one craft's worth of items. On that basis keeping your
+-- reagents and selling them are worth the same: selling only turns them into gold now. So crafting
+-- is judged against them by what it adds, and buying the item to relist by what one craft's worth
+-- of flips would bring. When an input is too old to trust, refreshing it is the outcome.
+D.SCAN_STALE = 12 * 3600 -- a profession scan older than this: rescan before acting on it
+
+--- acc: a scan row's accounts (Scan.Accounts). opts: { bc = Scan.BuyOrCraft, at = when the row was
+--- scanned, now }. Returns { options = { { key, label, gain, note } } best first, best, runnerUp,
+--- verdict (craft, sell, flip, keep or refresh), even (the top two are within CRAFT_OR_SELL_EVEN),
+--- stale = { reasons }, cs (CraftOrSell), items, basis } or nil without the craft's accounts.
+function D.Alternatives(acc, opts)
+	if not acc then return nil end
+	opts = opts or {}
+	local now = opts.now or time()
+	local items = (acc.made or 1) + (acc.extraItems or 0)
+	local cs = CH.CraftOrSell and CH.CraftOrSell(acc) or nil
+	local held = cs and cs.sell or 0
+	local options = {}
+	local craftGain = cs and cs.gain or acc.profit
+	if craftGain then
+		options[#options + 1] = { key = "craft", label = "Craft and sell it", gain = craftGain,
+			note = cs and "against keeping or selling the reagents you hold" or "you hold none of its reagents: they're all bought" }
+	end
+	if held > 0 then
+		options[#options + 1] = { key = "sell", label = "Sell your reagents", gain = 0,
+			note = "worth the same as keeping them at today's prices; it turns them into gold now" }
+	end
+	local bc = opts.bc
+	if bc and bc.flip then
+		options[#options + 1] = { key = "flip", label = string.format("Buy %s and relist", items >= 1.05 and string.format("%.0f", items) or "one"),
+			gain = bc.flip * items, note = "the cheapest listing may be only a few: check the AH before buying out" }
+	end
+	options[#options + 1] = { key = "keep", label = held > 0 and "Keep your reagents" or "Do nothing", gain = 0,
+		note = held > 0 and "nothing changes; they stay worth what they'd sell for" or "nothing spent, nothing earned" }
+	-- best first; at a tie, the order above (craft, sell, flip, keep) stands
+	for i, o in ipairs(options) do o.order = i end
+	table.sort(options, function(a, b) if a.gain ~= b.gain then return a.gain > b.gain end return a.order < b.order end)
+	local best, second = options[1], options[2]
+	-- within 5% of the gold at stake, the top two are about even
+	local scale = math.max(held, acc.cost or 0, 1)
+	local even = second and (best.gain - second.gain) <= (CH.CRAFT_OR_SELL_EVEN or 0.05) * scale or false
+	local stale = {}
+	if opts.at and now - opts.at > D.SCAN_STALE then
+		stale[#stale + 1] = "the profession scan is " .. (CH.Scans and CH.Scans.Age and CH.Scans.Age(now - opts.at) or "old") .. " old: rescan it"
+	end
+	if not acc.sales or acc.sales <= 0 then stale[#stale + 1] = "there's no price for the item: scan the AH or check TSM" end
+	local verdict = #stale > 0 and "refresh" or best.key
+	return { options = options, best = best, runnerUp = second, verdict = verdict, even = even, stale = stale, cs = cs,
+		items = items, basis = "gold against keeping what you hold, at today's prices after the AH cut" }
+end
+
+--- The alternatives' one-sentence verdict, and its colour (ok, bad, fg or accent).
+function D.AlternativesText(a)
+	local M = CH.FormatMoney
+	if not a then return nil end
+	if a.verdict == "refresh" then
+		return "Refresh first: " .. table.concat(a.stale, "; ") .. ".", "accent"
+	end
+	local b, s, cs = a.best, a.runnerUp, a.cs
+	if b.key == "flip" then
+		return "Buy and relist: earns " .. M(b.gain - (s and s.gain or 0)) .. " more than " .. ((s and s.label or "doing nothing"):lower()) .. ".", "ok"
+	end
+	if cs then
+		if cs.verdict == "even" then return "About even: craft it, or sell the reagents for about the same.", "fg" end
+		if cs.gain >= 0 then return "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.", "ok" end
+		return "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.", "bad"
+	end
+	local craft
+	for _, o in ipairs(a.options) do if o.key == "craft" then craft = o end end
+	if craft and craft.gain >= 0 then return "Craft it: " .. M(craft.gain) .. " a craft.", "ok" end
+	return "Don't craft it: each craft loses " .. M(-(craft and craft.gain or 0)) .. " at today's prices.", "bad"
+end
+
+--- The alternatives as tooltip rows, best first: { { label, value } }.
+function D.AlternativesLines(a)
+	if not a then return {} end
+	local T, M = CH.Theme, CH.FormatMoney
+	local out = { { "Your options", "" }, { T.Color("muted", "Each is " .. a.basis .. ", for one craft's worth.") } }
+	for i, o in ipairs(a.options) do
+		local v = o.gain == 0 and T.Color("muted", "0") or T.Color(o.gain > 0 and "ok" or "bad", (o.gain > 0 and "+" or "") .. M(o.gain))
+		out[#out + 1] = { (i == 1 and a.verdict ~= "refresh" and T.Color("accent", "> ") or "   ") .. o.label, v }
+		out[#out + 1] = { T.Color("muted", "      " .. o.note) }
+	end
+	for _, s in ipairs(a.stale) do out[#out + 1] = { T.Color("accent", "Refresh first: " .. s) } end
+	return out
+end

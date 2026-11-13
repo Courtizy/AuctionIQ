@@ -27,6 +27,7 @@ makes you a better goblin.
 - **Every recipe ranked by profit**, Concentration included, for the expansion the profession window has open
 - **A craft card beside the profession window**: the best quality to aim for, the cheapest reagent mix for it, an on/off Concentrate switch, and one click to queue it
 - **Where an estimate breaks**: break-even sale price, a downside scenario, what Concentration adds per point, and what each sales estimate rests on
+- **Your options side by side**: craft it, sell the reagents you hold, buy out the item and relist it, or keep what you have. All are measured the same way: gold gained against keeping what you hold, at today's prices after the AH cut, for one craft's worth. When the profession scan is over 12 hours old or the item has no price, the card says to refresh first.
 - **Batch odds**: the chance a week's sales pay back 10, 30 or 100 crafts, the gold that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points against what the reagents cost you
 - **Specialization presets and a tree calculator**: a build for each thing a profession sells (Light or Void potions, Flasks, Disenchanting...), tested against your own prices, and nodes you can click to try points of your own

@@ -1226,6 +1226,9 @@ check("Craft card: a Suggested row, with what AuctionIQ sees, each size's week, 
       and any(t.strip().startswith("Assumes sales:") for t in stip) and any("the suggestion is optional" in t for t in stip))
 fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = { buy = 1000, resell = 5000, flip = 4000 } })")
 fr = {plain(r[1]): r for r in fl.rows.values()}
+fa = L.eval("AuctionIQ.AdvisorUI.Card(1, { accounts = { sales = 50000, made = 1, cost = 30000, profit = 20000, reagents = {} } })")
+check("Craft card: the options (craft, buy and relist, do nothing) lead the sentence's hover",
+      plain(list(fa.subTip.values())[0][1]) == "Your options")
 check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
       fr.get("Gold a day") is not None and fr["Gold a day"].tip is not None and fr.get("Buy & relist") is not None)
 lc.section.toggle.run()
@@ -1834,6 +1837,52 @@ check("scan side panel: craft or sell with profit and reagents, the reagents eac
 check("scan side card: figures are profit, reagents and margin; craft or sell's numbers hover on its sentence",
       [plain(f[1]) for f in rp.figures.values()] == ["PROFIT", "COST", "MARGIN"] and plain(rp.figures[3][2]) == "50%" and rp.subTip is not None
       and not any(plain(r[1]) == "Margin" for r in rp.rows.values()))
+# Alternatives: craft, sell the reagents, buy and relist, keep or do nothing, side by side on one basis
+alt = L.eval("""(function()
+  local P, D = AuctionIQ.Prices, AuctionIQ.Decide
+  local oH, oS = P.Held, P.SellValue
+  local now = time()
+  local out = {}
+  local function keys(a) local k = {}; for i, o in ipairs(a.options) do k[i] = o.key .. "=" .. math.floor(o.gain + 0.5) end; return table.concat(k, " ") end
+  -- 1. you hold all three reagents, worth 30,000 if sold; crafting brings 20,000: selling wins by 10,000
+  P.Held = function() return 3 end; P.SellValue = function() return 10000 end
+  local a1 = D.Alternatives({ sales = 20000, made = 1, cost = 30000, profit = -10000, reagents = { { itemID = 201, n = 3, cost = 30000 } } }, { now = now, at = now })
+  out.k1, out.v1, out.t1 = keys(a1), a1.verdict, (D.AlternativesText(a1))
+  -- 2. you hold none: crafting makes 50,000; buying out the 3 items one craft makes and relisting, 20,000 each
+  P.Held = function() return 0 end
+  local a2 = D.Alternatives({ sales = 200000, made = 3, cost = 150000, profit = 50000, reagents = { { itemID = 201, n = 3, cost = 150000 } } },
+    { now = now, at = now, bc = { buy = 1000, resell = 21000, flip = 20000 } })
+  out.k2, out.v2, out.t2 = keys(a2), a2.verdict, (D.AlternativesText(a2))
+  out.l2 = a2.options[1].label
+  -- 3. you hold none and the craft loses: doing nothing is best
+  local a3 = D.Alternatives({ sales = 10000, made = 1, cost = 30000, profit = -20000, reagents = { { itemID = 201, n = 3, cost = 30000 } } }, { now = now, at = now })
+  out.k3, out.v3, out.t3, out.l3 = keys(a3), a3.verdict, (D.AlternativesText(a3)), a3.best.label
+  -- 4. a scan 13 hours old: refresh is the outcome; 5. no price for the item: refresh too
+  local a4 = D.Alternatives({ sales = 200000, made = 1, cost = 150000, profit = 50000, reagents = {} }, { now = now, at = now - 13 * 3600 })
+  out.v4, out.t4 = a4.verdict, (D.AlternativesText(a4))
+  local a5 = D.Alternatives({ sales = 0, made = 1, cost = 150000, profit = -150000, reagents = {} }, { now = now, at = now })
+  out.v5, out.t5 = a5.verdict, (D.AlternativesText(a5))
+  local lines = {}
+  for _, l in ipairs(D.AlternativesLines(a1)) do lines[#lines + 1] = l[1] .. " | " .. (l[2] or "") end
+  out.lines = table.concat(lines, "\\n")
+  P.Held, P.SellValue = oH, oS
+  return out
+end)()""")
+check("alternatives: holding reagents worth more sold than crafted, selling them wins; keeping is worth the same, crafting 10,000 less",
+      alt.v1 == "sell" and alt.k1 == "sell=0 keep=0 craft=-10000" and alt.t1.startswith("Sell the reagents: they earn"))
+check("alternatives: buying out one craft's worth (3) to relist ranks on the same basis and can beat crafting",
+      alt.v2 == "flip" and alt.k2 == "flip=60000 craft=50000 keep=0" and alt.l2 == "Buy 3 and relist"
+      and plain(alt.t2).startswith("Buy and relist: earns") and "more than craft and sell it" in alt.t2)
+check("alternatives: when the craft loses and you hold nothing, doing nothing is the pick",
+      alt.v3 == "keep" and alt.l3 == "Do nothing" and alt.k3 == "keep=0 craft=-20000" and alt.t3.startswith("Don't craft it"))
+check("alternatives: a scan over 12 hours old, or no price for the item, makes refreshing the outcome",
+      alt.v4 == "refresh" and "profession scan is 13 hr old: rescan it" in alt.t4
+      and alt.v5 == "refresh" and "no price for the item" in alt.t5)
+check("alternatives: the hover lists every option best first, with the basis they share",
+      "Your options" in plain(alt.lines) and "gold against keeping what you hold, at today's prices after the AH cut" in plain(alt.lines)
+      and plain(alt.lines).index("Sell your reagents") < plain(alt.lines).index("Craft and sell it"))
+check("alternatives: the scan's side card uses them (the options lead the sentence's hover)",
+      plain(list(rp.subTip.values())[0][1]) == "Your options")
 rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
       plain(rq.actions[1].label) == "Queue 20 · Max 8" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
