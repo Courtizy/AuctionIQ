@@ -99,16 +99,25 @@ local function step(w, limit, budget)
 	local find, sub, match = string.find, string.sub, string.match
 	local pos, nr, len, done = w.pos, w.nr, #text, 0
 	local f, n = {}, 0
+	local fields = {}
+	local wide = col and w.ncol and w.ncol > 16
 	local clock = budget and debugprofilestop
 	local stop = clock and clock() + budget
 	while pos <= len do
 		if limit and done >= limit then break end
-		if stop and done % 250 == 249 and clock() > stop then break end
+		if stop and done % 64 == 63 and clock() > stop then break end
 		local e = find(text, "\n", pos, true) or (len + 1)
 		if e > pos then
 			local line = sub(text, pos, e - 1)
-			-- the usual line has exactly the header's columns: one match pulls them all out at once
-			local g = pat and { match(line, pat) }
+			-- the usual line has exactly the header's columns: one match pulls them all out at once,
+			-- into one table reused for every line (a table a line was most of the garbage a parse
+			-- left for the collector, which then ran in the same frames)
+			local g
+			if pat and wide then g = { match(line, pat) }
+			elseif pat then
+				g = fields
+				g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8], g[9], g[10], g[11], g[12], g[13], g[14], g[15], g[16] = match(line, pat)
+			end
 			if g and g[1] then
 				nr = nr + 1; rows[nr] = build(g, col)
 			else
@@ -120,6 +129,7 @@ local function step(w, limit, budget)
 					col = {}
 					for i = 1, k do col[f[i]] = i end
 					pat = "^" .. string.rep("([^,]*),", k - 1) .. "([^,]*)$"
+					w.ncol, wide = k, k > 16
 				else
 					nr = nr + 1; rows[nr] = build(f, col)
 				end
@@ -142,6 +152,7 @@ local function begin(key, text, build)
 		for i = 1, #c.rows do w.rows[i] = c.rows[i] end
 		w.col, w.pos, w.nr = c.col, #c.text + 1, #c.rows
 		w.pat = "^" .. string.rep("([^,]*),", #c.cols - 1) .. "([^,]*)$"
+		w.ncol = #c.cols
 	end
 	return w
 end
@@ -172,7 +183,7 @@ end
 --- doesn't stall the game; then calls done. Anything that needs the records sooner finishes the
 --- parse itself.
 function Lg.Warm(kinds, done, perFrame)
-	local budget = not perFrame and 6 or nil -- milliseconds a frame, when no line count is given
+	local budget = not perFrame and Lg.FRAME_MS or nil -- milliseconds a frame, when no line count is given
 	perFrame = perFrame or 20000
 	local keys = {}
 	local i = 1
@@ -928,13 +939,14 @@ function Lg.SaleTimesJob(since, char)
 	local from = Lg.From(list, since)
 	local key = (char or "") .. "|" .. from
 	local t, i = {}, from
+	local out, rest -- the per-item pass, after the walk: also in steps (one per item each sold)
 	local job = {}
 	function job.step(budget)
 		if saleTimes.list ~= list or saleTimes.n ~= #list then saleTimes.list, saleTimes.n, saleTimes.by = list, #list, {} end
 		if saleTimes.by[key] then return saleTimes.by[key] end
 		local clock = budget and debugprofilestop
 		local t0 = clock and clock()
-		while i <= #list do
+		while not out and i <= #list do
 			local s = list[i]
 			if s.id and (not char or s.player == char) then
 				local e = t[s.id]
@@ -947,8 +959,13 @@ function Lg.SaleTimesJob(since, char)
 			i = i + 1
 			if t0 and i % 256 == 0 and clock() - t0 >= budget then return nil end
 		end
-		local out = {}
-		for _, e in pairs(t) do
+		if not out then
+			out, rest = {}, {}
+			for _, e in pairs(t) do rest[#rest + 1] = e end
+			i = 1
+		end
+		while i <= #rest do
+			local e = rest[i]
 			local bd, bv = 1, -1
 			for d = 1, 7 do if (e.days[d] or 0) > bv then bd, bv = d, e.days[d] or 0 end end
 			local bh, hv = 0, -1
@@ -958,7 +975,9 @@ function Lg.SaleTimesJob(since, char)
 				if w > hv then bh, hv = h, w end
 			end
 			e.bestDay, e.bestHour, e.share = bd, bh, e.sold > 0 and hv / e.sold or 0
-			table.insert(out, e)
+			out[#out + 1] = e
+			i = i + 1
+			if t0 and i % 64 == 0 and clock() - t0 >= budget then return nil end
 		end
 		saleTimes.by[key] = out
 		return out
@@ -1064,7 +1083,10 @@ end
 --- Everything the Dashboard and reports need after login, a few milliseconds a frame: parse TSM's
 --- records, put each kind in time order, build the day archive, then the snapshot and the demand
 --- index (each small once the rest is ready). Then calls done.
-Lg.FRAME_MS = 6
+--- FRAME_MS is what each frame's work aims for; the frame's real cost lands above it (the check
+--- between steps, the collector catching up on what the step allocated), so it sits under the 6 ms
+--- a frame of background work may take.
+Lg.FRAME_MS = 4
 function Lg.WarmAll(done)
 	Lg.Warm(Lg.KINDS, function()
 		local k = 1

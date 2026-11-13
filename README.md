@@ -185,7 +185,9 @@ each item's sell-through stats (`Ledger.StatsJob`), when each item sells over 30
 (`Ledger.SaleTimesJob`) and the indexes a few milliseconds a frame, so the Dashboard's first open finds
 them ready. Each is kept until TSM's records change or a record it counted ages out of its window. Stock
 targets read only the last two weeks of the time-ordered sales, and the Recommendations list looks up
-each item's best scan row from one index per refresh.
+each item's best scan row from one index per refresh. Background work aims for 4 ms a frame
+(`Ledger.FRAME_MS`), so that with the check between steps and the collector catching up it stays near
+the 6 ms a frame it may take; the parse reuses one table for each line's fields to leave less garbage.
 
 **Releases:** tagging `v*` builds a release with the BigWigs packager.
 
