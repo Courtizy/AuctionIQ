@@ -91,6 +91,8 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 | TSM | TSM's material cost, as you set it up in TSM |
 | Paid | What you paid on average over the last 30 days, else today's price |
 
+Your craft results (`/aiq results`) keep three stages, each on one basis it names. The **forecast** is on the basis you had set when you crafted. **Actual** is the market when made: items at their value, and reagents used and saved at today's price. **Realized** is what sold, less those same reagents at that same price. The hover's "forecast to realized" breakdown moves between them in steps. Moving the forecast's reagents from your basis to today's price is a step of its own ("Cost basis: held at sale value to today's price"), so it isn't hidden in "Market by craft time".
+
 **Profit per craft.** Multicraft, Resourcefulness, Ingenuity and Concentration use the same formulas as [CraftSim](https://github.com/derfloh205/CraftSim): the extra items Multicraft gives on average, the reagents Resourcefulness hands back, and the Concentration Ingenuity refunds. Revenue is after the 5% AH cut, less the deposits you expect to lose to expired auctions and the cost of gold sitting on the AH while it sells.
 
 **Will it sell?** Each item's chance of selling starts from the region's sale rate (TSM) and moves toward your own record as you sell and expire.

@@ -38,7 +38,7 @@ function Fc.Record(itemID, qty, f)
 		cost = each and each * qty
 	end
 	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
-		cost = cost, expectEach = value and value * CH.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
+		cost = cost, costRepl = f.costRepl, expectEach = value and value * CH.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
 		recipe = f.recipeID, held = f.held }
 	-- the batch decision this craft fills, if you queued one for this item on this character
 	local d = Fc.OpenDecision(itemID, b.char, b.at)

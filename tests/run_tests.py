@@ -935,8 +935,49 @@ check("craft log: the hover says unsold items aren't realized and the matching i
       any("unsold, estimated value (not realized)" in x for x in sl3) and any("Estimated attribution" in x for x in sl3))
 wf = list(CH.Log.Waterfall(st).values())
 def wsum(a, b): return sum(x[2] for x in wf[a:b])
+ai = [i for i, x in enumerate(wf) if x[1] == "Actual at market"][0]
 check("waterfall: the steps add up from forecast to actual to realized",
-      wf[0][1] == "Forecast at craft time" and wf[-1][1] == "Realized" and abs(wf[0][2] + wsum(1, 4) - wf[4][2]) < 1 and abs(wf[4][2] + wsum(5, 8) - wf[-1][2]) < 1)
+      wf[0][1] == "Forecast at craft time" and wf[-1][1] == "Realized" and abs(wf[0][2] + wsum(1, ai) - wf[ai][2]) < 1
+      and abs(wf[ai][2] + wsum(ai + 1, len(wf) - 1) - wf[-1][2]) < 1)
+check("waterfall: the cost basis has its own step, named after the basis the forecast used",
+      any(x[1].startswith("Cost basis: ") and "to today's price" in x[1] for x in wf) and st.basis is not None)
+# A queued craft costed on another basis than today's price: the difference is its own step, not "market"
+cb = L.eval("""(function()
+  local Lg = AuctionIQ.Log
+  local me = AuctionIQ.Me(); local oldLog = me.log; me.log = {}
+  local oldStore = AuctionIQ.db.batches; AuctionIQ.db.batches = {}
+  local cur = AuctionIQ.AdvisorUI.Current()
+  -- the queue's forecast: reagents at 1,000,000 on the paid basis; the same reagents at today's price differ
+  Lg.Expect({ recipeID = 10, cost = 1000000, profit = 500000, name = 'Test Flask', item = 302, basis = 'paid' })
+  C_TradeSkillUI.CraftRecipe(10, 1, {}, nil, nil, false)
+  local p = Lg.Pending()
+  local repl, basis = p and p.costRepl, p and p.basis
+  STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })
+  local e = me.log[10]
+  local st = Lg.Stages(nil, 10, e)
+  local w = Lg.Waterfall(st) or {}
+  local step, market, actualAt
+  for _, x in ipairs(w) do
+    if x[1]:find("^Cost basis") then step = x end
+    if x[1] == "Market by craft time" then market = x[2] end
+  end
+  local lines = {}
+  for _, l in ipairs(Lg.StageLines({ name = 'Test Flask', char = 'Seyko', stages = st })) do lines[#lines + 1] = l[1] end
+  local b = AuctionIQ.db.batches[#AuctionIQ.db.batches]
+  me.log = oldLog; AuctionIQ.db.batches = oldStore; AuctionIQ.Forecast.Clear()
+  return { repl = repl, basis = basis, cost = e.cost, costRepl = e.costRepl, actual = st.actual, value = e.value, saved = e.saved,
+    bd = st.basisGold, label = st.basis, step = step and step[1], stepGold = step and step[2], market = market,
+    lines = table.concat(lines, "\\n"), bCost = b and b.cost, bRepl = b and b.costRepl, hasW = #w > 0 }
+end)()""")
+check("cost basis: the log keeps the basis the forecast used and the same reagents at today's price",
+      cb.basis == "paid" and cb.repl is not None and cb.repl != 1000000 and cb.cost == 1000000 and cb.costRepl == cb.repl)
+check("cost basis: actual is at market, with reagents at today's price, not the forecast's basis",
+      cb.actual == cb.value + cb.saved - cb.repl)
+check("cost basis: the waterfall's basis step is the forecast's cost less the same reagents at today's price",
+      cb.hasW and cb.step == "Cost basis: paid to today's price" and abs(cb.stepGold - (1000000 - cb.repl)) < 1 and cb.label == "paid")
+check("cost basis: the batch keeps both costs, so realized uses the same prices as actual",
+      cb.bCost == 1000000 and cb.bRepl == cb.repl)
+check("cost basis: the hover names each stage's basis", "reagents at paid" in cb.lines and "at today's price, when made" in cb.lines)
 D = L.eval("AuctionIQ.Decide")
 be = res.best.breakEven
 check("break-even: the sale price per item where the plain craft makes nothing (cut included)",
