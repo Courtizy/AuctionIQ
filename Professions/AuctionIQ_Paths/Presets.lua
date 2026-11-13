@@ -11,7 +11,7 @@
 --
 -- Saved per character and profession in AuctionIQDB.presets (a few KB each), worked out again
 -- when they're a day old and the profession is open, or on Recalculate.
-local _, CH = ...
+local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
 
 local Pr = { MAX = 8, RUNS = 200, STALE = 86400, MAX_POINTS = 150,
 	PRICE_CV = 0.15, COST_CV = 0.08, SALES_CV = 0.3, MIN_CV = 0.05, MAX_CV = 0.6 }
@@ -123,7 +123,7 @@ end
 --- Run the simulations over a profession's presets: each gets mean, p10 and p90 gold a day and
 --- wins (its share of the runs where it made the most). With onDone it runs SLICE simulations a
 --- frame and calls onDone(list) at the end; without it, all at once.
-Pr.SLICE = 25
+Pr.SLICE = 15
 function Pr.Rank(list, runs, onDone)
 	runs = runs or Pr.RUNS
 	local samples, wins = {}, {}
@@ -249,7 +249,8 @@ function Pr.Build(prof, onDone, sync)
 		if Pr.Changed then Pr.Changed(prof) end
 		local function got(plan)
 			if plan and plan.final and not plan.error then table.insert(done, Pr.FromPlan(f, plan)) end
-			if not sync then return nextOne() end
+			-- the next focus starts next frame: this one may have used this frame's budget
+			if not sync then return C_Timer.After(0, nextOne) end
 		end
 		local opts = { prof = prof, recipes = f.recipes, label = f.label, goal = f.yield and "disenchant" or f.label,
 			points = pointsFor(prof, f), sync = sync, memo = memo, onDone = (not sync) and got or nil }

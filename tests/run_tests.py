@@ -507,6 +507,17 @@ check("spec: tree read with ranks, perks and parents", tree.nodes[900].rank == 0
 ranks = L.eval("{ [900] = 12, [901] = 3 }")
 d = CH.Spec.Delta(2906, tree, ranks, 11)
 check("spec: delta for a recipe at other ranks", d.skill == 12 and d.multicraft == 50 and abs(d.mcExtra - 0.25) < 1e-9 and d.resourcefulness == 30)
+cs = CH.Spec.CurrentStats(2906, tree, 11)
+rs = CH.Spec.RecipeStats(2906, tree, CH.Spec.Ranks(tree), 11)
+check("spec: current stats match RecipeStats at the tree's ranks, worked out once per tree",
+      all((cs[k] or 0) == (rs[k] or 0) for k in ("skill", "multicraft", "resourcefulness", "ingenuity", "mcExtra", "resExtra", "refundExtra", "concReduce"))
+      and L.eval("function(t) local S = AuctionIQ.Spec; local a = S.CurrentStats(2906, t, 11); return a == S.CurrentStats(2906, t, 11) and a ~= S.CurrentStats(2906, S.Read(2906), 11) end")(tree))
+# the planner, presets, tree view and Paths page are AuctionIQ_Paths, loaded the first time Paths opens
+check("paths: the planner isn't loaded until it's needed, but groups and yields are",
+      CH.PathsUI is None and CH.Paths.Plan is None and CH.Paths.MainGroup("Potions", 2906) == "Potions" and CH.Paths.DailyYield(2909) is not None
+      and not (L.eval("STUB.addonsLoaded or {}")["AuctionIQ_Paths"]))
+check("paths: loading it adds the planner to CH.Paths", CH.Paths.Load() and CH.Paths.Plan is not None and CH.PathsUI is not None
+      and CH.Presets is not None and CH.TreeView.StepText(L.eval("{1,2,3,4}")) == "1,2,3,+")
 check("goal text matches recipes by category", list(CH.Paths.Match("I want to sell potions")[0].values()) == [11]
       and list(CH.Paths.Match("flasks")[0].values()) == [10])
 plan = CH.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))
@@ -600,6 +611,32 @@ memo_n = L.eval("""(function()
 end)()""")
 check("paths: a recipe at the same ranks is worked out once (a plan sharing the answers asks the advisor nothing new), same plan",
       memo_n[0] == 0 and memo_n[1] is True)
+bg = L.eval("""(function()
+  local CH = AuctionIQ
+  local function dump()
+    local out = {}
+    for _, p in ipairs((CH.Presets.List(2906))) do
+      local st = {}
+      for _, s in ipairs(p.steps) do st[#st + 1] = s.node .. ":" .. s.from .. ">" .. s.to end
+      out[#out + 1] = string.format("%s %.4f %.4f %.4f|%s", p.key, p.final, p.mean, p.wins, table.concat(st, ","))
+    end
+    return table.concat(out, ";")
+  end
+  local before = dump()
+  local saved = CH.db.presets
+  CH.db.presets = {}
+  -- a frame budget of 0: every advisor run ends the frame, the most a plan can be split
+  local budget = CH.Paths.BUDGET_MS
+  CH.Paths.BUDGET_MS = 0
+  CH.Presets.Build(2906)
+  local frames = 0
+  while CH.Presets.Running() and frames < 100000 do STUB.RunTimers(); frames = frames + 1 end
+  CH.Paths.BUDGET_MS = budget
+  local after = dump()
+  CH.db.presets = saved
+  return before == after, frames
+end)()""")
+check("presets: worked out in the background, split over frames, they come out the same as all at once", bg[0] is True and bg[1] > 5)
 check("presets: not worked out with the profession closed", L.eval("(AuctionIQ.Presets.Build(2909, nil, true))") is None)
 run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.PathsUI.Open(); AuctionIQ.PathsUI.Pick('Flasks & Phials', { 10 })")
 pt = [plain(l) for l in CH.PathsUI.Text().split("\n")]

@@ -1,0 +1,580 @@
+-- Knowledge point planner. You say what you want to sell ("potions", "flasks", "gems") and it works
+-- out which specialization nodes to put points into, in order, for the most gold a day on your
+-- market:
+--   * the goal picks the recipes (by name and recipe category)
+--   * each recipe's gold a day = average profit per craft x how many the region sells (up to your
+--     cap), plus what Concentration earns per point x the points you regain a day
+--   * every node you could put points into next is tried in steps (to its next perk or 5 points),
+--     with the crafting advisor re-run on the simulated stats; the best gold per point wins, repeat
+--     until the points run out
+-- A node under another is only planned once the one above it is full (the planner's assumption;
+-- the game's own "available" flag is used for nodes it already reports).
+--
+-- Part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load): it adds the planner to CH.Paths, which
+-- AuctionIQ itself defines (Operations/Craft/Paths.lua: groups, yields, the current plan).
+local CH = AuctionIQ
+
+local P = CH.Paths
+local unpack = unpack or table.unpack
+local words, MAIN, YIELD, EVERYTHING = P.Words, P.MAIN, P.YIELD, P.EVERYTHING
+
+local STEP = 5
+local MAX_RECIPES = 20
+-- In the background a plan works this many milliseconds a frame, then carries on next frame. One
+-- advisor run can take a few ms, so a frame ends a little over this at most.
+P.BUDGET_MS = 3
+local clock = debugprofilestop
+
+-- Inside a background plan's coroutine, pause for the next frame once this frame's budget is used.
+-- Never called under a pcall inside the coroutine (Lua 5.1 can't yield across one).
+local function breathe(ctx)
+	if ctx.co and clock and coroutine.running() == ctx.co and clock() - ctx.frameStart >= P.BUDGET_MS then
+		coroutine.yield()
+	end
+end
+local STOP = { i = true, want = true, to = true, sell = true, make = true, craft = true, the = true, ["and"] = true,
+	a = true, of = true, some = true, more = true, my = true, on = true, ["for"] = true, with = true, like = true, ["i'd"] = true,
+	focus = true, mostly = true, into = true, get = true, go = true, be = true, just = true }
+
+local function categoryNames(catID)
+	local names, ui = {}, C_TradeSkillUI
+	local guard = 0
+	while catID and catID ~= 0 and ui.GetCategoryInfo and guard < 6 do
+		local c = ui.GetCategoryInfo(catID)
+		if not c then break end
+		table.insert(names, c.name or "")
+		catID = c.parentCategoryID
+		guard = guard + 1
+	end
+	return names
+end
+
+--- Recipe categories in the open profession, as goals to pick from: { name, recipes = {id...} }.
+function P.Goals()
+	local byName, out = {}, {}
+	for _, id in ipairs(CH.Scan.Recipes()) do
+		local info = C_TradeSkillUI.GetRecipeInfo(id)
+		local names = categoryNames(info and info.categoryID)
+		local name = names[1]
+		if name and name ~= "" then
+			if not byName[name] then byName[name] = { name = name, recipes = {} }; table.insert(out, byName[name]) end
+			table.insert(byName[name].recipes, id)
+		end
+	end
+	table.sort(out, function(a, b) return #a.recipes > #b.recipes end)
+	return out
+end
+
+--- The open profession's recipes in main groups, each with the spec nodes that split it (Light
+--- and Void potions, say): { { name, recipes, subs = { { name, node, recipes } } } }.
+function P.GoalGroups(prof)
+	prof = prof or CH.OpenProfessionID()
+	local byName, out = {}, {}
+	for _, id in ipairs(CH.Scan.Recipes()) do
+		local info = C_TradeSkillUI.GetRecipeInfo(id)
+		local cats = table.concat(categoryNames(info and info.categoryID), " ")
+		local name = P.MainGroup(cats, prof) or P.MainGroup(info and info.name, prof) or "Other"
+		if not byName[name] then byName[name] = { name = name, recipes = {}, subs = {} }; table.insert(out, byName[name]) end
+		table.insert(byName[name].recipes, id)
+	end
+	local main = MAIN[prof or 2906] or MAIN[2906]
+	local order = {}
+	for i, g in ipairs(main) do order[g[1]] = i end
+	order.Other = #main + 2
+	local y = prof and YIELD[prof]
+	if y then
+		order[y.name] = #main + 1
+		table.insert(out, { name = y.name, recipes = {}, subs = {}, yield = true })
+	end
+	table.sort(out, function(a, b) return order[a.name] < order[b.name] end)
+	local tree = prof and CH.Spec.Tree(prof)
+	if tree then
+		for _, g in ipairs(out) do
+			local set = {}
+			for _, id in ipairs(g.recipes) do set[id] = true end
+			for nodeID, n in pairs(tree.nodes) do
+				local ids = {}
+				for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do if set[recipeID] then table.insert(ids, recipeID) end end
+				-- a node that covers some of the group but not all of it splits the group
+				if #ids > 0 and #ids < #g.recipes then
+					local label = (n.name or ""):match(" %- (.+)$") or n.name or ("node " .. nodeID)
+					table.sort(ids)
+					table.insert(g.subs, { name = label, node = nodeID, recipes = ids })
+				end
+			end
+			table.sort(g.subs, function(a, b) if #a.recipes ~= #b.recipes then return #a.recipes > #b.recipes end return a.name < b.name end)
+			for i = #g.subs, 9, -1 do g.subs[i] = nil end
+		end
+	end
+	return out
+end
+
+--- Points to finish every node that helps these recipes, including locked nodes on the way.
+function P.PathCost(prof, recipes, goal)
+	local tree = prof and CH.Spec.Tree(prof)
+	if not tree then return 0 end
+	local want = {}
+	local y = goal and P.Yield(prof, goal)
+	if y then
+		for nodeID in pairs(tree.nodes) do if y.paths and y.paths[nodeID] then want[nodeID] = true end end
+		recipes = {}
+	end
+	local set = {}
+	for _, id in ipairs(recipes or {}) do set[id] = true end
+	for nodeID in pairs(tree.nodes) do
+		for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do
+			if set[recipeID] then want[nodeID] = true; break end
+		end
+	end
+	local counted, total = {}, 0
+	local function add(nodeID, guard)
+		local n = tree.nodes[nodeID]
+		if not n or counted[nodeID] or guard > 10 then return end
+		counted[nodeID] = true
+		total = total + math.max(0, n.max - (n.rank or -1))
+		if (n.rank or -1) < 0 and not n.available and n.parent then add(n.parent, guard + 1) end
+	end
+	for nodeID in pairs(want) do add(nodeID, 0) end
+	return total
+end
+
+--- Recipes a goal means. "I want to sell potions" -> every learned recipe whose name or category
+--- says potion. Returns ids and a label; everything when the goal is just "gold".
+function P.Match(text)
+	local ws, keys = words(text), {}
+	local all = false
+	for _, w in ipairs(ws) do
+		if EVERYTHING[w] then all = true elseif not STOP[w] then table.insert(keys, w) end
+	end
+	local ids = {}
+	for _, id in ipairs(CH.Scan.Recipes()) do
+		local info = C_TradeSkillUI.GetRecipeInfo(id)
+		if all or #keys == 0 then
+			table.insert(ids, id)
+		else
+			local hay = string.lower((info and info.name or "") .. " " .. table.concat(categoryNames(info and info.categoryID), " "))
+			for _, k in ipairs(keys) do
+				if hay:find(k, 1, true) then table.insert(ids, id); break end
+			end
+		end
+	end
+	local label = (#keys == 0 or all) and "everything you can craft" or table.concat(keys, ", ")
+	return ids, label, keys
+end
+
+local function sellValue(id)
+	local p = id and CH.Prices.Get("chvalue", "i:" .. id)
+	return p and p * CH.AH_CUT
+end
+
+--- A gathering line's skill at these ranks, and the most the tree can give it.
+local function lineSkill(ctx, ranks, line)
+	local paths = { [ctx.yield.all] = true, [line.path] = true }
+	local skill = CH.Spec.GatherStat(ctx.prof, ctx.tree, ranks, paths, ctx.yield.stat)
+	if not line.cap then
+		local full = {}
+		for id, n in pairs(ctx.tree.nodes) do full[id] = n.max end
+		line.cap = CH.Spec.GatherStat(ctx.prof, ctx.tree, full, paths, ctx.yield.stat)
+	end
+	return skill, line.cap
+end
+
+-- The share of rank 2 materials at a skill. The game doesn't publish the curve, so it rises evenly
+-- to all with the path full: from what you really got at your skill now when that's recorded,
+-- else from none at no skill.
+local function shareAt(ctx, line, skill, cap)
+	if cap <= 0 then return 0 end
+	local seen = ctx.seen and ctx.seen[line.key]
+	if seen and seen.share then
+		local now = lineSkill(ctx, ctx.ranks0, line)
+		if skill <= now or now >= cap then return seen.share end
+		return math.min(1, seen.share + (1 - seen.share) * (skill - now) / (cap - now))
+	end
+	return math.min(1, skill / cap)
+end
+
+-- Gold a day from a gathering path at these ranks: what you gather a day, at the share of rank 2
+-- materials the path's skill gives, valued at what each rank sells for after the cut.
+local function yieldValue(ctx, ranks)
+	local total, per = 0, {}
+	local daily = P.DailyYield(ctx.prof)
+	if ctx.seen == nil then ctx.seen = P.Observed(ctx.prof) or false; ctx.ranks0 = CH.Spec.Ranks(ctx.tree) end
+	for _, line in ipairs(ctx.yield.lines) do
+		local skill, cap = lineSkill(ctx, ranks, line)
+		local share = shareAt(ctx, line, skill, cap)
+		local p1, p2 = sellValue(line.items[1]), sellValue(line.items[2])
+		local n = daily[line.key] or 0
+		local g = 0
+		if p1 or p2 then g = n * ((1 - share) * (p1 or p2) + share * (p2 or p1)) end
+		total = total + g
+		per[line.key] = { name = line.label, share = share, skill = skill, perDay = g, profit = g, n = n, priced = (p1 and p2) and true or false,
+			item = line.items[2] or line.items[1] }
+	end
+	return total, per, 0, total
+end
+
+-- One recipe worked out by the crafting advisor at these ranks, kept as the few numbers the planner
+-- uses. A full advisor result is large (every quality's rows, reagent picks, the model) and the
+-- planner asks for the same recipe at the same stats over and over: raising one node changes only
+-- the recipes under it, so every other recipe's answer for that candidate is the one it already had.
+-- Answers are kept per recipe in ctx.memo (shared by every plan a preset run makes), found first by
+-- the ranks of the nodes the recipe uses (cheap: no stat tables built), else by the stat change
+-- itself, so the advisor runs once per distinct change instead of once per candidate, recipe and step.
+local DELTA_FMT = "%s,%s,%s,%s,%s,%s,%s,%s,%s"
+local function deltaKey(d)
+	return string.format(DELTA_FMT, d.skill, d.multicraft, d.resourcefulness, d.ingenuity, d.craftingspeed,
+		d.mcExtra, d.resExtra, d.refundExtra, d.concReduce)
+end
+
+-- the nodes a recipe's stats come from, in a fixed order
+local function recipeNodes(ctx, id)
+	local list = ctx.nodesOf[id]
+	if list then return list end
+	list = {}
+	local data, seen = CH.Spec.Data(ctx.prof), {}
+	for _, perkID in ipairs(data and data.recipes[id] or {}) do
+		local n = data.nodes[perkID]
+		if n and ctx.tree.nodes[n.nodeID] and not seen[n.nodeID] then seen[n.nodeID] = true; list[#list + 1] = n.nodeID end
+	end
+	table.sort(list)
+	ctx.nodesOf[id] = list
+	return list
+end
+
+local keyBuf = {}
+local function ranksKey(ctx, ranks, id)
+	local list = recipeNodes(ctx, id)
+	for i, nodeID in ipairs(list) do keyBuf[i] = ranks[nodeID] or ctx.tree.nodes[nodeID].rank or -1 end
+	for i = #list + 1, #keyBuf do keyBuf[i] = nil end
+	return "r" .. table.concat(keyBuf, ",")
+end
+
+local function evaluate(ctx, ranks, id)
+	if not ctx.memo then ctx.memo = {} end
+	if not ctx.base then ctx.base, ctx.nodesOf, ctx.ranksNow = {}, {}, CH.Spec.Ranks(ctx.tree) end
+	local known = ctx.memo[id]
+	if not known then known = {}; ctx.memo[id] = known end
+	local rk = ranksKey(ctx, ranks, id)
+	local rec = known[rk]
+	if rec ~= nil then return rec end
+	local base = ctx.base[id]
+	if not base then
+		base = CH.Spec.RecipeStats(ctx.prof, ctx.tree, ctx.ranksNow, id)
+		ctx.base[id] = base
+	end
+	local delta = CH.Stats.Diff(CH.Spec.RecipeStats(ctx.prof, ctx.tree, ranks, id), base)
+	local k = deltaKey(delta)
+	rec = known[k]
+	if rec ~= nil then known[rk] = rec; return rec end
+	P.stats.evals = P.stats.evals + 1
+	local ok, r = pcall(CH.Advisor.Evaluate, ctx.models[id], { sim = delta, lean = true })
+	if ok and r then
+		local b, c = r.best, r.bestConc
+		local item = b and b.item or (c and c.item)
+		rec = { name = r.name, item = item, crafts = CH.Scan.DailyUnits(item) / (r.made or 1),
+			quality = b and b.quality, profit = b and b.profit, cost = b and b.cost,
+			perPoint = c and c.perPoint, concQ = c and c.quality, concProfit = c and c.profit,
+			conc = c and c.avgConcentration or (c and c.concentration) }
+	else
+		rec = false
+	end
+	known[k], known[rk] = rec, rec
+	breathe(ctx) -- an advisor run is the planner's costly step: the frame may be used up
+	return rec
+end
+
+--- How often the planner ran the crafting advisor, for tests and /aiq mem.
+P.stats = { evals = 0 }
+
+-- Gold a day for a set of recipes at these ranks. Each recipe sells only so many a day (its demand):
+-- plain crafts fill it, and a day's Concentration goes to the crafts where it adds the most gold per
+-- point over the plain craft it replaces, never more crafts than the demand.
+--
+-- The planner tries every node at every step, and a node changes only the recipes under it. So a
+-- try passes the node it raised (changed): recipes not under it keep the answer they had at the
+-- ranks before (ctx.cur, set by the last full call), and the try builds no per-recipe table, only
+-- the total. A full call (no changed) works out every recipe and returns the per-recipe table.
+local function value(ctx, ranks, changed)
+	if ctx.yield then return yieldValue(ctx, ranks) end
+	local touched = changed and ctx.cur and CH.Spec.NodeRecipes(ctx.prof, changed) or nil
+	local cur = ctx.cur
+	local full = not touched
+	local nowRecs = full and {} or nil
+	local total, concBest, per = 0, 0, full and {} or nil
+	-- swap entries are reused from try to try: the planner makes thousands of tries
+	local swaps, pool, nsw = ctx.swaps or {}, ctx.swapPool or {}, 0
+	ctx.swaps, ctx.swapPool = swaps, pool
+	for _, id in ipairs(ctx.recipes) do
+		local r
+		if touched and not touched[id] and cur[id] ~= nil then r = cur[id] else r = evaluate(ctx, ranks, id) end
+		if nowRecs then nowRecs[id] = r end
+		if r then
+			local crafts = r.crafts
+			local plain = r.profit and r.profit > 0 and r.profit or 0
+			local g = plain * crafts
+			total = total + g
+			if r.perPoint and r.perPoint > concBest then concBest = r.perPoint end
+			local pc = r.conc
+			if r.concProfit and pc and pc > 0 and r.concProfit > plain and crafts > 0 then
+				nsw = nsw + 1
+				local w = pool[nsw]
+				if not w then w = {}; pool[nsw] = w end
+				w.gain, w.points, w.crafts = (r.concProfit - plain) / pc, pc, crafts
+				swaps[nsw] = w
+			end
+			if per then
+				per[id] = { quality = r.quality, profit = r.profit, perPoint = r.perPoint, perDay = g, name = r.name,
+					conc = pc, concQ = r.concQ, cost = r.cost, crafts = crafts, item = r.item }
+			end
+		end
+		if full then breathe(ctx) end -- a full pass is every recipe: room to stop between them
+	end
+	for i = nsw + 1, #swaps do swaps[i] = nil end
+	table.sort(swaps, function(a, b) return a.gain > b.gain end)
+	local left, concDay = CH.CONC_PER_HOUR * 24, 0
+	for _, w in ipairs(swaps) do
+		if left <= 0 then break end
+		local n = math.min(w.crafts, left / w.points)
+		concDay, left = concDay + n * w.points * w.gain, left - n * w.points
+	end
+	if nowRecs then ctx.cur = nowRecs end
+	return total + concDay, per, concBest, total
+end
+
+P.Value = value -- for tests
+
+local function relevantNodes(ctx)
+	local out = {}
+	if ctx.yield then
+		for nodeID in pairs(ctx.tree.nodes) do if ctx.yield.paths[nodeID] then table.insert(out, nodeID) end end
+		table.sort(out)
+		return out
+	end
+	local set = {}
+	for _, id in ipairs(ctx.recipes) do set[id] = true end
+	for nodeID in pairs(ctx.tree.nodes) do
+		for recipeID in pairs(CH.Spec.NodeRecipes(ctx.prof, nodeID)) do
+			if set[recipeID] then table.insert(out, nodeID); break end
+		end
+	end
+	return out
+end
+
+local function canRaise(ctx, ranks, nodeID)
+	local n = ctx.tree.nodes[nodeID]
+	local r = ranks[nodeID]
+	if r >= n.max then return false end
+	if r >= 0 or n.available then return true end
+	if not n.parent then return true end -- a tab's first node
+	local parent = ctx.tree.nodes[n.parent]
+	return parent and ranks[n.parent] >= parent.max
+end
+
+-- Next stop for a node: its next perk, or STEP points on, capped at max and the points left.
+local function target(ctx, ranks, nodeID, left)
+	local n = ctx.tree.nodes[nodeID]
+	local r = ranks[nodeID]
+	local to = math.min(n.max, math.max(r, 0) + STEP)
+	for _, th in pairs(n.perks) do
+		if th > r and th < to and th > 0 then to = th end
+	end
+	if r < 0 then to = math.max(0, to) end
+	local costOf = function(t) return t - r end
+	while costOf(to) > left and to > r + 1 do to = to - 1 end
+	if costOf(to) > left then return nil end
+	return to, costOf(to)
+end
+
+local function perksBetween(ctx, nodeID, from, to)
+	local out = {}
+	for perkID, th in pairs(ctx.tree.nodes[nodeID].perks) do
+		if th > from and th <= to then
+			local text = CH.Spec.PerkText(ctx.prof, perkID)
+			if text ~= "" then table.insert(out, text) end
+		end
+	end
+	return out
+end
+
+-- What a plan or a worth check works on: the goal's recipes we can value (best first if many).
+local function makeCtx(opts)
+	local prof = opts.prof or CH.OpenProfessionID()
+	if not prof then return nil, "Open the profession you want a plan for." end
+	if not CH.Spec.Data(prof) then return nil, "No specialization data for this profession yet." end
+	local tree = CH.Spec.Tree(prof)
+	if not tree then return nil, "Couldn't read your specialization tree. Open the profession window." end
+	local ids, label = opts.recipes, opts.label
+	local y = not ids and P.Yield(prof, opts.goal)
+	if y then ids, label = {}, y.name end
+	if not ids then ids, label = P.Match(opts.goal) end
+	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil, label = label,
+		memo = opts.memo or {} }
+	for _, id in ipairs(ids) do
+		local m = CH.Scan.Model(prof, id)
+		if m then ctx.models[id] = m; table.insert(ctx.recipes, id) end
+	end
+	if #ctx.recipes == 0 and not ctx.yield then return nil, "None of your recipes match \"" .. (opts.goal or "") .. "\", or none have prices." end
+	if #ctx.recipes > MAX_RECIPES then
+		local scan = CH.Scan.Results(prof)
+		local rank = {}
+		for i, r in ipairs(scan and CH.Scan.Sort({ unpack(scan.rows) }, "perDay") or {}) do rank[r.recipeID] = i end
+		table.sort(ctx.recipes, function(a, b) return (rank[a] or 999) < (rank[b] or 999) end)
+		for i = #ctx.recipes, MAX_RECIPES + 1, -1 do ctx.recipes[i] = nil end
+	end
+	return ctx
+end
+
+--- Gold a day for a goal (opts as Plan's: prof, goal or recipes) at these ranks, and at the ranks
+--- you have now: the tree calculator's numbers. Returns worth, now (or nil and why).
+function P.Worth(opts, ranks)
+	local ctx, why = makeCtx(opts)
+	if not ctx then return nil, why end
+	local now = value(ctx, CH.Spec.Ranks(ctx.tree))
+	return value(ctx, ranks), now, ctx.label
+end
+
+--- Builds a plan. opts: prof, goal (text) or recipes, points (extra beyond unspent), onDone(plan),
+--- sync (run in one go, for tests), memo (advisor answers to share between plans on the same tree).
+--- The work is spread over frames otherwise.
+function P.Plan(opts)
+	local ctx, why = makeCtx(opts)
+	if not ctx then return nil, why end
+	local prof, tree, label = ctx.prof, ctx.tree, ctx.label
+
+	local budget = (tree.unspent or 0) + (opts.points or 0)
+	local ranks = CH.Spec.Ranks(tree)
+	local plan = { prof = prof, goal = opts.goal, label = label, recipes = ctx.recipes, budget = budget, yield = ctx.yield,
+		unspent = tree.unspent or 0, steps = {}, ranks = nil }
+
+	local work = coroutine.create(function()
+		local start, startPer, startConc, startPlain = value(ctx, ranks)
+		plan.start, plan.startPer, plan.startConc, plan.startPlain = start, startPer, startConc, startPlain
+		local nodes = relevantNodes(ctx)
+		local now, nowPer = start, startPer
+		local left = budget
+		while left > 0 do
+			local best
+			for _, nodeID in ipairs(nodes) do
+				if canRaise(ctx, ranks, nodeID) then
+					local to, c = target(ctx, ranks, nodeID, left)
+					if to then
+						local from = ranks[nodeID]
+						ranks[nodeID] = to
+						local v = value(ctx, ranks, nodeID)
+						ranks[nodeID] = from
+						local gain = (v - now) / c
+						if not best or gain > best.rate then best = { node = nodeID, from = from, to = to, cost = c, rate = gain, v = v } end
+						breathe(ctx)
+					end
+				end
+			end
+			if not best or best.rate <= 0 then break end
+			ranks[best.node] = best.to
+			left = left - best.cost
+			-- the step's full answer (and the recipes' answers the next tries build on)
+			best.v, best.per = value(ctx, ranks)
+			local changes = {}
+			for id, p in pairs(best.per) do
+				local o = nowPer[id]
+				if o and ((p.quality or 0) ~= (o.quality or 0) or math.abs((p.profit or 0) - (o.profit or 0)) >= 1
+					or (p.share and math.abs(p.share - (o.share or 0)) > 1e-6)) then
+					table.insert(changes, { name = p.name, fromQ = o.quality, toQ = p.quality, dProfit = (p.profit or 0) - (o.profit or 0),
+						dDay = (p.perDay or 0) - (o.perDay or 0), fromShare = o.share, toShare = p.share })
+				end
+			end
+			table.sort(changes, function(a, b) return math.abs(a.dDay) > math.abs(b.dDay) end)
+			table.insert(plan.steps, { node = best.node, name = ctx.tree.nodes[best.node].name, from = best.from, to = best.to,
+				cost = best.cost, gain = best.v - now, perks = perksBetween(ctx, best.node, best.from, best.to), changes = changes })
+			now, nowPer = best.v, best.per
+		end
+		local final, finalPer, finalConc, finalPlain = value(ctx, ranks)
+		plan.final, plan.finalPer, plan.finalConc, plan.finalPlain = final, finalPer, finalConc, finalPlain
+		plan.ranks = ranks
+		plan.left = left
+		plan.text = P.Describe(plan)
+	end)
+
+	if not opts.sync then ctx.co = work end
+	local function resume()
+		ctx.frameStart = clock and clock() or 0
+		local ok, err = coroutine.resume(work)
+		if not ok then plan.error = err; if opts.onDone then opts.onDone(plan) end; return end
+		if coroutine.status(work) == "dead" then
+			if opts.onDone then opts.onDone(plan) end
+		else
+			C_Timer.After(0, resume)
+		end
+	end
+	if opts.sync then
+		local ok, err = coroutine.resume(work)
+		if not ok then return nil, err end
+		return plan
+	end
+	-- start next frame: whatever asked for the plan (opening the page, the last preset) has had this one
+	C_Timer.After(0, resume)
+	return plan
+end
+
+local function m(c) return CH.FormatMoney(c) end
+
+--- The plan in plain words, as lines.
+function P.Describe(plan)
+	local T = CH.Theme
+	local L = {}
+	local prof = CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or "this profession"
+	local y = plan.yield
+	if y then
+		local parts = {}
+		local daily, from, days = P.DailyYield(plan.prof)
+		for _, l in ipairs(y.lines) do table.insert(parts, string.format("%.0f %s", daily[l.key] or 0, l.label)) end
+		local src = from == "seen" and string.format("what you disenchanted over the last %d day%s", days, days == 1 and "" or "s")
+			or from == "set" and "as you set it with /aiq de" or "a starting guess until you disenchant something"
+		table.insert(L, T.Color("accent", "Goal: ") .. y.name .. T.Color("muted", "  (" .. table.concat(parts, ", ") .. " a day, " .. src .. ")"))
+	else
+		table.insert(L, T.Color("accent", "Goal: ") .. "sell " .. plan.label .. T.Color("muted", string.format("  (%d recipes in %s)", #plan.recipes, prof)))
+	end
+	table.insert(L, string.format("Points to spend: %d%s.", plan.budget,
+		plan.budget > plan.unspent and string.format(" (%d unspent now, %d still to earn)", plan.unspent, plan.budget - plan.unspent) or " unspent"))
+	table.insert(L, (y and "Today what you disenchant sells for about " or "Today these recipes make about ") .. m(plan.start) .. " a day on your market.")
+	table.insert(L, "")
+	if #plan.steps == 0 then
+		table.insert(L, T.Color("muted", "No node would add gold for this goal. Either it's already maxed, or the gains come from other recipes."))
+	end
+	for i, s in ipairs(plan.steps) do
+		local from = s.from < 0 and "unlock" or tostring(s.from)
+		table.insert(L, T.Color("accent", string.format("%d. %s", i, s.name)) .. string.format("  %s to %d  (%d point%s)", from, s.to, s.cost, s.cost == 1 and "" or "s")
+			.. "  " .. T.Color(s.gain >= 0 and "ok" or "bad", (s.gain >= 0 and "+" or "") .. m(s.gain) .. " a day"))
+		for _, p in ipairs(s.perks) do table.insert(L, "    " .. T.Color("muted", "Perk: ") .. p) end
+		for j, c in ipairs(s.changes) do
+			if j > 3 then break end
+			if c.toShare then
+				table.insert(L, string.format("    %s: rank 2 share %d%% to %d%%, %s%s a day", c.name or "?", math.floor((c.fromShare or 0) * 100 + 0.5),
+					math.floor(c.toShare * 100 + 0.5), c.dDay >= 0 and "+" or "", m(c.dDay)))
+			else
+				local q = (c.toQ and c.fromQ and c.toQ ~= c.fromQ) and string.format(" reaches Q%d without Concentration,", c.toQ) or ""
+				table.insert(L, string.format("    %s%s %s%s a craft", c.name or "?", q, c.dProfit >= 0 and "+" or "", m(c.dProfit)))
+			end
+		end
+	end
+	table.insert(L, "")
+	local gain = (plan.final or 0) - (plan.start or 0)
+	table.insert(L, T.Color("accent", "After the plan: ") .. m(plan.final) .. " a day" .. T.Color(gain >= 0 and "ok" or "bad", string.format("  (%s%s)", gain >= 0 and "+" or "", m(gain))))
+	if (plan.finalConc or 0) > 0 then
+		table.insert(L, string.format("Concentration earns %s a point at best (now %s).", m(plan.finalConc), m(plan.startConc)))
+	end
+	if y then
+		local seen = P.Observed(plan.prof)
+		local got = {}
+		for _, l in ipairs(y.lines) do
+			local s = seen and seen[l.key]
+			if s and s.share then table.insert(got, string.format("%s %d%%", l.label, math.floor(s.share * 100 + 0.5))) end
+		end
+		table.insert(L, T.Color("muted", "Disenchanting skill lifts the share of rank 2 materials. The game doesn't publish the curve, so the plan has it rise evenly to all with the path full, "
+			.. (#got > 0 and ("starting from the rank 2 share you really got (" .. table.concat(got, ", ") .. ").") or "from none at no points until AuctionIQ has seen you disenchant.")
+			.. " Perks that give extra materials are listed but not counted in the gold."))
+		return L
+	end
+	table.insert(L, T.Color("muted", string.format("Gold a day counts your own sales a day where you've listed an item, else the region's figure up to %d a day (/aiq cap to change), and a day's Concentration on the best recipe.",
+		CH.db.settings.scan.dailyCap or 10)))
+	return L
+end

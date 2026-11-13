@@ -59,7 +59,7 @@ makes you a better goblin.
    **Code > Download ZIP** on this page.
 2. Unzip it into `World of Warcraft\_retail_\Interface\AddOns` and make sure the folder is named
    `AuctionIQ` (rename `AuctionIQ-main` if that's what you got). From the code zip, also move each
-   folder in `AuctionIQ\Professions` (`AuctionIQ_Alchemy` and so on) up into `AddOns`; the release zip
+   folder in `AuctionIQ\Professions` (`AuctionIQ_Alchemy` and so on, and `AuctionIQ_Paths`) up into `AddOns`; the release zip
    already has them there.
 3. Restart the game completely (a `/reload` doesn't pick up new addon files).
 
@@ -163,7 +163,8 @@ scans, specializations, plans), `Trade` (posting, groups, markets) and `Queue` (
 shopping, cooldowns); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
 settings, theme, windows, cleanup, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
 statistics) sit underneath them. `Professions` holds one load-on-demand addon per profession
-(`AuctionIQ_Alchemy` and so on) with its specialization data.
+(`AuctionIQ_Alchemy` and so on) with its specialization data, and `AuctionIQ_Paths`: the knowledge point
+planner, its presets and the Paths page, loaded the first time Paths opens.
 
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.
