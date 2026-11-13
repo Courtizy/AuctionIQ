@@ -171,7 +171,9 @@ CH.MIGRATIONS = {
 		db.mail = nil
 	end,
 }
-CH.BATCHES_KEEP_DAYS, CH.BATCHES_MAX = 180, 5000
+-- Craft records follow CraftSim's rule: no age limit (they go with the profession), only a cap on
+-- how many, oldest first, so SavedVariables stays a safe size.
+CH.BATCHES_MAX = 5000
 
 function CH.Migrate(db)
 	local v = tonumber(db.version) or 1
@@ -188,7 +190,7 @@ end
 
 --- Every load: queue entries from older builds get the fields the queue relies on (an entry that
 --- names no recipe is dropped), steps waiting on the game from an earlier session are cleared
---- (GetTime restarts with the client), and old craft records are trimmed.
+--- (GetTime restarts with the client), and craft records over the cap are trimmed, oldest first.
 function CH.Tidy(db, now)
 	now = now or (time and time()) or 0
 	local keep = {}
@@ -205,10 +207,12 @@ function CH.Tidy(db, now)
 	db.queue = keep
 	local b = db.batches
 	if type(b) == "table" then
-		local cut, out = now - CH.BATCHES_KEEP_DAYS * 86400, {}
-		for _, x in ipairs(b) do if (x.at or now) >= cut then out[#out + 1] = x end end
-		while #out > CH.BATCHES_MAX do table.remove(out, 1) end
-		db.batches = out
+		local extra = #b - CH.BATCHES_MAX
+		if extra > 0 then
+			local out = {}
+			for i = extra + 1, #b do out[#out + 1] = b[i] end
+			db.batches = out
+		end
 	end
 	return db
 end

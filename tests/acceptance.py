@@ -336,11 +336,15 @@ mg = L.eval("""(function()
   for i = 1, 6000 do db.batches[i] = { at = now - (6000 - i) * 3600 } end
   db.batches[1].at = now - 400 * 86400
   AuctionIQ.Tidy(AuctionIQ.Migrate(db), now)
-  local oldest = db.batches[1].at
-  return { v = db.version, mail = db.mail == nil, n = #db.batches, oldestDays = (now - oldest) / 86400 }
+  local small = { queue = {}, batches = { { at = now - 400 * 86400 }, { at = now - 200 * 86400 }, { at = now } } }
+  AuctionIQ.Tidy(small, now)
+  return { v = db.version, mail = db.mail == nil, n = #db.batches, newest = db.batches[#db.batches].at == now,
+    old = #small.batches, oldestDays = (now - small.batches[1].at) / 86400 }
 end)()""")
-check("saved data: version 1 migrates to 2 (mail removed) and craft records are bounded (180 days, 5000 max)",
-      mg.v == 2 and mg.mail and mg.n <= 5000 and mg.oldestDays <= 180)
+check("saved data: version 1 migrates to 2 (mail removed); craft records are capped at 5000, oldest first",
+      mg.v == 2 and mg.mail and mg.n == 5000 and mg.newest)
+check("saved data: craft records have no age limit (CraftSim's rule): a 400-day-old batch under the cap stays",
+      mg.old == 3 and mg.oldestDays == 400)
 
 # Trade: Ready to post separates what's in this character's bags from what has to be fetched
 pf = L.eval("""(function()
