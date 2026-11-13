@@ -512,6 +512,12 @@ rs = CH.Spec.RecipeStats(2906, tree, CH.Spec.Ranks(tree), 11)
 check("spec: current stats match RecipeStats at the tree's ranks, worked out once per tree",
       all((cs[k] or 0) == (rs[k] or 0) for k in ("skill", "multicraft", "resourcefulness", "ingenuity", "mcExtra", "resExtra", "refundExtra", "concReduce"))
       and L.eval("function(t) local S = AuctionIQ.Spec; local a = S.CurrentStats(2906, t, 11); return a == S.CurrentStats(2906, t, 11) and a ~= S.CurrentStats(2906, S.Read(2906), 11) end")(tree))
+# the planner, presets, tree view and Paths page are AuctionIQ_Paths, loaded the first time Paths opens
+check("paths: the planner isn't loaded until it's needed, but groups and yields are",
+      CH.PathsUI is None and CH.Paths.Plan is None and CH.Paths.MainGroup("Potions", 2906) == "Potions" and CH.Paths.DailyYield(2909) is not None
+      and not (L.eval("STUB.addonsLoaded or {}")["AuctionIQ_Paths"]))
+check("paths: loading it adds the planner to CH.Paths", CH.Paths.Load() and CH.Paths.Plan is not None and CH.PathsUI is not None
+      and CH.Presets is not None and CH.TreeView.StepText(L.eval("{1,2,3,4}")) == "1,2,3,+")
 check("goal text matches recipes by category", list(CH.Paths.Match("I want to sell potions")[0].values()) == [11]
       and list(CH.Paths.Match("flasks")[0].values()) == [10])
 plan = CH.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))

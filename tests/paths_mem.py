@@ -118,7 +118,7 @@ run('collectgarbage("collect")')
 base = kb()
 run('collectgarbage("stop")')
 a0 = kb()
-run('AuctionIQ.PathsUI.Open()')
+run('AuctionIQ.Paths.Load(); AuctionIQ.PathsUI.Open()')
 # the game runs a frame at a time: run the timers until the presets are done, counting frames
 frames = L.eval("""function()
   local n = 0

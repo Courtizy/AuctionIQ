@@ -1,7 +1,7 @@
 -- Research, Professions, Paths: type what you want to sell, get a knowledge point plan for the open
 -- profession, see it on the profession's own trees (the game's layout), then try it in the crafting
 -- advisor (simulation) before spending a point. A page beside Research's nav, 724 wide.
-local _, CH = ...
+local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
 
 local PUI = {}
 CH.PathsUI = PUI

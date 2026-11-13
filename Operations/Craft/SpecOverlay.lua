@@ -46,7 +46,7 @@ function SO.Refresh()
 		local node = tree and tree.layout and tree.layout[nodeID]
 		if ok and button and button:IsShown() and (not node or m.to > (node.rank or -1)) then
 			local b = badgeFor(button)
-			local t = CH.TreeView.StepText(m.steps)
+			local t = CH.Paths.StepText(m.steps)
 			b.text:SetText(t)
 			b:SetWidth(math.max(18, 8 + 6 * #t))
 			b.to:SetText("> " .. m.to)

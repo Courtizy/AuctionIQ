@@ -1,7 +1,7 @@
 -- Draws a specialization tree the way the game lays it out (each tab its own tree: the game's node
 -- positions, icons and links) with a knowledge point plan on top: a gold ring and "now > planned" on
 -- each node the plan raises, and the plan's step numbers in a badge.
-local _, CH = ...
+local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
 
 local TV = {}
 CH.TreeView = TV
@@ -9,14 +9,7 @@ CH.TreeView = TV
 local NODE = 30
 local PAD = 26
 
-local function stepText(steps)
-	local t = {}
-	for i, s in ipairs(steps) do
-		if i > 3 then t[#t + 1] = "+"; break end
-		t[#t + 1] = tostring(s)
-	end
-	return table.concat(t, ",")
-end
+local stepText = CH.Paths.StepText
 TV.StepText = stepText
 
 --- Rank text for a node: "12/30", or "12>20/30" when the plan raises it, "locked" ranks show as 0.

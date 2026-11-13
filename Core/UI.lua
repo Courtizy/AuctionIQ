@@ -721,7 +721,8 @@ function build()
 	frame.gold:SetPoint("RIGHT", settings, "LEFT", -10, 0)
 	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
 	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
-	local function buildPaths(p) pages.paths = p; CH.PathsUI.Build(p) end
+	-- the Paths page is its own addon (AuctionIQ_Paths): built the first time it's shown (UI.PathsReady)
+	local function buildPaths(p) pages.paths = p end
 	local function buildPerf(p) pages.perf = p; if CH.Performance then CH.Performance.Build(p, fs) end end
 	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
 	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildPerf, buildSettings }) do
@@ -1215,7 +1216,7 @@ function UI.Refresh()
 	UI.RenderConcFooter()
 	if page == "today" then return refreshDashboard()
 	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
-	elseif beside == "paths" then refreshLedger(); return CH.PathsUI.Refresh()
+	elseif beside == "paths" then refreshLedger(); if not UI.PathsReady() then return end; return CH.PathsUI.Refresh()
 	elseif beside == "perf" then refreshLedger(); return CH.Performance.Refresh()
 	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
 	else return refreshLedger() end
@@ -1277,6 +1278,17 @@ function UI.Go(tab, view, focus)
 	local ok = choose(tab, view, focus)
 	if ok and frame then UI.Refresh() end
 	return ok
+end
+
+--- Load the Paths page's addon and build the page, the first time it's needed. False when it
+--- couldn't load (CH.Paths.Load says why once).
+local pathsBuilt
+function UI.PathsReady()
+	if pathsBuilt then return true end
+	if not (pages.paths and CH.Paths.Load()) then return false end
+	CH.PathsUI.Build(pages.paths)
+	pathsBuilt = true
+	return true
 end
 
 --- Show a tab: "today" (the Dashboard), "operations" or "ledger" (Accounting),

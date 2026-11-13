@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: AuctionIQ Paths
+## Notes: AuctionIQ's knowledge point planner, its presets and the Paths page. Loads the first time you open Paths.
+## Author: Courtizy
+## Version: @project-version@
+## Dependencies: AuctionIQ
+## LoadOnDemand: 1
+## X-License: MIT
+
+Plan.lua
+Presets.lua
+TreeView.lua
+PathsUI.lua

@@ -191,4 +191,4 @@ sh = L.eval("""(function()
   return lists, recipes end)()""")
 check(f"spec data: {sh[1]} recipes share {sh[0]} node lists, each written once",
       sh[0] > 0 and sh[0] * 3 < sh[1]
-      and all((d / "Spec.lua").read_text().count("local P = {") == 1 for d in (ROOT / "Professions").glob("AuctionIQ_*")))
+      and all(f.read_text().count("local P = {") == 1 for f in (ROOT / "Professions").glob("AuctionIQ_*/Spec.lua")))

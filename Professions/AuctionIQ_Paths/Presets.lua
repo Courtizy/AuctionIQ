@@ -11,7 +11,7 @@
 --
 -- Saved per character and profession in AuctionIQDB.presets (a few KB each), worked out again
 -- when they're a day old and the profession is open, or on Recalculate.
-local _, CH = ...
+local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
 
 local Pr = { MAX = 8, RUNS = 200, STALE = 86400, MAX_POINTS = 150,
 	PRICE_CV = 0.15, COST_CV = 0.08, SALES_CV = 0.3, MIN_CV = 0.05, MAX_CV = 0.6 }
