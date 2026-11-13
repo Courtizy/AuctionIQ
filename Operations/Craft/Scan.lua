@@ -198,6 +198,7 @@ local function summary(result)
 	end
 	return {
 		recipeID = result.recipeID, name = result.name, made = made, tiers = result.model and result.model.maxQ,
+		at = time(), -- when it was worked out, so a decision can say it's too old to act on
 		quality = b and b.quality, profit = b and b.profit, cost = b and b.cost, item = item,
 		pct = b and b.cost and b.cost > 0 and b.profit / b.cost or nil,
 		concQuality = c and c.quality, perPoint = c and c.perPoint, concProfit = c and c.profit, concentration = c and c.concentration,

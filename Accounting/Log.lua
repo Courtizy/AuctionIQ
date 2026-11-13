@@ -87,7 +87,14 @@ end
 --- The queue says what it's about to craft, so the log has its forecast even when the Craft card
 --- shows another recipe: the entry's cost and profit per craft.
 local expect
-function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, profit = e.profit, name = e.name, item = e.item } or nil end
+function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, profit = e.profit, name = e.name, item = e.item, basis = e.basis } or nil end
+
+-- Each stage of a craft's results is priced on one basis, and says which:
+--   forecast  your cost basis setting when you crafted (held, replacement, tsm or paid)
+--   actual    the market when made: reagents used and saved at today's price (chmat), items at chvalue
+--   realized  what sold, less the same reagents at that same price as actual
+-- so the move from the forecast's basis to market prices is its own step, not part of "market".
+local function basisNow() return CH.Prices.CostBasis and CH.Prices.CostBasis() or "replacement" end
 
 -- How many of each item the craft can make you already hold, before it starts (all characters,
 -- the bank, mail and the AH, as Par.Held counts them), so the batch's results can leave that
@@ -113,7 +120,9 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	-- a queued craft brings its own forecast: the card may be on another recipe, or on another mix
 	if q and q.recipeID == recipeID and not orderID then
 		pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate, expected = q.profit, cost = q.cost, name = q.name or (r and r.name),
-			held = heldBefore(recipeID, r, q) }
+			held = heldBefore(recipeID, r, q), basis = q.basis or basisNow(),
+			-- the same reagents at today's price, when the advisor knows the recipe's fixed slots
+			costRepl = r and usedCost(r, reagents) or nil }
 		return
 	end
 	local row
@@ -124,8 +133,10 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	local order = orderFor(r, orderID)
 	-- an advisor row priced for a different order (or for the AH) isn't this craft's cost
 	if row and order and not r.order then row = nil end
-	local cost = row and row.cost or usedCost(r, reagents, order and order.providedSlots)
+	local repl = usedCost(r, reagents, order and order.providedSlots)
+	local cost = row and row.cost or repl
 	pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate,
+		basis = row and basisNow() or "replacement", costRepl = repl,
 		expected = row and row.profit, cost = cost, mc = row and row.parts and row.parts.mc,
 		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
 		order = order and true or nil,
@@ -192,10 +203,22 @@ function Lg.Result(data)
 		local held = pending and pending.held and pending.held[data.itemID]
 		if held then pending.held[data.itemID] = nil end
 		CH.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
+			costRepl = pending and (pending.costRepl or pending.cost),
 			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID, held = held })
 	end
 	if pending then
 		e.cost = e.cost + (pending.cost or 0)
+		-- the same reagents at today's price; a craft without that figure counts at its own cost
+		local k = (pending.costRepl and (pending.cost or 0) > 0) and pending.costRepl / pending.cost or 1
+		e.costRepl = (e.costRepl or (e.cost - (pending.cost or 0))) + (pending.costRepl or pending.cost or 0)
+		if pending.expected then
+			e.bases = e.bases or {}
+			local b = pending.basis or "replacement"
+			e.bases[b] = (e.bases[b] or 0) + 1
+			-- the forecast's own reagent cost, and at today's price, for the cost basis step
+			e.fcCost = (e.fcCost or 0) + (pending.cost or 0)
+			e.fcCostRepl = (e.fcCostRepl or 0) + (pending.costRepl or pending.cost or 0)
+		end
 		e.expected = e.expected + (pending.expected or 0)
 		e.expMc = e.expMc + (pending.mc or 0)
 		e.expRes = e.expRes + (pending.res or 0)
@@ -206,6 +229,8 @@ function Lg.Result(data)
 			e.fcItems = (e.fcItems or 0) + qty
 			e.expItems = (e.expItems or 0) + pending.items
 			e.expSaved = (e.expSaved or 0) + (pending.expSaved or 0)
+			-- the forecast's saved reagents moved to today's price, by this craft's ratio of the two costs
+			e.expSavedRepl = (e.expSavedRepl or (e.expSaved - (pending.expSaved or 0))) + (pending.expSaved or 0) * k
 			e.fcSaved = (e.fcSaved or 0) + saved
 			e.expUnit = (e.expUnit or 0) + (pending.unit or 0) * pending.items
 		end
@@ -221,7 +246,7 @@ end
 function Lg.Rows()
 	local out = {}
 	for id, e in pairs(log()) do
-		local actual = e.value + e.saved - e.cost
+		local actual = e.value + e.saved - (e.costRepl or e.cost)
 		table.insert(out, { recipeID = id, name = e.name, crafts = e.crafts, actual = actual, expected = e.expected,
 			mcRate = e.mcProcs / e.crafts, expMcRate = e.expMc / e.crafts, resRate = e.resProcs / e.crafts,
 			expResRate = e.expRes / e.crafts, ingRate = e.concCrafts > 0 and e.ingProcs / e.concCrafts or nil,
@@ -259,7 +284,7 @@ function Lg.AllRows()
 		for id, e in pairs(c.log or {}) do
 			if (e.crafts or 0) > 0 then
 				table.insert(out, { char = c.name or key, recipeID = id, name = e.name, crafts = e.crafts,
-					actual = e.value + e.saved - e.cost, expected = e.expected,
+					actual = e.value + e.saved - (e.costRepl or e.cost), expected = e.expected,
 					mcRate = e.mcProcs / e.crafts, expMcRate = e.expMc / e.crafts, resRate = e.resProcs / e.crafts,
 					expResRate = e.expRes / e.crafts, ingRate = e.concCrafts > 0 and e.ingProcs / e.concCrafts or nil,
 					expIngRate = e.concCrafts > 0 and e.expIng / e.concCrafts or nil,
@@ -279,12 +304,17 @@ end
 --- forecast is known it explains the gap: yield (items against expected), Resourcefulness (reagents
 --- saved against expected) and sale price (what sold units fetched against their forecast).
 function Lg.Stages(char, recipeID, e)
-	local out = { forecast = e.expected or 0, actual = (e.value or 0) + (e.saved or 0) - (e.cost or 0), crafts = e.crafts or 0 }
+	local out = { forecast = e.expected or 0, actual = (e.value or 0) + (e.saved or 0) - (e.costRepl or e.cost or 0), crafts = e.crafts or 0,
+		basis = Lg.BasisLabel(e.bases) }
 	if (e.fcCrafts or 0) > 0 then
 		local each = (e.expItems or 0) > 0 and (e.expUnit or 0) / e.expItems or 0
 		out.produced = { items = e.fcItems, expected = e.expItems, gold = ((e.fcItems or 0) - (e.expItems or 0)) * each }
-		out.saved = { got = e.fcSaved or 0, expected = e.expSaved or 0, gold = (e.fcSaved or 0) - (e.expSaved or 0) }
+		local expRepl = e.expSavedRepl or e.expSaved or 0
+		out.saved = { got = e.fcSaved or 0, expected = expRepl, gold = (e.fcSaved or 0) - expRepl }
+		out.savedBasis = expRepl - (e.expSaved or 0)
 	end
+	-- the forecast's reagents (used and saved) moved from its basis to today's price
+	if e.fcCost then out.basisGold = (e.fcCost - (e.fcCostRepl or e.fcCost)) + (out.savedBasis or 0) end
 	-- realized: the batches these crafts recorded, with what has sold of each
 	local made, sold, revenue, soldCost, forecastSold, unsold = 0, 0, 0, 0, 0, 0
 	local unsoldValue, unsoldMargin = 0, 0
@@ -300,12 +330,14 @@ function Lg.Stages(char, recipeID, e)
 					made = made + b.qty
 					sold = sold + (b.sold or 0)
 					revenue = revenue + (b.revenue or 0)
-					soldCost = soldCost + (b.cost and b.cost / b.qty or 0) * (b.sold or 0)
+					-- at today's price when made, as actual is; older batches only have their forecast's cost
+					local bc = b.costRepl or b.cost
+					soldCost = soldCost + (bc and bc / b.qty or 0) * (b.sold or 0)
 					forecastSold = forecastSold + (b.expectEach or 0) * (b.sold or 0)
 					local left = b.qty - (b.sold or 0)
 					unsold = unsold + left
 					unsoldValue = unsoldValue + left * (value or 0) * CH.AH_CUT
-					unsoldMargin = unsoldMargin + left * ((b.expectEach or 0) - (b.cost and b.cost / b.qty or 0))
+					unsoldMargin = unsoldMargin + left * ((b.expectEach or 0) - (bc and bc / b.qty or 0))
 				end
 			end
 		end
@@ -317,25 +349,45 @@ function Lg.Stages(char, recipeID, e)
 	return out
 end
 
+--- Which cost basis a recipe's forecasts used: "held", or "held and paid" when you changed it
+--- between crafts. nil before any forecast craft recorded one.
+Lg.BASIS_SHORT = { held = "held at sale value", replacement = "today's price", tsm = "TSM material cost", paid = "paid" }
+function Lg.BasisLabel(bases)
+	local names = {}
+	for b in pairs(bases or {}) do names[#names + 1] = b end
+	if #names == 0 then return nil end
+	table.sort(names)
+	local out = {}
+	for i, b in ipairs(names) do out[i] = Lg.BASIS_SHORT[b] or b end
+	return table.concat(out, " and ")
+end
+
 --- The forecast-to-realized waterfall for a recipe: { { label, value, total } }, each step what moved
 --- the result, ending on what has really been realized. The steps:
----   Forecast at craft time
----   + yield (items against expected, at the expected value) + Resourcefulness (against expected)
+---   Forecast at craft time (on your cost basis then)
+---   + yield (items against expected, at the expected value) + Resourcefulness (against expected,
+---     both at today's price)
+---   + cost basis (the forecast's reagents moved from its basis to today's price when made)
 ---   + market by craft time (the rest of the gap to the crafts' value when made)
 ---   = Actual at market
 ---   + sale price (what sold units fetched against their forecast)
 ---   - still unsold (their expected margin isn't realized yet)
 ---   + the rest (deposits, Resourcefulness not in batch costs, matching)
 ---   = Realized
---- nil before any of these crafts have a forecast and a recorded batch.
+--- nil before any of these crafts have a forecast and a recorded batch. Without a forecast of
+--- the yield (a queued craft) there are no yield and Resourcefulness steps.
 function Lg.Waterfall(s)
-	if not (s.produced and s.realized) then return nil end
+	if not ((s.produced or s.basisGold) and s.realized) then return nil end
 	local r = s.realized
 	local steps = { { "Forecast at craft time", s.forecast, true } }
-	local y, sv = s.produced.gold, s.saved and s.saved.gold or 0
-	table.insert(steps, { "Yield", y })
-	table.insert(steps, { "Resourcefulness", sv })
-	table.insert(steps, { "Market by craft time", s.actual - s.forecast - y - sv })
+	local y, sv, bd = s.produced and s.produced.gold or 0, s.saved and s.saved.gold or 0, s.basisGold or 0
+	-- yield and Resourcefulness only where the forecast said what to expect of them
+	if s.produced then
+		table.insert(steps, { "Yield", y })
+		table.insert(steps, { "Resourcefulness", sv })
+	end
+	table.insert(steps, { "Cost basis: " .. (s.basis or "your basis") .. " to today's price", bd })
+	table.insert(steps, { "Market by craft time", s.actual - s.forecast - y - sv - bd })
 	table.insert(steps, { "Actual at market", s.actual, true })
 	local price = r.price or 0
 	table.insert(steps, { "Sale price", price })
@@ -353,9 +405,9 @@ function Lg.StageLines(d)
 	local signed = function(c) return T.Color(c >= 0 and "ok" or "bad", (c >= 0 and "+" or "") .. M(c)) end
 	local out = { { T.Color("accent", (d.name or "?") .. "  " .. (d.char or "")) } }
 	table.insert(out, { "1. Forecast at craft time", M(s.forecast) })
-	table.insert(out, { mut("   what the advisor expected, " .. s.crafts .. " crafts"), "" })
+	table.insert(out, { mut("   what the advisor expected, " .. s.crafts .. " crafts" .. (s.basis and (", reagents at " .. s.basis) or "")), "" })
 	table.insert(out, { "2. Actual yield and reagents", M(s.actual) })
-	table.insert(out, { mut("   items made and reagents used, at market when made"), "" })
+	table.insert(out, { mut("   items made at market; reagents used and saved at today's price, when made"), "" })
 	if s.produced then
 		table.insert(out, { string.format("   Yield: %d items, %.1f expected", s.produced.items or 0, s.produced.expected or 0), signed(s.produced.gold) })
 		table.insert(out, { "   Resourcefulness: saved against expected", signed(s.saved.gold) })
@@ -363,7 +415,7 @@ function Lg.StageLines(d)
 	local r = s.realized
 	if r then
 		table.insert(out, { "3. Realized sales", signed(r.profit) })
-		table.insert(out, { string.format("   %d of %d sold for %s, their reagents %s", r.sold, r.made, M(r.revenue), M(r.cost)), "" })
+		table.insert(out, { string.format("   %d of %d sold for %s, their reagents %s (today's price when made)", r.sold, r.made, M(r.revenue), M(r.cost)), "" })
 		if r.price then table.insert(out, { "   Sale price against the forecast", signed(r.price) }) end
 		if r.unsold > 0 then table.insert(out, { string.format("   %d unsold, estimated value (not realized)", r.unsold), M(r.unsoldValue) }) end
 		local w = Lg.Waterfall(s)

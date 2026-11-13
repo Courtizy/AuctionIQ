@@ -1637,20 +1637,22 @@ function AUI.Card(n, scan)
 	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
 	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
 	local cs = acc and CH.CraftOrSell(acc)
+	-- every option side by side (craft, sell the reagents, buy and relist, keep), one basis
+	local alt = acc and CH.Decide.Alternatives(acc, { bc = scan and scan.bc, at = scan and scan.at, item = scan and scan.item })
 	local sub
-	if cs then
-		sub = cs.verdict == "even" and T.Color("fg", "About even: craft it, or sell the reagents for about the same.")
-			or cs.gain >= 0 and T.Color("ok", "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.")
-			or T.Color("bad", "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.")
-		if cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
+	if alt then
+		local text, color = CH.Decide.AlternativesText(alt)
+		sub = T.Color(color, text)
+		if cs and cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
 			sub = sub .. mut(" Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
 		end
 	elseif r then
 		sub = r.profit and r.profit >= 0 and T.Color("ok", "Craft it: " .. M(r.profit) .. " a craft.")
 			or T.Color("bad", "Each craft loses " .. M(-(r.profit or 0)) .. " at today's prices.")
 	end
-	-- the whole notes, and craft or sell's numbers, on the sentence's hover
-	local tip = cs and CH.CraftOrSellBook(acc) or { { "Notes" } }
+	-- the options, the whole notes, and craft or sell's numbers, on the sentence's hover
+	local tip = alt and CH.Decide.AlternativesLines(alt) or { { "Notes" } }
+	if cs then for _, l in ipairs(CH.CraftOrSellBook(acc)) do tip[#tip + 1] = l end end
 	local notes = AUI.SummaryLines(result)
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(notes, l) end
 	local src = AUI.SourceLine(result)
@@ -1977,4 +1979,12 @@ for _, name in ipairs({ "Card", "SummaryLines", "BreakdownLines", "NextMove", "N
 			return unpack(out, 1, out.n)
 		end
 	end
+end
+
+--- Drop every worked-out result kept for speed (/aiq cleanup). Each comes back the next time it's
+--- asked for. Returns how many caches were emptied.
+function AUI.ClearCaches()
+	AUI.InvalidateKnown(); AUI.InvalidateGear()
+	suggestCache, qtyCache, batchCache, nextCache = {}, {}, {}, {}
+	return 6
 end

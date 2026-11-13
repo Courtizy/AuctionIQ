@@ -171,7 +171,9 @@ CH.MIGRATIONS = {
 		db.mail = nil
 	end,
 }
-CH.BATCHES_KEEP_DAYS, CH.BATCHES_MAX = 180, 5000
+-- Craft records follow CraftSim's rule: no age limit (they go with the profession), only a cap on
+-- how many, oldest first, so SavedVariables stays a safe size.
+CH.BATCHES_MAX = 5000
 
 function CH.Migrate(db)
 	local v = tonumber(db.version) or 1
@@ -188,7 +190,7 @@ end
 
 --- Every load: queue entries from older builds get the fields the queue relies on (an entry that
 --- names no recipe is dropped), steps waiting on the game from an earlier session are cleared
---- (GetTime restarts with the client), and old craft records are trimmed.
+--- (GetTime restarts with the client), and craft records over the cap are trimmed, oldest first.
 function CH.Tidy(db, now)
 	now = now or (time and time()) or 0
 	local keep = {}
@@ -205,10 +207,12 @@ function CH.Tidy(db, now)
 	db.queue = keep
 	local b = db.batches
 	if type(b) == "table" then
-		local cut, out = now - CH.BATCHES_KEEP_DAYS * 86400, {}
-		for _, x in ipairs(b) do if (x.at or now) >= cut then out[#out + 1] = x end end
-		while #out > CH.BATCHES_MAX do table.remove(out, 1) end
-		db.batches = out
+		local extra = #b - CH.BATCHES_MAX
+		if extra > 0 then
+			local out = {}
+			for i = extra + 1, #b do out[#out + 1] = b[i] end
+			db.batches = out
+		end
 	end
 	return db
 end
@@ -339,8 +343,10 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		CH.AdvisorUI.ToggleSetting()
 	elseif msg == "cleanup" then
 		CH.Cleanup.Report()
+	elseif msg:match("^prune") then
+		CH.Cleanup.AskPrune(tonumber(msg:match("^prune%s+(%d+)")))
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup drops saved data nothing uses (it also runs at logout).")
+		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup lets go of what AuctionIQ keeps only for speed and drops saved data nothing uses (the saved part also runs at logout). /aiq prune 365 removes history older than 365 days, after asking.")
 	else
 		CH.UI.Toggle()
 	end

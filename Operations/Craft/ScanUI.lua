@@ -1203,11 +1203,15 @@ function SUI.RecipePanel(r, n, v)
 	local rbook, rcost
 	if acc then rbook, rcost = CH.ReagentBook(acc) end
 	local cs = acc and CH.CraftOrSell(acc)
-	local csTip = cs and CH.CraftOrSellBook(acc) or { { "Craft or sell?" }, { T.Color("muted", "You hold none of this craft's reagents, so there's nothing to sell instead.") } }
-	local verdict = not cs and T.Color("muted", "You hold none of its reagents: crafting is the only use.")
-		or cs.verdict == "even" and T.Color("fg", "About even: craft it, or sell the reagents for about the same.")
-		or cs.gain >= 0 and T.Color("ok", "Craft it: earns " .. M(cs.gain) .. " more than selling your reagents.")
-		or T.Color("bad", "Sell the reagents: they earn " .. M(-cs.gain) .. " more than crafting.")
+	-- every option side by side (craft, sell the reagents, buy and relist, keep), one basis
+	local alt = acc and CH.Decide.Alternatives(acc, { bc = r.bc, at = r.at, item = r.item })
+	local csTip = alt and CH.Decide.AlternativesLines(alt) or {}
+	if cs then for _, l in ipairs(CH.CraftOrSellBook(acc)) do csTip[#csTip + 1] = l end
+	elseif not alt then csTip = { { "Craft or sell?" }, { T.Color("muted", "You hold none of this craft's reagents, so there's nothing to sell instead.") } } end
+	local altText, altColor
+	if alt then altText, altColor = CH.Decide.AlternativesText(alt) end
+	local verdict = not alt and T.Color("muted", "You hold none of its reagents: crafting is the only use.")
+		or T.Color(altColor, altText)
 	-- what you paid is sunk: say what the choice costs against it, when they've lost value
 	if cs and cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
 		verdict = verdict .. T.Color("muted", " Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")

@@ -453,8 +453,36 @@ function Lg.ArchiveCommit(days)
 		end
 		s.net = true
 	end
-	for k, v in pairs(days) do s.days[k] = v end
+	-- days you pruned stay gone even while TSM still has their records
+	local from = s.keepFrom or -math.huge
+	for k, v in pairs(days) do if k >= from then s.days[k] = v end end
 	return s.days
+end
+
+--- History older than `days` days (TSM's rule: you pick the age, nothing goes without asking).
+--- Counts what would go: { days, worth, rivals, cut = first day kept }. With `apply`, removes it and
+--- remembers the cut, so the archive doesn't bring those days back from TSM's records. Crafting
+--- records aren't touched: they follow CraftSim's rule and go only with the profession.
+function Lg.PruneHistory(days, apply, now)
+	days = math.floor(tonumber(days) or 0)
+	local out = { days = 0, worth = 0, rivals = 0 }
+	if days < 1 or not CH.db then return out end
+	now = now or time()
+	-- as TSM: what's older than now minus the days goes; a day goes once all of it is that old
+	local cutTime = now - days * DAY
+	local cut = dayOf(cutTime)
+	out.cut = cut
+	local s = store()
+	for k in pairs(s.days or {}) do if k < cut then out.days = out.days + 1; if apply then s.days[k] = nil end end end
+	for k in pairs(s.worth or {}) do if k < cut then out.worth = out.worth + 1; if apply then s.worth[k] = nil end end end
+	for id, c in pairs(CH.db.competition or {}) do
+		if not c.at or c.at < cutTime then
+			out.rivals = out.rivals + 1
+			if apply then CH.db.competition[id] = nil end
+		end
+	end
+	if apply then s.keepFrom = math.max(s.keepFrom or cut, cut) end
+	return out
 end
 
 --- Totals since a time from the archive: sales, buys, income, expense, profit (cash), top item.

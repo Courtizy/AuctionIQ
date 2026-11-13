@@ -27,6 +27,7 @@ makes you a better goblin.
 - **Every recipe ranked by profit**, Concentration included, for the expansion the profession window has open
 - **A craft card beside the profession window**: the best quality to aim for, the cheapest reagent mix for it, an on/off Concentrate switch, and one click to queue it
 - **Where an estimate breaks**: break-even sale price, a downside scenario, what Concentration adds per point, and what each sales estimate rests on
+- **Your options side by side**: craft it, sell the reagents you hold, buy out the item and relist it, or keep what you have. All are measured the same way: gold gained against keeping what you hold, at today's prices after the AH cut, for one craft's worth. When the profession scan is over 12 hours old or the item has no price, the card says to refresh first.
 - **Batch odds**: the chance a week's sales pay back 10, 30 or 100 crafts, the gold that comes back and the stock left
 - **Work orders worth taking**: commission, rewards and knowledge points against what the reagents cost you
 - **Specialization presets and a tree calculator**: a build for each thing a profession sells (Light or Void potions, Flasks, Disenchanting...), tested against your own prices, and nodes you can click to try points of your own
@@ -91,6 +92,8 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 | TSM | TSM's material cost, as you set it up in TSM |
 | Paid | What you paid on average over the last 30 days, else today's price |
 
+Your craft results (`/aiq results`) keep three stages, each on one basis it names. The **forecast** is on the basis you had set when you crafted. **Actual** is the market when made: items at their value, and reagents used and saved at today's price. **Realized** is what sold, less those same reagents at that same price. The hover's "forecast to realized" breakdown moves between them in steps. Moving the forecast's reagents from your basis to today's price is a step of its own ("Cost basis: held at sale value to today's price"), so it isn't hidden in "Market by craft time".
+
 **Profit per craft.** Multicraft, Resourcefulness, Ingenuity and Concentration use the same formulas as [CraftSim](https://github.com/derfloh205/CraftSim): the extra items Multicraft gives on average, the reagents Resourcefulness hands back, and the Concentration Ingenuity refunds. Revenue is after the 5% AH cut, less the deposits you expect to lose to expired auctions and the cost of gold sitting on the AH while it sells.
 
 **Will it sell?** Each item's chance of selling starts from the region's sale rate (TSM) and moves toward your own record as you sell and expire.
@@ -103,7 +106,7 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 
 **How many to make?** The Craft card's Suggested row keeps three numbers apart: how many you can make, how many you can afford, and how many AuctionIQ suggests. The suggestion is only as specific as the evidence. With a few weeks of your own sales it gives a size ("Make 12"). With thin evidence it says so and offers a small trial covering about two days of sales ("Try 4"). When your stock already covers the next few days it says "Hold off", and how many days your stock covers. Hover the row to see what it rests on, your expected week at 5, 10 and 20 (and at the quantity you set), the assumptions, and what would change the suggestion. It is optional: set any quantity with the stepper and queue it. When you queue a different number, AuctionIQ saves both. Accounting > Reports > Performance > Batch results then judges the batch against what you chose, and its hover says "You chose 20 (suggested 8)" with what the suggested size would have brought in by now (modeled), so you can see whether going your own way paid off. The Craft pane in Compare crafts uses the same suggestion and shows it beside a Dashboard hand-off's quantity when the two differ.
 
-**Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
+**Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
 
@@ -113,7 +116,11 @@ When you've searched an item at the AH in the last 15 minutes, a reagent is pric
 
 Everything stays on your PC in `WTF\Account\<account>\SavedVariables\AuctionIQ.lua`. AuctionIQ reads TSM's saved data but never writes to it, and sends nothing anywhere.
 
-A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. `/aiq cleanup` runs it now and says what it freed. The days each item was listed are kept for 60 days, one small number per item per day.
+A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its own every time you log out or `/reload`. It keeps what you hold, sold in the last 30 days, craft, queue, alert on or searched yourself, and drops the rest (they come back the next time the AH shows them). It also drops a character's data for professions it no longer has. The days each item was listed are kept for 60 days, one small number per item per day.
+
+**Clean up** (Settings, Saved data, or `/aiq cleanup`) also lets go of what AuctionIQ keeps only for speed: cached prices, auction depth, TSM's parsed records and their time order, demand, forecasts and the advisor's worked-out results. The game's collector then runs a few milliseconds a frame, and the chat line gives addon memory before and after. The figure counts every addon, and any garbage that was already waiting. TSM's records then come back in the background, so the next Dashboard isn't a cold one. Clean up never touches your queue, settings, groups, crafting records, decisions or history.
+
+**Prune history** follows TSM's rule for old data (TSM Settings, Accounting, Clear Old Data). You choose the age, 365 days to start, and it lists what will go and asks before removing anything. It covers AuctionIQ's own day-by-day sales totals, net worth days and competition notes. Days you prune stay gone even while TSM still has their records. Your TSM data is left alone; clear it in TSM if you want it gone there too. Crafting records follow CraftSim's rule instead: they have no age limit and go only when the profession does. AuctionIQ keeps the newest 5,000 craft batches, so the saved file stays a safe size. `/aiq prune 365` does the same from chat.
 
 ## FAQ
 
@@ -141,7 +148,8 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 `/aiq cap <n>` - most of the region's sold a day counted per item, until your own sales take over (default 10)<br>
 `/aiq alerts` - chat alerts on or off<br>
 `/aiq minimap` - hide or show the minimap button<br>
-`/aiq cleanup` - run the saved data cleanup now (it also runs at every logout)<br>
+`/aiq cleanup` - let go of speed caches and run the saved data cleanup now (the saved part also runs at every logout)<br>
+`/aiq prune 365` - remove AuctionIQ history older than 365 days, after showing what goes and asking<br>
 `/aiq perf` - memory and time per event, for reporting slowness
 
 ## Roadmap

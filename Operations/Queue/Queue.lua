@@ -55,7 +55,7 @@ function Q.FromRow(result, r)
 	return { given = given,
 		char = CH.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
-		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item,
+		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item, basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or nil,
 		-- Ingenuity: the chance a Concentration craft refunds, and how many points it gives back
 		ingenuity = r.concentration and r.ingenuity or nil,
 		refund = r.concentration and r.concentration * ((CH.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
@@ -106,7 +106,7 @@ function Q.FromScan(charKey, char, row, conc)
 	for _, s in ipairs(acc.reagents or {}) do table.insert(shop, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers }) end
 	return { char = charKey, charName = char.name, class = char.class, recipeID = row.recipeID, name = row.name,
 		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = conc and row.concentration or nil,
-		profit = conc and row.concProfit or row.profit, cost = acc.cost, item = conc and (row.concItem or row.item) or row.item,
+		profit = conc and row.concProfit or row.profit, cost = acc.cost, basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or nil, item = conc and (row.concItem or row.item) or row.item,
 		avgConcentration = conc and (row.avgConcentration or acc.avgConcentration) or nil,
 		reagents = acc.queue, shop = shop, qty = 0 }
 end

@@ -972,8 +972,49 @@ check("craft log: the hover says unsold items aren't realized and the matching i
       any("unsold, estimated value (not realized)" in x for x in sl3) and any("Estimated attribution" in x for x in sl3))
 wf = list(CH.Log.Waterfall(st).values())
 def wsum(a, b): return sum(x[2] for x in wf[a:b])
+ai = [i for i, x in enumerate(wf) if x[1] == "Actual at market"][0]
 check("waterfall: the steps add up from forecast to actual to realized",
-      wf[0][1] == "Forecast at craft time" and wf[-1][1] == "Realized" and abs(wf[0][2] + wsum(1, 4) - wf[4][2]) < 1 and abs(wf[4][2] + wsum(5, 8) - wf[-1][2]) < 1)
+      wf[0][1] == "Forecast at craft time" and wf[-1][1] == "Realized" and abs(wf[0][2] + wsum(1, ai) - wf[ai][2]) < 1
+      and abs(wf[ai][2] + wsum(ai + 1, len(wf) - 1) - wf[-1][2]) < 1)
+check("waterfall: the cost basis has its own step, named after the basis the forecast used",
+      any(x[1].startswith("Cost basis: ") and "to today's price" in x[1] for x in wf) and st.basis is not None)
+# A queued craft costed on another basis than today's price: the difference is its own step, not "market"
+cb = L.eval("""(function()
+  local Lg = AuctionIQ.Log
+  local me = AuctionIQ.Me(); local oldLog = me.log; me.log = {}
+  local oldStore = AuctionIQ.db.batches; AuctionIQ.db.batches = {}
+  local cur = AuctionIQ.AdvisorUI.Current()
+  -- the queue's forecast: reagents at 1,000,000 on the paid basis; the same reagents at today's price differ
+  Lg.Expect({ recipeID = 10, cost = 1000000, profit = 500000, name = 'Test Flask', item = 302, basis = 'paid' })
+  C_TradeSkillUI.CraftRecipe(10, 1, {}, nil, nil, false)
+  local p = Lg.Pending()
+  local repl, basis = p and p.costRepl, p and p.basis
+  STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })
+  local e = me.log[10]
+  local st = Lg.Stages(nil, 10, e)
+  local w = Lg.Waterfall(st) or {}
+  local step, market, actualAt
+  for _, x in ipairs(w) do
+    if x[1]:find("^Cost basis") then step = x end
+    if x[1] == "Market by craft time" then market = x[2] end
+  end
+  local lines = {}
+  for _, l in ipairs(Lg.StageLines({ name = 'Test Flask', char = 'Seyko', stages = st })) do lines[#lines + 1] = l[1] end
+  local b = AuctionIQ.db.batches[#AuctionIQ.db.batches]
+  me.log = oldLog; AuctionIQ.db.batches = oldStore; AuctionIQ.Forecast.Clear()
+  return { repl = repl, basis = basis, cost = e.cost, costRepl = e.costRepl, actual = st.actual, value = e.value, saved = e.saved,
+    bd = st.basisGold, label = st.basis, step = step and step[1], stepGold = step and step[2], market = market,
+    lines = table.concat(lines, "\\n"), bCost = b and b.cost, bRepl = b and b.costRepl, hasW = #w > 0 }
+end)()""")
+check("cost basis: the log keeps the basis the forecast used and the same reagents at today's price",
+      cb.basis == "paid" and cb.repl is not None and cb.repl != 1000000 and cb.cost == 1000000 and cb.costRepl == cb.repl)
+check("cost basis: actual is at market, with reagents at today's price, not the forecast's basis",
+      cb.actual == cb.value + cb.saved - cb.repl)
+check("cost basis: the waterfall's basis step is the forecast's cost less the same reagents at today's price",
+      cb.hasW and cb.step == "Cost basis: paid to today's price" and abs(cb.stepGold - (1000000 - cb.repl)) < 1 and cb.label == "paid")
+check("cost basis: the batch keeps both costs, so realized uses the same prices as actual",
+      cb.bCost == 1000000 and cb.bRepl == cb.repl)
+check("cost basis: the hover names each stage's basis", "reagents at paid" in cb.lines and "at today's price, when made" in cb.lines)
 D = L.eval("AuctionIQ.Decide")
 be = res.best.breakEven
 check("break-even: the sale price per item where the plain craft makes nothing (cut included)",
@@ -1222,6 +1263,9 @@ check("Craft card: a Suggested row, with what AuctionIQ sees, each size's week, 
       and any(t.strip().startswith("Assumes sales:") for t in stip) and any("the suggestion is optional" in t for t in stip))
 fl = L.eval("AuctionIQ.AdvisorUI.Card(1, { perDay = 50000, soldPerDay = 4, bc = { buy = 1000, resell = 5000, flip = 4000 } })")
 fr = {plain(r[1]): r for r in fl.rows.values()}
+fa = L.eval("AuctionIQ.AdvisorUI.Card(1, { accounts = { sales = 50000, made = 1, cost = 30000, profit = 20000, reagents = {} } })")
+check("Craft card: the options (craft, buy and relist, do nothing) lead the sentence's hover",
+      plain(list(fa.subTip.values())[0][1]) == "Your options")
 check("Craft card: Gold a day has a hover, and Buy & relist shows when a listing is far under value",
       fr.get("Gold a day") is not None and fr["Gold a day"].tip is not None and fr.get("Buy & relist") is not None)
 lc.section.toggle.run()
@@ -1830,6 +1874,52 @@ check("scan side panel: craft or sell with profit and reagents, the reagents eac
 check("scan side card: figures are profit, reagents and margin; craft or sell's numbers hover on its sentence",
       [plain(f[1]) for f in rp.figures.values()] == ["PROFIT", "COST", "MARGIN"] and plain(rp.figures[3][2]) == "50%" and rp.subTip is not None
       and not any(plain(r[1]) == "Margin" for r in rp.rows.values()))
+# Alternatives: craft, sell the reagents, buy and relist, keep or do nothing, side by side on one basis
+alt = L.eval("""(function()
+  local P, D = AuctionIQ.Prices, AuctionIQ.Decide
+  local oH, oS = P.Held, P.SellValue
+  local now = time()
+  local out = {}
+  local function keys(a) local k = {}; for i, o in ipairs(a.options) do k[i] = o.key .. "=" .. math.floor(o.gain + 0.5) end; return table.concat(k, " ") end
+  -- 1. you hold all three reagents, worth 30,000 if sold; crafting brings 20,000: selling wins by 10,000
+  P.Held = function() return 3 end; P.SellValue = function() return 10000 end
+  local a1 = D.Alternatives({ sales = 20000, made = 1, cost = 30000, profit = -10000, reagents = { { itemID = 201, n = 3, cost = 30000 } } }, { now = now, at = now })
+  out.k1, out.v1, out.t1 = keys(a1), a1.verdict, (D.AlternativesText(a1))
+  -- 2. you hold none: crafting makes 50,000; buying out the 3 items one craft makes and relisting, 20,000 each
+  P.Held = function() return 0 end
+  local a2 = D.Alternatives({ sales = 200000, made = 3, cost = 150000, profit = 50000, reagents = { { itemID = 201, n = 3, cost = 150000 } } },
+    { now = now, at = now, bc = { buy = 1000, resell = 21000, flip = 20000 } })
+  out.k2, out.v2, out.t2 = keys(a2), a2.verdict, (D.AlternativesText(a2))
+  out.l2 = a2.options[1].label
+  -- 3. you hold none and the craft loses: doing nothing is best
+  local a3 = D.Alternatives({ sales = 10000, made = 1, cost = 30000, profit = -20000, reagents = { { itemID = 201, n = 3, cost = 30000 } } }, { now = now, at = now })
+  out.k3, out.v3, out.t3, out.l3 = keys(a3), a3.verdict, (D.AlternativesText(a3)), a3.best.label
+  -- 4. a scan 13 hours old: refresh is the outcome; 5. no price for the item: refresh too
+  local a4 = D.Alternatives({ sales = 200000, made = 1, cost = 150000, profit = 50000, reagents = {} }, { now = now, at = now - 13 * 3600 })
+  out.v4, out.t4 = a4.verdict, (D.AlternativesText(a4))
+  local a5 = D.Alternatives({ sales = 0, made = 1, cost = 150000, profit = -150000, reagents = {} }, { now = now, at = now })
+  out.v5, out.t5 = a5.verdict, (D.AlternativesText(a5))
+  local lines = {}
+  for _, l in ipairs(D.AlternativesLines(a1)) do lines[#lines + 1] = l[1] .. " | " .. (l[2] or "") end
+  out.lines = table.concat(lines, "\\n")
+  P.Held, P.SellValue = oH, oS
+  return out
+end)()""")
+check("alternatives: holding reagents worth more sold than crafted, selling them wins; keeping is worth the same, crafting 10,000 less",
+      alt.v1 == "sell" and alt.k1 == "sell=0 keep=0 craft=-10000" and alt.t1.startswith("Sell the reagents: they earn"))
+check("alternatives: buying out one craft's worth (3) to relist ranks on the same basis and can beat crafting",
+      alt.v2 == "flip" and alt.k2 == "flip=60000 craft=50000 keep=0" and alt.l2 == "Buy 3 and relist"
+      and plain(alt.t2).startswith("Buy and relist: earns") and "more than craft and sell it" in alt.t2)
+check("alternatives: when the craft loses and you hold nothing, doing nothing is the pick",
+      alt.v3 == "keep" and alt.l3 == "Do nothing" and alt.k3 == "keep=0 craft=-20000" and alt.t3.startswith("Don't craft it"))
+check("alternatives: a scan over 12 hours old, or no price for the item, makes refreshing the outcome",
+      alt.v4 == "refresh" and "profession scan is 13 hr old: rescan it" in alt.t4
+      and alt.v5 == "refresh" and "no price for the item" in alt.t5)
+check("alternatives: the hover lists every option best first, with the basis they share",
+      "Your options" in plain(alt.lines) and "gold against keeping what you hold, at today's prices after the AH cut" in plain(alt.lines)
+      and plain(alt.lines).index("Sell your reagents") < plain(alt.lines).index("Craft and sell it"))
+check("alternatives: the scan's side card uses them (the options lead the sentence's hover)",
+      plain(list(rp.subTip.values())[0][1]) == "Your options")
 rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
       plain(rq.actions[1].label) == "Queue 20 · Max 8" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
@@ -2371,6 +2461,39 @@ check("do next: Restock's gain is the scan's profit for the crafts it takes; las
 check("do next: a Restock with no scan has no gold, says to scan, and doesn't outrank a priced one on its past sales",
       nr[777777].gold is None and "scan to price it" in nr[777777].detail
       and [e.go[3].id for e in CH.Next.List().values() if e.title == "Restock"] == [100, 777777])
+# Recommendations use the same options: a scan too old to act on says refresh; a better option is named
+dn = L.eval("""(function()
+  local rows = AuctionIQ.db.characters['Alt-Realm'].professions[99].scan.rows
+  local r = rows[1]
+  local out = {}
+  local function card()
+    for _, e in ipairs(AuctionIQ.Next.List()) do
+      if e.title == 'Restock' and e.go[3].id == 100 then AuctionIQ.Next.AddAlternatives(e); return e end
+    end
+  end
+  r.at = time() - 13 * 3600; AuctionIQ.Next.ClearAlternatives()
+  local c = card(); out.oldGold, out.oldDetail = c.gold, c.detail
+  r.at = time(); AuctionIQ.Next.ClearAlternatives()
+  local P = AuctionIQ.Prices
+  local oH, oS, oBC = P.Held, P.SellValue, AuctionIQ.Scan.BuyOrCraft
+  -- you hold the reagents, and they'd sell for far more than the craft brings; no listing to buy out
+  r.accounts.sales = 100
+  P.Held = function() return 2 end; P.SellValue = function() return 1000000 end
+  AuctionIQ.Scan.BuyOrCraft = function() return nil end; AuctionIQ.Next.ClearAlternatives()
+  c = card(); out.sellDetail, out.sellAlt = c.detail, c.alternatives and c.alternatives.verdict
+  AuctionIQ.Scan.BuyOrCraft = function() return { buy = 1, resell = 5000001, flip = 5000000 } end; AuctionIQ.Next.ClearAlternatives()
+  c = card(); out.flipDetail = c.detail
+  AuctionIQ.Scan.BuyOrCraft = oBC
+  P.Held, P.SellValue = oH, oS
+  r.at, r.accounts.sales = nil, nil; AuctionIQ.Next.ClearAlternatives()
+  return out
+end)()""")
+check("recommendations: a Restock from a scan over 12 hours old has no gold and says to rescan first",
+      dn.oldGold is None and "refresh first: the profession scan is 13 hr old" in dn.oldDetail)
+check("recommendations: when selling your reagents beats crafting, the card says so",
+      "selling your reagents earns more" in dn.sellDetail and dn.sellAlt == "sell")
+check("recommendations: when buying the item out to relist pays more than making it, the card says so",
+      "buying it out to relist pays more" in dn.flipDetail)
 run("AuctionIQ.Ledger.Report, AuctionIQ.Ledger.Available = STUB.oldReport, STUB.oldAvail")
 run("""STUB.oldTimes, STUB.oldAdvice, STUB.oldAvail = AuctionIQ.Ledger.SaleTimes, AuctionIQ.TradingUI.Advice, AuctionIQ.Ledger.Available
 AuctionIQ.Ledger.Available = function() return true end
@@ -3917,6 +4040,93 @@ check("cleanup: saved data for a profession the character dropped goes (Tailorin
       and list(L.eval("STUB.cleanup.professions").values()) == ["Midnight Tailoring"])
 check("cleanup: when the game can't list your professions, nothing is dropped", len(L.eval("STUB.noProfs")) == 0)
 run("table.remove(AuctionIQ.db.postAdvice); AuctionIQ.db.scans = STUB.oldScans")
+
+# Clean up (temporary data): lets go of the session caches and rebuilds the same answers; never touches
+# what you keep. Prune history: TSM's rule (you choose the age, 365 to start, it asks first).
+run("""STUB.ser = function(v, seen)
+  if type(v) ~= 'table' then return tostring(v) end
+  local keys = {}
+  for k in pairs(v) do keys[#keys + 1] = k end
+  table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+  local out = {}
+  for _, k in ipairs(keys) do out[#out + 1] = tostring(k) .. '=' .. STUB.ser(v[k]) end
+  return '{' .. table.concat(out, ',') .. '}'
+end
+local db = AuctionIQ.db
+STUB.keepBefore = STUB.ser({ db.queue, db.settings, db.batches, db.decisions, db.batchForecasts, db.groups, db.ledger, db.competition, db.characters, db.par, db.alerts })
+local L = AuctionIQ.Ledger
+STUB.salesBefore = #L.Records('Sales')
+STUB.byTimeBefore = #L.ByTime('Sales')
+STUB.sumBefore = L.Summary(0).sales
+STUB.recBefore = AuctionIQ.Prices.Get and true
+STUB.tmpDone, STUB.tmpRebuilt = nil, false
+STUB.tmp = AuctionIQ.Cleanup.Temporary(function(r) STUB.tmpDone = r end, function() STUB.tmpRebuilt = true end)
+STUB.tmpSync = STUB.tmp.after == nil
+for _ = 1, 500 do STUB.RunTimers() end
+STUB.keepAfter = STUB.ser({ db.queue, db.settings, db.batches, db.decisions, db.batchForecasts, db.groups, db.ledger, db.competition, db.characters, db.par, db.alerts })
+STUB.salesAfter = #L.Records('Sales')
+STUB.byTimeAfter = #L.ByTime('Sales')
+STUB.sumAfter = L.Summary(0).sales""")
+check("clean up: it lets go of the session caches, measures memory after the collector has run over frames, then rebuilds",
+      L.eval("STUB.tmp.caches") >= 10 and L.eval("STUB.tmp.before") > 0 and L.eval("STUB.tmpSync")
+      and L.eval("STUB.tmpDone.after") > 0 and L.eval("STUB.tmpRebuilt"))
+check("clean up: queue, settings, groups, crafting records, decisions and history are exactly as they were",
+      L.eval("STUB.keepBefore") == L.eval("STUB.keepAfter"))
+check("clean up: TSM's records and their time order rebuild to the same thing, and so do the totals",
+      L.eval("STUB.salesBefore") == L.eval("STUB.salesAfter") and L.eval("STUB.salesAfter") > 0
+      and L.eval("STUB.byTimeBefore") == L.eval("STUB.byTimeAfter") and L.eval("STUB.sumBefore") == L.eval("STUB.sumAfter"))
+run("""STUB.cl = {}
+local oldPrint = AuctionIQ.Print
+AuctionIQ.Print = function(m) STUB.cl.msg = m end
+AuctionIQ.Cleanup.Report()
+for _ = 1, 500 do STUB.RunTimers() end
+AuctionIQ.Print = oldPrint""")
+cmsg = L.eval("STUB.cl.msg")
+check("clean up: the chat line says what it let go of, the memory, and that what you keep is untouched",
+      "caches" in cmsg and "MB" in cmsg and "untouched" in cmsg)
+
+run("""STUB.oldLedger, STUB.oldComp = AuctionIQ.db.ledger, AuctionIQ.db.competition
+local DAY = 86400
+local now = 400 * DAY + 3600
+STUB.pnow = now
+AuctionIQ.db.ledger = { days = {}, worth = {}, exclude = {}, net = true }
+for d = 0, 399 do AuctionIQ.db.ledger.days[d] = { sales = 100, buys = 0, income = 0, expense = 0, sold = 1, items = {} } end
+for d = 380, 399 do AuctionIQ.db.ledger.worth[d] = { gold = 1, inventory = 1 } end
+AuctionIQ.db.ledger.worth[10] = { gold = 1, inventory = 1 }
+AuctionIQ.db.competition = { [1] = { seen = 1, beaten = 0, by = {}, at = now - 2 * DAY }, [2] = { seen = 3, beaten = 1, by = { X = 1 }, at = now - 500 * DAY } }
+STUB.preview = AuctionIQ.Ledger.PruneHistory(365, false, now)
+STUB.daysAfterPreview = 0; for _ in pairs(AuctionIQ.db.ledger.days) do STUB.daysAfterPreview = STUB.daysAfterPreview + 1 end
+STUB.ptext = AuctionIQ.Cleanup.PruneText(365, now)
+STUB.shown = {}
+StaticPopupDialogs = {}
+StaticPopup_Show = function(name) table.insert(STUB.shown, name) end
+AuctionIQ.Cleanup.AskPrune()
+STUB.askDays = STUB.shown[1]
+STUB.daysDefault = AuctionIQ.Cleanup.PRUNE_DAYS
+local oldPrint = AuctionIQ.Print
+AuctionIQ.Print = function() end
+STUB.pruned = AuctionIQ.Cleanup.Prune(365, now)
+STUB.daysLeft = 0; STUB.oldest = math.huge
+for d in pairs(AuctionIQ.db.ledger.days) do STUB.daysLeft = STUB.daysLeft + 1; STUB.oldest = math.min(STUB.oldest, d) end
+-- the archive rebuilding from TSM's records doesn't bring pruned days back
+AuctionIQ.Ledger.ArchiveCommit({ [5] = { sales = 9, buys = 0, income = 0, expense = 0, sold = 1, items = {} }, [399] = { sales = 7, buys = 0, income = 0, expense = 0, sold = 1, items = {} } })
+STUB.back5, STUB.kept399 = AuctionIQ.db.ledger.days[5], AuctionIQ.db.ledger.days[399].sales
+STUB.again = AuctionIQ.Ledger.PruneHistory(365, false, now)
+AuctionIQ.Print = oldPrint
+StaticPopupDialogs, StaticPopup_Show = nil, nil""")
+pv = L.eval("STUB.preview")
+check("prune: TSM's default of 365 days, and it asks how many first",
+      L.eval("STUB.daysDefault") == 365 and L.eval("STUB.askDays") == "AUCTIONIQ_PRUNE_DAYS")
+check("prune: the preview counts what would go (35 day totals, 1 net worth day, 1 competition note) and removes nothing",
+      pv.days == 35 and pv.worth == 1 and pv.rivals == 1 and L.eval("STUB.daysAfterPreview") == 400)
+check("prune: the question says what goes, that crafting records stay, and that it can't be undone",
+      "35 days of sales totals" in L.eval("STUB.ptext") and "Crafting records stay" in L.eval("STUB.ptext") and "can't be undone" in L.eval("STUB.ptext"))
+check("prune: once confirmed, history older than 365 days goes and the last 365 stay",
+      L.eval("STUB.daysLeft") == 365 and L.eval("STUB.oldest") == 35 and L.eval("AuctionIQ.db.competition[2]") is None
+      and L.eval("AuctionIQ.db.competition[1]") is not None and L.eval("AuctionIQ.db.ledger.worth[10]") is None)
+check("prune: the archive doesn't bring pruned days back from TSM's records, and newer days still update",
+      L.eval("STUB.back5") is None and L.eval("STUB.kept399") == 7 and L.eval("STUB.again.days") == 0)
+run("AuctionIQ.db.ledger, AuctionIQ.db.competition = STUB.oldLedger, STUB.oldComp")
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
 print(f"\n{len(fails)} failed" if fails else "\nall passed")

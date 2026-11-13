@@ -179,6 +179,19 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       out.dashGrowth = BENCH_MEM() - m1
       t0 = os.clock(); AuctionIQ.Next.List(); out.nextFirst = (os.clock() - t0) * 1000
       t0 = os.clock(); for i = 1, 5 do AuctionIQ.Next.List() end; out.nextWarm = (os.clock() - t0) * 200
+      -- Clean up: let go of the caches, then the rebuild in the background, then the same Dashboard
+      local before = AuctionIQ.UI.DashboardData(now)
+      local cdone, measured = false, nil
+      t0 = os.clock(); AuctionIQ.Cleanup.Temporary(function(r) measured = r end, function() cdone = true end); out.cleanTime = (os.clock() - t0) * 1000
+      wworst, wframes = 0, 0
+      while not measured and wframes < 10000 do local t1 = os.clock(); STUB.RunTimers(); wworst = math.max(wworst, (os.clock() - t1) * 1000); wframes = wframes + 1 end
+      out.gcWorst, out.gcFrames = wworst, wframes
+      out.cleanFreed = (measured.before - measured.after) / 1024
+      wworst, wframes = 0, 0
+      while not cdone and wframes < 10000 do local t1 = os.clock(); STUB.RunTimers(); wworst = math.max(wworst, (os.clock() - t1) * 1000); wframes = wframes + 1 end
+      out.cleanWorst, out.cleanFrames = wworst, wframes
+      local after = AuctionIQ.UI.DashboardData(now)
+      out.cleanSame = (before.summary.sales == after.summary.sales and before.gold == after.gold and before.summary.sold == after.summary.sold) and 1 or 0
       return out
     end)()""")
     size = f"{n} sales, 5 chars, {r.bytes // 1024} KB csv"
@@ -201,6 +214,13 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     rec("ledger", name, size, "recommendations list, first", r.nextFirst)
     rec("ledger", name, size, "recommendations list, warm", r.nextWarm)
     rec("ledger", name, size, "memory growth, 10 refreshes", r.dashGrowth, "MB")
+    rec("ledger", name, size, "clean up, time", r.cleanTime)
+    rec("ledger", name, size, "clean up, collector worst frame", r.gcWorst)
+    rec("ledger", name, size, "clean up, collector frames", r.gcFrames, "frames")
+    rec("ledger", name, size, "clean up, memory freed (as reported)", r.cleanFreed, "MB")
+    rec("ledger", name, size, "rebuild after clean up, worst frame", r.cleanWorst)
+    rec("ledger", name, size, "rebuild after clean up, frames", r.cleanFrames, "frames")
+    rec("ledger", name, size, "dashboard same after clean up", r.cleanSame, "yes=1")
 
 # 4. Queue and shopping list
 for name, n in (("normal", 10), ("large", 200), ("upper", 1000)):
