@@ -87,6 +87,42 @@ function Next.AddAlternatives(e, now)
 	return e
 end
 
+--- A grouped card ("Restock 9 items") checks its items' options too, the first GROUP_ALT_MAX that
+--- have a scan (each reads stock and sale values per reagent), and says how many have a better option
+--- than making them, or need a fresh scan, by kind. Each item card keeps its own note for the view it opens.
+Next.GROUP_ALT_MAX = 10
+local GROUP_NOTES = {
+	{ "refresh", "%d need a fresh scan first" },
+	{ "sell", "selling the reagents earns more for %d" },
+	{ "flip", "buying out to relist pays more for %d" },
+	{ "keep", "crafting loses at today's prices for %d" },
+}
+function Next.AddGroupAlternatives(e, now)
+	if not (e and e.rows) or e.groupAlternatives then return e end
+	local counts, checked, scanned = {}, 0, 0
+	for _, row in ipairs(e.rows) do
+		if row.scanRow then
+			scanned = scanned + 1
+			if checked < Next.GROUP_ALT_MAX then
+				checked = checked + 1
+				Next.AddAlternatives(row, now)
+				local v = row.alternatives and row.alternatives.verdict
+				if v then counts[v] = (counts[v] or 0) + 1 end
+			end
+		end
+	end
+	e.groupAlternatives = { counts = counts, checked = checked, scanned = scanned }
+	local parts = {}
+	for _, n in ipairs(GROUP_NOTES) do
+		if counts[n[1]] then table.insert(parts, string.format(n[2], counts[n[1]])) end
+	end
+	if #parts > 0 then
+		local of = checked < scanned and string.format("of the first %d checked", checked) or string.format("of the %d items", #e.rows)
+		e.detail = e.detail .. "; " .. of .. ", " .. table.concat(parts, ", ")
+	end
+	return e
+end
+
 -- Card buttons: each does the job itself where it can (queue the craft, open Auctioning).
 local function queueAct(label, charKey, char, row, conc, qty)
 	local e = CH.Queue and CH.Queue.FromScan(charKey, char, row, conc)
@@ -361,6 +397,8 @@ function Next.Ranked(now, max)
 	local all = #out
 	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
 	-- the cards shown say when another option beats making the item
-	for _, e in ipairs(out) do Next.AddAlternatives(e, now) end
+	for _, e in ipairs(out) do
+		if e.rows then Next.AddGroupAlternatives(e, now) else Next.AddAlternatives(e, now) end
+	end
 	return out, all
 end

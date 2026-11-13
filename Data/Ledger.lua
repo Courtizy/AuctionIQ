@@ -751,37 +751,81 @@ function Lg.LastSold()
 end
 
 -- Per item: last sale, expiries since it, and over the last 30 days the auction units sold and
--- expired and the days with any of either. Rebuilt at most once a minute.
-local stats, statsAt
-local function itemStats()
-	local now = GetTime and GetTime() or 0
-	if stats and statsAt and now - statsAt < 60 then return stats end
-	stats, statsAt = {}, now
-	local cut = time() - 30 * DAY
-	local function e(id) local x = stats[id]; if not x then x = { last = 0, since = 0, sold30 = 0, exp30 = 0, days30 = {}, ndays = 0, n = 0, gold = 0 }; stats[id] = x end return x end
+-- expired and the days with any of either. Kept while TSM's records are the same lists (a new list
+-- whenever its text changes) and no record counted in the 30 days has aged out of them: the first
+-- one to age out is `statsEdge`. One walk over every sale, so worth not repeating.
+local stats, statsSales, statsExpired, statsEdge
+local function statsFresh(sales, expiredRecs)
+	return stats and statsSales == sales and statsExpired == expiredRecs and (not statsEdge or time() - 30 * DAY <= statsEdge)
+end
+
+--- Building the per-item stats as steps: job.step(budgetMs) does up to that many milliseconds (all
+--- of it without a budget) and returns the stats once built, else nil. Login's warm-up runs it a few
+--- milliseconds a frame, so the first card or price that asks for a sell chance finds it ready.
+function Lg.StatsJob()
+	local sales, expiredRecs = Lg.Records("Sales"), Lg.Records("Expired")
+	local now = time()
+	local cut = now - 30 * DAY
+	local out, edgeT = {}, nil
+	local phase, i = 1, 1
+	local function edge(t) if not edgeT or t < edgeT then edgeT = t end end
+	local function e(id) local x = out[id]; if not x then x = { last = 0, since = 0, sold30 = 0, exp30 = 0, days30 = {}, ndays = 0, n = 0, gold = 0 }; out[id] = x end return x end
 	local function day(x, t)
 		local d = math.floor(t / DAY)
 		if not x.days30[d] then x.days30[d] = true; x.ndays = x.ndays + 1 end
 	end
-	for _, s in ipairs(Lg.Records("Sales")) do
-		if s.id then
-			local x = e(s.id)
-			if s.time > x.last then x.last = s.time end
-			-- only auction sales are posts that sold: a vendor, trade or mail sale was never listed
-			if s.time >= cut and (s.source == nil or s.source == "Auction") then x.sold30 = x.sold30 + s.quantity; day(x, s.time) end
-			x.n, x.gold = x.n + s.quantity, x.gold + (s.amount or 0)
+	local job = {}
+	function job.step(budget)
+		if statsFresh(sales, expiredRecs) then return stats end
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		local function over(k) return t0 and k % 512 == 0 and clock() - t0 >= budget end
+		if phase == 1 then
+			while i <= #sales do
+				local s = sales[i]
+				if s.id then
+					local x = e(s.id)
+					if s.time > x.last then x.last = s.time end
+					-- only auction sales are posts that sold: a vendor, trade or mail sale was never listed
+					if s.time >= cut and (s.source == nil or s.source == "Auction") then x.sold30 = x.sold30 + s.quantity; day(x, s.time); edge(s.time) end
+					x.n, x.gold = x.n + s.quantity, x.gold + (s.amount or 0)
+				end
+				i = i + 1
+				if over(i) then return nil end
+			end
+			phase, i = 2, 1
 		end
-	end
-	for _, r in ipairs(Lg.Records("Expired")) do
-		if r.id then
-			local x = e(r.id)
-			if r.time >= cut then x.exp30 = x.exp30 + math.max(1, r.quantity or 1); day(x, r.time) end
+		if phase == 2 then
+			while i <= #expiredRecs do
+				local r = expiredRecs[i]
+				if r.id then
+					local x = e(r.id)
+					if r.time >= cut then x.exp30 = x.exp30 + math.max(1, r.quantity or 1); day(x, r.time); edge(r.time) end
+				end
+				i = i + 1
+				if over(i) then return nil end
+			end
+			phase, i = 3, 1
 		end
+		while i <= #expiredRecs do
+			local r = expiredRecs[i]
+			if r.id and r.time > out[r.id].last then out[r.id].since = out[r.id].since + 1 end
+			i = i + 1
+			if over(i) then return nil end
+		end
+		stats, statsSales, statsExpired, statsEdge = out, sales, expiredRecs, edgeT
+		return out
 	end
-	for _, r in ipairs(Lg.Records("Expired")) do
-		if r.id and r.time > stats[r.id].last then stats[r.id].since = stats[r.id].since + 1 end
-	end
-	return stats
+	return job
+end
+
+-- Per item: last sale, expiries since it, and over the last 30 days the auction units sold and
+-- expired and the days with any of either. Kept while TSM's records are the same lists (a new list
+-- whenever its text changes) and no record counted in the 30 days has aged out of them: the first
+-- one to age out is `statsEdge`. One walk over every sale, so worth not repeating.
+local function itemStats()
+	if statsFresh(Lg.Records("Sales"), Lg.Records("Expired")) then return stats end
+	return Lg.StatsJob().step()
 end
 function Lg.ClearStats() stats = nil; parsed = {}; work = {}; byTime = {} end
 
@@ -1004,7 +1048,7 @@ Lg.FRAME_MS = 6
 function Lg.WarmAll(done)
 	Lg.Warm(Lg.KINDS, function()
 		local k = 1
-		local job, sortJob
+		local job, sortJob, statsJob
 		local clock = debugprofilestop or function() return 0 end
 		local function tick()
 			local t0 = clock()
@@ -1020,6 +1064,10 @@ function Lg.WarmAll(done)
 			job = job or Lg.ArchiveJob()
 			local ok, daysDone = pcall(job.step, left())
 			if ok and not daysDone then C_Timer.After(0, tick); return end
+			-- each item's sales and expiries (sell chances), a few milliseconds at a time
+			statsJob = statsJob or Lg.StatsJob()
+			local sok, built = pcall(statsJob.step, left())
+			if sok and not built then C_Timer.After(0, tick); return end
 			-- the rest are small now: one frame each
 			local rest = {
 				function() CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end,
