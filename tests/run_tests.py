@@ -3744,6 +3744,63 @@ check("banking: To bags brings the group's stacks back from the Warband bank", b
 check("banking: a full Warband bank stops the move and says so", bk.fullMoved == 0 and "full" in bk.fullWhy)
 check("banking: the panel beside the bank builds", bk.built)
 
+# Vendoring: the queue's reagents a merchant sells, and junk --------------------------------------
+vd = L.eval("""(function()
+  local keep = { C_Container = C_Container, SL = AuctionIQ.Queue.ShoppingList, GI = C_Item.GetItemInfo, GII = C_Item.GetItemInfoInstant,
+    Path = AuctionIQ.Groups.Path, MF = C_MerchantFrame, money = GetMoney }
+  local G = 10000
+  -- the merchant: 951 at 1g each, 952 in bundles of 5 for 2g, 953 for a currency
+  local shop = { { id = 951, price = G, stack = 1 }, { id = 952, price = 2 * G, stack = 5 }, { id = 953, price = 0, stack = 1, ext = true } }
+  GetMerchantNumItems = function() return #shop end
+  GetMerchantItemID = function(i) return shop[i] and shop[i].id end
+  C_MerchantFrame = { GetItemInfo = function(i) local m = shop[i]; return { price = m.price, stackCount = m.stack, numAvailable = -1, hasExtendedCost = m.ext } end }
+  GetMerchantItemMaxStack = function() return 20 end
+  STUB.merchantBuys = {}
+  BuyMerchantItem = function(i, n) table.insert(STUB.merchantBuys, { i, n }) end
+  GetMoney = function() return 1000 * G end
+  AuctionIQ.Queue.ShoppingList = function() return { { itemID = 951, buy = 25 }, { itemID = 952, buy = 7 }, { itemID = 953, buy = 3 }, { itemID = 954, buy = 4 } } end
+  local V, out = AuctionIQ.Vendoring, {}
+  local list = V.BuyList()
+  out.nBuys = #list
+  local by = {}; for _, b in ipairs(list) do by[b.id] = b end
+  out.b951, out.b952, out.b953 = by[951] and by[951].qty, by[952] and by[952].qty, by[953] ~= nil
+  V.Buy()
+  local calls = {}; for _, c in ipairs(STUB.merchantBuys) do calls[#calls + 1] = c[1] .. "x" .. c[2] end
+  out.calls = table.concat(calls, ",")
+  -- junk: a grey, a reagent the vendor pays more for than the AH, one worth more on the AH, gear, a grouped item
+  local box = { [0] = { { id = 961, n = 2, q = 0 }, { id = 962, n = 10, q = 1 }, { id = 963, n = 1, q = 1 }, { id = 964, n = 1, q = 2 }, { id = 965, n = 5, q = 1 } } }
+  local vendor = { [961] = 5000, [962] = 3000, [963] = 3000, [964] = 90000, [965] = 3000 }
+  STUB.prices["i:962"] = { formula_value = 1000 }; STUB.prices["i:963"] = { formula_value = 100000 }; STUB.prices["i:965"] = { formula_value = 100 }
+  AuctionIQ.Prices.ClearCache()
+  C_Item.GetItemInfo = function(id) return "x", nil, nil, nil, nil, nil, nil, nil, nil, nil, vendor[id] or 0 end
+  C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 964 and 4 or 7 end
+  AuctionIQ.Groups.Path = function(id) return id == 965 and "Mats" or nil end
+  C_Container = { GetContainerNumSlots = function(bag) return box[bag] and #box[bag] or 0 end,
+    GetContainerItemInfo = function(bag, slot) local x = box[bag] and box[bag][slot]
+      return x and { itemID = x.id, stackCount = x.n, quality = x.q } or nil end,
+    UseContainerItem = function(bag, slot) STUB.soldIDs = STUB.soldIDs or {}; table.insert(STUB.soldIDs, box[bag][slot].id); box[bag][slot] = false end }
+  local junk = V.JunkList()
+  local ids = {}; for _, j in ipairs(junk) do ids[#ids + 1] = j.id .. ":" .. j.why end
+  out.junk = table.concat(ids, ",")
+  V.open = true
+  V.Sell(function(sold, gold, left) out.sold, out.gold, out.left = sold, gold, left end)
+  for i = 1, 10 do STUB.RunTimers() end
+  V.Build(); V.Refresh(); out.built = true
+  V.open = false; V.Reset()
+  C_Container, AuctionIQ.Queue.ShoppingList, C_Item.GetItemInfo, C_Item.GetItemInfoInstant = keep.C_Container, keep.SL, keep.GI, keep.GII
+  AuctionIQ.Groups.Path, C_MerchantFrame, GetMoney = keep.Path, keep.MF, keep.money
+  GetMerchantNumItems, GetMerchantItemID, BuyMerchantItem, GetMerchantItemMaxStack = nil, nil, nil, nil
+  STUB.prices["i:962"], STUB.prices["i:963"], STUB.prices["i:965"] = nil, nil, nil; AuctionIQ.Prices.ClearCache()
+  return out
+end)()""")
+check("vendoring: buys what the queue still needs that the merchant sells for gold, bundles rounded up, not currency items",
+      vd.nBuys == 2 and vd.b951 == 25 and vd.b952 == 10 and not vd.b953)
+check("vendoring: buys in the merchant's largest stack, a bundle a purchase", vd.calls == "1x20,1x5,2x1,2x1")
+check("vendoring: junk is greys, and ungrouped non-gear the vendor pays more for than the AH; most gold first",
+      vd.junk == "962:vendor pays more,961:grey")
+check("vendoring: Sell junk sells those stacks and says how much", vd.sold == 2 and vd.gold == 40000 and vd.left == 0)
+check("vendoring: the panel beside the merchant builds", vd.built)
+
 # Deals: listings well under what they resell for ---------------------------------------------
 dl = L.eval("""(function()
   local S, Dl, out = AuctionIQ.Scans, AuctionIQ.Deals, {}
