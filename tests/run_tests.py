@@ -3686,6 +3686,64 @@ run("AuctionIQ.UI.Refresh = STUB.oldRefresh")
 check("ui: opening a page refreshes it once", n1 == 1)
 
 
+# Banking: a group's items between your bags and the Warband bank -----------------------------
+bk = L.eval("""(function()
+  local keep = { C_Container = C_Container, C_Bank = C_Bank, BagIndex = Enum.BagIndex, BankType = Enum.BankType,
+    Items = AuctionIQ.Groups.Items, Tree = AuctionIQ.Groups.Tree }
+  Enum.BagIndex = { ReagentBag = 5, AccountBankTab_1 = 12 }
+  Enum.BankType = { Account = 2 }
+  local box = { [0] = { { id = 901, n = 20 }, { id = 902, n = 5, bound = true }, { id = 903, n = 3 }, false },
+    [12] = { { id = 904, n = 10 }, false, false } }
+  local function side(bag) return bag == 12 and { 12 } or { 0, 1, 2, 3, 4, 5 } end
+  C_Container = {
+    GetContainerNumSlots = function(bag) return box[bag] and #box[bag] or 0 end,
+    GetContainerItemInfo = function(bag, slot) local x = box[bag] and box[bag][slot]
+      return x and { itemID = x.id, stackCount = x.n, isBound = x.bound } or nil end,
+    GetContainerNumFreeSlots = function(bag) local n = 0; for _, x in ipairs(box[bag] or {}) do if not x then n = n + 1 end end; return n end,
+    UseContainerItem = function(bag, slot, unit, bankType)
+      local x = box[bag][slot]
+      local to = bag == 12 and side(0) or { 12 }
+      for _, b in ipairs(to) do for i, y in ipairs(box[b] or {}) do if not y then box[b][i] = x; box[bag][slot] = false; return end end end
+    end }
+  C_Bank = { CanUseBank = function() return STUB.bankOpen end,
+    IsItemAllowedInBankType = function(_, loc) local x = box[loc.bag][loc.slot]; return x and not x.bound end }
+  AuctionIQ.Groups.Items = function(path) return path == "Mats" and { 901, 902, 904 } or {} end
+  AuctionIQ.Groups.Tree = function() return { { path = "Mats", name = "Mats", depth = 0 }, { path = "Other", name = "Other", depth = 0 } } end
+  local B, out = AuctionIQ.Banking, {}
+  STUB.bankOpen = false
+  out.closedOk, out.closedWhy = B.Move("Mats", "bank")
+  STUB.bankOpen = true
+  local c = B.Counts(); out.counts = #c == 1 and c[1].path == "Mats" and c[1].bags == 25 and c[1].bank == 10
+  local plan = B.Plan("Mats", "bank"); out.plan = #plan == 1 and plan[1].id == 901
+  local ok, n = B.Move("Mats", "bank", function(moved, why) out.moved, out.why = moved, why end)
+  out.started = ok and n == 1
+  for i = 1, 10 do STUB.RunTimers() end
+  out.inBank = box[12][2] and box[12][2].id == 901
+  out.boundStays = box[0][2] and box[0][2].id == 902
+  out.otherStays = box[0][3] and box[0][3].id == 903
+  -- back to bags: both of the group's stacks in the Warband bank, while there's room
+  B.Move("Mats", "bags", function(moved, why) out.back, out.backWhy = moved, why end)
+  for i = 1, 10 do STUB.RunTimers() end
+  -- a full Warband bank stops the move and says so
+  box[12] = { { id = 999, n = 1 } }
+  B.Move("Mats", "bank", function(moved, why) out.fullMoved, out.fullWhy = moved, why end)
+  for i = 1, 10 do STUB.RunTimers() end
+  -- the panel beside the bank lists the groups with something to move
+  B.Build(); B.Select("Mats"); B.Refresh()
+  out.built = true
+  C_Container, C_Bank, Enum.BagIndex, Enum.BankType = keep.C_Container, keep.C_Bank, keep.BagIndex, keep.BankType
+  AuctionIQ.Groups.Items, AuctionIQ.Groups.Tree = keep.Items, keep.Tree
+  B.Reset(); STUB.bankOpen = nil
+  return out
+end)()""")
+check("banking: nothing moves without the bank open, and it says so", bk.closedOk is False and "Warband tab" in bk.closedWhy)
+check("banking: each group counts its items in your bags and in the Warband bank", bk.counts)
+check("banking: To Warband bank moves the group's stacks, not soulbound ones or other groups' items",
+      bk.plan and bk.started and bk.moved == 1 and bk.why is None and bk.inBank and bk.boundStays and bk.otherStays)
+check("banking: To bags brings the group's stacks back from the Warband bank", bk.back == 2 and bk.backWhy is None)
+check("banking: a full Warband bank stops the move and says so", bk.fullMoved == 0 and "full" in bk.fullWhy)
+check("banking: the panel beside the bank builds", bk.built)
+
 # Deals: listings well under what they resell for ---------------------------------------------
 dl = L.eval("""(function()
   local S, Dl, out = AuctionIQ.Scans, AuctionIQ.Deals, {}

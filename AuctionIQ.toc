@@ -36,6 +36,7 @@ Data\Forecast.lua
 Operations\Trade\Groups.lua
 Operations\Trade\Auction.lua
 Operations\Trade\AuctionUI.lua
+Operations\Trade\Banking.lua
 Operations\Trade\GroupsUI.lua
 Operations\Trade\TradingUI.lua
 Core\Settings.lua
