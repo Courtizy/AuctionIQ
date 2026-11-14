@@ -8,6 +8,7 @@
 local _, CH = ...
 
 local S = { SHARE = 0.15, KEEP_DAYS = 30, POINTS = { 1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000 } }
+S.version = 0 -- counts every change, so what's worked out from the scans (Deals) knows to redo it
 CH.Scans = S
 
 local function store()
@@ -65,6 +66,7 @@ function S.Record(id, results, commodity)
 	if not all[1] then
 		e.at, e.min, e.market, e.qty, e.ladder = now, nil, nil, 0, nil
 		store()[id] = e
+		S.version = S.version + 1
 		return
 	end
 	table.sort(all, function(a, b) return a[1] < b[1] end)
@@ -82,6 +84,7 @@ function S.Record(id, results, commodity)
 	e.ladderAt = e.ladder and now or nil
 	addDay(e, now)
 	store()[id] = e
+	S.version = S.version + 1
 end
 
 --- Save a browse or full-scan row (cheapest price and quantity only). A full search of the same
@@ -100,6 +103,15 @@ function S.RecordBrowse(id, minPrice, qty)
 	end
 	addDay(e, now)
 	store()[id] = e
+	S.version = S.version + 1
+end
+
+--- An item's cheapest price at its last scan and when that was (min, at), or nil: no table made,
+--- for a walk over every item scanned.
+function S.Cheapest(id)
+	local e = id and CH.db and store()[id]
+	if not e or not e.at then return nil end
+	return e.min, e.at
 end
 
 --- An item's last scan: { min, market, qty, at, age, avg7, change7, days, full, source = "scan" }, or nil.

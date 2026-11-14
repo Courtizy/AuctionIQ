@@ -3686,6 +3686,68 @@ run("AuctionIQ.UI.Refresh = STUB.oldRefresh")
 check("ui: opening a page refreshes it once", n1 == 1)
 
 
+# Deals: listings well under what they resell for ---------------------------------------------
+dl = L.eval("""(function()
+  local S, Dl, out = AuctionIQ.Scans, AuctionIQ.Deals, {}
+  local G = 10000
+  -- resells for 100g (TSM market and the post price), 5 sold a day in the region
+  STUB.prices["i:800"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
+  STUB.prices["i:801"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
+  AuctionIQ.Prices.ClearCache(); Dl.Clear()
+  S.Record(800, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
+  local d = Dl.Evaluate(800)
+  out.buy, out.unit, out.each, out.gain, out.stale, out.commodity = d and d.buy, d and d.unit, d and d.each, d and d.gain, d and d.stale, d and d.commodity
+  -- one listing at 80g: 95g back is under a 30% return
+  S.Record(801, { { price = 80 * G, qty = 1 } }, false)
+  local n, why = Dl.Evaluate(801); out.fair, out.fairWhy = n == nil, why
+  S.Record(801, { { price = 40 * G, qty = 1 } }, false)
+  local g = Dl.Evaluate(801); out.gearBuy, out.gearCommodity = g and g.buy, g and g.commodity
+  -- holding a week of sales already: nothing to buy
+  local oldHeld = AuctionIQ.Par.Held
+  AuctionIQ.Par.Held = function(id) return id == 800 and 40 or oldHeld(id) end
+  local h, hwhy = Dl.Evaluate(800); out.heldNone, out.heldWhy = h == nil, hwhy
+  AuctionIQ.Par.Held = oldHeld
+  -- the list: biggest gain first, kept until a scan is added
+  local list = Dl.List()
+  out.n, out.first = #list, list[1] and list[1].id
+  out.kept = Dl.List() == list
+  S.Record(801, { { price = 41 * G, qty = 1 } }, false)
+  out.redone = Dl.List() ~= list
+  -- an old scan says to search again; a much older one is no deal
+  STUB.now = STUB.now + 2 * 3600; out.oldStale = Dl.Evaluate(800).stale
+  STUB.now = STUB.now + 5 * 3600; out.gone = Dl.Evaluate(800) == nil
+  STUB.now = STUB.now - 7 * 3600
+  -- the AH now: the units still under the deal's most per unit, up to the deal's quantity
+  local live = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
+  out.liveAction, out.liveQty, out.liveCost = live.action, live.qty, live.cost
+  local moved = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 90 * G, qty = 3 } }, true)
+  out.movedAction, out.movedWhy = moved.action, moved.why
+  local item = AuctionIQ.AuctionUI.DecideDeal({ id = 801, buy = 1, each = 95 * G }, { { price = 40 * G, qty = 1 } }, false)
+  out.itemAction, out.itemWhy = item.action, item.why
+  -- the Dashboard: worked out in the background, then a card with the gain
+  Dl.Clear(); AuctionIQ.Next.List()
+  for i = 1, 20 do STUB.RunTimers() end
+  for _, e in ipairs(AuctionIQ.Next.List()) do
+    if e.title == "Buy and relist" and e.go[3].id == 800 then out.card, out.cardGold = e.detail, e.gold end
+  end
+  return out
+end)()""")
+check("deals: a commodity under value buys the ladder's units that stay under a 30% return on what one brings back (95g after the cut)",
+      dl.buy == 1 and dl.unit == 500000 and dl.each == 950000 and dl.gain == 450000 and dl.commodity and not dl.stale)
+check("deals: a listing that doesn't return 30% is no deal", dl.fair and "not under value" in dl.fairWhy)
+check("deals: an item that isn't a commodity is one listing, the cheapest", dl.gearBuy == 1 and not dl.gearCommodity)
+check("deals: with a week of sales already held, there's nothing to buy", dl.heldNone and "week" in dl.heldWhy)
+check("deals: the list puts the biggest gain first and is kept until a scan is added", dl.n == 2 and dl.first == 801 and dl.kept and dl.redone)
+check("deals: a scan over 30 minutes old says to search again; over 6 hours it's no deal", dl.oldStale and dl.gone)
+check("deals at the AH: buys the units still under the deal's price (3 at 50g, 2 at 60g)", dl.liveAction == "buy" and dl.liveQty == 5 and dl.liveCost == 2700000)
+check("deals at the AH: a listing that moved over the price is skipped, saying so", dl.movedAction == "skip" and "gone" in dl.movedWhy)
+check("deals at the AH: an item that isn't a commodity is left to the AH's own list", dl.itemAction == "skip" and "not a commodity" in dl.itemWhy)
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; AuctionIQ.Deals.Clear(); SlashCmdList.AUCTIONIQ('deals'); for i = 1, 20 do STUB.RunTimers() end; AuctionIQ.Print = STUB.oldPrint")
+pd = [str(t) for t in L.globals().STUB.printed.values()]
+check("/aiq deals prints the deals, biggest first, once worked out in the background", any("deals, biggest first" in t for t in pd) and any("each brings" in t for t in pd))
+check("deals on the Dashboard: a card with the gain from buying and relisting", dl.card is not None and "each brings" in dl.card and dl.cardGold == 450000)
+run("STUB.prices['i:800'], STUB.prices['i:801'] = nil, nil; AuctionIQ.db.scans[800], AuctionIQ.db.scans[801] = nil, nil; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()")
+
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob
 check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1e-9 and abs(P.BetaCDF(0.3, 1, 1) - 0.3) < 1e-9

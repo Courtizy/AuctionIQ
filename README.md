@@ -36,6 +36,7 @@ makes you a better goblin.
 - **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules
 - **Post, cancel and shop** beside the Auction House, one click at a time, never undercutting your own characters
 - **A craft queue and shopping list** for every character, with stock targets that cover a week of sales
+- **Deals**: listings well under what the item resells for, from everything the AH has shown you (your searches, TSM's full scans), with the Deals button beside the AH to search them again and buy
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
@@ -106,6 +107,8 @@ Your craft results (`/aiq results`) keep three stages, each on one basis it name
 
 **How many to make?** The Craft card's Suggested row keeps three numbers apart: how many you can make, how many you can afford, and how many AuctionIQ suggests. The suggestion is only as specific as the evidence. With a few weeks of your own sales it gives a size ("Make 12"). With thin evidence it says so and offers a small trial covering about two days of sales ("Try 4"). When your stock already covers the next few days it says "Hold off", and how many days your stock covers. Hover the row to see what it rests on, your expected week at 5, 10 and 20 (and at the quantity you set), the assumptions, and what would change the suggestion. It is optional: set any quantity with the stepper and queue it. When you queue a different number, AuctionIQ saves both. Accounting > Reports > Performance > Batch results then judges the batch against what you chose, and its hover says "You chose 20 (suggested 8)" with what the suggested size would have brought in by now (modeled), so you can see whether going your own way paid off. The Craft pane in Compare crafts uses the same suggestion and shows it beside a Dashboard hand-off's quantity when the two differ.
 
+**Deals.** A deal is a listing you can buy and relist for at least a 30% return on what it costs and at least 10g. What one resells for is the lower of TSM's realm market value and the price AuctionIQ would post at, not chvalue, which follows the cheapest listing and so would call any cheap listing fair. What it brings back is that price after the AH cut, the deposits you expect to lose to expiries and the gold tied up while it sells. A commodity buys the units of its last search that stay under that return; anything else is its one cheapest listing. A deal never buys more than a week of sales, less what you hold and have up. Scans over 30 minutes old show no gold on the Dashboard and say to search again; over 6 hours they're dropped. Beside the AH, **Deals** searches the top 20 again and lines up the buys under the same price: Buy for a quote, then Confirm. Gear and pets aren't commodities, so the AH buys them from its own list. `/aiq deals` lists the top ten in chat. The list is worked out a few milliseconds a frame after scans, so a full scan of 20,000 items doesn't stall the game.
+
 **Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. A grouped card ("Restock 9 items") checks the first 10 of its items that have a scan, and counts the ones that need a fresh scan or have a better option by kind, such as "of the 9 items, 2 need a fresh scan first, selling the reagents earns more for 1". Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
@@ -150,6 +153,8 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 `/aiq minimap` - hide or show the minimap button<br>
 `/aiq cleanup` - let go of speed caches and run the saved data cleanup now (the saved part also runs at every logout)<br>
 `/aiq prune 365` - remove AuctionIQ history older than 365 days, after showing what goes and asking<br>
+`/aiq deals` - listings well under what they resell for, biggest gain first<br>
+`/aiq orders` - what the advisor makes of each crafting order, kept in the saved variables for a bug report<br>
 `/aiq perf` - memory and time per event, for reporting slowness
 
 ## Roadmap

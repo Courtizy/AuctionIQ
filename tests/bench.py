@@ -278,6 +278,33 @@ end)()""")
 if not r["none"]:
     rec("quantity decision", "normal", "suggest + 5/10/20 explore", "card first draw", r.one)
 
+# 5c. Deals over a full scan's worth of items (20k browse rows, 1 in 50 under value)
+for name, n in (("normal", 2000), ("large", 20000)):
+    r = L.eval(f"""(function()
+      local S, G = AuctionIQ.Scans, 10000
+      local keep = AuctionIQ.db.scans
+      AuctionIQ.db.scans = {{}}
+      for i = 1, {n} do
+        local id = 500000 + i
+        STUB.prices["i:" .. id] = {{ formula_value = 100 * G, mat = 100 * G, sold = 3 }}
+        S.RecordBrowse(id, (i % 50 == 0) and 40 * G or 95 * G, 5)
+      end
+      AuctionIQ.Prices.ClearCache(); AuctionIQ.Deals.Clear()
+      local t0 = os.clock(); local list = AuctionIQ.Deals.List(); local one = (os.clock() - t0) * 1000
+      AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()
+      AuctionIQ.Demand.Warm() -- as login's warm-up leaves it
+      local job, worst, frames, done = AuctionIQ.Deals.Job(), 0, 0, nil
+      while not done and frames < 100000 do local t1 = os.clock(); done = job.step(4); worst = math.max(worst, (os.clock() - t1) * 1000); frames = frames + 1 end
+      for i = 1, {n} do STUB.prices["i:" .. (500000 + i)] = nil end
+      AuctionIQ.db.scans = keep; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()
+      return {{ one = one, worst = worst, frames = frames, found = #list }}
+    end)()""")
+    size = f"{n} items scanned"
+    rec("deals", name, size, "list, in one go", r.one)
+    rec("deals", name, size, "background, worst frame", r.worst)
+    rec("deals", name, size, "background, frames", r.frames, "frames")
+    rec("deals", name, size, "deals found (capped at 50)", r.found, "deals")
+
 # 6. SavedVariables size (AuctionIQDB as it stands after the runs above)
 size = L.eval("""(function()
   local seen, n = {}, 0
