@@ -57,7 +57,7 @@ function SO.Refresh()
 	return n
 end
 
-local function later() C_Timer.After(0, SO.Refresh) end
+local function later() C_Timer.After(0, function() CH.Measure("profession: spec overlay", SO.Refresh) end) end
 
 local function hook()
 	if hooked then return end

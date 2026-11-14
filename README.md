@@ -34,7 +34,7 @@ makes you a better goblin.
 
 **Trade**
 - **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules
-- **Post, cancel and shop** beside the Auction House, one click at a time, never undercutting your own characters
+- **Buy beside the Auction House** what TSM doesn't know to buy: your craft queue's reagents, priced by walking the listings and skipped when they're 25% over the usual price, and the top deals, each one click for a quote and one to confirm. Post and cancel with TSM's Auctioning tab: Ready to post reads the same operations, so the prices match, and adds the whole Warband's live auctions to each cap
 - **A craft queue and shopping list** for every character, with stock targets that cover a week of sales
 - **Deals**: listings well under what the item resells for, from everything the AH has shown you (your searches, TSM's full scans), with the Deals button beside the AH to search them again and buy
 - **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted (Operations > Trade)
@@ -72,12 +72,12 @@ makes you a better goblin.
 
 ## Your first 10 minutes
 
-1. **Open each profession window once** on each crafter, so AuctionIQ learns your recipes, stats and specialization.
+1. **Open each profession window once** on each crafter, so AuctionIQ learns your recipes, stats and specialization. It reads every recipe the profession has a few milliseconds a frame, and not again for five minutes, so opening the window doesn't stall.
 2. **Visit the Auction House** and let TSM (or your own searches) look at prices. AuctionIQ keeps what the AH shows you and uses it beside TSM's numbers.
 3. **Rank your recipes.** With a profession open, type `/aiq scan`. Every recipe is listed by gold a day, with and without Concentration.
 4. **Read the craft card.** Pick a recipe and the card beside the profession window shows the quality to aim for, the reagents to use, the profit and where that estimate could go wrong. Flip the Concentrate switch to compare.
 5. **Queue it.** Add the craft to the queue. The shopping list fills in with the reagents you're missing.
-6. **Buy and post at the AH.** The panel beside the Auction House buys the shopping list, then posts what you've made, one click each.
+6. **Buy and post at the AH.** The panel beside the Auction House buys the shopping list, one click each. Post what you've made with TSM's Post scan.
 7. **Check the Dashboard** (`/aiq`) whenever you log in: it lists what deserves your attention, ranked by what acting now is expected to add.
 
 ## How the numbers work
@@ -150,7 +150,7 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 
 **I updated and nothing changed.** Restart the game completely; `/reload` doesn't load new addon files.
 
-**It feels slow.** Type `/aiq perf` and include what it prints when you [open an issue](https://github.com/Courtizy/AuctionIQ/issues).
+**It feels slow.** Type `/aiq perf` and include what it prints when you [open an issue](https://github.com/Courtizy/AuctionIQ/issues). The costliest 20 timings are also saved at logout or `/reload`, under `debug.perf` in `WTF/Account/<account>/SavedVariables/AuctionIQ.lua`.
 
 ## Chat Commands
 

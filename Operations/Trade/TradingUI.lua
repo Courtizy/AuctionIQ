@@ -177,12 +177,6 @@ function TUI.PostDetail(d)
 				return true, "Searching the AH for " .. name .. "..."
 			end }
 	end
-	actions[#actions + 1] = { label = "Review at Auction House", tip = "Build the AH panel's post list: it posts with the same rule check as this table, one press each.",
-		run = function()
-			if not ahOpen() then return false, "Open the auction house: AuctionIQ's panel beside it posts with these rules." end
-			if CH.AuctionUI and CH.AuctionUI.PostScan then CH.AuctionUI.PostScan() end
-			return true, "Building your post list at the AH."
-		end }
 	return { kicker = "NEXT MOVE", title = name, item = r.id or false, sub = T.Color("muted", r.path or ""),
 		figures = { { "PRICE", r.price and T.Color("gold", M(r.price)) or T.Color("muted", "-") },
 			{ "AH NOW", r.ah and M(r.ah) or T.Color("muted", "no scan") },
@@ -340,7 +334,7 @@ local function shoppingRows(ctx)
 	end
 	if not out[1] then return out, T.Color("muted", "Nothing to buy: the queue is empty or you hold every reagent.") end
 	return out, string.format("%d reagents to buy, about %s (planned purchase budget).", buys, money(total))
-		.. T.Color("muted", "   At the AH, Auctioning's Shop queue buys them.")
+		.. T.Color("muted", "   At the AH, the buying panel's Shop queue buys them.")
 end
 
 --- Restock plans: the queue as it is against a lean plan of a few days' sales, each run through the

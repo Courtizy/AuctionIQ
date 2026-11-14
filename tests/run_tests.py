@@ -66,7 +66,7 @@ check("tooltip shows value, buy now / post and profit",
 run('AuctionIQ.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
-run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.Fire("TRADE_SKILL_LIST_UPDATE"); STUB.RunTimers()')
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.Fire("TRADE_SKILL_LIST_UPDATE"); STUB.RunTimers(); STUB.RunTimers()')
 p = me.professions[2906]
 check("profession and Concentration recorded", p is not None and p.conc == 400 and p.concMax == 1000)
 crafts = list(p.crafts.values())
@@ -955,6 +955,34 @@ run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 cd = list(CH.Cooldowns.All().values())
 check("cooldowns recorded and listed", len(cd) == 1 and cd[0].name == "Phoenix Oil" and cd[0].ready == False)
 
+# The recipe walk: a profession's recipes over frames, and not again within a few minutes
+wk = L.eval("""(function()
+  local CH, P = AuctionIQ, AuctionIQ.Professions
+  local p = CH.Me().professions[2906]
+  local frames, keepMs, keepIDs = 0, P.WALK_MS, STUB.recipeIDs
+  local ids = {}
+  for i = 1, 40 do ids[i] = ({ 1, 2, 3, 10, 11 })[(i - 1) % 5 + 1] end
+  STUB.recipeIDs = ids
+  P.WALK_MS = 0 -- a pause every 8 recipes
+  local keepClock = debugprofilestop
+  debugprofilestop = function() return os.clock() * 1000 end
+  local best = CH.BestCrafts()
+  p.walkAt = nil
+  local started = P.Walk(2906, p, true)
+  local doneAfter
+  for i = 1, 20 do STUB.RunTimers(); frames = frames + 1; if p.walkAt and not doneAfter then doneAfter = frames end end
+  P.WALK_MS, STUB.recipeIDs, debugprofilestop = keepMs, keepIDs, keepClock
+  local again = P.Walk(2906, p)
+  local cd = p.cooldowns[1]
+  local same = #best == #p.crafts
+  for i, x in ipairs(best) do same = same and p.crafts[i].recipeID == x.recipeID and p.crafts[i].profit == x.profit end
+  return { started = started, frames = doneAfter, same = same, again = again, cd = cd and cd.name }
+end)()""")
+check("recipe walk: spread over frames, a pause every 8 recipes, and the same best crafts", wk.started and wk.frames == 5 and wk.same)
+check("recipe walk: not again within a few minutes, but its cooldowns are read again", wk.again is False and wk.cd == "Phoenix Oil")
+perf = L.eval("(function() STUB.Fire('PLAYER_LOGOUT'); return AuctionIQ.db.debug and AuctionIQ.db.debug.perf end)()")
+check("perf: the costliest timings are kept in the saved variables at logout", perf is not None and len(list(perf.by.values())) >= 1)
+
 # Craft results log
 CH.AdvisorUI.Show(10)
 run('C_TradeSkillUI.CraftRecipe(10, 1, {}, nil, nil, false)')
@@ -1615,10 +1643,6 @@ check("auction: skip when the cheapest is under your min", d.action == "skip" an
 run("AuctionIQ.Auction.RecordOwned({ { id = 302, qty = 3 } })")
 d = CH.Auction.Decide(302, L.eval("{ }"), 10)
 check("auction: the Warband's live auctions count toward the cap", CH.Auction.Listed(302) == 3 and d.qty == 2 and d.price == 3000000)
-c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = true } }"))
-check("cancel: your own alts never trigger a repost", c.action == "keep")
-c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 2950000, qty = 1, mine = false } }"))
-check("cancel: someone else cheaper does", c.action == "cancel")
 # Formulas in TSM's syntax
 FV = lambda f, id=302: L.eval(f"AuctionIQ.Formula.Value({f!r}, {id})")
 check("formula: money, percent, functions", FV("1g50s") == 15000 and FV("150% 2g") == 30000 and FV("max(1g, 2g, 3s)") == 20000
@@ -1702,12 +1726,6 @@ check("import: settings AuctionIQ can't follow are reported", imp.unsupported["F
 head, lines = L.eval("AuctionIQ.Groups.ImportSummary(AuctionIQ.Groups.ImportTSM())")
 check("import: the summary names each difference", "operations" in head and any("Flask Op differs" in l for l in lines.values()))
 check("operations: the first that applies to this character is used", L.eval("select(2, AuctionIQ.Groups.Operation(302))") == "Flask Op")
-c = CH.Auction.DecideCancel(302, 3500000, L.eval("{ { price = 3400000, qty = 1, mine = false } }"))
-check("cancel: an operation that doesn't cancel undercut auctions keeps them", c.action == "keep" and "doesn't cancel" in c.why)
-c = CH.Auction.DecideCancel(302, 3000000, L.eval("{ { price = 3000000, qty = 1, mine = true } }"))
-check("cancel: repost higher when the operation would post 10g+ above yours", c.action == "cancel" and "repost higher" in c.why)
-c = CH.Auction.DecideCancel(302, 3100000, L.eval("{ }"))
-check("cancel: not when the gain is under the threshold", c.action == "keep")
 run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'ignore'")
 d = CH.Auction.Decide(302, L.eval("{ { price = 100, qty = 1, mine = false }, { price = 3600000, qty = 3, mine = false } }"), 10)
 check("rules: ignore auctions below min undercuts the next seller", d.action == "post" and d.price == 3599900)
@@ -2065,45 +2083,18 @@ if prow:
     det = CH.TradingUI.PostDetail(prow[0])
     labels = [plain(x[1]) for x in det.rows.values()]
     check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
-          "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels
-          and any(plain(a.label) == "Review at Auction House" for a in det.actions.values()))
+          "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels)
 check("auction panel builds", CH.AuctionUI.Build() is not None)
-# Posting waits for the AH's answer
-run("""
-STUB.ahPosts = {}
-AuctionIQ.Auction.BagSlots = function(id) return STUB.owlBags > 0 and { { bag = 0, slot = 1, count = 1 } } or {} end
-STUB.owlBags = 2
-""")
-run("""
-local AUI = AuctionIQ.AuctionUI
-local plan = AUI.Plan()
-for k in pairs(plan) do plan[k] = nil end
-table.insert(plan, { id = 302, d = { action = "post", qty = 2, price = 11000099, duration = 2, why = "undercutting" } })
-""")
-L.execute("AuctionIQ.AuctionUI.PostNext()")
-pp = L.eval("STUB.ahPosts[1]")
-e = L.eval("AuctionIQ.AuctionUI.Plan()[1]")
-check("post: whole silver only, one item per click, not done until the AH answers",
-      pp.buyout == 11000000 and pp.qty == 1 and not e.done)
-L.execute("AuctionIQ.AuctionUI.PostNext()")
-check("post: no second post while one is waiting", L.eval("#STUB.ahPosts") == 1)
-run('STUB.owlBags = 1; STUB.Fire("AUCTION_HOUSE_AUCTION_CREATED", 1)')
-check("post: the AH's confirmation counts it, the rest stay to post", e.posted == 1 and not e.done and "1 of 2" in e.d.why)
-L.execute("AuctionIQ.AuctionUI.PostNext()")
-run('STUB.Fire("UI_ERROR_MESSAGE", 1, "Item not found"); STUB.RunTimers()')
-check("post: no confirmation and still in bags means failed, with the game's reason",
-      e.failed and e.done and e.d.why == "Item not found")
-
-# A long post scan scrolls, and every row (not only the first) explains itself on hover
+# A long buy list scrolls, and every row (not only the first) explains itself on hover
 run("""
 local plan = AuctionIQ.AuctionUI.Plan()
 for k in pairs(plan) do plan[k] = nil end
-for i = 1, 25 do table.insert(plan, { id = 302, other = 90000, d = { action = "skip", why = "row " .. i } }) end
+for i = 1, 25 do table.insert(plan, { id = 302, d = { action = "skip", qty = 2, unit = 90000, why = "row " .. i } }) end
 AuctionIQ.AuctionUI.Refresh()
 """)
 h1 = [plain(l[1]) for l in L.eval("AuctionIQ.AuctionUI.HoverLines(1)").values()]
-check("auction hover: the why in full, the cheapest rival and the operation's prices",
-      "Skip: row 1" in h1 and "Cheapest outside your account" in h1 and any(x.startswith("Operation") for x in h1) and "  Min / normal / max" in h1)
+check("buying hover: the why in full, what it buys and the usual price",
+      "Skip: row 1" in h1 and "Buys" in h1 and "Usual price (chmat)" in h1)
 check("auction hover: the last row has its own story too", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(18)")[2][1]) == "Skip: row 18")
 run("AuctionIQ.AuctionUI.Build().scripts.OnMouseWheel(nil, -1)")
 check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(1)")[2][1]) == "Skip: row 4")
@@ -3654,26 +3645,10 @@ TradeSkillMasterDB["r@Emerald Dream@internalData@csvSales"], TradeSkillMasterDB[
 AuctionIQ.db.batches, AuctionIQ.db.decisions = STUB.atKeep.batches, STUB.atKeep.decisions
 AuctionIQ.Ledger.ClearStats(); AuctionIQ.Forecast.Clear(); AuctionIQ.Log.Clear()""")
 
-# posting: a confirmed post counts toward the cap before the owned list comes back
-run("AuctionIQ.db.auctions = {}; AuctionIQ.Auction.Posted(971, 5)")
-check("auctions: fresh posts count before the owned list updates", L.eval("AuctionIQ.Auction.Listed(971)") == 5)
-run("AuctionIQ.db.auctions = {}")
-
 # gear with no copy in the bags is searched as an item, not a commodity
+run("STUB.oldBagSlots = AuctionIQ.Auction.BagSlots; AuctionIQ.Auction.BagSlots = function() return {} end")
 check("auction search: gear at an item level isn't a commodity", L.eval("AuctionIQ.Auction.IsCommodity(999999, 645)") is False)
-
-# cancels wait for the AH
-run("""STUB.cancelled = nil; C_AuctionHouse.CancelAuction = function(id) STUB.cancelled = id end""")
-run("""local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
-table.insert(plan, { id = 302, auctionID = 4242, d = { action = 'cancel', why = 'undercut' } })""")
-run("AuctionIQ.AuctionUI.CancelNext()")
-pend = L.eval("AuctionIQ.AuctionUI.Plan()[1].done")
-run("STUB.Fire('AUCTION_CANCELED', 4242)")
-check("cancel: a row is done only once the AH says it's cancelled", L.eval("STUB.cancelled") == 4242 and not pend and L.eval("AuctionIQ.AuctionUI.Plan()[1].done") is True)
-run("""table.insert(AuctionIQ.AuctionUI.Plan(), { id = 302, auctionID = 4243, d = { action = 'cancel', why = 'undercut' } })
-AuctionIQ.AuctionUI.CancelNext(); STUB.RunTimers()""")
-check("cancel: no answer from the AH marks it failed, not done", L.eval("AuctionIQ.AuctionUI.Plan()[2].failed") is True)
-run("local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; C_AuctionHouse.CancelAuction = nil")
+run("AuctionIQ.Auction.BagSlots = STUB.oldBagSlots")
 
 # a fulfilled order leaves the cache, and an old sighting isn't live
 run("""AuctionIQ.Orders.cache = {}; AuctionIQ.Orders.seen = {}
@@ -4530,13 +4505,12 @@ check("demand: listed days are saved once each, in order, and pruned to the last
       len(days) == 60 and days == sorted(days) and len(set(days)) == 60)
 run("AuctionIQ.db.exposure = {}; AuctionIQ.Auction.RecordOwned({ { id = 880005, qty = 2 } })")
 check("demand: your live auctions mark today as a listed day", len(list(L.eval("AuctionIQ.db.exposure[880005] or {}").values())) == 1)
-run("AuctionIQ.db.exposure = {}; AuctionIQ.Auction.Posted(880006, 1)")
+run("AuctionIQ.db.exposure = {}")
 b0 = L.eval("(function() AuctionIQ.Demand.Warm(); return AuctionIQ.Demand.builds end)()")
 run("AuctionIQ.Demand.Mark(880007)")
 e7 = E(880007)
 check("demand: a new listed day updates the index in place, without walking the sales again",
       e7.listed == 1 and L.eval("AuctionIQ.Demand.builds") == b0)
-check("demand: a confirmed post marks today as a listed day", len(list(L.eval("AuctionIQ.db.exposure[880006] or {}").values())) == 1)
 check("demand: the scan's daily units are the estimate's", CH.Scan.DailyUnits(880001) == E(880001).units and CH.Scan.DailyUnits(None) == 0)
 ev = D.EvidenceText(D.Evidence(880001))
 check("demand: the evidence line says where the sales a day come from", ev.volume.startswith("Sales: ") and "region" in ev.volume)

@@ -1,9 +1,9 @@
--- Auctioning: post and cancel by your groups' operations, with the whole Warband as one seller.
+-- Auctioning decisions by your groups' operations (TSM's Auctioning rules), with the whole Warband as
+-- one seller, for Ready to post and the tooltip. Posting and cancelling are TSM's Auctioning tab.
 --   * a listing the AH marks as yours (any character on the account) is never undercut: if yours
 --     is the cheapest, a new post matches it
 --   * every character's live auctions count toward an item's cap
---   * the cancel scan only reposts when someone outside your account is cheaper
--- Posting and cancelling take one click each (a Blizzard rule); searching runs on its own.
+-- Searches run on their own; every AH search answered is saved as a scan.
 local _, CH = ...
 
 local A = {}
@@ -234,32 +234,6 @@ function A.PostCheck(id, level)
 	return out
 end
 
---- Whether to cancel one of your auctions: { action = "cancel"|"keep", why }. As TSM's canceling:
----   * undercut by someone outside the account: cancel to repost under them, unless the operation
----     doesn't cancel undercut auctions or beating them would go under your min
----   * not undercut, and the operation cancels to repost higher: cancel when what it would post at
----     now is above your price by the threshold or more
-function A.DecideCancel(id, price, results, level)
-	local p = CH.Groups.Prices(id, nil, level)
-	local other = competition(results, p)
-	if other and other < price then
-		if not p.cancelUndercut then return { action = "keep", why = (p.op or "its operation") .. " doesn't cancel undercut auctions" } end
-		local repost = other - p.undercut
-		if p.min and repost < p.min then return { action = "keep", why = "beating them would go under your min" } end
-		return { action = "cancel", why = string.format("undercut: %s vs your %s", CH.FormatMoney(other), CH.FormatMoney(price)) }
-	end
-	if p.cancelRepost and p.repostThreshold and p.post then
-		-- what it would post at with your own listing out of the way
-		local others = {}
-		for _, r in ipairs(results or {}) do if not r.mine then others[#others + 1] = r end end
-		local pp = A.PostPrice(p, others)
-		if pp.action == "post" and pp.price - price >= math.max(1, p.repostThreshold) then
-			return { action = "cancel", why = string.format("repost higher: %s vs your %s", CH.FormatMoney(pp.price), CH.FormatMoney(price)) }
-		end
-	end
-	return { action = "keep", why = "still cheapest outside your account" }
-end
-
 -- The game side --------------------------------------------------------------------------------
 local AH = C_AuctionHouse
 
@@ -386,31 +360,6 @@ function A.InBags(id, level)
 	local n = 0
 	for _, s in ipairs(A.BagSlots(id, level)) do n = n + (s.count or 1) end
 	return n
-end
-
---- Post one decision (must run from a click). Sends it and returns how many it asked to list, or
---- nil when there is nothing to post. Whether the AH took it comes back as an event (see AuctionUI).
-function A.Post(id, d, level)
-	local slots = A.BagSlots(id, level)
-	if not slots[1] or not ItemLocation then return nil end
-	local loc = ItemLocation:CreateFromBagAndSlot(slots[1].bag, slots[1].slot)
-	local price = math.max(100, math.floor(d.price / 100) * 100)
-	if isCommodity(id, level) then
-		AH.PostCommodity(loc, d.duration, d.qty, price)
-		return d.qty
-	end
-	AH.PostItem(loc, d.duration, 1, nil, price)
-	return 1
-end
-
---- Count a post the AH confirmed toward this character's live auctions.
-function A.Posted(id, n)
-	local rec = store()[me()] or { at = time(), items = {} }
-	rec.items[id] = (rec.items[id] or 0) + n
-	rec.at = rec.at or time()
-	rec.realm = realm()
-	store()[me()] = rec
-	if CH.Demand then CH.Demand.Mark(id) end
 end
 
 --- Ask the AH for your auctions; calls back with { { auctionID, id, qty, price } }.

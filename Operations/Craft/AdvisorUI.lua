@@ -1949,7 +1949,7 @@ local function hook()
 				C_Timer.After(0, function()
 					local id = pendingRecipe
 					pendingRecipe = nil
-					if id then AUI.Show(id) end
+					if id then CH.Measure("profession: craft card", AUI.Show, id) end
 				end)
 			end
 		end, AUI)

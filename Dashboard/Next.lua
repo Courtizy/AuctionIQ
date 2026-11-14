@@ -132,7 +132,7 @@ function Next.AddGroupAlternatives(e, now)
 	return e
 end
 
--- Card buttons: each does the job itself where it can (queue the craft, open Auctioning).
+-- Card buttons: each does the job itself where it can (queue the craft, search the deals).
 local function queueAct(label, charKey, char, row, conc, qty)
 	local e = CH.Queue and CH.Queue.FromScan(charKey, char, row, conc)
 	if not e then return nil end
@@ -143,18 +143,7 @@ local function queueAct(label, charKey, char, row, conc, qty)
 	end }
 end
 
-local function postAct(label)
-	return { label = label, run = function()
-		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
-			CH.AuctionUI.Build():Show()
-			CH.AuctionUI.PostScan()
-			return true, "Post scan running beside the AH"
-		end
-		return false, "Open the Auction House first, then press this again"
-	end }
-end
-
--- Search the deals on the AH and line up the buys (Auctioning's Deals button).
+-- Search the deals on the AH and line up the buys (the buying panel's Deals button).
 local function dealAct()
 	return { label = "Deals", run = function()
 		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
@@ -312,7 +301,7 @@ function Next.List(now)
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
 					value = each and Next.Value("gain", each * a.qty, string.format("%d posted, each after the cut and expected deposits", a.qty)) or nil,
 					evidence = Next.Value("pastSales", e.gold, string.format("%d sold in 30 days, before the cut", e.sold)),
-					tier = 1, act = postAct("Post"),
+					tier = 1,
 					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
 					go = { "operations", "post", (function()
 						local a = postCall(e.id)
@@ -337,7 +326,7 @@ function Next.List(now)
 				local each = postedEach(e.id)
 				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n),
 					value = each and Next.Value("gain", each * e.n, string.format("%d reposted, each after the cut and expected deposits", e.n)) or nil, tier = 2,
-					risk = "it already expired once at this price", act = postAct("Repost"),
+					risk = "it already expired once at this price",
 					go = { "operations", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
 			end
 			for _, e in ipairs(r.stale or {}) do
