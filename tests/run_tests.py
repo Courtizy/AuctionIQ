@@ -1059,6 +1059,19 @@ check("batch: a big one can't sell in a week: cash back stays under spend, stock
       bo[1].recover == 0 and bo[1].spend == 5000 and 55 <= bo[1].left <= 75 and bo[1].cashBack.p50 < 5000 and bo[1].leftValue == bo[1].left * 95)
 bo2 = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
 check("batch: the same batch gives the same answer each time", bo2[1].net.p50 == bo[1].net.p50)
+# Multicraft and Resourcefulness odds: 30% Multicraft (1 to 3 extra) and 25% Resourcefulness saving
+# 20 a proc, over 100 crafts that all sell: about 100 x (1 + 0.3 x 2) = 160 items, 100 x 0.25 x 20 saved
+bp = L.eval("""{ made = 1, mc = 0.3, maxExtra = 3, res = 0.25, saved = 20, price = 100, deposit = 0, unit = 95, daily = 1000, seed = 5,
+  reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }""")
+bq = list(D.Batch(bp, L.eval("{ sizes = { 100 }, runs = 600, price = 0 }")).values())[0]
+exp_items = 100 * (1 + 0.3 * (1 + (3 - 1) / 2))
+exp_net = exp_items * 100 * CH.AH_CUT - (5000 - 100 * 0.25 * 20)
+check("batch: Multicraft's odds and extras give about the expected items (160 for 100 crafts)", abs(bq["items"] - exp_items) <= 6)
+check("batch: Resourcefulness and Multicraft move the median net to about its expectation, with a spread",
+      abs(bq.net.p50 - exp_net) < 0.05 * exp_net and bq.net.p10 < bq.net.p50 < bq.net.p90)
+bz = list(D.Batch(L.eval("""{ made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95, daily = 1000, seed = 5,
+  reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }"""), L.eval("{ sizes = { 100 }, runs = 200, price = 0 }")).values())[0]
+check("batch: without procs there's no spread when every item sells at a fixed price", bz.net.p10 == bz.net.p90)
 CH.AdvisorUI.Render(res)
 run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
 check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
