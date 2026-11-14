@@ -50,31 +50,60 @@ function Bk.Open()
 	return ok and yes and true or false
 end
 
+-- Whether a group path is `path` or under it.
+local function within(p, path)
+	local sep = CH.Groups.SEP or "/"
+	return p == path or p:sub(1, #path + #sep) == path .. sep
+end
+
 --- How many of each group's items are in your bags and in the Warband bank, for groups that have
---- any: { { path, name, depth, bags, bank } }, in the groups' order.
+--- any: { { path, name, depth, bags, bank } }, in the groups' order. Works from what you hold (each
+--- item's group, counted into it and the groups above it), not from the groups: TSM's can hold tens
+--- of thousands of items, and walking them all for each group stalled the game for seconds.
 function Bk.Counts()
 	local bags, bank = enumBags()
 	local inBags, inBank = {}, {}
 	for _, s in ipairs(slots(bags)) do if s.id then inBags[s.id] = (inBags[s.id] or 0) + s.count end end
 	for _, s in ipairs(slots(bank)) do if s.id then inBank[s.id] = (inBank[s.id] or 0) + s.count end end
-	local out = {}
-	for _, g in ipairs(CH.Groups.Tree()) do
-		local b, k = 0, 0
-		for _, id in ipairs(CH.Groups.Items(g.path)) do b, k = b + (inBags[id] or 0), k + (inBank[id] or 0) end
-		if b > 0 or k > 0 then out[#out + 1] = { path = g.path, name = g.name, depth = g.depth, bags = b, bank = k } end
+	local sep = CH.Groups.SEP or "/"
+	local by = {}
+	local function add(id)
+		local path = CH.Groups.Path(id)
+		if not path then return end
+		local acc = ""
+		for part in string.gmatch(path, "[^" .. sep .. "]+") do
+			acc = acc == "" and part or (acc .. sep .. part)
+			local g = by[acc]
+			if not g then
+				local _, depth = acc:gsub(sep, "")
+				g = { path = acc, name = part, depth = depth, bags = 0, bank = 0 }
+				by[acc] = g
+			end
+			g.bags, g.bank = g.bags + (inBags[id] or 0), g.bank + (inBank[id] or 0)
+		end
 	end
+	local seen = {}
+	for id in pairs(inBags) do seen[id] = true; add(id) end
+	for id in pairs(inBank) do if not seen[id] then add(id) end end
+	local out = {}
+	for _, g in pairs(by) do out[#out + 1] = g end
+	table.sort(out, function(a, b) return a.path < b.path end)
 	return out
 end
 
---- The moves for a group: { { bag, slot, id, count } }, every stack of its items on the side they
---- leave. to = "bank" (from your bags, the ones the Warband bank takes) or "bags".
+--- The moves for a group: { { bag, slot, id, count } }, every stack of its items (its sub-groups'
+--- too) on the side they leave. to = "bank" (from your bags, the ones the Warband bank takes) or "bags".
 function Bk.Plan(path, to)
-	local want = {}
-	for _, id in ipairs(CH.Groups.Items(path)) do want[id] = true end
 	local bags, bank = enumBags()
-	local out = {}
+	local out, mine = {}, {}
 	for _, s in ipairs(slots(to == "bank" and bags or bank)) do
-		if s.id and want[s.id] and (to ~= "bank" or allowed(s)) then out[#out + 1] = s end
+		if s.id then
+			if mine[s.id] == nil then
+				local p = CH.Groups.Path(s.id)
+				mine[s.id] = p and within(p, path) or false
+			end
+			if mine[s.id] and (to ~= "bank" or allowed(s)) then out[#out + 1] = s end
+		end
 	end
 	return out
 end

@@ -321,20 +321,28 @@ for name, n in (("normal", 500), ("large", 5000)):
         members[id] = "Bench/Group " .. (i % 20)
       end
       AuctionIQ.Groups.Members = function() return members end
-      AuctionIQ.Prices.ClearCache(); AuctionIQ.Demand.Warm(); AuctionIQ.Market.Clear()
+      local oldPath = AuctionIQ.Groups.Path
+      AuctionIQ.Groups.Path = function(id) return members[id] end
+      AuctionIQ.Prices.ClearCache(); AuctionIQ.Demand.Warm(); AuctionIQ.Market.Clear(); AuctionIQ.Market.background = false
       local ctx = {{ now = STUB.now, keepName = function() return true end }}
       local t0 = os.clock(); local rows = AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx); local items = (os.clock() - t0) * 1000
       t0 = os.clock(); AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx); local again = (os.clock() - t0) * 1000
       t0 = os.clock(); local groups = AuctionIQ.MarketsUI.VIEWS.marketgroups.rows(ctx); local g = (os.clock() - t0) * 1000
       AuctionIQ.Market.Clear()
       for i = 1, {n} do STUB.prices["i:" .. (600000 + i)] = nil end
-      AuctionIQ.db.scans, AuctionIQ.Groups.Members = keep, oldMembers; AuctionIQ.Prices.ClearCache()
-      return {{ tItems = items, tAgain = again, tGroups = g, n = #rows, ng = #groups }}
+      AuctionIQ.Market.Clear(); AuctionIQ.Prices.ClearCache()
+      local job, worst, frames, done = AuctionIQ.Market.Job(), 0, 0, nil
+      while not done and frames < 100000 do local t1 = os.clock(); done = job.step(4); worst = math.max(worst, (os.clock() - t1) * 1000); frames = frames + 1 end
+      AuctionIQ.Market.Clear()
+      AuctionIQ.db.scans, AuctionIQ.Groups.Members, AuctionIQ.Groups.Path = keep, oldMembers, oldPath; AuctionIQ.Prices.ClearCache()
+      return {{ tItems = items, tAgain = again, tGroups = g, n = #rows, ng = #groups, worst = worst, frames = frames }}
     end)()""")
     size = f"{n} grouped items, 30 days each"
     rec("market", name, size, "Market trends rows, first", r.tItems)
     rec("market", name, size, "Market trends rows, redrawn", r.tAgain)
     rec("market", name, size, "Market by group rows (items kept)", r.tGroups)
+    rec("market", name, size, "background, worst frame", r.worst)
+    rec("market", name, size, "background, frames", r.frames, "frames")
 
 # 6. SavedVariables size (AuctionIQDB as it stands after the runs above)
 size = L.eval("""(function()

@@ -70,7 +70,7 @@ end
 --- (days in the last FIT_DAYS the trend and volatility use), span (days the points cover), hi, lo,
 --- change90 (the price now against the nearest day 90 or more days back), units, demand, region,
 --- saleRate, goldDay, held, up, daysToSell, read }.
-function Mk.Item(id, now)
+function Mk.Item(id, now, listed)
 	now = now or time()
 	local P = CH.Prices
 	local x = { id = id, price = price(id) }
@@ -107,44 +107,111 @@ function Mk.Item(id, now)
 	x.saleRate = P.Raw and P.Raw("dbregionsalerate", id) or nil
 	x.goldDay = x.price and x.units * x.price or 0
 	x.held = CH.Par and CH.Par.Held and CH.Par.Held(id) or 0
-	x.up = CH.Auction and CH.Auction.Listed and CH.Auction.Listed(id) or 0
+	x.up = listed and (listed[id] or 0) or CH.Auction and CH.Auction.Listed and CH.Auction.Listed(id) or 0
 	local have = x.held + x.up
 	x.daysToSell = have > 0 and (x.units > 0 and have / x.units or math.huge) or nil
 	x.read = Mk.Read(x)
 	return x
 end
 
--- every grouped item (base ids) and its group
-local function grouped()
-	local out = {}
-	local G = CH.Groups
-	if not (G and G.Members) then return out end
-	for key, path in pairs(G.Members()) do
-		if type(key) == "number" and not out[key] then out[key] = path end
+-- The items worth a line: grouped and either scanned at the AH (or in the companion's history) or
+-- held or up. TSM's groups can hold tens of thousands of items with nothing to chart and nothing at
+-- risk: walking them all stalled the game, so this starts from what's scanned, held and up (a few
+-- thousand at most) and keeps the grouped ones.
+local function candidates(listed)
+	local ids, seen = {}, {}
+	local function add(id) if type(id) == "number" and not seen[id] then seen[id] = true; ids[#ids + 1] = id end end
+	for _, id in ipairs(CH.Scans.Items()) do add(id) end
+	local hd = type(AuctionIQ_HistoryData) == "table" and AuctionIQ_HistoryData.items
+	if type(hd) == "table" then for id in pairs(hd) do add(id) end end
+	for id, n in pairs(listed) do if n > 0 then add(id) end end
+	local held = CH.Par and CH.Par.HeldAll and CH.Par.HeldAll()
+	if held then
+		for id, n in pairs(held) do if n > 0 then add(id) end end
+	elseif CH.Par and CH.Par.Held then
+		-- no TSM counts: what's in reach now, for the grouped items (the old way, slower)
+		for key in pairs(CH.Groups.Members()) do if type(key) == "number" and CH.Par.Held(key) > 0 then add(key) end end
 	end
-	return out
+	return ids
 end
 
 -- the last list, kept a minute while no scan is added (a view redraws on every scroll)
 local last, lastVersion, lastAt
-
---- Every item in your groups with a price: { Mk.Item + path }, biggest gold a day first. Kept a
---- minute while no scan is added.
-function Mk.Items(now)
-	now = now or time()
-	local v = CH.Scans and CH.Scans.version or 0
-	if last and lastVersion == v and now - lastAt >= 0 and now - lastAt < 60 then return last end
-	local out = {}
-	for id, path in pairs(grouped()) do
-		local x = Mk.Item(id, now)
-		if x.price then x.path = path; out[#out + 1] = x end
-	end
-	table.sort(out, function(a, b) if a.goldDay ~= b.goldDay then return a.goldDay > b.goldDay end return a.id < b.id end)
-	last, lastVersion, lastAt = out, v, now
-	return out
+local function fresh(now)
+	return last and lastVersion == (CH.Scans and CH.Scans.version or 0) and now - lastAt >= 0 and now - lastAt < 60
 end
 
-function Mk.Clear() last = nil end
+--- Working the list out as steps: job.step(budgetMs) does up to that many milliseconds (all of it
+--- without a budget) and returns the list once done, else nil.
+function Mk.Job(now)
+	now = now or time()
+	local v = CH.Scans and CH.Scans.version or 0
+	local job, keys, listed, heldDone, i, out = {}, nil, nil, false, 1, {}
+	function job.step(budget)
+		if fresh(now) then return last end
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		-- what's up, what's held (pricing your inventory), then what's scanned: each its own frame
+		if not listed then
+			listed = CH.Auction and CH.Auction.ListedAll and CH.Auction.ListedAll() or {}
+			if t0 then return nil end
+		end
+		if not heldDone then
+			heldDone = true
+			if CH.Par and CH.Par.HeldAll then CH.Par.HeldAll() end
+			if t0 then return nil end
+		end
+		if not keys then
+			keys = candidates(listed)
+			-- the first group lookup reads TSM's groups (tens of thousands): its own frame too
+			if CH.Groups and CH.Groups.Path then CH.Groups.Path(0) end
+			if t0 then return nil end
+		end
+		local G = CH.Groups
+		while i <= #keys do
+			local id = keys[i]
+			local path = G and G.Path and G.Path(id)
+			if path then
+				local x = Mk.Item(id, now, listed)
+				if x.price then x.path = path; out[#out + 1] = x end
+			end
+			i = i + 1
+			if t0 and i % 8 == 0 and clock() - t0 >= budget then return nil end
+		end
+		table.sort(out, function(a, b) if a.goldDay ~= b.goldDay then return a.goldDay > b.goldDay end return a.id < b.id end)
+		last, lastVersion, lastAt = out, v, now
+		return out
+	end
+	return job
+end
+
+--- Every item in your groups that you've scanned, hold or have up, with a price: { Mk.Item + path },
+--- biggest gold a day first. Kept a minute while no scan is added. All at once: the views use Cached.
+function Mk.Items(now)
+	now = now or time()
+	if fresh(now) then return last end
+	return Mk.Job(now).step()
+end
+
+local running
+--- The last list (nil before the first), working a new one out a few milliseconds a frame when it's
+--- out of date, then redrawing the window: for the views, which mustn't stall the game.
+function Mk.Cached(now)
+	now = now or time()
+	if fresh(now) or running or not C_Timer then return last, running end
+	local job = Mk.Job(now)
+	running = true
+	local function tick()
+		local ok, done = pcall(job.step, (CH.Ledger and CH.Ledger.FRAME_MS) or 4)
+		if ok and not done then C_Timer.After(0, tick); return end
+		running = false
+		if CH.UI and CH.UI.IsShown and CH.UI.IsShown() and CH.UI.Refresh then CH.UI.Refresh() end
+	end
+	C_Timer.After(0, tick)
+	return last, running
+end
+
+function Mk.Clear() last = nil; running = false end
 
 --- Each group (sub-groups count in their parents) from items (Mk.Items): { path, name, depth, n,
 --- goldDay, trend, vol, heldValue, daysToSell, items (biggest first), read }.
