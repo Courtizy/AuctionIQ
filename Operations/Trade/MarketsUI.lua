@@ -127,4 +127,40 @@ MUI.VIEWS = {
 			{ "Held and up", 506, 92 }, { "Days held", 602, 60 }, { "Read", 666, 58 } } },
 }
 
+-- Capital allocation: where your gold earns the most a day (Data/Capital.lua) ------------------
+local function capitalRows(ctx)
+	local T, Cp = CH.Theme, CH.Capital
+	local plan = Cp.Plan(ctx)
+	local out = {}
+	for _, o in ipairs(plan.list) do
+		local name = o.kind == "craft" and o.name or select(1, LUI.ItemText(o.id))
+		local fund = o.take == o.units and T.Color("ok", "all " .. o.units) or o.take > 0 and T.Color("accent", string.format("%d of %d", o.take, o.units))
+			or T.Color("muted", "no gold left")
+		table.insert(out, { id = o.id, cells = { name, o.kind == "craft" and ("craft" .. T.Color("muted", "  " .. (o.char or ""))) or "buy and relist",
+			money(o.cost), money(o.profit), string.format("%.1f", o.days), string.format("%.2f%%", o.rate * 100), fund },
+			sort = { o.name or "", o.kind, o.cost, o.profit, o.days, o.rate, o.take },
+			tip = function()
+				return { { o.name or "?" },
+					{ "Gold in", money(o.cost) .. T.Color("muted", string.format("  (%d %s)", o.units, o.kind == "craft" and "crafts, the suggested batch" or "units")) },
+					{ "Profit", money(o.profit) },
+					{ "Tied up", string.format("%.1f days", o.days) .. T.Color("muted", "  until it sells, at its sales rate") },
+					{ "Gold a day per gold in", string.format("%.2f%%", o.rate * 100) .. T.Color("muted", "  profit / gold in / days") },
+					{ "Funded", o.take > 0 and string.format("%d: %s in, %s profit", o.take, money(o.spend), money(o.gain)) or "none: your gold went to better returns" } }
+			end })
+	end
+	if not out[1] then
+		return out, T.Color("muted", "Nothing to put gold in yet: scan your professions (Compare crafts) and the AH (Deals), and crafts and deals that pay show here, best return first.")
+	end
+	local foot = string.format("%s of your %s (keeping %d%% back): %s goes in, %s profit, about %s a day.", money(plan.budget), money(plan.money),
+		math.floor(Cp.Reserve() * 100 + 0.5), money(plan.spent), money(plan.gain), money(plan.perDay))
+	if plan.idle > 0 then foot = foot .. T.Color("muted", string.format("  %s left idle: nothing else pays.", money(plan.idle))) end
+	return out, foot .. T.Color("muted", "  Best return first: profit / gold in / days until it sells.")
+end
+
+MUI.VIEWS.capitalplan = { label = "Capital allocation", sort = 6, noTime = true, rows = capitalRows,
+	cols = { { "Opportunity", 0, 190 }, { "Kind", 194, 130 }, { "Gold in", 328, 88 }, { "Profit", 420, 84 }, { "Days", 508, 40 },
+		{ "Per gold/day", 552, 74 }, { "Fund", 630, 94 } },
+	controls = { { label = function() return string.format("Keep back %d%%", math.floor(CH.Capital.Reserve() * 100 + 0.5)) end,
+		tip = "How much of your gold stays out of the plan.", click = function(dir) CH.Capital.StepReserve(dir) end } } }
+
 LUI.Register("operations", MUI.VIEWS, {})

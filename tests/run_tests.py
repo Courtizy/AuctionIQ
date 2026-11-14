@@ -2229,7 +2229,7 @@ check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionI
 run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: Ready to post, Market trends, Market by group and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Manage rules"])
+check("Trade: Ready to post, Market trends, Market by group, Capital allocation and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Capital allocation", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
@@ -3951,6 +3951,41 @@ check("Market trends: a row per item and a footer that counts what's rising", mk
 check("Market trends: the item's panel charts its daily price", mk.chartN == 5 and mk.figTrend == "TREND" and mk.chartShown and mk.lines == 4)
 check("Market by group: its panel lists the biggest sellers, with no chart", mk.grows == 2 and mk.gdTop == 2 and not mk.chartAfter)
 run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860] = nil; AuctionIQ.Prices.ClearCache()")
+
+# Capital allocation: where gold earns the most a day for the gold tied up ------------------------
+cp = L.eval("""(function()
+  local Cp, out, G = AuctionIQ.Capital, {}, 10000
+  local AV, Dl, Sc = AuctionIQ.AnalyticsViews, AuctionIQ.Deals, AuctionIQ.Scan
+  local oldS, oldC, oldD, oldM = AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney
+  -- a craft: 10 crafts at 10g of reagents each, 5g profit a craft, 2 sell a day (5 days)
+  AV.Scenarios = function() return { { id = 870, name = "Flask", char = "Ann", profit = 5 * G,
+    suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10 } } } },
+    -- a craft with no sales rate isn't counted: there's no telling when the gold comes back
+    { id = 871, name = "Odd", char = "Ann", profit = 5 * G, suggest = { n = 2, scenarios = { expected = { cost = 20 * G, items = 2 } } } } } end
+  Sc.DailyUnits = function(id) return id == 870 and 2 or 0 end
+  -- a deal: 4 units for 40g, 12g gain, 4 sell a day (1 day)
+  Dl.Cached = function() return { { id = 872, buy = 4, cost = 40 * G, gain = 12 * G, demand = { units = 4 } } } end
+  local list = Cp.Opportunities()
+  out.n, out.first, out.second = #list, list[1].kind, list[2] and list[2].kind
+  out.dealRate, out.craftRate, out.craftDays = list[1].rate, list[2].rate, list[2].days
+  -- 100g: the deal first (40g), then 6 of the 10 crafts (60g)
+  local plan = Cp.Allocate(list, 100 * G)
+  out.dealTake, out.craftTake, out.spent, out.idle, out.gain = list[1].take, list[2].take, plan.spent, plan.idle, plan.gain
+  out.perDay = plan.perDay
+  -- the view: your gold less 10% back, by default
+  GetMoney = function() return 200 * G end
+  local rows, foot = AuctionIQ.MarketsUI.VIEWS.capitalplan.rows({ now = STUB.now, keepName = function() return true end })
+  out.rows, out.foot = #rows, foot
+  Cp.StepReserve(1); out.reserve = Cp.Reserve(); Cp.StepReserve(-1); out.back = Cp.Reserve()
+  AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney = oldS, oldC, oldD, oldM
+  return out
+end)()""")
+check("capital: crafts with a sales rate and deals, best gold a day per gold in first",
+      cp.n == 2 and cp.first == "deal" and cp.second == "craft" and abs(cp.dealRate - 0.3) < 1e-9 and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
+check("capital: the gold goes to the best return first, whole crafts at a time", cp.dealTake == 4 and cp.craftTake == 6 and cp.spent == 100 * 10000 and cp.idle == 0
+      and cp.gain == 42 * 10000 and abs(cp.perDay - (12 + 30 / 5) * 10000) < 1e-6)
+check("Capital allocation: a row each, and a footer with the gold in, the profit and what's idle", cp.rows == 2 and "keeping 10% back" in plain(cp.foot) and "idle" in plain(cp.foot))
+check("Capital allocation: the reserve steps 10% -> 25% and back", abs(cp.reserve - 0.25) < 1e-9 and abs(cp.back - 0.1) < 1e-9)
 
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob

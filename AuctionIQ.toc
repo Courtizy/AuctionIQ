@@ -31,6 +31,7 @@ Data\Ledger.lua
 Data\Demand.lua
 Data\Deals.lua
 Data\Market.lua
+Data\Capital.lua
 Accounting\LedgerUI.lua
 Operations\Trade\Par.lua
 Data\Forecast.lua
