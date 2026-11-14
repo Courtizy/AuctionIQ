@@ -3000,6 +3000,9 @@ check("orders fetch: asks for patron, personal, public and guild, retrying a thr
       and len(list(L.eval("STUB.requests").values())) == 5)
 check("orders fetch: the list holds every kind, not just the last one shown", len(list(CH.Orders.List().values())) == 4)
 check("/aiq orders explains each order without erroring", L.eval("(pcall(AuctionIQ.Orders.Debug))"))
+dbg = L.eval("AuctionIQ.db.debug and AuctionIQ.db.debug.orders")
+check("/aiq orders keeps its lines in the saved variables, with each recipe's quality setup, for a bug report",
+      dbg is not None and dbg.at and any("needs rank" in l for l in dbg.lines.values()) and any("maxQuality" in l for l in dbg.lines.values()))
 check("orders fetch: order IDs compare as text", L.eval("AuctionIQ.Orders.Same(77, '77')") and not L.eval("AuctionIQ.Orders.Same(77, nil)"))
 run("C_CraftingOrders.GetCrafterOrders = STUB.oldList; C_CraftingOrders.RequestCrafterOrders = nil; AuctionIQ.Orders.cache = {}")
 run("AuctionIQ.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = nil")

@@ -395,21 +395,31 @@ function O.Row(order)
 end
 
 --- Print, for each listed order, what the advisor makes of it: the rank it needs, the ranks it
---- found with and without Concentration, and any error. For working out "can't reach".
+--- found with and without Concentration, and any error. For working out "can't reach". The same
+--- lines are kept in the saved variables (AuctionIQDB.debug.orders, written at /reload or logout),
+--- so they can be read from the WTF folder rather than copied out of chat.
 function O.Debug()
 	local orders = O.All()
-	CH.Print(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
+	local lines = {}
+	local function say(text) lines[#lines + 1] = text; CH.Print(text) end
+	say(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
 	for _, order in ipairs(orders) do
 		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
+		-- how the recipe names its qualities: an enchant's scrolls, its quality IDs and its top rank
+		local scrolls = info and CH.Advisor.ScrollOutputs and CH.Advisor.ScrollOutputs(order.spellID, info) or {}
+		local qids = info and type(info.qualityIDs) == "table" and table.concat(info.qualityIDs, ",") or "none"
+		say(string.format("  enchant %s, maxQuality %s, qualityIDs %s, scrolls %d, orderType %s, item %s",
+			tostring(info and info.isEnchantingRecipe), tostring(info and info.maxQuality), qids, #scrolls,
+			tostring(order.orderType), tostring(order.itemID)))
 		-- what the order lists, and who brings it (source 1 customer, 2 crafter)
 		local given = {}
 		for _, r in ipairs(order.reagents or {}) do
 			local i = r.reagentInfo or r
 			given[#given + 1] = string.format("%s:%sx%s@%s", tostring(r.source), tostring(i.reagent and i.reagent.itemID), tostring(i.quantity), tostring(i.dataSlotIndex or r.slotIndex))
 		end
-		CH.Print(string.format("  reagentState %s, listed: %s", tostring(order.reagentState), #given > 0 and table.concat(given, " ") or "none"))
+		say(string.format("  reagentState %s, listed: %s", tostring(order.reagentState), #given > 0 and table.concat(given, " ") or "none"))
 		-- the recipe's slots: data slot, units, first item, to match against what the order lists
 		local sch = C_TradeSkillUI.GetRecipeSchematic and C_TradeSkillUI.GetRecipeSchematic(order.spellID, false)
 		local slots = {}
@@ -417,11 +427,11 @@ function O.Debug()
 			local first = sl.reagents and sl.reagents[1]
 			slots[#slots + 1] = string.format("%s:%sx%s", tostring(sl.dataSlotIndex), tostring(first and (first.itemID or first.reagent and first.reagent.itemID)), tostring(sl.quantityRequired))
 		end
-		CH.Print("  recipe slots: " .. (#slots > 0 and table.concat(slots, " ") or "none"))
+		say("  recipe slots: " .. (#slots > 0 and table.concat(slots, " ") or "none"))
 		if not ok then
-			CH.Print(head .. " error " .. tostring(result))
+			say(head .. " error " .. tostring(result))
 		elseif not result then
-			CH.Print(head .. " no result" .. (why and (": " .. tostring(why)) or ""))
+			say(head .. " no result" .. (why and (": " .. tostring(why)) or ""))
 		else
 			local m = result.model or {}
 			local parts = {}
@@ -429,9 +439,14 @@ function O.Debug()
 				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
 					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
 			end
-			CH.Print(string.format("%s skill %s/%s, ranks %s, %d rows: %s%s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
+			say(string.format("%s skill %s/%s, ranks %s, %d rows: %s%s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
 				#(result.rows or {}), table.concat(parts, "; "), m.unpriced and ("; no price for item " .. tostring(m.unpriced)) or ""))
 		end
+	end
+	if CH.db then
+		CH.db.debug = CH.db.debug or {}
+		CH.db.debug.orders = { at = time(), profession = CH.OpenProfessionID and CH.OpenProfessionID() or nil, lines = lines }
+		CH.Print("saved: a /reload writes it to the saved variables, for a bug report")
 	end
 end
 
