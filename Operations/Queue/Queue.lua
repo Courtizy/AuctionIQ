@@ -770,14 +770,80 @@ end
 -- crafted back to back each lose only their own crafts.
 local inflight = {}
 Q.inflight = inflight
+--
+-- Every craft request is one entry here, whoever sent it: the queue (with its entry e), the game's
+-- own Craft button or another addon (no e). The CraftRecipe/CraftEnchant hooks register each one
+-- (Q.Attempt), so a click the game refuses while a batch casts is its own request, and its
+-- UNIT_SPELLCAST_FAILED can't cancel the batch. Each request also carries the craft log's forecast
+-- (f.log), so results are matched to the request that made them, not to the newest click.
+-- f.done counts casts the game confirmed; a request closes when no more casts will come, and leaves
+-- once the log has its result for every confirmed cast.
 local function track(e, n)
-	table.insert(inflight, { e = e, recipeID = e.recipeID, left = n or 1 })
+	CH.craftSeq = (CH.craftSeq or 0) + 1
+	local f = { e = e, recipeID = e.recipeID, left = n or 1, n = n or 1, done = 0, seq = CH.craftSeq }
+	table.insert(inflight, f)
+	return f
 end
 local function oldestFor(spellID)
-	for i, f in ipairs(inflight) do if f.recipeID == spellID then return i, f end end
+	for i, f in ipairs(inflight) do if f.recipeID == spellID and not f.closed then return i, f end end
 end
-local function newestFor(spellID)
-	for i = #inflight, 1, -1 do if inflight[i].recipeID == spellID then return i, inflight[i] end end
+-- the newest request for this spell that never started casting (a refused click), else the newest
+local function refusedFor(spellID)
+	for i = #inflight, 1, -1 do local f = inflight[i]; if f.recipeID == spellID and not f.closed and not f.started then return i, f end end
+	for i = #inflight, 1, -1 do local f = inflight[i]; if f.recipeID == spellID and not f.closed then return i, f end end
+end
+
+--- Requests still to cast (closed ones only wait for the log's results).
+function Q.OpenRequests()
+	local n = 0
+	for _, f in ipairs(inflight) do if not f.closed then n = n + 1 end end
+	return n
+end
+Q.KEEP_CLOSED = 10 -- closed requests kept for a late result, at most
+
+--- Drop a request once it's closed and the log has every confirmed cast's result.
+function Q.Settle(f)
+	if not (f and f.closed) then return end
+	-- a result that never comes (a craft the game doesn't report) can't hold requests forever
+	local closed = 0
+	for i = #inflight, 1, -1 do
+		if inflight[i].closed then
+			closed = closed + 1
+			if closed > Q.KEEP_CLOSED then table.remove(inflight, i) end
+		end
+	end
+	if f.log and (f.log.results or 0) < f.done then return end
+	for i, x in ipairs(inflight) do if x == f then table.remove(inflight, i); return end end
+end
+
+-- the request Q.Craft is sending this moment: its own hook call attaches to it
+local sending
+--- A craft request the game was just sent (from the CraftRecipe/CraftEnchant hooks). Returns the
+--- request: the queue's own when the queue sent it, else a new one.
+function Q.Attempt(recipeID, n)
+	if sending and sending.recipeID == recipeID then local f = sending; sending = nil; return f end
+	CH.craftSeq = (CH.craftSeq or 0) + 1
+	local f = { recipeID = recipeID, left = n or 1, n = n or 1, done = 0, seq = CH.craftSeq }
+	table.insert(inflight, f)
+	return f
+end
+local function send(f, fn, ...)
+	sending = f
+	fn(...)
+	sending = nil
+end
+
+--- The request a crafting result belongs to (the game's result doesn't always name the recipe):
+--- first the oldest with a confirmed cast still owed its result, then the oldest casting one. With
+--- unstarted true, a request the game hasn't started yet as a last resort (the newest), for a
+--- result that lands before its cast's events. nil when none fits.
+function Q.ForResult(recipeID, unstarted)
+	local function fits(f) return f.log and (not recipeID or f.recipeID == recipeID) end
+	for _, f in ipairs(inflight) do if fits(f) and (f.log.results or 0) < f.done then return f end end
+	for _, f in ipairs(inflight) do if fits(f) and f.started and not f.closed and (f.log.results or 0) < f.n then return f end end
+	if unstarted then
+		for i = #inflight, 1, -1 do local f = inflight[i]; if fits(f) and not f.closed and (f.log.results or 0) < f.n then return f end end
+	end
 end
 local function casting()
 	if not UnitCastingInfo then return nil end
@@ -786,9 +852,11 @@ end
 --- Whether a craft of this entry is still on its way: a second press then does nothing.
 function Q.InFlight(e)
 	for _, f in ipairs(inflight) do
-		if f.e == e then return true end
-		-- the Craft window's button makes a fresh entry each press: the same craft counts as this one
-		if e.direct and f.e.direct and f.recipeID == e.recipeID and mixOf(f.e) == mixOf(e) then return true end
+		if not f.closed then
+			if f.e == e then return true end
+			-- the Craft window's button makes a fresh entry each press: the same craft counts as this one
+			if e.direct and f.e and f.e.direct and f.recipeID == e.recipeID and mixOf(f.e) == mixOf(e) then return true end
+		end
 	end
 	return false
 end
@@ -1022,15 +1090,15 @@ function Q.Craft(e, amount)
 		end
 		e.confirmed = nil
 		setPending(e, "craft")
-		track(e, 1)
+		local f = track(e, 1)
 		CH.Print(string.format("crafting %s into the order with %s, Concentration %s%s",
 			e.name or "?", #alloc.names > 0 and table.concat(alloc.names, ", ") or "only the customer's reagents",
 			conc and "on" or "off", points and conc and string.format(" (%d points)", math.floor(points + 0.5)) or ""))
 		local ui = C_TradeSkillUI
 		if (claimed.isRecraft or claimed.outputItemGUID) and ui.RecraftRecipeForOrder and claimed.outputItemGUID then
-			ui.RecraftRecipeForOrder(claimed.orderID, claimed.outputItemGUID, alloc.mine, nil, conc)
+			send(f, ui.RecraftRecipeForOrder, claimed.orderID, claimed.outputItemGUID, alloc.mine, nil, conc)
 		else
-			ui.CraftRecipe(e.recipeID, 1, alloc.mine, nil, claimed.orderID, conc)
+			send(f, ui.CraftRecipe, e.recipeID, 1, alloc.mine, nil, claimed.orderID, conc)
 		end
 		return true
 	end
@@ -1050,15 +1118,15 @@ function Q.Craft(e, amount)
 		if stack and stack < n then
 			n, note = stack, string.format("%d made: that's all one stack of Enchanting Vellum holds. Craft again for the rest.", stack)
 		end
-		track(e, n)
+		local f = track(e, n)
 		if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
-		ui.CraftEnchant(e.recipeID, n, reagents, loc, e.concentration ~= nil)
+		send(f, ui.CraftEnchant, e.recipeID, n, reagents, loc, e.concentration ~= nil)
 		if note then CH.Print(note) end
 		return true, note
 	end
-	track(e, amount or 1)
+	local f = track(e, amount or 1)
 	if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
-	ui.CraftRecipe(e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
+	send(f, ui.CraftRecipe, e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
 end
 
@@ -1133,14 +1201,33 @@ function Q.FindVellum()
 	end
 end
 
--- A recipe ID is its spell ID: each successful cast is one craft done.
-CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
+-- A recipe ID is its spell ID: each successful cast is one craft done. A cast the game reports
+-- twice (same cast GUID) counts once.
+local seenCast, seenOrder = {}, {}
+local function firstTime(guid)
+	-- the game's cast GUIDs look like "Cast-3-...": anything else can't be told apart
+	if type(guid) ~= "string" or guid:sub(1, 5) ~= "Cast-" then return true end
+	if seenCast[guid] then return false end
+	seenCast[guid] = true
+	seenOrder[#seenOrder + 1] = guid
+	if #seenOrder > 50 then seenCast[table.remove(seenOrder, 1)] = nil end
+	return true
+end
+CH.On("UNIT_SPELLCAST_START", function(_, unit, _, spellID)
+	if unit ~= "player" then return end
+	for _, f in ipairs(inflight) do if f.recipeID == spellID and not f.closed and not f.started then f.started = true; return end end
+end)
+CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, guid, spellID)
 	if unit ~= "player" then return end
 	local i, f = oldestFor(spellID)
-	if not f then return end
-	local e = f.e
+	if not f or not firstTime(guid) then return end
+	f.started = true
+	f.done = f.done + 1
 	f.left = f.left - 1
-	if f.left <= 0 then table.remove(inflight, i) end
+	if f.left <= 0 then f.closed = true end
+	Q.Settle(f)
+	local e = f.e
+	if not e then return end
 	if e.orderID then
 		-- crafted for the order only if the game now says it can be turned in
 		local co = C_CraftingOrders
@@ -1161,15 +1248,16 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, _, spellID)
 	if e.direct then e.qty = e.qty - 1 else Q.Remove(e, 1) end
 end)
 -- a craft the game stopped: the order's step is free to try again
--- FAILED is a request the game refused to start (the newest); INTERRUPTED stops the one casting
--- (the oldest). Either way the rest of that request's batch won't come.
-for ev, pick in pairs({ UNIT_SPELLCAST_FAILED = newestFor, UNIT_SPELLCAST_INTERRUPTED = oldestFor }) do
+-- FAILED is a request the game refused to start (the newest that never started); INTERRUPTED
+-- stops the one casting (the oldest). Either way the rest of that request's batch won't come.
+for ev, pick in pairs({ UNIT_SPELLCAST_FAILED = refusedFor, UNIT_SPELLCAST_INTERRUPTED = oldestFor }) do
 	CH.On(ev, function(_, unit, _, spellID)
 		if unit ~= "player" then return end
-		local i, f = pick(spellID)
+		local _, f = pick(spellID)
 		if not f then return end
-		table.remove(inflight, i)
-		if f.e.orderID then setPending(f.e, nil) end
+		f.closed, f.left = true, 0
+		Q.Settle(f)
+		if f.e and f.e.orderID then setPending(f.e, nil) end
 	end)
 end
 

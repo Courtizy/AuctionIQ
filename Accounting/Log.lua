@@ -113,6 +113,8 @@ local function heldBefore(recipeID, r, q)
 end
 
 function Lg.Started(recipeID, count, concentrate, reagents, orderID)
+	CH.craftSeq = (CH.craftSeq or 0) + 1
+	local seq = CH.craftSeq
 	local q = expect
 	expect = nil
 	local r = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
@@ -123,7 +125,8 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 			held = heldBefore(recipeID, r, q), basis = q.basis or basisNow(),
 			-- the same reagents at today's price, when the advisor knows the recipe's fixed slots
 			costRepl = r and usedCost(r, reagents) or nil }
-		return
+		pending.seq = seq
+		return pending
 	end
 	local row
 	if r then
@@ -146,14 +149,27 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
 		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil,
 		held = not order and heldBefore(recipeID, r, nil) or nil }
+	pending.seq = seq
+	return pending
 end
 
 --- The craft just started, as logged (for tests and the results window).
 function Lg.Pending() return pending end
+function Lg.Forget(p) if pending == p then pending = nil end end
 
 --- One crafting result from the game (TRADE_SKILL_ITEM_CRAFTED_RESULT).
 function Lg.Result(data)
 	if not data then return end
+	-- the request this result belongs to (Queue keeps every request sent, in order)
+	local Q = CH.Queue and CH.Queue.ForResult and CH.Queue
+	local req = Q and Q.ForResult(data.recipeID)
+	-- a craft logged without a request (Started called on its own) keeps the old one-at-a-time match
+	local loose = pending and not pending.attached and pending or nil
+	-- the newer of the two: a craft started on its own after the request
+	if req and loose and (loose.seq or 0) > (req.seq or 0) then req = nil end
+	if req then loose = nil end
+	if not (req or loose) and Q then req = Q.ForResult(data.recipeID, true) end
+	local pending = req and req.log or loose
 	local recipeID = pending and pending.recipeID or data.recipeID
 	if not recipeID then return end
 	local L = log()
@@ -234,8 +250,12 @@ function Lg.Result(data)
 			e.fcSaved = (e.fcSaved or 0) + saved
 			e.expUnit = (e.expUnit or 0) + (pending.unit or 0) * pending.items
 		end
-		pending.count = pending.count - 1
-		if pending.count <= 0 then pending = nil end
+		pending.results = (pending.results or 0) + 1
+	end
+	if req then CH.Queue.Settle(req) end
+	if loose then
+		loose.count = loose.count - 1
+		if loose.count <= 0 then Lg.Forget(loose) end
 	end
 	e.at = time()
 	if Lg.Changed then Lg.Changed() end
@@ -260,13 +280,17 @@ function Lg.Clear() wipe(log()); if Lg.Changed then Lg.Changed() end end
 
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
 	hooksecurefunc(C_TradeSkillUI, "CraftRecipe", function(recipeID, count, reagents, _, orderID, concentrate)
-		Lg.Started(recipeID, count, concentrate, reagents, orderID)
+		local req = CH.Queue and CH.Queue.Attempt and CH.Queue.Attempt(recipeID, count)
+		local p = Lg.Started(recipeID, count, concentrate, reagents, orderID)
+		if req and p then req.log, p.attached = p, true end
 	end)
 end
 -- an enchant onto vellum is a craft too (CraftEnchant(recipeID, count, reagents, target, concentrate))
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftEnchant then
 	hooksecurefunc(C_TradeSkillUI, "CraftEnchant", function(recipeID, count, reagents, _, concentrate)
-		Lg.Started(recipeID, count, concentrate, reagents, nil)
+		local req = CH.Queue and CH.Queue.Attempt and CH.Queue.Attempt(recipeID, count)
+		local p = Lg.Started(recipeID, count, concentrate, reagents, nil)
+		if req and p then req.log, p.attached = p, true end
 	end)
 end
 CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)

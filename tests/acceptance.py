@@ -49,7 +49,7 @@ af1 = L.eval("""(function()
   out.left = Q.Count()
   local log = AuctionIQ.Me().log[11]
   out.crafts, out.cost, out.expected = log and log.crafts, log and log.cost, log and log.expected
-  out.inflight = #Q.inflight
+  out.inflight = Q.OpenRequests()
   C_Item.GetItemCount = oldCount
   Q.Clear(); Lg.Clear()
   return out
@@ -159,7 +159,7 @@ af3 = L.eval("""(function()
   STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
   -- the player moves: the rest of the batch stops
   STUB.Fire("UNIT_SPELLCAST_INTERRUPTED", "player", "cast", 11)
-  out.left, out.inflight = e.qty, #Q.inflight
+  out.left, out.inflight = e.qty, Q.OpenRequests()
   -- a late success after the interrupt debits nothing
   STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
   out.leftLate = e.qty
@@ -169,7 +169,7 @@ af3 = L.eval("""(function()
   out.resendN = STUB.crafted and STUB.crafted.n
   -- the game refuses to start it (FAILED): nothing debited, Craft can be pressed again
   STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 11)
-  out.afterFail, out.inflight2 = e.qty, #Q.inflight
+  out.afterFail, out.inflight2 = e.qty, Q.OpenRequests()
   -- reagents run out between presses: Craft stops and names it
   C_Item.GetItemCount = function(id) return 0 end
   local ok, why = Q.Craft(e, 2)
@@ -373,3 +373,58 @@ cs = L.eval("""(function()
 end)()""")
 check("accounting: an excluded character's sales leave the Cash statement (same scope as the gold series); naming them still shows theirs",
       cs.all == 570000 and cs.some == 95000 and cs.one == 475000)
+
+# Failure flows on one request at a time: every click is its own request, results go to the request
+# that made them, and the game's duplicate or out-of-order events don't move the counts.
+af9 = L.eval("""(function()
+  local A, Q, Lg = AuctionIQ.Advisor, AuctionIQ.Queue, AuctionIQ.Log
+  local out = {}
+  local oldCount = C_Item.GetItemCount
+  C_Item.GetItemCount = function() return 999 end
+  local function batch(n)
+    Q.Clear(); wipe(Q.inflight); Lg.Clear()
+    local res = A.Analyze(11, { professionID = AuctionIQ.OpenProfessionID() })
+    local e = Q.Add(res, res.best, n); Q.Craft(e, n)
+    return e, res.best
+  end
+  local function done(item, guid)
+    STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", guid or "cast", 11)
+    STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { recipeID = 11, itemID = item, quantity = 1 })
+  end
+  -- 1. the game's Craft button pressed for another recipe mid-batch, refused
+  local e, row = batch(3)
+  done(row.item)
+  C_TradeSkillUI.CraftRecipe(10, 1); STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 10)
+  done(row.item); done(row.item)
+  local l11 = AuctionIQ.Me().log[11]
+  out.other = { crafts = l11.crafts, expected = l11.expected, want = 3 * row.profit, wrong = AuctionIQ.Me().log[10] ~= nil, left = Q.Count() }
+  -- 2. the same recipe's button pressed again mid-batch, refused
+  e, row = batch(3)
+  done(row.item)
+  C_TradeSkillUI.CraftRecipe(11, 1); STUB.Fire("UNIT_SPELLCAST_FAILED", "player", "cast", 11)
+  done(row.item); done(row.item)
+  l11 = AuctionIQ.Me().log[11]
+  out.same = { crafts = l11.crafts, expected = l11.expected, want = 3 * row.profit, left = Q.Count(), open = Q.OpenRequests() }
+  -- 3. a result before its cast's success event
+  e, row = batch(2)
+  STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { recipeID = 11, itemID = row.item, quantity = 1 })
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+  done(row.item)
+  l11 = AuctionIQ.Me().log[11]
+  out.late = { crafts = l11.crafts, expected = l11.expected, want = 2 * row.profit, left = Q.Count() }
+  -- 4. one cast's success reported twice (same cast GUID)
+  e, row = batch(3)
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-1-1-11-AAAA", 11)
+  STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-3-1-1-11-AAAA", 11)
+  out.dup = Q.Count()
+  C_Item.GetItemCount = oldCount
+  Q.Clear(); wipe(Q.inflight); Lg.Clear()
+  return out
+end)()""")
+check("failure 9 (requests): a refused click on another recipe mid-batch logs nothing under it; the batch keeps its 3 crafts and forecast",
+      af9.other.crafts == 3 and abs(af9.other.expected - af9.other.want) < 1e-6 and not af9.other.wrong and af9.other.left == 0)
+check("failure 9 (requests): a refused second click on the same recipe doesn't cancel the batch: the queue still counts its crafts",
+      af9.same.crafts == 3 and abs(af9.same.expected - af9.same.want) < 1e-6 and af9.same.left == 0 and af9.same.open == 0)
+check("failure 9 (requests): a result that lands before its cast's success still goes to that batch",
+      af9.late.crafts == 2 and abs(af9.late.expected - af9.late.want) < 1e-6 and af9.late.left == 0)
+check("failure 9 (requests): one cast reported twice takes one craft off the queue", af9.dup == 2)
