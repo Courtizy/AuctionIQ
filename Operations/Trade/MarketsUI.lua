@@ -15,6 +15,18 @@ local function rate(x)
 	return CH.Demand and CH.Demand.Rate and CH.Demand.Rate(x) or string.format("%.1f", x)
 end
 
+-- the market list, worked out in the background (Market.Cached) so opening a view never stalls the
+-- game; nil while the first one is being worked out
+local function items(ctx)
+	local Mk = CH.Market
+	if Mk.background == false then return Mk.Items(ctx.now) end
+	return (Mk.Cached(ctx.now))
+end
+local function working()
+	return CH.Theme.Color("accent", "Working out the market for the items in your groups ...")
+		.. CH.Theme.Color("muted", "  A few milliseconds a frame, so the game keeps running; this fills in when it's done.")
+end
+
 local function pct(x) if not x then return CH.Theme.Color("muted", "-") end return string.format("%d%%", math.floor(x * 100 + 0.5)) end
 
 local function footer(n, rising, falling, choppy, thin, gold)
@@ -30,7 +42,9 @@ local function itemRows(ctx)
 	local out = {}
 	local count = { rising = 0, falling = 0, choppy = 0, thin = 0 }
 	local gold = 0
-	for _, x in ipairs(Mk.Items(ctx.now)) do
+	local list = items(ctx)
+	if not list then return out, working() end
+	for _, x in ipairs(list) do
 		local text, name = LUI.ItemText(x.id)
 		if ctx.keepName(name) or ctx.keepName(x.path) then
 			count[x.read] = (count[x.read] or 0) + 1
@@ -50,7 +64,9 @@ local function groupRows(ctx)
 	local Mk = CH.Market
 	local T = CH.Theme
 	local out = {}
-	for _, g in ipairs(Mk.Groups(Mk.Items(ctx.now))) do
+	local list = items(ctx)
+	if not list then return out, working() end
+	for _, g in ipairs(Mk.Groups(list)) do
 		if ctx.keepName(g.path) then
 			table.insert(out, { key = "g:" .. g.path, g = g, cells = { string.rep("  ", g.depth) .. g.name, tostring(g.n), Mk.TrendText(g), Mk.VolText(g),
 				money(g.goldDay), money(g.heldValue), Mk.DaysText(g.daysToSell), Mk.ReadText(g) },
@@ -172,10 +188,11 @@ MUI.VIEWS.capitalplan = { label = "Capital allocation", sort = 6, noTime = true,
 -- Risk: what you hold and have up, and how far its price could fall while it sells -------------
 local function riskRows(ctx)
 	local T, Mk = CH.Theme, CH.Market
-	local items = Mk.Items(ctx.now)
-	local typical = Mk.TypicalVol(items)
+	local list = items(ctx)
+	if not list then return {}, working() end
+	local typical = Mk.TypicalVol(list)
 	local out, exposed, atRisk, assumed = {}, 0, 0, 0
-	for _, x in ipairs(items) do
+	for _, x in ipairs(list) do
 		if x.held + x.up > 0 then
 			local text, name = LUI.ItemText(x.id)
 			if ctx.keepName(name) or ctx.keepName(x.path) then

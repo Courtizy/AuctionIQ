@@ -40,6 +40,7 @@ CH.Prices.background = False # sales added up at once, not over the next frames
 CH.AdvisorUI.GEAR_AGE = -1
 CH.db.settings.presetsAuto = False # presets are worked out on purpose in their tests, not in the background
 CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
+CH.Market.background = False # the market views work their list out at once, not over the next frames
 me = CH.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
 
@@ -3910,11 +3911,20 @@ mk = L.eval("""(function()
   local oldHeld, oldListed = AuctionIQ.Par.Held, AuctionIQ.Auction.Listed
   AuctionIQ.Par.Held = function(id) return id == 860 and 8 or 0 end
   AuctionIQ.Auction.Listed = function(id) return id == 860 and 4 or 0 end
+  local oldAll = AuctionIQ.Auction.ListedAll
+  AuctionIQ.Auction.ListedAll = function() return { [860] = 4 } end
   out.dts = Mk.Item(860).daysToSell
   out.thin = Mk.Item(861).read
+  -- scanned once: it counts in the views (an unscanned item you don't hold has no line)
+  AuctionIQ.db.scans[861] = { at = STUB.now, min = 20 * G, market = 20 * G, qty = 1, daily = { { today, 20 * G, 1 } } }
   -- groups: two items in Herbs under Gathering, weighed by gold a day
   local oldMembers = AuctionIQ.Groups.Members
   AuctionIQ.Groups.Members = function() return { [860] = "Gathering/Herbs", [861] = "Gathering/Herbs", ["i:860::i600"] = "Other" } end
+  -- the list starts from what's scanned, held and up, and keeps what's grouped
+  local oldPath, oldHA = AuctionIQ.Groups.Path, AuctionIQ.Par.HeldAll
+  local paths = { [860] = "Gathering/Herbs", [861] = "Gathering/Herbs" }
+  AuctionIQ.Groups.Path = function(id) return paths[id] end
+  AuctionIQ.Par.HeldAll = function() return { [860] = 8, [999] = 5 } end
   Mk.Clear()
   local items = Mk.Items()
   out.cached = Mk.Items() == items
@@ -3941,7 +3951,8 @@ mk = L.eval("""(function()
   out.gdTop = gd and gd.section and #gd.section.rows
   AuctionIQ.Window.DrawSidePanel(det, gd, "")
   out.chartAfter = det.chartShown
-  AuctionIQ.Groups.Members, AuctionIQ.Par.Held, AuctionIQ.Auction.Listed = oldMembers, oldHeld, oldListed
+  AuctionIQ.Groups.Members, AuctionIQ.Par.Held, AuctionIQ.Auction.Listed, AuctionIQ.Auction.ListedAll = oldMembers, oldHeld, oldListed, oldAll
+  AuctionIQ.Groups.Path, AuctionIQ.Par.HeldAll = oldPath, oldHA
   Mk.Clear()
   return out
 end)()""")
@@ -3957,13 +3968,41 @@ check("market: from 5 days scanned, a line through them (+2% a day is about +15%
 check("market: liquidity is units a day, the region's sale rate and gold a day", mk.units > 0 and mk.rate == 0.25 and mk.gold == mk.units * 110 * 10000)
 check("market: days to sell what you hold and have up", mk.dts is not None and abs(mk.dts - 12 / mk.units) < 1e-9)
 check("market: under 0.2 a day selling is thin", mk.thin == "thin")
-check("market: items in your groups, biggest gold a day first (variants count once), kept a minute", mk.nItems == 2 and mk.firstItem == 860 and mk.cached)
+check("market: items in your groups you scanned or hold (not an ungrouped one you hold), biggest gold a day first, kept a minute", mk.nItems == 2 and mk.firstItem == 860 and mk.cached)
 check("market by group: sub-groups roll up into their parents", mk.nGroups == 2 and mk.parent == "Gathering" and mk.gN == 2 and mk.gDepth == 1)
 check("market by group: days held is the gold held over the gold a day", mk.gHeld == 12 * 110 * 10000 and abs(mk.gDays - mk.gHeld / mk.gGold) < 1e-9)
 check("Market trends: a row per item and a footer that counts what's rising", mk.rows == 2 and "1 rising" in plain(mk.foot))
 check("Market trends: the item's panel charts its daily price", mk.chartN == 5 and mk.figTrend == "TREND" and mk.chartShown and mk.lines == 4)
 check("Market by group: its panel lists the biggest sellers, with no chart", mk.grows == 2 and mk.gdTop == 2 and not mk.chartAfter)
-run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860] = nil; AuctionIQ.Prices.ClearCache()")
+run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860], AuctionIQ.db.scans[861] = nil, nil; AuctionIQ.Prices.ClearCache()")
+
+# Market in the background: the views never work the list out in one frame
+mb = L.eval("""(function()
+  local Mk, out, G = AuctionIQ.Market, {}, 10000
+  STUB.prices["i:870"] = { formula_value = 30 * G, sold = 2 }
+  AuctionIQ.db.scans[870] = { at = STUB.now, min = 30 * G, market = 30 * G, qty = 1, daily = { { math.floor(STUB.now / 86400), 30 * G, 1 } } }
+  local oldPath = AuctionIQ.Groups.Path
+  AuctionIQ.Groups.Path = function(id) return id == 870 and "X" or nil end
+  AuctionIQ.Prices.ClearCache(); Mk.Clear(); Mk.background = nil
+  local ctx = { now = STUB.now, keepName = function() return true end }
+  local rows, foot = AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx)
+  out.first, out.foot = #rows, foot
+  for i = 1, 20 do STUB.RunTimers() end
+  rows = AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx)
+  out.after = #rows
+  -- your auctions counted once for every item, the same as item by item
+  local all = AuctionIQ.Auction.ListedAll()
+  local same = true
+  for id, n in pairs(all) do if AuctionIQ.Auction.Listed(id) ~= n then same = false end end
+  out.same = same
+  Mk.background = false; Mk.Clear()
+  AuctionIQ.Groups.Path = oldPath
+  AuctionIQ.db.scans[870], STUB.prices["i:870"] = nil, nil; AuctionIQ.Prices.ClearCache()
+  return out
+end)()""")
+check("Market trends: the first open says it's working the list out, then fills in a few frames later",
+      mb.first == 0 and "Working out" in plain(mb.foot) and mb.after == 1)
+check("market: your auctions counted for every item at once match counting them one at a time", mb.same)
 
 # Risk: downside price from volatility, and stock exposed ------------------------------------------
 rk = L.eval("""(function()
@@ -3981,9 +4020,13 @@ rk = L.eval("""(function()
   AuctionIQ.Prices.ClearCache(); Mk.Clear()
   AuctionIQ.Groups.Members = function() return { [880] = "A", [881] = "A" } end
   AuctionIQ.Par.Held = function(id) return id == 880 and 3 or 0 end
+  local oldPath, oldHA = AuctionIQ.Groups.Path, AuctionIQ.Par.HeldAll
+  AuctionIQ.Groups.Path = function(id) return (id == 880 or id == 881) and "A" or nil end
+  AuctionIQ.Par.HeldAll = function() return { [880] = 3 } end
   local rows, foot = AuctionIQ.MarketsUI.VIEWS.risk.rows({ now = STUB.now, keepName = function() return true end })
   out.rows, out.foot = #rows, foot
   AuctionIQ.Groups.Members, AuctionIQ.Par.Held = oldMembers, oldHeld
+  AuctionIQ.Groups.Path, AuctionIQ.Par.HeldAll = oldPath, oldHA
   STUB.prices["i:880"], STUB.prices["i:881"] = nil, nil; AuctionIQ.Prices.ClearCache(); Mk.Clear()
   return out
 end)()""")

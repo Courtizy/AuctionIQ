@@ -49,6 +49,34 @@ function A.Listed(id)
 	return n
 end
 
+--- Listed (above) for every item at once: { [id] = units up }, one pass over the records rather
+--- than one per item, for a list of thousands.
+function A.ListedAll()
+	local out, counted = {}, {}
+	local now, here = time(), realm()
+	for key, rec in pairs(store()) do
+		if rec.at and now - rec.at < 2 * DAY and rec.realm == here then
+			counted[key] = true
+			for id, q in pairs(rec.items or {}) do out[id] = (out[id] or 0) + q end
+		end
+	end
+	local db = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB
+	if db and CH.Ledger then
+		for _, c in ipairs(CH.Ledger.Characters()) do
+			if not counted[c.name .. "-" .. here] then
+				local t = db["s@" .. c.key .. "@internalData@auctionQuantity"]
+				if type(t) == "table" then
+					for str, q in pairs(t) do
+						local id = tonumber(tostring(str):match("^i:(%d+)"))
+						if id then out[id] = (out[id] or 0) + (tonumber(q) or 0) end
+					end
+				end
+			end
+		end
+	end
+	return out
+end
+
 --- Record this character's live auctions: { { id, qty } }.
 function A.RecordOwned(list)
 	local items = {}

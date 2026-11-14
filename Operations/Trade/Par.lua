@@ -78,6 +78,13 @@ function Par.Held(itemID)
 	return 0
 end
 
+--- Held (above) for every item: { [id] = count }, or nil without TSM's counts. Don't change it.
+function Par.HeldAll()
+	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
+	Par.Held(0)
+	return heldCache
+end
+
 function Par.Refresh() heldCache, soldCache = nil, nil end
 
 --- Every item with a target: { id, weekly, target, manual, held, short, value (of the shortfall) }.
