@@ -1059,6 +1059,19 @@ check("batch: a big one can't sell in a week: cash back stays under spend, stock
       bo[1].recover == 0 and bo[1].spend == 5000 and 55 <= bo[1].left <= 75 and bo[1].cashBack.p50 < 5000 and bo[1].leftValue == bo[1].left * 95)
 bo2 = list(D.Batch(bi, L.eval("{ sizes = { 10, 100 }, runs = 400, price = 0 }")).values())
 check("batch: the same batch gives the same answer each time", bo2[1].net.p50 == bo[1].net.p50)
+# Multicraft and Resourcefulness odds: 30% Multicraft (1 to 3 extra) and 25% Resourcefulness saving
+# 20 a proc, over 100 crafts that all sell: about 100 x (1 + 0.3 x 2) = 160 items, 100 x 0.25 x 20 saved
+bp = L.eval("""{ made = 1, mc = 0.3, maxExtra = 3, res = 0.25, saved = 20, price = 100, deposit = 0, unit = 95, daily = 1000, seed = 5,
+  reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }""")
+bq = list(D.Batch(bp, L.eval("{ sizes = { 100 }, runs = 600, price = 0 }")).values())[0]
+exp_items = 100 * (1 + 0.3 * (1 + (3 - 1) / 2))
+exp_net = exp_items * 100 * CH.AH_CUT - (5000 - 100 * 0.25 * 20)
+check("batch: Multicraft's odds and extras give about the expected items (160 for 100 crafts)", abs(bq["items"] - exp_items) <= 6)
+check("batch: Resourcefulness and Multicraft move the median net to about its expectation, with a spread",
+      abs(bq.net.p50 - exp_net) < 0.05 * exp_net and bq.net.p10 < bq.net.p50 < bq.net.p90)
+bz = list(D.Batch(L.eval("""{ made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95, daily = 1000, seed = 5,
+  reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }"""), L.eval("{ sizes = { 100 }, runs = 200, price = 0 }")).values())[0]
+check("batch: without procs there's no spread when every item sells at a fixed price", bz.net.p10 == bz.net.p90)
 CH.AdvisorUI.Render(res)
 run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
 check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
@@ -2229,7 +2242,7 @@ check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionI
 run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: Ready to post (the market is in its item panel) and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Manage rules"])
+check("Trade: Ready to post, Market trends, Market by group, Risk, Capital allocation and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Risk", "Capital allocation", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
@@ -3000,6 +3013,9 @@ check("orders fetch: asks for patron, personal, public and guild, retrying a thr
       and len(list(L.eval("STUB.requests").values())) == 5)
 check("orders fetch: the list holds every kind, not just the last one shown", len(list(CH.Orders.List().values())) == 4)
 check("/aiq orders explains each order without erroring", L.eval("(pcall(AuctionIQ.Orders.Debug))"))
+dbg = L.eval("AuctionIQ.db.debug and AuctionIQ.db.debug.orders")
+check("/aiq orders keeps its lines in the saved variables, with each recipe's quality setup, for a bug report",
+      dbg is not None and dbg.at and any("needs rank" in l for l in dbg.lines.values()) and any("maxQuality" in l for l in dbg.lines.values()))
 check("orders fetch: order IDs compare as text", L.eval("AuctionIQ.Orders.Same(77, '77')") and not L.eval("AuctionIQ.Orders.Same(77, nil)"))
 run("C_CraftingOrders.GetCrafterOrders = STUB.oldList; C_CraftingOrders.RequestCrafterOrders = nil; AuctionIQ.Orders.cache = {}")
 run("AuctionIQ.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = nil")
@@ -3682,6 +3698,477 @@ n1 = L.eval("STUB.refreshes")
 run("AuctionIQ.UI.Refresh = STUB.oldRefresh")
 check("ui: opening a page refreshes it once", n1 == 1)
 
+
+# Banking: a group's items between your bags and the Warband bank -----------------------------
+bk = L.eval("""(function()
+  local keep = { C_Container = C_Container, C_Bank = C_Bank, BagIndex = Enum.BagIndex, BankType = Enum.BankType,
+    Items = AuctionIQ.Groups.Items, Tree = AuctionIQ.Groups.Tree }
+  Enum.BagIndex = { ReagentBag = 5, AccountBankTab_1 = 12 }
+  Enum.BankType = { Account = 2 }
+  local box = { [0] = { { id = 901, n = 20 }, { id = 902, n = 5, bound = true }, { id = 903, n = 3 }, false },
+    [12] = { { id = 904, n = 10 }, false, false } }
+  local function side(bag) return bag == 12 and { 12 } or { 0, 1, 2, 3, 4, 5 } end
+  C_Container = {
+    GetContainerNumSlots = function(bag) return box[bag] and #box[bag] or 0 end,
+    GetContainerItemInfo = function(bag, slot) local x = box[bag] and box[bag][slot]
+      return x and { itemID = x.id, stackCount = x.n, isBound = x.bound } or nil end,
+    GetContainerNumFreeSlots = function(bag) local n = 0; for _, x in ipairs(box[bag] or {}) do if not x then n = n + 1 end end; return n end,
+    UseContainerItem = function(bag, slot, unit, bankType)
+      local x = box[bag][slot]
+      local to = bag == 12 and side(0) or { 12 }
+      for _, b in ipairs(to) do for i, y in ipairs(box[b] or {}) do if not y then box[b][i] = x; box[bag][slot] = false; return end end end
+    end }
+  C_Bank = { CanUseBank = function() return STUB.bankOpen end,
+    IsItemAllowedInBankType = function(_, loc) local x = box[loc.bag][loc.slot]; return x and not x.bound end }
+  AuctionIQ.Groups.Items = function(path) return path == "Mats" and { 901, 902, 904 } or {} end
+  AuctionIQ.Groups.Tree = function() return { { path = "Mats", name = "Mats", depth = 0 }, { path = "Other", name = "Other", depth = 0 } } end
+  local B, out = AuctionIQ.Banking, {}
+  STUB.bankOpen = false
+  out.closedOk, out.closedWhy = B.Move("Mats", "bank")
+  STUB.bankOpen = true
+  local c = B.Counts(); out.counts = #c == 1 and c[1].path == "Mats" and c[1].bags == 25 and c[1].bank == 10
+  local plan = B.Plan("Mats", "bank"); out.plan = #plan == 1 and plan[1].id == 901
+  local ok, n = B.Move("Mats", "bank", function(moved, why) out.moved, out.why = moved, why end)
+  out.started = ok and n == 1
+  for i = 1, 10 do STUB.RunTimers() end
+  out.inBank = box[12][2] and box[12][2].id == 901
+  out.boundStays = box[0][2] and box[0][2].id == 902
+  out.otherStays = box[0][3] and box[0][3].id == 903
+  -- back to bags: both of the group's stacks in the Warband bank, while there's room
+  B.Move("Mats", "bags", function(moved, why) out.back, out.backWhy = moved, why end)
+  for i = 1, 10 do STUB.RunTimers() end
+  -- a full Warband bank stops the move and says so
+  box[12] = { { id = 999, n = 1 } }
+  B.Move("Mats", "bank", function(moved, why) out.fullMoved, out.fullWhy = moved, why end)
+  for i = 1, 10 do STUB.RunTimers() end
+  -- the panel beside the bank lists the groups with something to move
+  B.Build(); B.Select("Mats"); B.Refresh()
+  out.built = true
+  C_Container, C_Bank, Enum.BagIndex, Enum.BankType = keep.C_Container, keep.C_Bank, keep.BagIndex, keep.BankType
+  AuctionIQ.Groups.Items, AuctionIQ.Groups.Tree = keep.Items, keep.Tree
+  B.Reset(); STUB.bankOpen = nil
+  return out
+end)()""")
+check("banking: nothing moves without the bank open, and it says so", bk.closedOk is False and "Warband tab" in bk.closedWhy)
+check("banking: each group counts its items in your bags and in the Warband bank", bk.counts)
+check("banking: To Warband bank moves the group's stacks, not soulbound ones or other groups' items",
+      bk.plan and bk.started and bk.moved == 1 and bk.why is None and bk.inBank and bk.boundStays and bk.otherStays)
+check("banking: To bags brings the group's stacks back from the Warband bank", bk.back == 2 and bk.backWhy is None)
+check("banking: a full Warband bank stops the move and says so", bk.fullMoved == 0 and "full" in bk.fullWhy)
+check("banking: the panel beside the bank builds", bk.built)
+
+# Vendoring: the queue's reagents a merchant sells, and junk --------------------------------------
+vd = L.eval("""(function()
+  local keep = { C_Container = C_Container, SL = AuctionIQ.Queue.ShoppingList, GI = C_Item.GetItemInfo, GII = C_Item.GetItemInfoInstant,
+    Path = AuctionIQ.Groups.Path, MF = C_MerchantFrame, money = GetMoney }
+  local G = 10000
+  -- the merchant: 951 at 1g each, 952 in bundles of 5 for 2g, 953 for a currency
+  local shop = { { id = 951, price = G, stack = 1 }, { id = 952, price = 2 * G, stack = 5 }, { id = 953, price = 0, stack = 1, ext = true } }
+  GetMerchantNumItems = function() return #shop end
+  GetMerchantItemID = function(i) return shop[i] and shop[i].id end
+  C_MerchantFrame = { GetItemInfo = function(i) local m = shop[i]; return { price = m.price, stackCount = m.stack, numAvailable = -1, hasExtendedCost = m.ext } end }
+  GetMerchantItemMaxStack = function() return 20 end
+  STUB.merchantBuys = {}
+  BuyMerchantItem = function(i, n) table.insert(STUB.merchantBuys, { i, n }) end
+  GetMoney = function() return 1000 * G end
+  AuctionIQ.Queue.ShoppingList = function() return { { itemID = 951, buy = 25 }, { itemID = 952, buy = 7 }, { itemID = 953, buy = 3 }, { itemID = 954, buy = 4 } } end
+  local V, out = AuctionIQ.Vendoring, {}
+  local list = V.BuyList()
+  out.nBuys = #list
+  local by = {}; for _, b in ipairs(list) do by[b.id] = b end
+  out.b951, out.b952, out.b953 = by[951] and by[951].qty, by[952] and by[952].qty, by[953] ~= nil
+  V.Buy()
+  local calls = {}; for _, c in ipairs(STUB.merchantBuys) do calls[#calls + 1] = c[1] .. "x" .. c[2] end
+  out.calls = table.concat(calls, ",")
+  -- junk: a grey, a reagent the vendor pays more for than the AH, one worth more on the AH, gear, a grouped item
+  local box = { [0] = { { id = 961, n = 2, q = 0 }, { id = 962, n = 10, q = 1 }, { id = 963, n = 1, q = 1 }, { id = 964, n = 1, q = 2 }, { id = 965, n = 5, q = 1 } } }
+  local vendor = { [961] = 5000, [962] = 3000, [963] = 3000, [964] = 90000, [965] = 3000 }
+  STUB.prices["i:962"] = { formula_value = 1000 }; STUB.prices["i:963"] = { formula_value = 100000 }; STUB.prices["i:965"] = { formula_value = 100 }
+  AuctionIQ.Prices.ClearCache()
+  C_Item.GetItemInfo = function(id) return "x", nil, nil, nil, nil, nil, nil, nil, nil, nil, vendor[id] or 0 end
+  C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 964 and 4 or 7 end
+  AuctionIQ.Groups.Path = function(id) return id == 965 and "Mats" or nil end
+  C_Container = { GetContainerNumSlots = function(bag) return box[bag] and #box[bag] or 0 end,
+    GetContainerItemInfo = function(bag, slot) local x = box[bag] and box[bag][slot]
+      return x and { itemID = x.id, stackCount = x.n, quality = x.q } or nil end,
+    UseContainerItem = function(bag, slot) STUB.soldIDs = STUB.soldIDs or {}; table.insert(STUB.soldIDs, box[bag][slot].id); box[bag][slot] = false end }
+  local junk = V.JunkList()
+  local ids = {}; for _, j in ipairs(junk) do ids[#ids + 1] = j.id .. ":" .. j.why end
+  out.junk = table.concat(ids, ",")
+  V.open = true
+  V.Sell(function(sold, gold, left) out.sold, out.gold, out.left = sold, gold, left end)
+  for i = 1, 10 do STUB.RunTimers() end
+  V.Build(); V.Refresh(); out.built = true
+  V.open = false; V.Reset()
+  C_Container, AuctionIQ.Queue.ShoppingList, C_Item.GetItemInfo, C_Item.GetItemInfoInstant = keep.C_Container, keep.SL, keep.GI, keep.GII
+  AuctionIQ.Groups.Path, C_MerchantFrame, GetMoney = keep.Path, keep.MF, keep.money
+  GetMerchantNumItems, GetMerchantItemID, BuyMerchantItem, GetMerchantItemMaxStack = nil, nil, nil, nil
+  STUB.prices["i:962"], STUB.prices["i:963"], STUB.prices["i:965"] = nil, nil, nil; AuctionIQ.Prices.ClearCache()
+  return out
+end)()""")
+check("vendoring: buys what the queue still needs that the merchant sells for gold, bundles rounded up, not currency items",
+      vd.nBuys == 2 and vd.b951 == 25 and vd.b952 == 10 and not vd.b953)
+check("vendoring: buys in the merchant's largest stack, a bundle a purchase", vd.calls == "1x20,1x5,2x1,2x1")
+check("vendoring: junk is greys, and ungrouped non-gear the vendor pays more for than the AH; most gold first",
+      vd.junk == "962:vendor pays more,961:grey")
+check("vendoring: Sell junk sells those stacks and says how much", vd.sold == 2 and vd.gold == 40000 and vd.left == 0)
+check("vendoring: the panel beside the merchant builds", vd.built)
+
+# Deals: listings well under what they resell for ---------------------------------------------
+dl = L.eval("""(function()
+  local S, Dl, out = AuctionIQ.Scans, AuctionIQ.Deals, {}
+  local G = 10000
+  -- resells for 100g (TSM market and the post price), 5 sold a day in the region
+  STUB.prices["i:800"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
+  STUB.prices["i:801"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
+  AuctionIQ.Prices.ClearCache(); Dl.Clear()
+  S.Record(800, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
+  local d = Dl.Evaluate(800)
+  out.buy, out.unit, out.each, out.gain, out.stale, out.commodity = d and d.buy, d and d.unit, d and d.each, d and d.gain, d and d.stale, d and d.commodity
+  -- one listing at 80g: 95g back is under a 30% return
+  S.Record(801, { { price = 80 * G, qty = 1 } }, false)
+  local n, why = Dl.Evaluate(801); out.fair, out.fairWhy = n == nil, why
+  S.Record(801, { { price = 40 * G, qty = 1 } }, false)
+  local g = Dl.Evaluate(801); out.gearBuy, out.gearCommodity = g and g.buy, g and g.commodity
+  -- holding a week of sales already: nothing to buy
+  local oldHeld = AuctionIQ.Par.Held
+  AuctionIQ.Par.Held = function(id) return id == 800 and 40 or oldHeld(id) end
+  local h, hwhy = Dl.Evaluate(800); out.heldNone, out.heldWhy = h == nil, hwhy
+  AuctionIQ.Par.Held = oldHeld
+  -- the list: biggest gain first, kept until a scan is added
+  local list = Dl.List()
+  out.n, out.first = #list, list[1] and list[1].id
+  out.kept = Dl.List() == list
+  S.Record(801, { { price = 41 * G, qty = 1 } }, false)
+  out.redone = Dl.List() ~= list
+  -- an old scan says to search again; a much older one is no deal
+  STUB.now = STUB.now + 2 * 3600; out.oldStale = Dl.Evaluate(800).stale
+  STUB.now = STUB.now + 5 * 3600; out.gone = Dl.Evaluate(800) == nil
+  STUB.now = STUB.now - 7 * 3600
+  -- the AH now: the units still under the deal's most per unit, up to the deal's quantity
+  local live = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
+  out.liveAction, out.liveQty, out.liveCost = live.action, live.qty, live.cost
+  local moved = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 90 * G, qty = 3 } }, true)
+  out.movedAction, out.movedWhy = moved.action, moved.why
+  local item = AuctionIQ.AuctionUI.DecideDeal({ id = 801, buy = 1, each = 95 * G }, { { price = 40 * G, qty = 1 } }, false)
+  out.itemAction, out.itemWhy = item.action, item.why
+  -- the Dashboard: worked out in the background, then a card with the gain
+  Dl.Clear(); AuctionIQ.Next.List()
+  for i = 1, 20 do STUB.RunTimers() end
+  for _, e in ipairs(AuctionIQ.Next.List()) do
+    if e.title == "Buy and relist" and e.go[3].id == 800 then out.card, out.cardGold = e.detail, e.gold end
+  end
+  return out
+end)()""")
+check("deals: a commodity under value buys the ladder's units that stay under a 30% return on what one brings back (95g after the cut)",
+      dl.buy == 1 and dl.unit == 500000 and dl.each == 950000 and dl.gain == 450000 and dl.commodity and not dl.stale)
+check("deals: a listing that doesn't return 30% is no deal", dl.fair and "not under value" in dl.fairWhy)
+check("deals: an item that isn't a commodity is one listing, the cheapest", dl.gearBuy == 1 and not dl.gearCommodity)
+check("deals: with a week of sales already held, there's nothing to buy", dl.heldNone and "week" in dl.heldWhy)
+check("deals: the list puts the biggest gain first and is kept until a scan is added", dl.n == 2 and dl.first == 801 and dl.kept and dl.redone)
+check("deals: a scan over 30 minutes old says to search again; over 6 hours it's no deal", dl.oldStale and dl.gone)
+check("deals at the AH: buys the units still under the deal's price (3 at 50g, 2 at 60g)", dl.liveAction == "buy" and dl.liveQty == 5 and dl.liveCost == 2700000)
+check("deals at the AH: a listing that moved over the price is skipped, saying so", dl.movedAction == "skip" and "gone" in dl.movedWhy)
+check("deals at the AH: an item that isn't a commodity is left to the AH's own list", dl.itemAction == "skip" and "not a commodity" in dl.itemWhy)
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; AuctionIQ.Deals.Clear(); SlashCmdList.AUCTIONIQ('deals'); for i = 1, 20 do STUB.RunTimers() end; AuctionIQ.Print = STUB.oldPrint")
+pd = [str(t) for t in L.globals().STUB.printed.values()]
+check("/aiq deals prints the deals, biggest first, once worked out in the background", any("deals, biggest first" in t for t in pd) and any("each brings" in t for t in pd))
+check("deals on the Dashboard: a card with the gain from buying and relisting", dl.card is not None and "each brings" in dl.card and dl.cardGold == 450000)
+run("STUB.prices['i:800'], STUB.prices['i:801'] = nil, nil; AuctionIQ.db.scans[800], AuctionIQ.db.scans[801] = nil, nil; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()")
+
+# Market: trend, volatility and liquidity per item and group --------------------------------------
+import math as _m
+mk = L.eval("""(function()
+  local Mk, out = AuctionIQ.Market, {}
+  -- a price rising 1% a day, every day: a line through it rises (1.01^7 - 1) a week, with no spread
+  local up, flat, jumpy = {}, {}, {}
+  for d = 1, 10 do up[d] = { 100 + d, 10000 * 1.01 ^ d }; flat[d] = { 100 + d, 5000 }; jumpy[d] = { 100 + d, d % 2 == 0 and 12000 or 10000 } end
+  out.upTrend, out.upVol = Mk.Fit(up)
+  out.flatTrend, out.flatVol = Mk.Fit(flat)
+  out.jTrend, out.jVol = Mk.Fit(jumpy)
+  -- a two-day gap counts as two days' move: 2% over two days is the same daily spread as 1% a day
+  -- (a random walk's two-day move is sqrt(2) times a day's)
+  local two, one = math.exp(0.01 * math.sqrt(2)), math.exp(0.01)
+  local gap = { { 1, 10000 }, { 3, 10000 * two }, { 4, 10000 * two * one }, { 6, 10000 * two ^ 2 * one }, { 7, 10000 * two ^ 2 * one ^ 2 } }
+  local _, gv = Mk.Fit(gap); out.gapVol = gv
+  out.short = select(1, Mk.Fit({ up[1], up[2], up[3], up[4] })) == nil
+  -- an item: 4 days scanned, TSM's market against its 60-day price until there are 5
+  local G = 10000
+  STUB.prices["i:860"] = { formula_value = 110 * G, hist = 100 * G, sold = 4, salerate = 0.25 }
+  STUB.prices["i:861"] = { formula_value = 20 * G, sold = 0.05 }
+  AuctionIQ.Prices.ClearCache()
+  local today = math.floor(STUB.now / 86400)
+  AuctionIQ.db.scans[860] = { at = STUB.now, min = 110 * G, market = 110 * G, qty = 5, daily = {} }
+  for d = 3, 0, -1 do table.insert(AuctionIQ.db.scans[860].daily, { today - d, 100 * G * 1.02 ^ (3 - d), 1 }) end
+  local x = Mk.Item(860)
+  out.tsmFrom, out.tsmTrend, out.units, out.rate, out.gold = x.trendFrom, x.trend, x.units, x.saleRate, x.goldDay
+  out.tsmText = AuctionIQ.Theme.Plain and AuctionIQ.Theme.Plain(Mk.TrendText(x)) or Mk.TrendText(x)
+  table.insert(AuctionIQ.db.scans[860].daily, 1, { today - 4, 100 * G / 1.02, 1 })
+  x = Mk.Item(860)
+  out.scanFrom, out.scanTrend, out.read, out.days = x.trendFrom, x.trend, x.read, x.days
+  -- holding 8 and 4 up at 4 a day lasts 3 days
+  local oldHeld, oldListed = AuctionIQ.Par.Held, AuctionIQ.Auction.Listed
+  AuctionIQ.Par.Held = function(id) return id == 860 and 8 or 0 end
+  AuctionIQ.Auction.Listed = function(id) return id == 860 and 4 or 0 end
+  out.dts = Mk.Item(860).daysToSell
+  out.thin = Mk.Item(861).read
+  -- groups: two items in Herbs under Gathering, weighed by gold a day
+  local oldMembers = AuctionIQ.Groups.Members
+  AuctionIQ.Groups.Members = function() return { [860] = "Gathering/Herbs", [861] = "Gathering/Herbs", ["i:860::i600"] = "Other" } end
+  Mk.Clear()
+  local items = Mk.Items()
+  out.cached = Mk.Items() == items
+  out.nItems, out.firstItem = #items, items[1] and items[1].id
+  local groups = Mk.Groups(items)
+  out.nGroups = #groups
+  for _, g in ipairs(groups) do if g.path == "Gathering/Herbs" then out.gN, out.gGold, out.gHeld, out.gDays, out.gDepth = g.n, g.goldDay, g.heldValue, g.daysToSell, g.depth end end
+  out.parent = groups[1] and groups[1].path
+  -- the views: Market trends' rows, and the selected item's panel with its chart
+  local MUI = AuctionIQ.MarketsUI
+  local ctx = { now = STUB.now, keepName = function() return true end }
+  local rows, foot = MUI.VIEWS.markets.rows(ctx)
+  out.rows, out.foot = #rows, foot
+  local d = MUI.ItemDetail(rows[1])
+  out.chartN, out.figTrend = d.chart and #d.chart.values, d.figures[2][1]
+  local det = AuctionIQ.Window.SidePanel(AuctionIQ.UI.Pages().ledger.body, 260, 420, { rows = 7, srows = 6 })
+  AuctionIQ.Window.DrawSidePanel(det, d, "")
+  local shown = 0
+  for _, l in pairs(det.chartLines) do if l and l.shown ~= false then shown = shown + 1 end end
+  out.chartShown, out.lines = det.chartShown, shown
+  local grows = MUI.VIEWS.marketgroups.rows(ctx)
+  out.grows = #grows
+  local gd = MUI.GroupDetail(grows[2])
+  out.gdTop = gd and gd.section and #gd.section.rows
+  AuctionIQ.Window.DrawSidePanel(det, gd, "")
+  out.chartAfter = det.chartShown
+  AuctionIQ.Groups.Members, AuctionIQ.Par.Held, AuctionIQ.Auction.Listed = oldMembers, oldHeld, oldListed
+  Mk.Clear()
+  return out
+end)()""")
+check("market: a price rising 1% a day trends +7.2% a week, and doesn't move about the line",
+      abs(mk.upTrend - (1.01 ** 7 - 1)) < 1e-9 and mk.upVol < 1e-9)
+check("market: a flat price has no trend and no volatility; one jumping 20% every other day is volatile",
+      abs(mk.flatTrend) < 1e-12 and mk.flatVol < 1e-12 and mk.jVol > 0.15 and abs(mk.jTrend) < 0.05)
+check("market: a two-day gap counts as two days' move", mk.gapVol is not None and mk.gapVol < 1e-3)
+check("market: under 5 days scanned there's no trend line of its own", mk.short)
+check("market: until then the trend is TSM's market against its 60-day price (+10%)", mk.tsmFrom == "tsm" and abs(mk.tsmTrend - 0.1) < 1e-9)
+check("market: from 5 days scanned, a line through them (+2% a day is about +15% a week): rising",
+      mk.scanFrom == "scans" and abs(mk.scanTrend - (1.02 ** 7 - 1)) < 1e-6 and mk.read == "rising" and mk.days == 5)
+check("market: liquidity is units a day, the region's sale rate and gold a day", mk.units > 0 and mk.rate == 0.25 and mk.gold == mk.units * 110 * 10000)
+check("market: days to sell what you hold and have up", mk.dts is not None and abs(mk.dts - 12 / mk.units) < 1e-9)
+check("market: under 0.2 a day selling is thin", mk.thin == "thin")
+check("market: items in your groups, biggest gold a day first (variants count once), kept a minute", mk.nItems == 2 and mk.firstItem == 860 and mk.cached)
+check("market by group: sub-groups roll up into their parents", mk.nGroups == 2 and mk.parent == "Gathering" and mk.gN == 2 and mk.gDepth == 1)
+check("market by group: days held is the gold held over the gold a day", mk.gHeld == 12 * 110 * 10000 and abs(mk.gDays - mk.gHeld / mk.gGold) < 1e-9)
+check("Market trends: a row per item and a footer that counts what's rising", mk.rows == 2 and "1 rising" in plain(mk.foot))
+check("Market trends: the item's panel charts its daily price", mk.chartN == 5 and mk.figTrend == "TREND" and mk.chartShown and mk.lines == 4)
+check("Market by group: its panel lists the biggest sellers, with no chart", mk.grows == 2 and mk.gdTop == 2 and not mk.chartAfter)
+run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860] = nil; AuctionIQ.Prices.ClearCache()")
+
+# Risk: downside price from volatility, and stock exposed ------------------------------------------
+rk = L.eval("""(function()
+  local Mk, out = AuctionIQ.Market, {}
+  -- 2% a day, 4 days to sell: 95% of the time above price x e^(-1.645 x 0.02 x 2)
+  local r = Mk.Risk({ price = 10000, vol = 0.02, held = 8, up = 0, daysToSell = 4 })
+  out.down, out.atRisk, out.exposed, out.h = r.downside, r.atRisk, r.exposed, r.horizon
+  -- no volatility of its own: the typical one stands in; never sells: 30 days
+  local t = Mk.TypicalVol({ { vol = 0.01 }, { vol = 0.03 }, {}, { vol = 0.05 } })
+  local a = Mk.Risk({ price = 10000, held = 1, up = 0, daysToSell = math.huge }, t)
+  out.typ, out.assumed, out.ah = t, a.assumed, a.horizon
+  -- the view: only what you hold
+  local oldMembers, oldHeld = AuctionIQ.Groups.Members, AuctionIQ.Par.Held
+  STUB.prices["i:880"] = { formula_value = 50000, sold = 2 }; STUB.prices["i:881"] = { formula_value = 50000, sold = 2 }
+  AuctionIQ.Prices.ClearCache(); Mk.Clear()
+  AuctionIQ.Groups.Members = function() return { [880] = "A", [881] = "A" } end
+  AuctionIQ.Par.Held = function(id) return id == 880 and 3 or 0 end
+  local rows, foot = AuctionIQ.MarketsUI.VIEWS.risk.rows({ now = STUB.now, keepName = function() return true end })
+  out.rows, out.foot = #rows, foot
+  AuctionIQ.Groups.Members, AuctionIQ.Par.Held = oldMembers, oldHeld
+  STUB.prices["i:880"], STUB.prices["i:881"] = nil, nil; AuctionIQ.Prices.ClearCache(); Mk.Clear()
+  return out
+end)()""")
+import math as _m2
+check("risk: the 95% downside is price x e^(-1.645 x vol x sqrt(days to sell))", abs(rk.down - 10000 * _m2.exp(-1.6448536 * 0.02 * 2)) < 0.5
+      and rk.h == 4 and rk.exposed == 80000 and abs(rk.atRisk - 8 * (10000 - rk.down)) < 1e-6)
+check("risk: without a volatility of its own an item takes the middle of yours; what never sells has 30 days", abs(rk.typ - 0.03) < 1e-12 and rk.assumed and rk.ah == 30)
+check("Risk: a row for each item you hold, with the gold exposed and at risk", rk.rows == 1 and "at risk" in plain(rk.foot))
+
+# By profession and inventory turnover ------------------------------------------------------------
+bp2 = L.eval("""(function()
+  local L, AV, out, G, D = AuctionIQ.Ledger, AuctionIQ.AnalyticsViews, {}, 10000, 86400
+  -- what a scanned profession makes is filed under it
+  local any
+  for id, c in pairs(L.Crafted()) do any = any or c.prof end
+  out.prof = any
+  -- the average of the inventory snapshots in the time frame
+  local w = AuctionIQ.db.ledger.worth
+  local keep = {}
+  for k, v in pairs(w) do keep[k] = v; w[k] = nil end
+  local today = math.floor(STUB.now / D)
+  w[today - 2], w[today - 1], w[today] = { gold = 0, inventory = 100 * G }, { gold = 0, inventory = 200 * G }, { gold = 0, inventory = 300 * G }
+  w[today - 40] = { gold = 0, inventory = 9000 * G }
+  out.avg, out.n = L.AverageInventory(STUB.now - 7 * D, STUB.now)
+  -- two professions' sales and stock
+  local oldPL, oldInv, oldCr, oldInc = L.ProductPL, L.Inventory, L.Crafted, AuctionIQ.Statements.Income
+  L.Crafted = function() return { [890] = { prof = "Alchemy" }, [891] = { prof = "Alchemy" }, [892] = { prof = "Inscription" } } end
+  L.ProductPL = function() return { { id = 890, prof = "Alchemy", sold = 10, revenue = 700 * G, cost = 400 * G, profit = 300 * G },
+    { id = 891, prof = "Alchemy", sold = 5, revenue = 0, cost = 0, profit = 0 }, { id = 892, prof = "Inscription", sold = 2, revenue = 100 * G, cost = 120 * G, profit = -20 * G } } end
+  L.Inventory = function() return { { id = 890, value = 200 * G }, { id = 892, value = 50 * G }, { id = 999, value = 1000 * G } } end
+  AuctionIQ.Statements.Income = function() return { cogsTotal = 400 * G } end
+  local ctx = { now = STUB.now, since = STUB.now - 7 * D, opts = {}, keepName = function() return true end }
+  local list, total = AV.Professions(ctx)
+  for _, x in ipairs(list) do out[x.name] = { sold = x.sold, profit = x.profit, held = x.held, margin = x.margin, days = x.daysToTurn, turns = x.turns } end
+  out.totalHeld, out.totalProfit = total.held, total.profit
+  local tv = AV.Turnover(ctx)
+  out.turns, out.tdays = tv and tv.turns, tv and tv.days
+  local rows, foot = AuctionIQ.LedgerUI.ViewDef("byprofession").rows(ctx)
+  out.rows, out.foot = #rows, foot
+  L.ProductPL, L.Inventory, L.Crafted, AuctionIQ.Statements.Income = oldPL, oldInv, oldCr, oldInc
+  for k in pairs(w) do w[k] = nil end
+  for k, v in pairs(keep) do w[k] = v end
+  return out
+end)()""")
+check("by profession: what each scanned profession makes is filed under it", bp2.prof is not None)
+check("inventory turnover: the average of the time frame's daily snapshots", bp2.avg == 200 * 10000 and bp2.n == 3)
+al, ins = bp2["Alchemy"], bp2["Inscription"]
+check("by profession: sales, profit and margin add up per profession", al.sold == 15 and al.profit == 300 * 10000 and abs(al.margin - 3 / 7) < 1e-9
+      and ins.profit == -20 * 10000 and bp2.totalProfit == 280 * 10000)
+check("by profession: crafted stock held, and days to turn it at its sales a day (200g over 100g a day = 2)",
+      al.held == 200 * 10000 and abs(al.days - 2) < 1e-9 and abs(al.turns - 3.5) < 1e-9 and bp2.totalHeld == 250 * 10000)
+check("inventory turnover: cost of what sold over the average inventory (400g / 200g = 2 turns, every 3.5 days)",
+      abs(bp2.turns - 2) < 1e-9 and abs(bp2.tdays - 3.5) < 1e-9)
+check("By profession: a row each, with the turnover in the footer", bp2.rows == 2 and "Inventory turned 2.0 times" in plain(bp2.foot))
+
+# Companion app: a daily price history past the addon's 30 days ---------------------------------
+import importlib.util, tempfile, sqlite3 as _sq
+_spec = importlib.util.spec_from_file_location("companion", ROOT / "Companion" / "AuctionIQ_History" / "companion.py")
+comp = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(comp)
+# the game's own way of writing saved variables
+SV = """
+AuctionIQDB = {
+["scans"] = {
+[900] = {
+["at"] = 1762000000,
+["daily"] = {
+{
+20390, -- [1]
+12000.5, -- [2]
+2, -- [3]
+}, -- [1]
+{
+20399, -- [1]
+13000, -- [2]
+1, -- [3]
+}, -- [2]
+},
+["market"] = 13000,
+},
+["bad"] = "x",
+},
+["itemNames"] = {
+[900] = "Flask of \\"Tests\\"",
+},
+["debug"] = { ["x"] = -1.5e-3, ["y"] = true, ["z"] = nil, },
+}
+OtherGlobal = nil
+"""
+g = comp.read_saved_variables(SV)
+check("companion: reads the game's saved variables (strings with escapes, numbers, nested tables)",
+      g["AuctionIQDB"]["itemNames"][900] == 'Flask of "Tests"' and g["AuctionIQDB"]["debug"]["x"] == -1.5e-3 and g["AuctionIQDB"]["debug"]["y"] is True
+      and g["AuctionIQDB"]["scans"][900]["daily"][1][2] == 12000.5)
+rows_sv = list(comp.daily_prices(g["AuctionIQDB"]))
+check("companion: each item's days from the saved scans", rows_sv == [(900, 20390, 12000.5, 2), (900, 20399, 13000.0, 1)])
+with tempfile.TemporaryDirectory() as _td:
+    _td = Path(_td)
+    retail = _td / "_retail_"
+    for acct, text in (("ONE", SV), ("TWO", SV.replace("20390", "20250").replace("12000.5", "9000"))):
+        (retail / "WTF" / "Account" / acct / "SavedVariables").mkdir(parents=True)
+        (retail / "WTF" / "Account" / acct / "SavedVariables" / "AuctionIQ.lua").write_text(text)
+    check("companion: finds every account's saved variables", [f.parent.parent.name for f in comp.saved_variables(retail)] == ["ONE", "TWO"])
+    con = comp.open_db(_td / "h.sqlite")
+    today = 20400
+    for f in comp.saved_variables(retail):
+        comp.merge(con, comp.daily_prices(comp.read_saved_variables(f.read_text())["AuctionIQDB"]), today=today)
+    again = comp.merge(con, comp.daily_prices(g["AuctionIQDB"]), today=today)
+    days_db = con.execute("SELECT day, price, scans FROM prices WHERE item = 900 ORDER BY day").fetchall()
+    check("companion: the history keeps both accounts' days, and a second run changes nothing",
+          days_db == [(20250, 9000.0, 2), (20390, 12000.5, 2), (20399, 13000.0, 1)])
+    comp.merge(con, [(900, 20399, 13500.0, 3), (900, 20399, 1.0, 1), (900, today - 400, 5.0, 1)], today=today)
+    check("companion: a day seen more often wins; days past a year are dropped",
+          con.execute("SELECT price FROM prices WHERE item = 900 AND day = 20399").fetchone()[0] == 13500.0
+          and con.execute("SELECT COUNT(*) FROM prices WHERE day <= ?", (today - 365,)).fetchone()[0] == 0)
+    out_lua = _td / "History.lua"
+    n_items = comp.write_history(con, out_lua, 180, today=today)
+    comp.write_csv(con, _td / "p.csv")
+    csv_lines = (_td / "p.csv").read_text().splitlines()
+    check("companion: writes the last 180 days back for the game, and a CSV of everything",
+          n_items == 1 and '[900]="' in out_lua.read_text() and csv_lines[0] == "item,date,price_gold,scans" and len(csv_lines) == 4)
+    con.close()
+    hist_src = out_lua.read_text()
+L.execute(hist_src)
+hs = L.eval("""(function()
+  local H, Mk, out = AuctionIQ.History, AuctionIQ.Market, {}
+  local keepNow = STUB.now
+  STUB.now = 20400 * 86400 + 3600
+  H.Clear()
+  out.avail = H.Available()
+  local pts = H.Points(900)
+  out.n, out.first, out.last = #pts, pts[1][1], pts[#pts][2]
+  -- today's scans: the history's days, and the scans' on top (a day in both takes the scans')
+  AuctionIQ.db.scans[900] = { at = STUB.now, min = 14000, market = 14000, qty = 3, daily = { { 20399, 13900, 4 }, { 20400, 14000, 1 } } }
+  local s = H.Series(900)
+  out.sn, out.s399, out.sLast = #s, s[3][2], s[#s][2]
+  STUB.prices["i:900"] = { formula_value = 14000, sold = 3 }
+  AuctionIQ.Prices.ClearCache()
+  local x = Mk.Item(900)
+  out.span, out.hi, out.lo, out.change90, out.recent = x.span, x.hi, x.lo, x.change90, x.days
+  out.chart = #AuctionIQ.MarketsUI.Chart(x).values
+  AuctionIQ.db.scans[900], STUB.prices["i:900"] = nil, nil
+  AuctionIQ_HistoryData = nil; H.Clear(); AuctionIQ.Prices.ClearCache()
+  out.gone = H.Series(900) == nil
+  STUB.now = keepNow
+  return out
+end)()""")
+check("history: the companion's file loads in the game, the days within 180 of today", hs.avail and hs.n == 3 and hs.first == 20250 and hs.last == 13500)
+check("history: an item's series is the history's days and today's scans, a day in both the scans'", hs.sn == 4 and hs.s399 == 13900 and hs.sLast == 14000)
+check("history: Market trends charts all of it, with the high and low and the change over 90 days; the trend uses the last 30 days",
+      hs.span == 151 and hs.hi == 14000 and hs.lo == 9000 and abs(hs.change90 - (14000 / 9000 - 1)) < 1e-9 and hs.recent == 3 and hs.chart == 4)
+check("history: without the companion's file, just the scans", hs.gone)
+
+# Capital allocation: where gold earns the most a day for the gold tied up ------------------------
+cp = L.eval("""(function()
+  local Cp, out, G = AuctionIQ.Capital, {}, 10000
+  local AV, Dl, Sc = AuctionIQ.AnalyticsViews, AuctionIQ.Deals, AuctionIQ.Scan
+  local oldS, oldC, oldD, oldM = AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney
+  -- a craft: 10 crafts at 10g of reagents each, 5g profit a craft, 2 sell a day (5 days)
+  AV.Scenarios = function() return { { id = 870, name = "Flask", char = "Ann", profit = 5 * G,
+    suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10 } } } },
+    -- a craft with no sales rate isn't counted: there's no telling when the gold comes back
+    { id = 871, name = "Odd", char = "Ann", profit = 5 * G, suggest = { n = 2, scenarios = { expected = { cost = 20 * G, items = 2 } } } } } end
+  Sc.DailyUnits = function(id) return id == 870 and 2 or 0 end
+  -- a deal: 4 units for 40g, 12g gain, 4 sell a day (1 day)
+  Dl.Cached = function() return { { id = 872, buy = 4, cost = 40 * G, gain = 12 * G, demand = { units = 4 } } } end
+  local list = Cp.Opportunities()
+  out.n, out.first, out.second = #list, list[1].kind, list[2] and list[2].kind
+  out.dealRate, out.craftRate, out.craftDays = list[1].rate, list[2].rate, list[2].days
+  -- 100g: the deal first (40g), then 6 of the 10 crafts (60g)
+  local plan = Cp.Allocate(list, 100 * G)
+  out.dealTake, out.craftTake, out.spent, out.idle, out.gain = list[1].take, list[2].take, plan.spent, plan.idle, plan.gain
+  out.perDay = plan.perDay
+  -- the view: your gold less 10% back, by default
+  GetMoney = function() return 200 * G end
+  local rows, foot = AuctionIQ.MarketsUI.VIEWS.capitalplan.rows({ now = STUB.now, keepName = function() return true end })
+  out.rows, out.foot = #rows, foot
+  Cp.StepReserve(1); out.reserve = Cp.Reserve(); Cp.StepReserve(-1); out.back = Cp.Reserve()
+  AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney = oldS, oldC, oldD, oldM
+  return out
+end)()""")
+check("capital: crafts with a sales rate and deals, best gold a day per gold in first",
+      cp.n == 2 and cp.first == "deal" and cp.second == "craft" and abs(cp.dealRate - 0.3) < 1e-9 and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
+check("capital: the gold goes to the best return first, whole crafts at a time", cp.dealTake == 4 and cp.craftTake == 6 and cp.spent == 100 * 10000 and cp.idle == 0
+      and cp.gain == 42 * 10000 and abs(cp.perDay - (12 + 30 / 5) * 10000) < 1e-6)
+check("Capital allocation: a row each, and a footer with the gold in, the profit and what's idle", cp.rows == 2 and "keeping 10% back" in plain(cp.foot) and "idle" in plain(cp.foot))
+check("Capital allocation: the reserve steps 10% -> 25% and back", abs(cp.reserve - 0.25) < 1e-9 and abs(cp.back - 0.1) < 1e-9)
 
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob

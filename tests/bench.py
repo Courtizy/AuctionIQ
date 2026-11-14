@@ -278,6 +278,64 @@ end)()""")
 if not r["none"]:
     rec("quantity decision", "normal", "suggest + 5/10/20 explore", "card first draw", r.one)
 
+# 5c. Deals over a full scan's worth of items (20k browse rows, 1 in 50 under value)
+for name, n in (("normal", 2000), ("large", 20000)):
+    r = L.eval(f"""(function()
+      local S, G = AuctionIQ.Scans, 10000
+      local keep = AuctionIQ.db.scans
+      AuctionIQ.db.scans = {{}}
+      for i = 1, {n} do
+        local id = 500000 + i
+        STUB.prices["i:" .. id] = {{ formula_value = 100 * G, mat = 100 * G, sold = 3 }}
+        S.RecordBrowse(id, (i % 50 == 0) and 40 * G or 95 * G, 5)
+      end
+      AuctionIQ.Prices.ClearCache(); AuctionIQ.Deals.Clear()
+      local t0 = os.clock(); local list = AuctionIQ.Deals.List(); local one = (os.clock() - t0) * 1000
+      AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()
+      AuctionIQ.Demand.Warm() -- as login's warm-up leaves it
+      local job, worst, frames, done = AuctionIQ.Deals.Job(), 0, 0, nil
+      while not done and frames < 100000 do local t1 = os.clock(); done = job.step(4); worst = math.max(worst, (os.clock() - t1) * 1000); frames = frames + 1 end
+      for i = 1, {n} do STUB.prices["i:" .. (500000 + i)] = nil end
+      AuctionIQ.db.scans = keep; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()
+      return {{ one = one, worst = worst, frames = frames, found = #list }}
+    end)()""")
+    size = f"{n} items scanned"
+    rec("deals", name, size, "list, in one go", r.one)
+    rec("deals", name, size, "background, worst frame", r.worst)
+    rec("deals", name, size, "background, frames", r.frames, "frames")
+    rec("deals", name, size, "deals found (capped at 50)", r.found, "deals")
+
+# 5d. Market trends over the items in your groups, each with 30 days of daily prices
+for name, n in (("normal", 500), ("large", 5000)):
+    r = L.eval(f"""(function()
+      local G = 10000
+      local keep, oldMembers = AuctionIQ.db.scans, AuctionIQ.Groups.Members
+      AuctionIQ.db.scans = {{}}
+      local members, today = {{}}, math.floor(STUB.now / 86400)
+      for i = 1, {n} do
+        local id = 600000 + i
+        STUB.prices["i:" .. id] = {{ formula_value = 100 * G, sold = 3 }}
+        local daily = {{}}
+        for d = 29, 0, -1 do daily[#daily + 1] = {{ today - d, G * (90 + (i * 7 + d * 13) % 20), 1 }} end
+        AuctionIQ.db.scans[id] = {{ at = STUB.now, min = 100 * G, market = 100 * G, qty = 5, daily = daily }}
+        members[id] = "Bench/Group " .. (i % 20)
+      end
+      AuctionIQ.Groups.Members = function() return members end
+      AuctionIQ.Prices.ClearCache(); AuctionIQ.Demand.Warm(); AuctionIQ.Market.Clear()
+      local ctx = {{ now = STUB.now, keepName = function() return true end }}
+      local t0 = os.clock(); local rows = AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx); local items = (os.clock() - t0) * 1000
+      t0 = os.clock(); AuctionIQ.MarketsUI.VIEWS.markets.rows(ctx); local again = (os.clock() - t0) * 1000
+      t0 = os.clock(); local groups = AuctionIQ.MarketsUI.VIEWS.marketgroups.rows(ctx); local g = (os.clock() - t0) * 1000
+      AuctionIQ.Market.Clear()
+      for i = 1, {n} do STUB.prices["i:" .. (600000 + i)] = nil end
+      AuctionIQ.db.scans, AuctionIQ.Groups.Members = keep, oldMembers; AuctionIQ.Prices.ClearCache()
+      return {{ tItems = items, tAgain = again, tGroups = g, n = #rows, ng = #groups }}
+    end)()""")
+    size = f"{n} grouped items, 30 days each"
+    rec("market", name, size, "Market trends rows, first", r.tItems)
+    rec("market", name, size, "Market trends rows, redrawn", r.tAgain)
+    rec("market", name, size, "Market by group rows (items kept)", r.tGroups)
+
 # 6. SavedVariables size (AuctionIQDB as it stands after the runs above)
 size = L.eval("""(function()
   local seen, n = {}, 0

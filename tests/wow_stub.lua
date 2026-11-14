@@ -131,6 +131,13 @@ local function newFrame(parent, kind, template)
 		function t:SetShown(v) self.shown = v and true or false end
 		return setmetatable(t, { __index = function() return function() end end })
 	end
+	-- a line between two points (charts): start and end kept to check
+	function f:CreateLine()
+		local l = f:CreateTexture()
+		function l:SetStartPoint(_, _, x, y) self.from = { x, y } end
+		function l:SetEndPoint(_, _, x, y) self.to = { x, y } end
+		return l
+	end
 	f.TitleText = f:CreateFontString()
 	setmetatable(f, { __index = function() return function() end end })
 	return f
@@ -180,6 +187,8 @@ TSM_API = {
 		if s:sub(1, 4) == "max(" then return p.mat end
 		if s == "dbmarket" then return p.formula_value end
 		if s == "dbregionsoldperday" then return p.sold end
+		if s == "dbhistorical" then return p.hist end
+		if s == "dbregionsalerate" then return p.salerate end
 		return nil, "unknown"
 	end,
 }

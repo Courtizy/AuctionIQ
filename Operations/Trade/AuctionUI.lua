@@ -297,6 +297,59 @@ function AUI.ShopScan()
 	end)
 end
 
+-- Deals: listings well under what they resell for (Deals.lua) -------------------------------
+--- Decide one deal from the AH's listings now: buy the units still under the deal's most per unit
+--- (what one brings back, less the deal's minimum return), up to a week of sales; skip it when the
+--- listings moved or it isn't a commodity (the AH buys gear and pets from its own list, one click each).
+function AUI.DecideDeal(d, results, commodity)
+	if results then CH.Depth.Remember(d.id, results) end
+	local max = d.each / (1 + CH.Deals.MIN_ROI)
+	local rows = CH.Depth.Book(d.id)
+	local n, spent = 0, 0
+	for _, r in ipairs(rows or {}) do
+		if r[1] > max then break end
+		local take = math.min(r[2], d.buy - n)
+		n, spent = n + take, spent + take * r[1]
+		if n >= d.buy then break end
+	end
+	if n <= 0 then
+		local first = rows and rows[1] and rows[1][1]
+		return { action = "skip", qty = d.buy, why = first and string.format("gone: the cheapest is %s now, over %s", money(first), money(max)) or "gone: none listed" }
+	end
+	local gain = d.each * n - spent
+	local why = string.format("each brings %s back, +%s", money(d.each), money(gain))
+	if not commodity then
+		return { action = "skip", qty = n, unit = spent / n, why = "not a commodity: buy it in the AH's list, " .. why }
+	end
+	return { action = "buy", qty = n, unit = spent / n, cost = spent, why = why, gain = gain }
+end
+
+--- Search every deal on the AH now and line up the buys: Buy for a quote, then Confirm.
+function AUI.DealScan()
+	plan, mode, offset, buying = {}, "shop", 0, nil
+	local deals = CH.Deals.List()
+	if #deals == 0 then
+		status:SetText(CH.Theme.Color("muted", "No deals in what the AH has shown lately. A full scan (TSM's, or browsing) finds more."))
+		AUI.Refresh()
+		return
+	end
+	local byID, ids = {}, {}
+	for i, d in ipairs(deals) do
+		if i > 20 then break end
+		byID[d.id] = d; table.insert(ids, d.id)
+	end
+	searchAll(ids, function(id, results)
+		table.insert(plan, { id = id, d = AUI.DecideDeal(byID[id], results, CH.Auction.IsCommodity(id)) })
+	end, function()
+		table.sort(plan, function(a, b) return (a.d.action == "buy" and 0 or 1) < (b.d.action == "buy" and 0 or 1) end)
+		local n, total, gain = 0, 0, 0
+		for _, e in ipairs(plan) do
+			if e.d.action == "buy" then n, total, gain = n + 1, total + (e.d.cost or 0), gain + (e.d.gain or 0) end
+		end
+		status:SetText(string.format("%d deals to buy for about %s, bringing about %s more back. Press Buy for a quote, then Confirm.", n, money(total), money(gain)))
+	end)
+end
+
 local function buySettled(ok, why)
 	local b = buying
 	if not b then return end
@@ -371,6 +424,7 @@ function AUI.HoverLines(i)
 		table.insert(lines, { (e.failed and "Failed: " or e.done and "Done: " or (d.action:gsub("^%l", string.upper) .. ": ")) .. (d.why or "") })
 		if d.qty then table.insert(lines, { "Buys", string.format("%d x %s", d.qty, m(d.unit)) }) end
 		if d.cost then table.insert(lines, { "Total, walking the listings", m(d.cost) }) end
+		if d.gain then table.insert(lines, { "Brings back over its cost", m(d.gain) }) end
 		table.insert(lines, { "Usual price (chmat)", m(CH.Prices.Get("chmat", "i:" .. e.id)) })
 		return lines
 	end
@@ -404,6 +458,7 @@ local function build()
 	skipButton = T.Button(frame, "Skip", 50, 22); skipButton:SetPoint("TOPLEFT", 398, -36); skipButton:SetScript("OnClick", AUI.SkipNext)
 	local b4 = T.Button(frame, "Shop queue", 100, 22); b4:SetPoint("TOPLEFT", 12, -62); b4:SetScript("OnClick", AUI.ShopScan)
 	buyButton = T.Primary(T.Button(frame, "Buy", 80, 22)); buyButton:SetPoint("TOPLEFT", 118, -62); buyButton:SetScript("OnClick", AUI.BuyNext)
+	local b5 = T.Button(frame, "Deals", 70, 22); b5:SetPoint("TOPLEFT", 216, -62); b5:SetScript("OnClick", AUI.DealScan)
 	status = Wd.Text(frame, 12, -90, W - 24)
 	status:SetText(CH.Theme.Color("muted", "Your whole Warband counts as one seller: your own listings are never undercut."))
 	rows = Wd.Table(frame, { { "Item", 12, 190 }, { "Post / price", 206, 100 }, { "Why", 310, 140, "LEFT" } }, N, -110, 20, nil, hover, W)

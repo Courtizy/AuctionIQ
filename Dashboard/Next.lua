@@ -154,6 +154,18 @@ local function postAct(label)
 	end }
 end
 
+-- Search the deals on the AH and line up the buys (Auctioning's Deals button).
+local function dealAct()
+	return { label = "Deals", run = function()
+		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
+			CH.AuctionUI.Build():Show()
+			CH.AuctionUI.DealScan()
+			return true, "Deal search running beside the AH"
+		end
+		return false, "Open the Auction House first, then press this again"
+	end }
+end
+
 -- Queue enough crafts to make n of an item, from the best saved scan that makes it.
 local function makeAct(id, n)
 	if not (CH.Queue and n and n > 0) then return nil end
@@ -264,6 +276,18 @@ function Next.List(now)
 					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
 			end
 		end
+	end
+
+	-- listings well under what they resell for (Deals.lua), worked out in the background after scans
+	for _, d in ipairs(CH.Deals and CH.Deals.Cached(now) or {}) do
+		local fresh = not d.stale
+		add({ title = "Buy and relist", detail = string.format("%s: %d at %s, each brings %s back%s", name(d.id), d.buy, CH.FormatMoney(d.unit),
+				CH.FormatMoney(d.each), fresh and "" or string.format("; refresh first: scanned %s ago, search it again", CH.Scans.Age(d.age))),
+			value = fresh and Next.Value("gain", d.gain, string.format("%d bought and relisted, each after the cut and expected deposits, less what they cost", d.buy)) or nil,
+			evidence = Next.Value("cost", d.cost, "what buying them costs at the listings scanned"),
+			tier = 2, act = dealAct(),
+			risk = string.format("the listing still being there (scanned %s ago) and a week's sales: %s", CH.Scans.Age(d.age), CH.Demand and CH.Demand.Text(d.demand) or "?"),
+			go = { "operations", "scenarios", { name = name(d.id), id = d.id, qty = d.buy, unit = "items", title = "Buy and relist" } } })
 	end
 
 	if CH.Ledger and CH.Ledger.Available() then

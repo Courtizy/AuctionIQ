@@ -728,6 +728,79 @@ local function batchRows(ctx)
 		.. T.Color("muted", "  Gold back from sales so far less reagents. Hover a batch for what made the difference.")
 end
 
+-- By profession: each profession's sales, profit and the stock it has made, and how fast stock turns
+--- Per profession over the time frame: { name, sold, revenue, cost, profit, margin, held (what you hold
+--- that it makes, at AuctionIQ value), turns (revenue / held), daysToTurn (held / revenue a day) },
+--- and the totals { revenue, profit, held }.
+function AV.Professions(ctx)
+	local start = periods(ctx)
+	local days = math.max(1, (ctx.now - start) / DAY)
+	local crafted = CH.Ledger.Crafted()
+	local by, total = {}, { revenue = 0, profit = 0, held = 0, sold = 0 }
+	local function prof(name)
+		local x = by[name] or { name = name, sold = 0, revenue = 0, cost = 0, profit = 0, held = 0 }
+		by[name] = x
+		return x
+	end
+	for _, e in pairs(plSince(start, ctx.opts and ctx.opts.char)) do
+		local x = prof(e.prof or (crafted[e.id] and crafted[e.id].prof) or "Other")
+		x.sold, x.revenue, x.cost, x.profit = x.sold + e.sold, x.revenue + e.revenue, x.cost + e.cost, x.profit + e.profit
+		total.sold, total.revenue, total.profit = total.sold + e.sold, total.revenue + e.revenue, total.profit + e.profit
+	end
+	for _, e in ipairs(CH.Ledger.Inventory(nil, ctx.opts and ctx.opts.char)) do
+		local c = e.id and crafted[e.id]
+		if c and e.value > 0 then
+			local x = prof(c.prof or "Other")
+			x.held, total.held = x.held + e.value, total.held + e.value
+		end
+	end
+	local out = {}
+	for _, x in pairs(by) do
+		x.margin = x.revenue > 0 and x.profit / x.revenue or nil
+		x.turns = x.held > 0 and x.revenue / x.held or nil
+		x.daysToTurn = x.held > 0 and (x.revenue > 0 and x.held / (x.revenue / days) or math.huge) or nil
+		if ctx.keepName(x.name) then table.insert(out, x) end
+	end
+	total.days = days
+	return out, total
+end
+
+--- Inventory turnover over the time frame: the cost of what sold (the Income Statement's) over the
+--- average inventory of the daily snapshots. { cogs, avg, turns, days (to turn it once), snapshots } or nil.
+function AV.Turnover(ctx)
+	local start = periods(ctx)
+	local St = CH.Statements
+	local avg, n = CH.Ledger.AverageInventory and CH.Ledger.AverageInventory(start, ctx.now)
+	if not (St and avg and avg > 0) then return nil end
+	local inc = St.Income(start, ctx.now, ctx.opts and ctx.opts.char)
+	local cogs = inc.cogsTotal or 0
+	local len = math.max(1, (ctx.now - start) / DAY)
+	local turns = cogs / avg
+	return { cogs = cogs, avg = avg, turns = turns, days = turns > 0 and len / turns or nil, snapshots = n }
+end
+
+local function professionRows(ctx)
+	local out = {}
+	if needLedger(out) then return needLedger(out) end
+	local T = CH.Theme
+	local list, total = AV.Professions(ctx)
+	for _, x in ipairs(list) do
+		local dtt = x.daysToTurn
+		table.insert(out, { cells = { x.name, x.sold, money(x.revenue), money(x.cost), signed(x.profit), x.margin and pct(x.margin) or T.Color("muted", "-"),
+			money(x.held), dtt and (dtt == math.huge and T.Color("bad", "no sales") or T.Color(dtt > 28 and "bad" or dtt > 7 and "accent" or "ok", string.format("%.0f", dtt))) or T.Color("muted", "-"),
+			total.profit > 0 and pct(math.max(0, x.profit) / total.profit) or T.Color("muted", "-") },
+			sort = { x.name, x.sold, x.revenue, x.cost, x.profit, x.margin or -math.huge, x.held, x.daysToTurn or -1, x.profit } })
+	end
+	if not out[1] then return out, T.Color("muted", "No crafted sales or stock yet: scan your professions so AuctionIQ knows what each one makes.") end
+	local foot = string.format("%s revenue, %s profit, %s of crafted stock held.", money(total.revenue), signed(total.profit), money(total.held))
+	local tv = AV.Turnover(ctx)
+	if tv then
+		foot = foot .. string.format("  Inventory turned %.1f times (cost of what sold %s over an average %s held%s).", tv.turns, money(tv.cogs), money(tv.avg),
+			tv.days and string.format(", once every %.0f days", tv.days) or "")
+	end
+	return out, foot .. T.Color("muted", "  Days to turn: what you hold that it makes, over its sales a day.")
+end
+
 AV.VIEWS = {
 	performance = { label = "Performance", sort = 5, rows = performanceRows, cols = { { "Line or character", 0, 180 }, { "", 184, 70 },
 		{ "Sold", 258, 44 }, { "Revenue", 306, 84 }, { "Profit", 394, 84 }, { "Before", 482, 80 }, { "Change", 566, 80 }, { "Share", 650, 74 } } },
@@ -735,6 +808,9 @@ AV.VIEWS = {
 		{ "Change", 344, 76 }, { "Price", 424, 70 }, { "Volume", 498, 70 }, { "Cost", 572, 60 }, { "Driver", 636, 88 } } },
 	capital = { label = "Capital efficiency", sort = 8, rows = capitalRows, cols = { { "Category", 0, 140 }, { "Held", 144, 84 },
 		{ "Of stock", 232, 56 }, { "Profit", 292, 84 }, { "Of profit", 380, 60 }, { "Days stock", 444, 64 }, { "Per gold", 512, 56 }, { "", 572, 152 } } },
+	byprofession = { label = "By profession", sort = 5, rows = professionRows, cols = { { "Profession", 0, 140 }, { "Sold", 144, 44 },
+		{ "Revenue", 192, 84 }, { "Cost", 280, 84 }, { "Profit", 368, 84 }, { "Margin", 456, 54 }, { "Held", 514, 84 }, { "Days to turn", 602, 68 },
+		{ "Share", 674, 50 } } },
 	crafting = { label = "Crafting efficiency", sort = 3, noTime = true, rows = craftingRows, cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 },
 		{ "Crafts", 258, 44 }, { "Per craft", 306, 80 }, { "Per Conc. pt", 390, 80 }, { "Multicraft", 474, 80 }, { "Resourceful", 558, 84 },
 		{ "Ingenuity", 646, 78 } } },
@@ -853,6 +929,6 @@ LUI.Register("operations", {}, { "scenarios", "paths" }, "Craft")
 for _, k in ipairs({ "plans", "professions" }) do
 	if LUI.ViewDef(k) then LUI.ViewDef(k).parent = "Craft" end
 end
-LUI.Register("operations", {}, { "post", "rules" }, "Trade")
+LUI.Register("operations", {}, { "post", "markets", "marketgroups", "risk", "capitalplan", "rules" }, "Trade")
 LUI.Register("operations", {}, { "queue", "shopping", "restock" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })

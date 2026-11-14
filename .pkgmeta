@@ -12,6 +12,8 @@ move-folders:
   AuctionIQ/Professions/AuctionIQ_Leatherworking: AuctionIQ_Leatherworking
   AuctionIQ/Professions/AuctionIQ_Tailoring: AuctionIQ_Tailoring
   AuctionIQ/Professions/AuctionIQ_Paths: AuctionIQ_Paths
+  # months of daily prices, written by its companion.py
+  AuctionIQ/Companion/AuctionIQ_History: AuctionIQ_History
 
 ignore:
   - tests

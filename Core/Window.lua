@@ -656,6 +656,13 @@ function W.SidePanel(parent, width, height, opts)
 	det.switch:Hide()
 	det.toggleHit = tipHit()
 	det.note = text(IW, "LEFT", "GameFontDisableSmall", 4)
+	-- a line chart's head, price range, first and last dates, and its lines (made as drawn)
+	det.chartHead = text(IW, "LEFT", "GameFontNormalSmall")
+	T.TitleFont(det.chartHead, 10, "bold")
+	det.chartRange = text(IW, "RIGHT", "GameFontDisableSmall")
+	det.chartFrom = text(IW, "LEFT", "GameFontDisableSmall")
+	det.chartTo = text(IW, "RIGHT", "GameFontDisableSmall")
+	det.chartLines = {}
 	det.noteHit = tipHit()
 	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
 	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
@@ -816,7 +823,44 @@ function W.DrawSidePanel(det, d, said)
 		det.cardPrices:Place(0, secTop, det.width, secTop - y)
 		y = y - 6
 	end
-	det.cardPrices:Visible(sec ~= nil)
+	-- or, with no section, a line chart on that card: d.chart = { head, values, lo, hi, from, to }
+	local ch = not sec and d.chart and d.chart.values and #d.chart.values >= 2 and d.chart or nil
+	for _, l in pairs(det.chartLines) do if l then l:Hide() end end
+	for _, fs in ipairs({ det.chartHead, det.chartRange, det.chartFrom, det.chartTo }) do fs:SetText("") end
+	if ch then
+		local top = y
+		at(det.chartHead, 12, y - 6); det.chartHead:SetText(T.Color("accent", ch.head or ""))
+		at(det.chartRange, 12, y - 6)
+		local M = CH.FormatMoney
+		det.chartRange:SetText(ch.lo and ch.hi and (M(ch.lo, true) .. " - " .. M(ch.hi, true)) or "")
+		local PH, plotTop = 60, y - 24
+		local lo, hi = ch.lo or math.huge, ch.hi or 0
+		if not (ch.lo and ch.hi) then for _, v in ipairs(ch.values) do lo, hi = math.min(lo, v), math.max(hi, v) end end
+		if hi <= lo then hi, lo = lo + 1, lo - 1 end
+		local n = #ch.values
+		local function px(i) return 12 + det.IW * (i - 1) / (n - 1), plotTop - PH * (1 - (ch.values[i] - lo) / (hi - lo)) end
+		for i = 2, n do
+			local l = det.chartLines[i]
+			if l == nil and det.CreateLine then l = det:CreateLine(nil, "ARTWORK"); det.chartLines[i] = l or false end
+			if l then
+				local x0, y0 = px(i - 1)
+				local x1, y1 = px(i)
+				l:SetThickness(2)
+				l:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+				l:SetStartPoint("TOPLEFT", det, x0, y0)
+				l:SetEndPoint("TOPLEFT", det, x1, y1)
+				l:Show()
+			end
+		end
+		y = plotTop - PH - 4
+		at(det.chartFrom, 12, y); det.chartFrom:SetText(ch.from or "")
+		at(det.chartTo, 12, y); det.chartTo:SetText(ch.to or "")
+		y = y - 16
+		det.cardPrices:Place(0, top, det.width, top - y)
+		y = y - 6
+	end
+	det.chartShown = ch ~= nil
+	det.cardPrices:Visible(sec ~= nil or ch ~= nil)
 	-- the note, in what's left above the buttons
 	at(det.note, 12, y)
 	det.note:SetText(d.note or "")

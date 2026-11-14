@@ -6,7 +6,7 @@
 ## IconTexture: Interface\AddOns\AuctionIQ\Media\Icon
 ## Category-enUS: Auctions
 ## SavedVariables: AuctionIQDB
-## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI
+## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI, AuctionIQ_History
 ## AddonCompartmentFunc: AuctionIQ_OnAddonCompartmentClick
 ## X-License: MIT
 
@@ -17,6 +17,7 @@ Data\Prices.lua
 Data\Prob.lua
 Data\Expect.lua
 Data\Scans.lua
+Data\History.lua
 Data\Depth.lua
 Data\Compare.lua
 Data\Formula.lua
@@ -29,14 +30,20 @@ Operations\Craft\Professions.lua
 Operations\Queue\Cooldowns.lua
 Data\Ledger.lua
 Data\Demand.lua
+Data\Deals.lua
+Data\Market.lua
+Data\Capital.lua
 Accounting\LedgerUI.lua
 Operations\Trade\Par.lua
 Data\Forecast.lua
 Operations\Trade\Groups.lua
 Operations\Trade\Auction.lua
 Operations\Trade\AuctionUI.lua
+Operations\Trade\Banking.lua
+Operations\Trade\Vendoring.lua
 Operations\Trade\GroupsUI.lua
 Operations\Trade\TradingUI.lua
+Operations\Trade\MarketsUI.lua
 Core\Settings.lua
 Core\SettingsUI.lua
 Core\Alerts.lua

@@ -1,0 +1,8 @@
+## Interface: 120105
+## Title: AuctionIQ History
+## Notes: Months of daily prices for AuctionIQ's Market trends and Risk, written by companion.py from your own scans. Empty until you run it.
+## Author: Courtizy
+## Version: @project-version@
+## X-License: MIT
+
+History.lua
