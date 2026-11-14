@@ -4656,5 +4656,16 @@ check("prune: the archive doesn't bring pruned days back from TSM's records, and
 run("AuctionIQ.db.ledger, AuctionIQ.db.competition = STUB.oldLedger, STUB.oldComp")
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
+# Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an
+# old one left in an install folder is ignored), and every TOC line names a file that exists.
+_listed = set(files)
+_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Dashboard", "Data", "Operations") for p in (ROOT / d).rglob("*.lua")}
+check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc", _on_disk <= _listed)
+check("toc: every file AuctionIQ.toc lists exists", all((ROOT / f).is_file() for f in files))
+for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")) + [ROOT / "Companion" / "AuctionIQ_History"]:
+    _toc = [l.strip() for l in (_d / (_d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua")]
+    _disk = {p.name for p in _d.glob("*.lua")}
+    check(f"toc: {_d.name} lists exactly its Lua files", set(_toc) == _disk)
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

@@ -1,0 +1,62 @@
+# Feature coverage
+
+Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○ not started,
+🎮 needs the live client.
+
+## 1. Crafting and Queue
+
+| Item | State | Where |
+|---|---|---|
+| Live profession-window Advisor kept | ✓ | `Operations/Craft/AdvisorUI.lua` |
+| Crafting tab: recipe scans, work orders, specialization, compact queue | ◐ | All four exist under Operations. The rename to Crafting isn't done |
+| Saved results labelled with character, age, price source | ◐ | Age and source are shown. The character isn't, on every view |
+| Craft vs sell materials vs wait, when meaningful | ◐ | Craft and sell exist (`Decide.Alternatives`). "Wait" isn't an option yet |
+| Batch size, cash now, break-even, expected net, stock left, gain per Concentration point vs a feasible plain craft | ◐ | Every figure exists. They aren't on one panel, and "feasible plain" isn't checked against reagents held |
+| One craft plan across Advisor, Scan, forecast, shopping, Queue | ◐ | Shared by queue entry and forecast. No single plan object yet |
+| Last good scan kept after a failed refresh | ✓ | tests "scan: when every recipe errors..." |
+| Enchant scroll IDs by rank; vellum in cost, shopping, execution | ✓ | `EnchantScrolls.lua`, tests "enchant:", acceptance 2 |
+| Work orders: final allocation and minimum quality after customer reagents | ✓ | `Q.OrderAllocation`, acceptance 2 |
+| Show material changes before executing a revised plan | ✓ | second-press confirm in `Q.Craft` |
+| Preflight the exact batch: how many can be made, what blocks the rest | ✓ | `Q.Preflight` |
+| Track each in-flight request and reconcile confirmed results | ✓ | this PR: one request per click (CQ-02 to CQ-04) |
+| Repeat clicks, partial batches, delayed and duplicate events, failed claim and turn-in, interruption, reload, expired orders | ◐ | All but reload and expired orders are in `acceptance.py`. Duplicate results: 🎮 L-03 |
+| Proofs: commodity, Concentration enchant, partly supplied order | 🎮 | L-04, L-05, L-06 |
+
+## 2. Overview and Accounting
+
+| Item | State |
+|---|---|
+| Overview: gold trend, cash, stock value, net worth, What changed, Next moves | ◐ (the Dashboard has them; rename and stated horizons are to do) |
+| Next moves carry item, character, action, quantity and unit | ✓ (typed handoffs, #134) |
+| Accounting: Income Statement, Balance Sheet, Cash Flow, Ledger | ✓ |
+| Reports › Performance: weekly profit, contributors, item, profession and batch drill-downs | ◐ |
+| Filters carried into transaction detail; opening and closing gold reconciled | ○ |
+| Forecast saved at decision time; idempotent TSM import; documented costing; one attribution per sale | ◐ (decisions and batch results exist; the costing method isn't documented) |
+| Trade tab retired (decision 2026-11-14): Market trends and stock advice move into Accounting detail; AH panel and Deals removed | ○ |
+
+## 3. Tune TSM
+
+| Item | State |
+|---|---|
+| Read effective operations, scope, groups sharing one | ◐ (`Groups.lua` reads TSM operations) |
+| Post cap, duration, floor, shopping max, cancel and repost levers | ○ |
+| Record suggestion and change; like-period comparison | ○ |
+| One documented trial | ○ |
+
+## 4. Architecture and docs
+
+| Item | State |
+|---|---|
+| Versioned SavedVariables migrations | ◐ (`CH.Migrate`, `db.version = 1`) |
+| TOC checked in CI | ✓ (this PR) |
+| Extracted release package tested | ○ |
+| Docs: baseline, bug register, benchmarks, live validation, coverage | ✓ (this PR) |
+| Docs: boundaries, lifecycles, storage, costing, allocation, tuning assumptions, TSM interfaces | ○ |
+
+## 5. Frame pacing
+
+| Item | State |
+|---|---|
+| Live baseline | 🎮 L-02 |
+| Crafting window redraw sliced | ✓ (this PR) |
+| Side card, `TRADE_SKILL_SHOW`, order claim (CQ-09 to CQ-11) | ○ |
