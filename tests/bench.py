@@ -179,6 +179,10 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
       out.dashGrowth = BENCH_MEM() - m1
       t0 = os.clock(); AuctionIQ.Next.List(); out.nextFirst = (os.clock() - t0) * 1000
       t0 = os.clock(); for i = 1, 5 do AuctionIQ.Next.List() end; out.nextWarm = (os.clock() - t0) * 200
+      AuctionIQ.Next.ClearAlternatives()
+      t0 = os.clock(); AuctionIQ.Next.Ranked(now); out.rankedFirst = (os.clock() - t0) * 1000
+      t0 = os.clock(); AuctionIQ.Next.Ranked(now); out.rankedWarm = (os.clock() - t0) * 1000
+      t0 = os.clock(); AuctionIQ.Next.List(now); out.listAgain = (os.clock() - t0) * 1000
       -- Clean up: let go of the caches, then the rebuild in the background, then the same Dashboard
       local before = AuctionIQ.UI.DashboardData(now)
       local cdone, measured = false, nil
@@ -213,6 +217,9 @@ for name, n in (("normal", 2000), ("large", 50000), ("upper", 200000 if not QUIC
     rec("ledger", name, size, "dashboard refresh warm", r.dashWarm)
     rec("ledger", name, size, "recommendations list, first", r.nextFirst)
     rec("ledger", name, size, "recommendations list, warm", r.nextWarm)
+    rec("ledger", name, size, "recommendation cards, grouped with options", r.rankedFirst)
+    rec("ledger", name, size, "recommendation cards, again", r.rankedWarm)
+    rec("ledger", name, size, "recommendations list, again", r.listAgain)
     rec("ledger", name, size, "memory growth, 10 refreshes", r.dashGrowth, "MB")
     rec("ledger", name, size, "clean up, time", r.cleanTime)
     rec("ledger", name, size, "clean up, collector worst frame", r.gcWorst)

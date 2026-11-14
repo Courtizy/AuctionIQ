@@ -2549,6 +2549,44 @@ grp = L.eval("""(function()
   return { r[1].title, r[1].gold, r[1].value.basis, r[2].title, r[2].gold } end)()""")
 check("do next grouped: only gains add up, the basis says how many were priced, and past sales don't lift a card",
       grp[1] == "Repost 2 items" and grp[2] == 3000 and grp[3] == "1 of the 2 items priced" and grp[4] == "Rethink" and grp[5] is None)
+ga = L.eval("""(function()
+  local N, old, oldFor, oldMax = AuctionIQ.Next, AuctionIQ.Next.List, AuctionIQ.Next.AlternativesFor, AuctionIQ.Next.GROUP_ALT_MAX
+  local verdicts, asked = { [1] = 'sell', [2] = 'refresh', [3] = 'craft', [4] = 'sell', [5] = 'keep' }, 0
+  N.AlternativesFor = function(r) asked = asked + 1; local v = verdicts[r.id]
+    return { verdict = v, stale = v == 'refresh' and { 'the profession scan is 13 hr old: rescan it' } or {} } end
+  local function cards(n, scanned)
+    local t = {}
+    for i = 1, n do t[i] = { title = 'Restock', detail = 'item ' .. i, tier = 2, value = N.Value('gain', 1000 * i),
+      scanRow = i <= scanned and { id = i } or nil, go = { 'operations', 'scenarios', { id = i, name = 'I' .. i } } } end
+    return t
+  end
+  local out = {}
+  N.List = function() return cards(6, 5) end
+  local r = N.Ranked()
+  out.detail, out.asked, out.row1 = r[1].detail, asked, r[1].rows[1].alternatives and r[1].rows[1].alternatives.verdict
+  N.GROUP_ALT_MAX, asked = 2, 0
+  N.List = function() return cards(6, 5) end
+  r = N.Ranked(); out.capped, out.cappedAsked = r[1].detail, asked
+  verdicts = { [1] = 'craft', [2] = 'craft' }
+  N.List = function() return cards(2, 2) end
+  r = N.Ranked(); out.plain = r[1].detail
+  N.List, N.AlternativesFor, N.GROUP_ALT_MAX = old, oldFor, oldMax
+  return out end)()""")
+check("recommendations grouped: a Restock group counts its items with a better option or a stale scan, by kind",
+      ga.detail.endswith("; of the 6 items, 1 need a fresh scan first, selling the reagents earns more for 2, crafting loses at today's prices for 1")
+      and ga.asked == 5 and ga.row1 == "sell")
+check("recommendations grouped: it checks at most GROUP_ALT_MAX items with a scan, and says so",
+      ga.cappedAsked == 2 and ga.capped.endswith("; of the first 2 checked, 1 need a fresh scan first, selling the reagents earns more for 1"))
+check("recommendations grouped: when making every item is best, the card adds nothing", "of the" not in ga.plain)
+same_idx = L.eval("""(function()
+  local idx, bad, n = AuctionIQ.Queue.ScanRowIndex(), 0, 0
+  for id, x in pairs(idx) do
+    n = n + 1
+    local k, c, r = AuctionIQ.Queue.ScanRowFor(id)
+    if k ~= x[1] or c ~= x[2] or r ~= x[3] then bad = bad + 1 end
+  end
+  return { n = n, bad = bad } end)()""")
+check("do next: the per-list scan index picks the same best row per item as looking each one up", same_idx.n >= 1 and same_idx.bad == 0)
 k = L.eval("{ AuctionIQ.Queue.ScanRowFor(100) }")
 check("do next: a restock finds the saved scan that makes the item", k[1] == "Alt-Realm" and k[3].recipeID == 10)
 run("AuctionIQ.UI.Page('today')")
@@ -3673,6 +3711,76 @@ check("sell-through: one expired stack of 20 is one day against the item, not 20
       and abs(bel.mean - 2 / 5) < 1e-9 and old.mean < 0.1 and old.pDown > 0.99 and bel.pDown < 0.7)
 run(f"STUB.setST({{}}, {{ {{ 950, 1, {t0} }} }})")
 check("sell-through: so one expired stack weighs the same as one expired unit", list(L.eval("STUB.st(950)").values())[:2] == one[:2])
+# the per-item stats are kept until a record they counted ages out of the 30 days, then rebuilt
+edge = "STUB.now - 30 * 86400 + 3600"
+run(f"STUB.setST({{ {{ 951, 1, {edge} }} }}, {{}})")
+inside = list(L.eval("STUB.st(951)").values())
+run("STUB.now = STUB.now + 2 * 3600")
+outside = list(L.eval("STUB.st(951)").values())
+run("STUB.now = STUB.now - 2 * 3600; AuctionIQ.Ledger.ClearStats()")
+check("sell-through: a sale counts while it's in the last 30 days, and stops counting once it ages out, with no reload",
+      inside[2] == 1 and outside[2] == 0)
+# built a few milliseconds at a time (login's warm-up), the stats come out the same as in one go
+stepped = L.eval(f"""(function()
+  local sales = {{}}
+  for i = 1, 3000 do sales[i] = {{ 900 + i % 7, 1 + i % 3, {t0} - (i % 40) * 86400 }} end
+  local exp = {{}}
+  for i = 1, 1500 do exp[i] = {{ 900 + i % 5, 1, {t0} - (i % 35) * 86400 }} end
+  STUB.setST(sales, exp)
+  local keep, tick = debugprofilestop, 0
+  debugprofilestop = function() tick = tick + 1; return tick end
+  local job, steps, built = AuctionIQ.Ledger.StatsJob(), 0, nil
+  while not built and steps < 10000 do steps = steps + 1; built = job.step(0.5) end
+  debugprofilestop = keep
+  local a = {{}}
+  for id = 900, 906 do a[#a + 1] = table.concat(STUB.st(id), ",") .. "," .. AuctionIQ.Ledger.NumExpires(id) end
+  AuctionIQ.Ledger.ClearStats()
+  local b = {{}}
+  for id = 900, 906 do b[#b + 1] = table.concat(STUB.st(id), ",") .. "," .. AuctionIQ.Ledger.NumExpires(id) end
+  return {{ steps = steps, same = table.concat(a, ";") == table.concat(b, ";"), sample = a[1] }}
+end)()""")
+check("sell-through: the stats built in small steps match the stats built in one go",
+      stepped.steps > 3 and stepped.same)
+# when each item sells: kept between asks, rebuilt as the window moves, the same built in steps
+st = L.eval(f"""(function()
+  local sales = {{}}
+  for i = 1, 3000 do sales[i] = {{ 900 + i % 7, 1 + i % 3, {t0} - (i % 40) * 86400 - (i % 24) * 3600 }} end
+  sales[#sales + 1] = {{ 960, 4, STUB.now - 30 * 86400 + 3600 }}
+  STUB.setST(sales, {{}})
+  local L, out = AuctionIQ.Ledger, {{}}
+  local function sig(list)
+    local t = {{}}
+    for _, e in ipairs(list) do t[#t + 1] = e.id .. ":" .. e.sold .. ":" .. e.bestHour .. ":" .. e.bestDay end
+    table.sort(t); return table.concat(t, ",")
+  end
+  local function find(list, id) for _, e in ipairs(list) do if e.id == id then return e end end end
+  local a = L.SaleTimes(STUB.now - 30 * 86400)
+  out.kept = L.SaleTimes(STUB.now - 30 * 86400) == a
+  out.edgeIn = find(a, 960) and find(a, 960).sold
+  local keep, tick = debugprofilestop, 0
+  debugprofilestop = function() tick = tick + 1; return tick end
+  L.ClearStats()
+  local job, steps, built = L.SaleTimesJob(STUB.now - 30 * 86400), 0, nil
+  while not built and steps < 10000 do steps = steps + 1; built = job.step(0.5) end
+  debugprofilestop = keep
+  out.steps, out.same = steps, sig(built) == sig(a)
+  STUB.now = STUB.now + 2 * 3600
+  out.edgeOut = find(L.SaleTimes(STUB.now - 30 * 86400), 960) == nil
+  STUB.now = STUB.now - 2 * 3600
+  -- stock targets read the last two weeks; a sale leaves them once it's older
+  sales = {{ {{ 961, 6, STUB.now - 14 * 86400 + 3600 }}, {{ 961, 2, STUB.now - 86400 }} }}
+  STUB.setST(sales, {{}})
+  AuctionIQ.Par.Clear()
+  out.parIn = AuctionIQ.Par.Weekly(STUB.now)[961]
+  out.parOut = AuctionIQ.Par.Weekly(STUB.now + 2 * 3600)[961]
+  AuctionIQ.Par.Clear()
+  return out
+end)()""")
+check("sale times: asked again, the same answer comes back without a rebuild", st.kept)
+check("sale times: built in small steps it matches the one-go answer", st.steps > 3 and st.same)
+check("sale times: a sale in the 30 days counts, and drops out once it's older, with no reload", st.edgeIn == 4 and st.edgeOut)
+check("stock targets: two weeks' sales count half a week each, and a sale drops out once it's over two weeks old",
+      st.parIn == 4 and st.parOut == 1)
 # property: a day's sales and expiries, split into any number of rows, give the same belief
 bad = L.eval(f"""(function()
   math.randomseed(23)

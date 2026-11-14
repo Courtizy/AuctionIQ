@@ -106,7 +106,7 @@ Your craft results (`/aiq results`) keep three stages, each on one basis it name
 
 **How many to make?** The Craft card's Suggested row keeps three numbers apart: how many you can make, how many you can afford, and how many AuctionIQ suggests. The suggestion is only as specific as the evidence. With a few weeks of your own sales it gives a size ("Make 12"). With thin evidence it says so and offers a small trial covering about two days of sales ("Try 4"). When your stock already covers the next few days it says "Hold off", and how many days your stock covers. Hover the row to see what it rests on, your expected week at 5, 10 and 20 (and at the quantity you set), the assumptions, and what would change the suggestion. It is optional: set any quantity with the stepper and queue it. When you queue a different number, AuctionIQ saves both. Accounting > Reports > Performance > Batch results then judges the batch against what you chose, and its hover says "You chose 20 (suggested 8)" with what the suggested size would have brought in by now (modeled), so you can see whether going your own way paid off. The Craft pane in Compare crafts uses the same suggestion and shows it beside a Dashboard hand-off's quantity when the two differ.
 
-**Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
+**Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. A grouped card ("Restock 9 items") checks the first 10 of its items that have a scan, and counts the ones that need a fresh scan or have a better option by kind, such as "of the 9 items, 2 need a fresh scan first, selling the reagents earns more for 1". Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
 
@@ -180,8 +180,14 @@ environment, on every pull request.
 **Benchmarks:** `python3 tests/bench.py --quick` times scans, the advisor, the ledger and the Dashboard
 in the same harness (relative costs, not in-game frame times). TSM's records are read through a
 time-ordered view kept until they change (`Ledger.ByTime`, `Ledger.From`), so a range reads only the
-records in it. Login's warm-up (`Ledger.WarmAll`) parses them, orders them, builds the day archive and
-the indexes a few milliseconds a frame, so the Dashboard's first open finds them ready.
+records in it. Login's warm-up (`Ledger.WarmAll`) parses them, orders them, builds the day archive,
+each item's sell-through stats (`Ledger.StatsJob`), when each item sells over 30 days
+(`Ledger.SaleTimesJob`) and the indexes a few milliseconds a frame, so the Dashboard's first open finds
+them ready. Each is kept until TSM's records change or a record it counted ages out of its window. Stock
+targets read only the last two weeks of the time-ordered sales, and the Recommendations list looks up
+each item's best scan row from one index per refresh. Background work aims for 4 ms a frame
+(`Ledger.FRAME_MS`), so that with the check between steps and the collector catching up it stays near
+the 6 ms a frame it may take; the parse reuses one table for each line's fields to leave less garbage.
 
 **Releases:** tagging `v*` builds a release with the BigWigs packager.
 

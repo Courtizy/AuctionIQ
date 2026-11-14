@@ -61,9 +61,18 @@ function Next.ClearAlternatives() altCache = setmetatable({}, { __mode = "k" }) 
 -- on gives no gold and says so. Returns the value, a note ("" when none) and the scan row, whose
 -- options (Decide.Alternatives) the cards shown add later: they read live stock and sale values per
 -- reagent, too slow for every card the list considers.
+-- The best scan row per item, looked up once per list (Queue.ScanRowIndex) rather than once per card.
+local rowIndex
+local function scanRowFor(id)
+	if not (CH.Queue and CH.Queue.ScanRowIndex) then return nil end
+	rowIndex = rowIndex or CH.Queue.ScanRowIndex()
+	local x = rowIndex[id]
+	if x then return x[1], x[2], x[3] end
+end
+
 local function makeGain(id, n)
-	if not (CH.Queue and CH.Queue.ScanRowFor and n and n > 0) then return nil, "" end
-	local _, _, r = CH.Queue.ScanRowFor(id)
+	if not (n and n > 0) then return nil, "" end
+	local _, _, r = scanRowFor(id)
 	if not (r and r.profit) then return nil, "" end
 	local D = CH.Decide
 	if r.at and D and D.SCAN_STALE and time() - r.at > D.SCAN_STALE then
@@ -84,6 +93,42 @@ function Next.AddAlternatives(e, now)
 		or alt.verdict == "flip" and "; buying it out to relist pays more"
 		or alt.verdict == "keep" and "; at today's prices crafting loses" or nil
 	if note and not e.detail:find(note, 1, true) and not e.detail:find("refresh first", 1, true) then e.detail = e.detail .. note end
+	return e
+end
+
+--- A grouped card ("Restock 9 items") checks its items' options too, the first GROUP_ALT_MAX that
+--- have a scan (each reads stock and sale values per reagent), and says how many have a better option
+--- than making them, or need a fresh scan, by kind. Each item card keeps its own note for the view it opens.
+Next.GROUP_ALT_MAX = 10
+local GROUP_NOTES = {
+	{ "refresh", "%d need a fresh scan first" },
+	{ "sell", "selling the reagents earns more for %d" },
+	{ "flip", "buying out to relist pays more for %d" },
+	{ "keep", "crafting loses at today's prices for %d" },
+}
+function Next.AddGroupAlternatives(e, now)
+	if not (e and e.rows) or e.groupAlternatives then return e end
+	local counts, checked, scanned = {}, 0, 0
+	for _, row in ipairs(e.rows) do
+		if row.scanRow then
+			scanned = scanned + 1
+			if checked < Next.GROUP_ALT_MAX then
+				checked = checked + 1
+				Next.AddAlternatives(row, now)
+				local v = row.alternatives and row.alternatives.verdict
+				if v then counts[v] = (counts[v] or 0) + 1 end
+			end
+		end
+	end
+	e.groupAlternatives = { counts = counts, checked = checked, scanned = scanned }
+	local parts = {}
+	for _, n in ipairs(GROUP_NOTES) do
+		if counts[n[1]] then table.insert(parts, string.format(n[2], counts[n[1]])) end
+	end
+	if #parts > 0 then
+		local of = checked < scanned and string.format("of the first %d checked", checked) or string.format("of the %d items", #e.rows)
+		e.detail = e.detail .. "; " .. of .. ", " .. table.concat(parts, ", ")
+	end
 	return e
 end
 
@@ -112,7 +157,7 @@ end
 -- Queue enough crafts to make n of an item, from the best saved scan that makes it.
 local function makeAct(id, n)
 	if not (CH.Queue and n and n > 0) then return nil end
-	local k, c, r = CH.Queue.ScanRowFor(id)
+	local k, c, r = scanRowFor(id)
 	if not r then return nil end
 	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
 	return queueAct("Queue " .. crafts, k, c, r, false, crafts)
@@ -124,6 +169,7 @@ end
 --- act.run() returns ok and a line saying what happened (or why it couldn't), shown on the card.
 function Next.List(now)
 	now = now or time()
+	rowIndex = nil
 	local out = {}
 	local function add(e) table.insert(out, e) end
 
@@ -295,6 +341,7 @@ function Next.List(now)
 			go = { "operations", "professions", { title = "Weekly knowledge" } } }) end
 	end
 
+	rowIndex = nil
 	return Next.Order(out)
 end
 
@@ -361,6 +408,8 @@ function Next.Ranked(now, max)
 	local all = #out
 	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
 	-- the cards shown say when another option beats making the item
-	for _, e in ipairs(out) do Next.AddAlternatives(e, now) end
+	for _, e in ipairs(out) do
+		if e.rows then Next.AddGroupAlternatives(e, now) else Next.AddAlternatives(e, now) end
+	end
 	return out, all
 end
