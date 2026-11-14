@@ -71,7 +71,7 @@ function MUI.Chart(x)
 	local function date(day) return date and os and os.date and os.date("%b %d", day * 86400) or ("day " .. day) end
 	local okFrom, from = pcall(date, pts[1][1])
 	local okTo, to = pcall(date, pts[#pts][1])
-	return { head = string.format("MARKET PRICE, %d DAYS SCANNED", #pts), values = values, days = pts, lo = lo, hi = hi,
+	return { head = string.format("MARKET PRICE, %d DAYS", #pts), values = values, days = pts, lo = lo, hi = hi,
 		from = okFrom and from or "", to = okTo and to or "" }
 end
 
@@ -86,9 +86,15 @@ function MUI.ItemDetail(d)
 			tip = { { "Sales rate" }, { T.Color("muted", CH.Demand and CH.Demand.Text(x.demand) or "-") } } },
 		{ "Region sale rate", pct(x.saleRate), tip = { { "Region sale rate" }, { T.Color("muted", "TSM's share of the region's listings of it that sell.") } } },
 		{ "Gold a day", money(x.goldDay) },
-		{ "Held / up", string.format("%d / %d", x.held, x.up) },
-		{ "Days to sell them", Mk.DaysText(x.daysToSell) },
+		{ "Held / up, days to sell", string.format("%d / %d", x.held, x.up) .. T.Color("muted", ", ") .. Mk.DaysText(x.daysToSell) },
 	}
+	if x.change90 then
+		rows[#rows + 1] = { "Over 90 days", T.Color(x.change90 >= 0 and "ok" or "bad", string.format("%+d%%", math.floor(x.change90 * 100 + 0.5))),
+			tip = { { "Over 90 days" }, { T.Color("muted", "The last day scanned against the nearest day 90 or more days before it.") } } }
+	end
+	if x.hi and x.span and x.span > 30 then
+		rows[#rows + 1] = { string.format("High / low, %d days", x.span), money(x.hi) .. T.Color("muted", " / ") .. money(x.lo) }
+	end
 	local note
 	if x.trendFrom == "scans" then
 		note = string.format("A line through %d days of AH scans moves %s a week; a typical day moves it %s.", x.days,

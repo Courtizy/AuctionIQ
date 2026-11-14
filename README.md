@@ -46,6 +46,7 @@ makes you a better goblin.
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
 - **By profession**: each profession's sales, profit, margin and the crafted stock it has made, with days to turn it, and your inventory turnover (Accounting > Statements > Performance > Profession)
+- **Companion app**: a Python script on your PC that keeps a year of your daily scanned prices, from every WoW account, and loads the last 180 days back into the game for Market trends and Risk
 - **Forecast against actual**: what each craft was expected to make and what it really sold for, so items that keep falling short drop down the rankings
 
 | | The question it answers | Inside |
@@ -127,6 +128,8 @@ Your craft results (`/aiq results`) keep three stages, each on one basis it name
 
 **By profession.** Accounting > Statements > Performance > Profession sums the time frame's crafted sales by the profession that makes each item (from your scans): units sold, revenue after the cut, what they cost to make, profit, margin and share of profit. Held is the crafted stock you hold that each profession makes, at AuctionIQ value, and days to turn is that over its revenue a day. The footer gives your inventory turnover: the cost of everything that sold (the Income Statement's) over the average of the daily inventory snapshots in the time frame, and how many days one turn takes.
 
+**Companion app.** The addon keeps 30 days of daily prices. `companion.py`, in the `AuctionIQ_History` addon folder, keeps more: run it on your PC (Python 3, nothing to install) and it reads AuctionIQ's saved variables from every account under `WTF\Account`, adds each day to a history in `WTF\AuctionIQ_History.sqlite` (a year is kept; addon updates leave WTF alone), and writes the last 180 days to `AuctionIQ_History\History.lua`. Log in or `/reload` and Market trends charts the whole history, with its high and low and the change over 90 days; the trend and volatility still use the last 30 days. Saved variables are written when you log out or `/reload`, so run it after one, or leave `python companion.py --watch 15` running while you play. `--csv prices.csv` also writes the history as CSV, and `--wow` names the `_retail_` folder if it isn't found. An addon update replaces History.lua with an empty one until the next run.
+
 **Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. A grouped card ("Restock 9 items") checks the first 10 of its items that have a scan, and counts the ones that need a fresh scan or have a better option by kind, such as "of the 9 items, 2 need a fresh scan first, selling the reagents earns more for 1". Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
@@ -178,7 +181,6 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 ## Roadmap
 
 - **[Release](https://github.com/Courtizy/AuctionIQ/milestone/6)**: fix enchanting crafting orders, screenshots, and publishing on CurseForge and Wago.
-- **Later**: a companion app with a daily price history.
 
 See all [milestones](https://github.com/Courtizy/AuctionIQ/milestones).
 

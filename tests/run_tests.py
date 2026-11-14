@@ -4039,6 +4039,102 @@ check("inventory turnover: cost of what sold over the average inventory (400g / 
       abs(bp2.turns - 2) < 1e-9 and abs(bp2.tdays - 3.5) < 1e-9)
 check("By profession: a row each, with the turnover in the footer", bp2.rows == 2 and "Inventory turned 2.0 times" in plain(bp2.foot))
 
+# Companion app: a daily price history past the addon's 30 days ---------------------------------
+import importlib.util, tempfile, sqlite3 as _sq
+_spec = importlib.util.spec_from_file_location("companion", ROOT / "Companion" / "AuctionIQ_History" / "companion.py")
+comp = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(comp)
+# the game's own way of writing saved variables
+SV = """
+AuctionIQDB = {
+["scans"] = {
+[900] = {
+["at"] = 1762000000,
+["daily"] = {
+{
+20390, -- [1]
+12000.5, -- [2]
+2, -- [3]
+}, -- [1]
+{
+20399, -- [1]
+13000, -- [2]
+1, -- [3]
+}, -- [2]
+},
+["market"] = 13000,
+},
+["bad"] = "x",
+},
+["itemNames"] = {
+[900] = "Flask of \\"Tests\\"",
+},
+["debug"] = { ["x"] = -1.5e-3, ["y"] = true, ["z"] = nil, },
+}
+OtherGlobal = nil
+"""
+g = comp.read_saved_variables(SV)
+check("companion: reads the game's saved variables (strings with escapes, numbers, nested tables)",
+      g["AuctionIQDB"]["itemNames"][900] == 'Flask of "Tests"' and g["AuctionIQDB"]["debug"]["x"] == -1.5e-3 and g["AuctionIQDB"]["debug"]["y"] is True
+      and g["AuctionIQDB"]["scans"][900]["daily"][1][2] == 12000.5)
+rows_sv = list(comp.daily_prices(g["AuctionIQDB"]))
+check("companion: each item's days from the saved scans", rows_sv == [(900, 20390, 12000.5, 2), (900, 20399, 13000.0, 1)])
+with tempfile.TemporaryDirectory() as _td:
+    _td = Path(_td)
+    retail = _td / "_retail_"
+    for acct, text in (("ONE", SV), ("TWO", SV.replace("20390", "20250").replace("12000.5", "9000"))):
+        (retail / "WTF" / "Account" / acct / "SavedVariables").mkdir(parents=True)
+        (retail / "WTF" / "Account" / acct / "SavedVariables" / "AuctionIQ.lua").write_text(text)
+    check("companion: finds every account's saved variables", [f.parent.parent.name for f in comp.saved_variables(retail)] == ["ONE", "TWO"])
+    con = comp.open_db(_td / "h.sqlite")
+    today = 20400
+    for f in comp.saved_variables(retail):
+        comp.merge(con, comp.daily_prices(comp.read_saved_variables(f.read_text())["AuctionIQDB"]), today=today)
+    again = comp.merge(con, comp.daily_prices(g["AuctionIQDB"]), today=today)
+    days_db = con.execute("SELECT day, price, scans FROM prices WHERE item = 900 ORDER BY day").fetchall()
+    check("companion: the history keeps both accounts' days, and a second run changes nothing",
+          days_db == [(20250, 9000.0, 2), (20390, 12000.5, 2), (20399, 13000.0, 1)])
+    comp.merge(con, [(900, 20399, 13500.0, 3), (900, 20399, 1.0, 1), (900, today - 400, 5.0, 1)], today=today)
+    check("companion: a day seen more often wins; days past a year are dropped",
+          con.execute("SELECT price FROM prices WHERE item = 900 AND day = 20399").fetchone()[0] == 13500.0
+          and con.execute("SELECT COUNT(*) FROM prices WHERE day <= ?", (today - 365,)).fetchone()[0] == 0)
+    out_lua = _td / "History.lua"
+    n_items = comp.write_history(con, out_lua, 180, today=today)
+    comp.write_csv(con, _td / "p.csv")
+    csv_lines = (_td / "p.csv").read_text().splitlines()
+    check("companion: writes the last 180 days back for the game, and a CSV of everything",
+          n_items == 1 and '[900]="' in out_lua.read_text() and csv_lines[0] == "item,date,price_gold,scans" and len(csv_lines) == 4)
+    con.close()
+    hist_src = out_lua.read_text()
+L.execute(hist_src)
+hs = L.eval("""(function()
+  local H, Mk, out = AuctionIQ.History, AuctionIQ.Market, {}
+  local keepNow = STUB.now
+  STUB.now = 20400 * 86400 + 3600
+  H.Clear()
+  out.avail = H.Available()
+  local pts = H.Points(900)
+  out.n, out.first, out.last = #pts, pts[1][1], pts[#pts][2]
+  -- today's scans: the history's days, and the scans' on top (a day in both takes the scans')
+  AuctionIQ.db.scans[900] = { at = STUB.now, min = 14000, market = 14000, qty = 3, daily = { { 20399, 13900, 4 }, { 20400, 14000, 1 } } }
+  local s = H.Series(900)
+  out.sn, out.s399, out.sLast = #s, s[3][2], s[#s][2]
+  STUB.prices["i:900"] = { formula_value = 14000, sold = 3 }
+  AuctionIQ.Prices.ClearCache()
+  local x = Mk.Item(900)
+  out.span, out.hi, out.lo, out.change90, out.recent = x.span, x.hi, x.lo, x.change90, x.days
+  out.chart = #AuctionIQ.MarketsUI.Chart(x).values
+  AuctionIQ.db.scans[900], STUB.prices["i:900"] = nil, nil
+  AuctionIQ_HistoryData = nil; H.Clear(); AuctionIQ.Prices.ClearCache()
+  out.gone = H.Series(900) == nil
+  STUB.now = keepNow
+  return out
+end)()""")
+check("history: the companion's file loads in the game, the days within 180 of today", hs.avail and hs.n == 3 and hs.first == 20250 and hs.last == 13500)
+check("history: an item's series is the history's days and today's scans, a day in both the scans'", hs.sn == 4 and hs.s399 == 13900 and hs.sLast == 14000)
+check("history: Market trends charts all of it, with the high and low and the change over 90 days; the trend uses the last 30 days",
+      hs.span == 151 and hs.hi == 14000 and hs.lo == 9000 and abs(hs.change90 - (14000 / 9000 - 1)) < 1e-9 and hs.recent == 3 and hs.chart == 4)
+check("history: without the companion's file, just the scans", hs.gone)
+
 # Capital allocation: where gold earns the most a day for the gold tied up ------------------------
 cp = L.eval("""(function()
   local Cp, out, G = AuctionIQ.Capital, {}, 10000

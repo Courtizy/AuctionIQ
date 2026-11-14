@@ -17,7 +17,7 @@
 -- gold a day.
 local _, CH = ...
 
-local Mk = { MIN_DAYS = 5, RISING = 0.05, CHOPPY = 0.12, THIN = 0.2 }
+local Mk = { MIN_DAYS = 5, FIT_DAYS = 30, RISING = 0.05, CHOPPY = 0.12, THIN = 0.2 }
 CH.Market = Mk
 
 local function price(id)
@@ -65,15 +65,35 @@ function Mk.Read(x)
 	return "steady"
 end
 
---- An item's market: { id, price, points (daily, oldest first), trend, trendFrom ("scans" per week,
---- "tsm" vs 60 days), vol, days, units, demand, region, saleRate, goldDay, held, up, daysToSell, read }.
+--- An item's market: { id, price, points (daily, oldest first: your scans and, with the companion's
+--- history, the months before), trend, trendFrom ("scans" per week, "tsm" vs 60 days), vol, days
+--- (days in the last FIT_DAYS the trend and volatility use), span (days the points cover), hi, lo,
+--- change90 (the price now against the nearest day 90 or more days back), units, demand, region,
+--- saleRate, goldDay, held, up, daysToSell, read }.
 function Mk.Item(id, now)
 	now = now or time()
 	local P = CH.Prices
 	local x = { id = id, price = price(id) }
-	local points = CH.Scans and CH.Scans.Daily and CH.Scans.Daily(id)
-	x.points = points or {}
-	x.trend, x.vol, x.days = Mk.Fit(points)
+	local points = (CH.History and CH.History.Series or CH.Scans.Daily)(id) or {}
+	x.points = points
+	-- trend and volatility from the last FIT_DAYS: what the price does now, not months ago
+	local today, recent = math.floor(now / 86400), points
+	if points[1] and points[1][1] <= today - Mk.FIT_DAYS then
+		recent = {}
+		for _, p in ipairs(points) do if p[1] > today - Mk.FIT_DAYS then recent[#recent + 1] = p end end
+	end
+	x.trend, x.vol, x.days = Mk.Fit(recent)
+	if points[1] then
+		x.span = points[#points][1] - points[1][1] + 1
+		local hi, lo, back = 0, math.huge, nil
+		for _, p in ipairs(points) do
+			hi, lo = math.max(hi, p[2]), math.min(lo, p[2])
+			if p[1] <= today - 90 then back = p end
+		end
+		x.hi, x.lo = hi, lo
+		local last = points[#points][2]
+		if back and back[2] > 0 then x.change90 = last / back[2] - 1 end
+	end
 	if x.trend then
 		x.trendFrom = "scans"
 	else
