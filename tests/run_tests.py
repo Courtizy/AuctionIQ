@@ -66,7 +66,7 @@ check("tooltip shows value, buy now / post and profit",
 run('AuctionIQ.db.settings.tooltip = false; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
 check("tooltip can be turned off", len(list(L.globals().GameTooltip.lines.values())) == 0)
 
-run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.Fire("TRADE_SKILL_LIST_UPDATE"); STUB.RunTimers()')
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.Fire("TRADE_SKILL_LIST_UPDATE"); STUB.RunTimers(); STUB.RunTimers()')
 p = me.professions[2906]
 check("profession and Concentration recorded", p is not None and p.conc == 400 and p.concMax == 1000)
 crafts = list(p.crafts.values())
@@ -954,6 +954,34 @@ check("scan: back to the Craft view", any(x.startswith("Test Potion profit=") fo
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 cd = list(CH.Cooldowns.All().values())
 check("cooldowns recorded and listed", len(cd) == 1 and cd[0].name == "Phoenix Oil" and cd[0].ready == False)
+
+# The recipe walk: a profession's recipes over frames, and not again within a few minutes
+wk = L.eval("""(function()
+  local CH, P = AuctionIQ, AuctionIQ.Professions
+  local p = CH.Me().professions[2906]
+  local frames, keepMs, keepIDs = 0, P.WALK_MS, STUB.recipeIDs
+  local ids = {}
+  for i = 1, 40 do ids[i] = ({ 1, 2, 3, 10, 11 })[(i - 1) % 5 + 1] end
+  STUB.recipeIDs = ids
+  P.WALK_MS = 0 -- a pause every 8 recipes
+  local keepClock = debugprofilestop
+  debugprofilestop = function() return os.clock() * 1000 end
+  local best = CH.BestCrafts()
+  p.walkAt = nil
+  local started = P.Walk(2906, p, true)
+  local doneAfter
+  for i = 1, 20 do STUB.RunTimers(); frames = frames + 1; if p.walkAt and not doneAfter then doneAfter = frames end end
+  P.WALK_MS, STUB.recipeIDs, debugprofilestop = keepMs, keepIDs, keepClock
+  local again = P.Walk(2906, p)
+  local cd = p.cooldowns[1]
+  local same = #best == #p.crafts
+  for i, x in ipairs(best) do same = same and p.crafts[i].recipeID == x.recipeID and p.crafts[i].profit == x.profit end
+  return { started = started, frames = doneAfter, same = same, again = again, cd = cd and cd.name }
+end)()""")
+check("recipe walk: spread over frames, a pause every 8 recipes, and the same best crafts", wk.started and wk.frames == 5 and wk.same)
+check("recipe walk: not again within a few minutes, but its cooldowns are read again", wk.again is False and wk.cd == "Phoenix Oil")
+perf = L.eval("(function() STUB.Fire('PLAYER_LOGOUT'); return AuctionIQ.db.debug and AuctionIQ.db.debug.perf end)()")
+check("perf: the costliest timings are kept in the saved variables at logout", perf is not None and len(list(perf.by.values())) >= 1)
 
 # Craft results log
 CH.AdvisorUI.Show(10)

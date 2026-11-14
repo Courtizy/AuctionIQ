@@ -72,7 +72,7 @@ makes you a better goblin.
 
 ## Your first 10 minutes
 
-1. **Open each profession window once** on each crafter, so AuctionIQ learns your recipes, stats and specialization.
+1. **Open each profession window once** on each crafter, so AuctionIQ learns your recipes, stats and specialization. It reads every recipe the profession has a few milliseconds a frame, and not again for five minutes, so opening the window doesn't stall.
 2. **Visit the Auction House** and let TSM (or your own searches) look at prices. AuctionIQ keeps what the AH shows you and uses it beside TSM's numbers.
 3. **Rank your recipes.** With a profession open, type `/aiq scan`. Every recipe is listed by gold a day, with and without Concentration.
 4. **Read the craft card.** Pick a recipe and the card beside the profession window shows the quality to aim for, the reagents to use, the profit and where that estimate could go wrong. Flip the Concentrate switch to compare.
@@ -150,7 +150,7 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 
 **I updated and nothing changed.** Restart the game completely; `/reload` doesn't load new addon files.
 
-**It feels slow.** Type `/aiq perf` and include what it prints when you [open an issue](https://github.com/Courtizy/AuctionIQ/issues).
+**It feels slow.** Type `/aiq perf` and include what it prints when you [open an issue](https://github.com/Courtizy/AuctionIQ/issues). The costliest 20 timings are also saved at logout or `/reload`, under `debug.perf` in `WTF/Account/<account>/SavedVariables/AuctionIQ.lua`.
 
 ## Chat Commands
 

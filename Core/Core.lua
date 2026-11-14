@@ -162,6 +162,18 @@ end
 
 function CH.PerfReset() perf.by, perf.since = {}, time() end
 
+-- Kept in the saved variables at logout or /reload (the costliest 20), so a lag report can be read
+-- after the session that had it.
+CH.On("PLAYER_LOGOUT", function()
+	if not CH.db then return end
+	local list = {}
+	for name, p in pairs(perf.by) do list[#list + 1] = { name = name, calls = p.calls, ms = math.floor(p.ms + 0.5), max = math.floor(p.max * 10 + 0.5) / 10 } end
+	table.sort(list, function(a, b) return a.max > b.max end)
+	for i = #list, 21, -1 do list[i] = nil end
+	CH.db.debug = CH.db.debug or {}
+	CH.db.debug.perf = { at = time(), since = perf.since, by = list }
+end)
+
 -- SavedVariables versions. Each step brings data saved by an older build up to the next version;
 -- CH.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
 CH.DB_VERSION = 2
