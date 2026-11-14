@@ -3703,7 +3703,7 @@ check("ui: opening a page refreshes it once", n1 == 1)
 # Banking: a group's items between your bags and the Warband bank -----------------------------
 bk = L.eval("""(function()
   local keep = { C_Container = C_Container, C_Bank = C_Bank, BagIndex = Enum.BagIndex, BankType = Enum.BankType,
-    Items = AuctionIQ.Groups.Items, Tree = AuctionIQ.Groups.Tree }
+    Items = AuctionIQ.Groups.Items, Tree = AuctionIQ.Groups.Tree, Path = AuctionIQ.Groups.Path }
   Enum.BagIndex = { ReagentBag = 5, AccountBankTab_1 = 12 }
   Enum.BankType = { Account = 2 }
   local box = { [0] = { { id = 901, n = 20 }, { id = 902, n = 5, bound = true }, { id = 903, n = 3 }, false },
@@ -3723,11 +3723,14 @@ bk = L.eval("""(function()
     IsItemAllowedInBankType = function(_, loc) local x = box[loc.bag][loc.slot]; return x and not x.bound end }
   AuctionIQ.Groups.Items = function(path) return path == "Mats" and { 901, 902, 904 } or {} end
   AuctionIQ.Groups.Tree = function() return { { path = "Mats", name = "Mats", depth = 0 }, { path = "Other", name = "Other", depth = 0 } } end
+  -- each item's group, as the panel reads it from what you hold (903 is in no group)
+  AuctionIQ.Groups.Path = function(id) return (id == 901 or id == 902 or id == 904) and "Mats/Herbs" or nil end
   local B, out = AuctionIQ.Banking, {}
   STUB.bankOpen = false
   out.closedOk, out.closedWhy = B.Move("Mats", "bank")
   STUB.bankOpen = true
-  local c = B.Counts(); out.counts = #c == 1 and c[1].path == "Mats" and c[1].bags == 25 and c[1].bank == 10
+  local c = B.Counts(); out.counts = #c == 2 and c[1].path == "Mats" and c[1].bags == 25 and c[1].bank == 10
+    and c[2].path == "Mats/Herbs" and c[2].depth == 1 and c[2].bags == 25
   local plan = B.Plan("Mats", "bank"); out.plan = #plan == 1 and plan[1].id == 901
   local ok, n = B.Move("Mats", "bank", function(moved, why) out.moved, out.why = moved, why end)
   out.started = ok and n == 1
@@ -3746,12 +3749,12 @@ bk = L.eval("""(function()
   B.Build(); B.Select("Mats"); B.Refresh()
   out.built = true
   C_Container, C_Bank, Enum.BagIndex, Enum.BankType = keep.C_Container, keep.C_Bank, keep.BagIndex, keep.BankType
-  AuctionIQ.Groups.Items, AuctionIQ.Groups.Tree = keep.Items, keep.Tree
+  AuctionIQ.Groups.Items, AuctionIQ.Groups.Tree, AuctionIQ.Groups.Path = keep.Items, keep.Tree, keep.Path
   B.Reset(); STUB.bankOpen = nil
   return out
 end)()""")
 check("banking: nothing moves without the bank open, and it says so", bk.closedOk is False and "Warband tab" in bk.closedWhy)
-check("banking: each group counts its items in your bags and in the Warband bank", bk.counts)
+check("banking: each group (and the groups above it) counts its items in your bags and in the Warband bank, from what you hold", bk.counts)
 check("banking: To Warband bank moves the group's stacks, not soulbound ones or other groups' items",
       bk.plan and bk.started and bk.moved == 1 and bk.why is None and bk.inBank and bk.boundStays and bk.otherStays)
 check("banking: To bags brings the group's stacks back from the Warband bank", bk.back == 2 and bk.backWhy is None)
