@@ -853,6 +853,6 @@ LUI.Register("operations", {}, { "scenarios", "paths" }, "Craft")
 for _, k in ipairs({ "plans", "professions" }) do
 	if LUI.ViewDef(k) then LUI.ViewDef(k).parent = "Craft" end
 end
-LUI.Register("operations", {}, { "post", "rules" }, "Trade")
+LUI.Register("operations", {}, { "post", "markets", "marketgroups", "rules" }, "Trade")
 LUI.Register("operations", {}, { "queue", "shopping", "restock" }, "Queue")
 LUI.Order("operations", { "Craft", "Trade", "Queue" })

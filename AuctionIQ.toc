@@ -30,6 +30,7 @@ Operations\Queue\Cooldowns.lua
 Data\Ledger.lua
 Data\Demand.lua
 Data\Deals.lua
+Data\Market.lua
 Accounting\LedgerUI.lua
 Operations\Trade\Par.lua
 Data\Forecast.lua
@@ -40,6 +41,7 @@ Operations\Trade\Banking.lua
 Operations\Trade\Vendoring.lua
 Operations\Trade\GroupsUI.lua
 Operations\Trade\TradingUI.lua
+Operations\Trade\MarketsUI.lua
 Core\Settings.lua
 Core\SettingsUI.lua
 Core\Alerts.lua

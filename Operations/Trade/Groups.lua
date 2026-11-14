@@ -12,6 +12,7 @@ local G = {}
 CH.Groups = G
 
 local SEP = "/"
+G.SEP = SEP
 
 -- Operations: fields
 --   post (false = never post), undercut (copper), duration (1 = 12h, 2 = 24h, 3 = 48h), cap (nil = par),
@@ -344,8 +345,11 @@ local function members()
 	return out
 end
 
+--- Every grouped item and its group: { [id or item string] = path }.
+G.Members = members
+
 --- Put an item in a group yourself (path), or back to automatic (nil).
-function G.Move(id, path) store().manual[id] = path end
+function G.Move(id, path) store().manual[id] = path; if CH.Market then CH.Market.Clear() end end
 
 --- Every group with its item count (sub-groups included), sorted: { path, n, own }.
 function G.Tree()

@@ -2229,7 +2229,7 @@ check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionI
 run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: Ready to post (the market is in its item panel) and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Manage rules"])
+check("Trade: Ready to post, Market trends, Market by group and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
@@ -3862,6 +3862,95 @@ pd = [str(t) for t in L.globals().STUB.printed.values()]
 check("/aiq deals prints the deals, biggest first, once worked out in the background", any("deals, biggest first" in t for t in pd) and any("each brings" in t for t in pd))
 check("deals on the Dashboard: a card with the gain from buying and relisting", dl.card is not None and "each brings" in dl.card and dl.cardGold == 450000)
 run("STUB.prices['i:800'], STUB.prices['i:801'] = nil, nil; AuctionIQ.db.scans[800], AuctionIQ.db.scans[801] = nil, nil; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()")
+
+# Market: trend, volatility and liquidity per item and group --------------------------------------
+import math as _m
+mk = L.eval("""(function()
+  local Mk, out = AuctionIQ.Market, {}
+  -- a price rising 1% a day, every day: a line through it rises (1.01^7 - 1) a week, with no spread
+  local up, flat, jumpy = {}, {}, {}
+  for d = 1, 10 do up[d] = { 100 + d, 10000 * 1.01 ^ d }; flat[d] = { 100 + d, 5000 }; jumpy[d] = { 100 + d, d % 2 == 0 and 12000 or 10000 } end
+  out.upTrend, out.upVol = Mk.Fit(up)
+  out.flatTrend, out.flatVol = Mk.Fit(flat)
+  out.jTrend, out.jVol = Mk.Fit(jumpy)
+  -- a two-day gap counts as two days' move: 2% over two days is the same daily spread as 1% a day
+  -- (a random walk's two-day move is sqrt(2) times a day's)
+  local two, one = math.exp(0.01 * math.sqrt(2)), math.exp(0.01)
+  local gap = { { 1, 10000 }, { 3, 10000 * two }, { 4, 10000 * two * one }, { 6, 10000 * two ^ 2 * one }, { 7, 10000 * two ^ 2 * one ^ 2 } }
+  local _, gv = Mk.Fit(gap); out.gapVol = gv
+  out.short = select(1, Mk.Fit({ up[1], up[2], up[3], up[4] })) == nil
+  -- an item: 4 days scanned, TSM's market against its 60-day price until there are 5
+  local G = 10000
+  STUB.prices["i:860"] = { formula_value = 110 * G, hist = 100 * G, sold = 4, salerate = 0.25 }
+  STUB.prices["i:861"] = { formula_value = 20 * G, sold = 0.05 }
+  AuctionIQ.Prices.ClearCache()
+  local today = math.floor(STUB.now / 86400)
+  AuctionIQ.db.scans[860] = { at = STUB.now, min = 110 * G, market = 110 * G, qty = 5, daily = {} }
+  for d = 3, 0, -1 do table.insert(AuctionIQ.db.scans[860].daily, { today - d, 100 * G * 1.02 ^ (3 - d), 1 }) end
+  local x = Mk.Item(860)
+  out.tsmFrom, out.tsmTrend, out.units, out.rate, out.gold = x.trendFrom, x.trend, x.units, x.saleRate, x.goldDay
+  out.tsmText = AuctionIQ.Theme.Plain and AuctionIQ.Theme.Plain(Mk.TrendText(x)) or Mk.TrendText(x)
+  table.insert(AuctionIQ.db.scans[860].daily, 1, { today - 4, 100 * G / 1.02, 1 })
+  x = Mk.Item(860)
+  out.scanFrom, out.scanTrend, out.read, out.days = x.trendFrom, x.trend, x.read, x.days
+  -- holding 8 and 4 up at 4 a day lasts 3 days
+  local oldHeld, oldListed = AuctionIQ.Par.Held, AuctionIQ.Auction.Listed
+  AuctionIQ.Par.Held = function(id) return id == 860 and 8 or 0 end
+  AuctionIQ.Auction.Listed = function(id) return id == 860 and 4 or 0 end
+  out.dts = Mk.Item(860).daysToSell
+  out.thin = Mk.Item(861).read
+  -- groups: two items in Herbs under Gathering, weighed by gold a day
+  local oldMembers = AuctionIQ.Groups.Members
+  AuctionIQ.Groups.Members = function() return { [860] = "Gathering/Herbs", [861] = "Gathering/Herbs", ["i:860::i600"] = "Other" } end
+  Mk.Clear()
+  local items = Mk.Items()
+  out.cached = Mk.Items() == items
+  out.nItems, out.firstItem = #items, items[1] and items[1].id
+  local groups = Mk.Groups(items)
+  out.nGroups = #groups
+  for _, g in ipairs(groups) do if g.path == "Gathering/Herbs" then out.gN, out.gGold, out.gHeld, out.gDays, out.gDepth = g.n, g.goldDay, g.heldValue, g.daysToSell, g.depth end end
+  out.parent = groups[1] and groups[1].path
+  -- the views: Market trends' rows, and the selected item's panel with its chart
+  local MUI = AuctionIQ.MarketsUI
+  local ctx = { now = STUB.now, keepName = function() return true end }
+  local rows, foot = MUI.VIEWS.markets.rows(ctx)
+  out.rows, out.foot = #rows, foot
+  local d = MUI.ItemDetail(rows[1])
+  out.chartN, out.figTrend = d.chart and #d.chart.values, d.figures[2][1]
+  local det = AuctionIQ.Window.SidePanel(AuctionIQ.UI.Pages().ledger.body, 260, 420, { rows = 7, srows = 6 })
+  AuctionIQ.Window.DrawSidePanel(det, d, "")
+  local shown = 0
+  for _, l in pairs(det.chartLines) do if l and l.shown ~= false then shown = shown + 1 end end
+  out.chartShown, out.lines = det.chartShown, shown
+  local grows = MUI.VIEWS.marketgroups.rows(ctx)
+  out.grows = #grows
+  local gd = MUI.GroupDetail(grows[2])
+  out.gdTop = gd and gd.section and #gd.section.rows
+  AuctionIQ.Window.DrawSidePanel(det, gd, "")
+  out.chartAfter = det.chartShown
+  AuctionIQ.Groups.Members, AuctionIQ.Par.Held, AuctionIQ.Auction.Listed = oldMembers, oldHeld, oldListed
+  Mk.Clear()
+  return out
+end)()""")
+check("market: a price rising 1% a day trends +7.2% a week, and doesn't move about the line",
+      abs(mk.upTrend - (1.01 ** 7 - 1)) < 1e-9 and mk.upVol < 1e-9)
+check("market: a flat price has no trend and no volatility; one jumping 20% every other day is volatile",
+      abs(mk.flatTrend) < 1e-12 and mk.flatVol < 1e-12 and mk.jVol > 0.15 and abs(mk.jTrend) < 0.05)
+check("market: a two-day gap counts as two days' move", mk.gapVol is not None and mk.gapVol < 1e-3)
+check("market: under 5 days scanned there's no trend line of its own", mk.short)
+check("market: until then the trend is TSM's market against its 60-day price (+10%)", mk.tsmFrom == "tsm" and abs(mk.tsmTrend - 0.1) < 1e-9)
+check("market: from 5 days scanned, a line through them (+2% a day is about +15% a week): rising",
+      mk.scanFrom == "scans" and abs(mk.scanTrend - (1.02 ** 7 - 1)) < 1e-6 and mk.read == "rising" and mk.days == 5)
+check("market: liquidity is units a day, the region's sale rate and gold a day", mk.units > 0 and mk.rate == 0.25 and mk.gold == mk.units * 110 * 10000)
+check("market: days to sell what you hold and have up", mk.dts is not None and abs(mk.dts - 12 / mk.units) < 1e-9)
+check("market: under 0.2 a day selling is thin", mk.thin == "thin")
+check("market: items in your groups, biggest gold a day first (variants count once), kept a minute", mk.nItems == 2 and mk.firstItem == 860 and mk.cached)
+check("market by group: sub-groups roll up into their parents", mk.nGroups == 2 and mk.parent == "Gathering" and mk.gN == 2 and mk.gDepth == 1)
+check("market by group: days held is the gold held over the gold a day", mk.gHeld == 12 * 110 * 10000 and abs(mk.gDays - mk.gHeld / mk.gGold) < 1e-9)
+check("Market trends: a row per item and a footer that counts what's rising", mk.rows == 2 and "1 rising" in plain(mk.foot))
+check("Market trends: the item's panel charts its daily price", mk.chartN == 5 and mk.figTrend == "TREND" and mk.chartShown and mk.lines == 4)
+check("Market by group: its panel lists the biggest sellers, with no chart", mk.grows == 2 and mk.gdTop == 2 and not mk.chartAfter)
+run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860] = nil; AuctionIQ.Prices.ClearCache()")
 
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
 P = CH.Prob

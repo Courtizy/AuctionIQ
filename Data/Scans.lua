@@ -114,6 +114,13 @@ function S.Cheapest(id)
 	return e.min, e.at
 end
 
+--- An item's market price by day, oldest first: { { day, price, scans } } (day is time() / 86400,
+--- rounded down), the list kept in the saved variables (don't change it), or nil.
+function S.Daily(id)
+	local e = id and CH.db and store()[id]
+	return e and e.daily and e.daily[1] and e.daily or nil
+end
+
 --- An item's last scan: { min, market, qty, at, age, avg7, change7, days, full, source = "scan" }, or nil.
 function S.Get(id)
 	local e = id and CH.db and store()[tonumber(id)]
