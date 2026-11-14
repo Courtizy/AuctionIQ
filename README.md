@@ -45,6 +45,7 @@ makes you a better goblin.
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
+- **By profession**: each profession's sales, profit, margin and the crafted stock it has made, with days to turn it, and your inventory turnover (Accounting > Statements > Performance > Profession)
 - **Forecast against actual**: what each craft was expected to make and what it really sold for, so items that keep falling short drop down the rankings
 
 | | The question it answers | Inside |
@@ -124,6 +125,8 @@ Your craft results (`/aiq results`) keep three stages, each on one basis it name
 
 **Capital allocation.** Operations > Trade > Capital allocation ranks what you could put gold into now by how much it earns a day for each gold in: profit / gold in / days until it sells. Crafts come from your saved scans at the batch Compare crafts suggests (gold in is the batch's reagents, and it's tied up until the batch sells at its sales rate); a craft with no sales rate isn't counted. Deals come from the deal scan (gold in is what they cost, tied up until the units sell). Your gold on this character, less what you keep back (10% by default; the button steps 0, 10, 25 and 50%), goes to the best return first, a whole craft or unit at a time, and the footer says what goes in, the profit, about how much a day, and what's left idle. Hover a row for its numbers.
 
+**By profession.** Accounting > Statements > Performance > Profession sums the time frame's crafted sales by the profession that makes each item (from your scans): units sold, revenue after the cut, what they cost to make, profit, margin and share of profit. Held is the crafted stock you hold that each profession makes, at AuctionIQ value, and days to turn is that over its revenue a day. The footer gives your inventory turnover: the cost of everything that sold (the Income Statement's) over the average of the daily inventory snapshots in the time frame, and how many days one turn takes.
+
 **Dashboard ranking.** Recommendations cards rank by one number: the expected gain from acting now over the next week, after the AH cut and expected deposits (shown as `+250g exp.`). Spending Concentration counts what the points add over the plain craft, not the whole craft's profit. Posting counts what Trade would post, at what a listing is worth to you. Restocking counts the last scan's profit for the crafts it takes. A restock card from a profession scan over 12 hours old shows no gold and says to rescan first. A restock card on screen checks the craft's options, and says so when selling your reagents or buying the item out to relist beats making it. A grouped card ("Restock 9 items") checks the first 10 of its items that have a scan, and counts the ones that need a fresh scan or have a better option by kind, such as "of the 9 items, 2 need a fresh scan first, selling the reagents earns more for 1". Past sales, reagent costs and stock values are shown on hover as evidence, labelled, but never ranked against a gain. A card with no estimate (no scan yet, say) shows no gold and ranks by urgency. Hover a card to see what its gain rests on.
 
 **Learning from results.** Every craft saves what was expected. Later sales are matched to it, and items that keep selling under the forecast are shaded down in the rankings.
@@ -175,8 +178,6 @@ A TSM full scan shows AuctionIQ twenty thousand items, so cleanup runs on its ow
 ## Roadmap
 
 - **[Release](https://github.com/Courtizy/AuctionIQ/milestone/6)**: fix enchanting crafting orders, screenshots, and publishing on CurseForge and Wago.
-- **Operations upgrades**: a deal scan for listings well under value, moving items by group to the Warband bank, and buying vendor reagents and selling junk.
-- **Deeper analytics**: market charts, where gold earns the most for the gold tied up, risk on stock you hold, and cash flow by profession.
 - **Later**: a companion app with a daily price history.
 
 See all [milestones](https://github.com/Courtizy/AuctionIQ/milestones).

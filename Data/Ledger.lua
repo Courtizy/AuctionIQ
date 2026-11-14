@@ -579,6 +579,18 @@ function Lg.Snapshot(now)
 	return gold + inv, gold, inv
 end
 
+--- The average inventory value of the daily snapshots from `from` to `to`, and how many there were;
+--- nil without any.
+function Lg.AverageInventory(from, to)
+	local s = store()
+	local sum, n = 0, 0
+	for k, w in pairs(s.worth or {}) do
+		if k >= dayOf(from) and k <= dayOf(to) and w.inventory then sum, n = sum + w.inventory, n + 1 end
+	end
+	if n == 0 then return nil, 0 end
+	return sum / n, n
+end
+
 --- Net worth on the first day on or after `since` that has a snapshot, and now.
 function Lg.WorthChange(since)
 	local s = store()
@@ -614,14 +626,16 @@ function Lg.Paid(since)
 	return t
 end
 
---- Every crafted item you've scanned, on any character: { [itemID] = { name, accounts } }.
+--- Every crafted item you've scanned, on any character: { [itemID] = { name, acc, row, prof } },
+--- prof the profession that makes it ("Alchemy", not the expansion's sub-profession).
 function Lg.Crafted()
 	local out = {}
 	for _, c in pairs(CH.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
+			local prof = p.parent or p.name or "Other"
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				if r.item and r.accounts and not out[r.item] then out[r.item] = { name = r.name, acc = r.accounts, row = r } end
-				if r.concItem and r.concAccounts and not out[r.concItem] then out[r.concItem] = { name = r.name, acc = r.concAccounts, row = r } end
+				if r.item and r.accounts and not out[r.item] then out[r.item] = { name = r.name, acc = r.accounts, row = r, prof = prof } end
+				if r.concItem and r.concAccounts and not out[r.concItem] then out[r.concItem] = { name = r.name, acc = r.concAccounts, row = r, prof = prof } end
 			end
 		end
 	end
@@ -728,7 +742,7 @@ function Lg.ProductPL(since, char)
 		if cr and s.time >= since and (not char or s.player == char) then
 			local e = rows[s.id]
 			if not e then
-				e = { id = s.id, name = cr.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(cr.name) or "Other",
+				e = { id = s.id, name = cr.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(cr.name) or "Other", prof = cr.prof,
 					sold = 0, revenue = 0, cost = 0, known = 0 }
 				rows[s.id] = e
 			end

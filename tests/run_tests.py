@@ -3993,6 +3993,52 @@ check("risk: the 95% downside is price x e^(-1.645 x vol x sqrt(days to sell))",
 check("risk: without a volatility of its own an item takes the middle of yours; what never sells has 30 days", abs(rk.typ - 0.03) < 1e-12 and rk.assumed and rk.ah == 30)
 check("Risk: a row for each item you hold, with the gold exposed and at risk", rk.rows == 1 and "at risk" in plain(rk.foot))
 
+# By profession and inventory turnover ------------------------------------------------------------
+bp2 = L.eval("""(function()
+  local L, AV, out, G, D = AuctionIQ.Ledger, AuctionIQ.AnalyticsViews, {}, 10000, 86400
+  -- what a scanned profession makes is filed under it
+  local any
+  for id, c in pairs(L.Crafted()) do any = any or c.prof end
+  out.prof = any
+  -- the average of the inventory snapshots in the time frame
+  local w = AuctionIQ.db.ledger.worth
+  local keep = {}
+  for k, v in pairs(w) do keep[k] = v; w[k] = nil end
+  local today = math.floor(STUB.now / D)
+  w[today - 2], w[today - 1], w[today] = { gold = 0, inventory = 100 * G }, { gold = 0, inventory = 200 * G }, { gold = 0, inventory = 300 * G }
+  w[today - 40] = { gold = 0, inventory = 9000 * G }
+  out.avg, out.n = L.AverageInventory(STUB.now - 7 * D, STUB.now)
+  -- two professions' sales and stock
+  local oldPL, oldInv, oldCr, oldInc = L.ProductPL, L.Inventory, L.Crafted, AuctionIQ.Statements.Income
+  L.Crafted = function() return { [890] = { prof = "Alchemy" }, [891] = { prof = "Alchemy" }, [892] = { prof = "Inscription" } } end
+  L.ProductPL = function() return { { id = 890, prof = "Alchemy", sold = 10, revenue = 700 * G, cost = 400 * G, profit = 300 * G },
+    { id = 891, prof = "Alchemy", sold = 5, revenue = 0, cost = 0, profit = 0 }, { id = 892, prof = "Inscription", sold = 2, revenue = 100 * G, cost = 120 * G, profit = -20 * G } } end
+  L.Inventory = function() return { { id = 890, value = 200 * G }, { id = 892, value = 50 * G }, { id = 999, value = 1000 * G } } end
+  AuctionIQ.Statements.Income = function() return { cogsTotal = 400 * G } end
+  local ctx = { now = STUB.now, since = STUB.now - 7 * D, opts = {}, keepName = function() return true end }
+  local list, total = AV.Professions(ctx)
+  for _, x in ipairs(list) do out[x.name] = { sold = x.sold, profit = x.profit, held = x.held, margin = x.margin, days = x.daysToTurn, turns = x.turns } end
+  out.totalHeld, out.totalProfit = total.held, total.profit
+  local tv = AV.Turnover(ctx)
+  out.turns, out.tdays = tv and tv.turns, tv and tv.days
+  local rows, foot = AuctionIQ.LedgerUI.ViewDef("byprofession").rows(ctx)
+  out.rows, out.foot = #rows, foot
+  L.ProductPL, L.Inventory, L.Crafted, AuctionIQ.Statements.Income = oldPL, oldInv, oldCr, oldInc
+  for k in pairs(w) do w[k] = nil end
+  for k, v in pairs(keep) do w[k] = v end
+  return out
+end)()""")
+check("by profession: what each scanned profession makes is filed under it", bp2.prof is not None)
+check("inventory turnover: the average of the time frame's daily snapshots", bp2.avg == 200 * 10000 and bp2.n == 3)
+al, ins = bp2["Alchemy"], bp2["Inscription"]
+check("by profession: sales, profit and margin add up per profession", al.sold == 15 and al.profit == 300 * 10000 and abs(al.margin - 3 / 7) < 1e-9
+      and ins.profit == -20 * 10000 and bp2.totalProfit == 280 * 10000)
+check("by profession: crafted stock held, and days to turn it at its sales a day (200g over 100g a day = 2)",
+      al.held == 200 * 10000 and abs(al.days - 2) < 1e-9 and abs(al.turns - 3.5) < 1e-9 and bp2.totalHeld == 250 * 10000)
+check("inventory turnover: cost of what sold over the average inventory (400g / 200g = 2 turns, every 3.5 days)",
+      abs(bp2.turns - 2) < 1e-9 and abs(bp2.tdays - 3.5) < 1e-9)
+check("By profession: a row each, with the turnover in the footer", bp2.rows == 2 and "Inventory turned 2.0 times" in plain(bp2.foot))
+
 # Capital allocation: where gold earns the most a day for the gold tied up ------------------------
 cp = L.eval("""(function()
   local Cp, out, G = AuctionIQ.Capital, {}, 10000
