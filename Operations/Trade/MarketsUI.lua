@@ -163,4 +163,43 @@ MUI.VIEWS.capitalplan = { label = "Capital allocation", sort = 6, noTime = true,
 	controls = { { label = function() return string.format("Keep back %d%%", math.floor(CH.Capital.Reserve() * 100 + 0.5)) end,
 		tip = "How much of your gold stays out of the plan.", click = function(dir) CH.Capital.StepReserve(dir) end } } }
 
+-- Risk: what you hold and have up, and how far its price could fall while it sells -------------
+local function riskRows(ctx)
+	local T, Mk = CH.Theme, CH.Market
+	local items = Mk.Items(ctx.now)
+	local typical = Mk.TypicalVol(items)
+	local out, exposed, atRisk, assumed = {}, 0, 0, 0
+	for _, x in ipairs(items) do
+		if x.held + x.up > 0 then
+			local text, name = LUI.ItemText(x.id)
+			if ctx.keepName(name) or ctx.keepName(x.path) then
+				local r = Mk.Risk(x, typical)
+				exposed, atRisk = exposed + r.exposed, atRisk + (r.atRisk or 0)
+				if r.assumed then assumed = assumed + 1 end
+				local volText = r.vol and (string.format("%.1f%%", r.vol * 100) .. (r.assumed and T.Color("muted", " typ.") or "")) or T.Color("muted", "-")
+				table.insert(out, { id = x.id, cells = { text, tostring(x.held + x.up), money(r.exposed), volText, string.format("%.0f", r.horizon),
+					r.downside and money(r.downside) or T.Color("muted", "-"), r.atRisk and T.Color(r.atRisk > 0.2 * r.exposed and "bad" or "fg", money(r.atRisk)) or T.Color("muted", "-") },
+					sort = { name, x.held + x.up, r.exposed, r.vol or -1, r.horizon, r.downside or 0, r.atRisk or -1 },
+					tip = function()
+						return { { name },
+							{ "Price now", money(x.price) },
+							{ "Volatility", r.vol and string.format("%.1f%% a day", r.vol * 100) .. (r.assumed and T.Color("muted", "  (your items' typical: too few days scanned)") or "") or "unknown" },
+							{ "Days to sell what you hold", string.format("%.1f", r.horizon) .. T.Color("muted", string.format("  (1 to %d)", Mk.RISK_DAYS)) },
+							{ "Downside price", r.downside and money(r.downside) or "-" },
+							{ T.Color("muted", string.format("%d%% of the time the price stays above it while you sell: price x e^(-1.64 x vol x sqrt(days)).", Mk.CONF * 100)) },
+							{ "At risk", r.atRisk and money(r.atRisk) or "-" } }
+					end })
+			end
+		end
+	end
+	if not out[1] then return out, T.Color("muted", "You hold nothing in your groups with a price.") end
+	return out, string.format("%s held and up; %s at risk at the %d%% downside.", money(exposed), money(atRisk), Mk.CONF * 100)
+		.. (assumed > 0 and T.Color("muted", string.format("  %d without enough days scanned use your items' typical volatility.", assumed)) or "")
+		.. T.Color("muted", "  Days: how long what you hold takes to sell, and so how long the price has to move.")
+end
+
+MUI.VIEWS.risk = { label = "Risk", sort = 7, noTime = true, rows = riskRows,
+	cols = { { "Item", 0, 210 }, { "Held+up", 214, 54 }, { "Exposed", 272, 96 }, { "Volatility", 372, 84 }, { "Days", 460, 40 },
+		{ "Downside", 504, 104 }, { "At risk", 612, 112 } } }
+
 LUI.Register("operations", MUI.VIEWS, {})

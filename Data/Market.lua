@@ -164,6 +164,41 @@ function Mk.Groups(items)
 	return out
 end
 
+-- Risk ---------------------------------------------------------------------------------------
+-- How far an item's price could fall while you sell what you hold: at CONF (95%) of the time the
+-- price after h days stays above price * exp(-z * vol * sqrt(h)), z the normal quantile, h the days
+-- it takes to sell what you hold and have up (at least 1, at most RISK_DAYS). Stock exposed is
+-- what you hold and have up at today's price, and at risk its loss at that downside. An item with
+-- too few days scanned for a volatility of its own takes the middle one of your items that have one.
+Mk.CONF, Mk.RISK_DAYS = 0.95, 30
+
+--- The middle volatility of items (Mk.Item list), or nil when none has one.
+function Mk.TypicalVol(items)
+	local v = {}
+	for _, x in ipairs(items) do if x.vol then v[#v + 1] = x.vol end end
+	if not v[1] then return nil end
+	table.sort(v)
+	local m = (#v + 1) / 2
+	return (v[math.floor(m)] + v[math.ceil(m)]) / 2
+end
+
+--- An item's risk (x from Mk.Item): { horizon, vol, assumed, downside (price), exposed, atRisk }.
+--- typical stands in for an item without a volatility of its own.
+function Mk.Risk(x, typical)
+	local have = (x.held or 0) + (x.up or 0)
+	local vol, assumed = x.vol, false
+	if not vol then vol, assumed = typical, typical ~= nil end
+	local h = math.max(1, math.min(Mk.RISK_DAYS, x.daysToSell or Mk.RISK_DAYS))
+	local z = CH.Prob and CH.Prob.NormInv and CH.Prob.NormInv(Mk.CONF) or 1.6449
+	local exposed = have * (x.price or 0)
+	local r = { horizon = h, vol = vol, assumed = assumed, exposed = exposed }
+	if vol and x.price then
+		r.downside = x.price * math.exp(-z * vol * math.sqrt(h))
+		r.atRisk = have * (x.price - r.downside)
+	end
+	return r
+end
+
 -- Formatting, shared by the views ------------------------------------------------------------
 function Mk.TrendText(x)
 	local T = CH.Theme

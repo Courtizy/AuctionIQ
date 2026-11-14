@@ -2229,7 +2229,7 @@ check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionI
 run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: Ready to post, Market trends, Market by group, Capital allocation and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Capital allocation", "Manage rules"])
+check("Trade: Ready to post, Market trends, Market by group, Risk, Capital allocation and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Risk", "Capital allocation", "Manage rules"])
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
@@ -3951,6 +3951,34 @@ check("Market trends: a row per item and a footer that counts what's rising", mk
 check("Market trends: the item's panel charts its daily price", mk.chartN == 5 and mk.figTrend == "TREND" and mk.chartShown and mk.lines == 4)
 check("Market by group: its panel lists the biggest sellers, with no chart", mk.grows == 2 and mk.gdTop == 2 and not mk.chartAfter)
 run("STUB.prices['i:860'], STUB.prices['i:861'] = nil, nil; AuctionIQ.db.scans[860] = nil; AuctionIQ.Prices.ClearCache()")
+
+# Risk: downside price from volatility, and stock exposed ------------------------------------------
+rk = L.eval("""(function()
+  local Mk, out = AuctionIQ.Market, {}
+  -- 2% a day, 4 days to sell: 95% of the time above price x e^(-1.645 x 0.02 x 2)
+  local r = Mk.Risk({ price = 10000, vol = 0.02, held = 8, up = 0, daysToSell = 4 })
+  out.down, out.atRisk, out.exposed, out.h = r.downside, r.atRisk, r.exposed, r.horizon
+  -- no volatility of its own: the typical one stands in; never sells: 30 days
+  local t = Mk.TypicalVol({ { vol = 0.01 }, { vol = 0.03 }, {}, { vol = 0.05 } })
+  local a = Mk.Risk({ price = 10000, held = 1, up = 0, daysToSell = math.huge }, t)
+  out.typ, out.assumed, out.ah = t, a.assumed, a.horizon
+  -- the view: only what you hold
+  local oldMembers, oldHeld = AuctionIQ.Groups.Members, AuctionIQ.Par.Held
+  STUB.prices["i:880"] = { formula_value = 50000, sold = 2 }; STUB.prices["i:881"] = { formula_value = 50000, sold = 2 }
+  AuctionIQ.Prices.ClearCache(); Mk.Clear()
+  AuctionIQ.Groups.Members = function() return { [880] = "A", [881] = "A" } end
+  AuctionIQ.Par.Held = function(id) return id == 880 and 3 or 0 end
+  local rows, foot = AuctionIQ.MarketsUI.VIEWS.risk.rows({ now = STUB.now, keepName = function() return true end })
+  out.rows, out.foot = #rows, foot
+  AuctionIQ.Groups.Members, AuctionIQ.Par.Held = oldMembers, oldHeld
+  STUB.prices["i:880"], STUB.prices["i:881"] = nil, nil; AuctionIQ.Prices.ClearCache(); Mk.Clear()
+  return out
+end)()""")
+import math as _m2
+check("risk: the 95% downside is price x e^(-1.645 x vol x sqrt(days to sell))", abs(rk.down - 10000 * _m2.exp(-1.6448536 * 0.02 * 2)) < 0.5
+      and rk.h == 4 and rk.exposed == 80000 and abs(rk.atRisk - 8 * (10000 - rk.down)) < 1e-6)
+check("risk: without a volatility of its own an item takes the middle of yours; what never sells has 30 days", abs(rk.typ - 0.03) < 1e-12 and rk.assumed and rk.ah == 30)
+check("Risk: a row for each item you hold, with the gold exposed and at risk", rk.rows == 1 and "at risk" in plain(rk.foot))
 
 # Capital allocation: where gold earns the most a day for the gold tied up ------------------------
 cp = L.eval("""(function()
