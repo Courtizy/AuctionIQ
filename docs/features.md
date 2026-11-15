@@ -30,7 +30,7 @@
 
 | | The question it answers | Inside |
 |---|---|---|
-| <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Overview** | What should I do next? | Next Move, Concentration, stock and work that needs you |
+| <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Overview** | What should I do next? | The gold trend, then gold, stock value and net worth, what changed the gold, and the Next moves that matter most |
 | <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Crafting** | What should I craft, and how many? | Craft (Compare crafts, Specialization), Queue (queue, shopping, restock) |
 | <img src="../Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger, Markets (trends, risk, capital, ready to post) |
 

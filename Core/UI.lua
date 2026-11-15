@@ -267,136 +267,45 @@ function UI.WhatChanged(data)
 	return { gold = gold, moves = keep }
 end
 
-local function itemName(id, fallback)
-	local n = id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
-	return n or fallback or (id and ("item " .. id)) or "?"
-end
-
-local function when(t)
-	return date and date("%b %d %H:%M", t) or tostring(t)
-end
-
 -- Building ------------------------------------------------------------------------------------
-local CARDS = 4 -- Recommendations cards: two columns of two
+local CARDS = 4 -- Next moves cards: two columns of two
+local MOVES_H = 172 -- the Next moves block along the bottom
 
+-- The Overview reads top to bottom: the gold trend first, beside it where you stand now (gold, stock
+-- at estimated value, net worth, queued work and Concentration) and what changed the gold; then the
+-- few next moves that matter most.
 local function buildDashboard(p)
 	local T = AuctionIQ.Theme
 	local d = {}
 	pages.dashboard = p
 	p.d = d
 	local PW = W - 24
-	-- the figures across the top: gold, stock, queued work and Concentration, each opening its page
-	d.figures = {}
-	local FW = math.floor((PW - 3 * 8) / 4)
-	for i, f in ipairs({ { "gold", "Available gold", { "ledger", "inventory" } }, { "stock", "Inventory value", { "ledger", "inventory" } },
-		{ "queued", "Queued crafts", { "operations", "queue" } }, { "conc", "Full Concentration", { "operations", "professions" } } }) do
-		local x = (i - 1) * (FW + 8)
-		local box = panel(p, x, 0, FW, 46)
-		local lab = fs(box, 10, -6, FW - 20, "LEFT", "GameFontNormalSmall")
-		lab:SetText(f[2])
-		local v = fs(box, 10, -22, FW - 20, "LEFT", "GameFontHighlightLarge")
-		local sub = fs(box, 112, -7, FW - 122, "RIGHT", "GameFontDisableSmall")
-		local hit = CreateFrame("Button", nil, box)
-		hit:SetAllPoints(box)
-		hit:SetScript("OnClick", function() UI.Go(f[3][1], f[3][2]) end)
-		hit:SetScript("OnEnter", function(self) if self.tip then AuctionIQ.Window.Tooltip(self, self.tip) end end)
-		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		d.figures[f[1]] = { value = v, sub = sub, hit = hit }
-	end
-	-- Recommendations, the page's main block: what deserves attention now, each card with a button
-	-- that does it
-	local top = panel(p, 0, -54, PW, 172)
-	d.top = top
-	-- the accent line along its top, like the Next Move cards
-	d.topAccent = top:CreateTexture(nil, "OVERLAY")
-	d.topAccent:SetPoint("TOPLEFT", 1, -1)
-	d.topAccent:SetPoint("TOPRIGHT", -1, -1)
-	d.topAccent:SetHeight(2)
-	T.AccentTexture(d.topAccent)
-	d.heading = fs(top, 10, -8, PW - 20, "LEFT", "GameFontNormal")
-	d.cards = {}
-	local CW = math.floor((PW - 24) / 2)
-	for i = 1, CARDS do
-		local c = {}
-		local x = 8 + ((i - 1) % 2) * (CW + 8)
-		local y = -32 - math.floor((i - 1) / 2) * 68
-		c.bg = panel(top, x, y, CW, 64)
-		-- the text sits on the card itself: a card is a frame of its own, drawn over its parent's text
-		c.who = fs(c.bg, 8, -6, CW - 200)
-		c.time = fs(c.bg, CW - 196, -6, 100, "RIGHT")
-		c.l1 = fs(c.bg, 8, -22, CW - 104)
-		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
-		c.l2 = fs(c.bg, 8, -48, CW - 104)
-		c.l3 = fs(c.bg, CW - 92, -22, 84, "RIGHT")
-		-- the card opens where the work is; its button does the work
-		c.hit = CreateFrame("Button", nil, top)
-		c.hit:SetPoint("TOPLEFT", x, y)
-		c.hit:SetSize(CW - 96, 64)
-		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2], self.go[3]) end end)
-		c.hit:SetScript("OnEnter", function(self)
-			local lines = {}
-			for _, f in ipairs({ c.who, c.l1, c.l2 }) do
-				local s = f:GetText()
-				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
-			end
-			-- why, what it's worth, and what could make it wrong
-			local e = self.entry
-			-- the modeled gain and the observed evidence, each labelled for what it is
-			if e and e.value then
-				table.insert(lines, { "Expected gain, next 7 days (modeled)", AuctionIQ.FormatMoney(e.value.amount) })
-				if e.value.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. e.value.basis) }) end
-			elseif e and e.tier then
-				table.insert(lines, { AuctionIQ.Theme.Color("muted", "No expected gain worked out: ranked by urgency, not gold") })
-			end
-			local ev = e and e.evidence
-			if ev and ev.amount then
-				local kind = ({ pastSales = "Your sales (observed)", cost = "Gold it takes", stock = "Stock at market" })[ev.kind] or "Evidence"
-				table.insert(lines, { kind, AuctionIQ.FormatMoney(ev.amount) })
-				if ev.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. ev.basis) }) end
-			end
-			if e and e.risk then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
-			if self.go then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
-			if #lines > 0 then AuctionIQ.Window.Tooltip(self, lines) end
-		end)
-		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-		c.act = T.Primary(T.Button(top, "", 84, 22))
-		c.act:SetPoint("TOPLEFT", x + CW - 92, y - 21)
-		c.act:SetScript("OnClick", function(self)
-			if not self.run then return end
-			local ok, msg = self.run()
-			-- what happened stays on the card (by its title), not only in chat
-			if self.key and msg then d.acted[self.key] = { ok = ok ~= false, msg = msg } end
-			UI.Refresh()
-		end)
-		c.act:Hide()
-		d.cards[i] = c
-	end
-	d.acted = {} -- [card title] = { ok, msg } after its button was pressed
-
-	-- gold: the chart and its stats on the left, sales and expenses on the right
-	local y0 = -234
+	local PH = H - 48 - UI.FOOT_EXTRA
 	local cw = math.floor(PW * 560 / 896) -- the chart takes the same share of a wider window
-	local extra = H - 600 -- and the height a taller one adds
-	d.title = fs(p, 0, y0 - 2, 200, "LEFT", "GameFontNormalLarge")
-	d.sub = fs(p, 0, y0 - 24, cw, "LEFT")
+	local topH = PH - MOVES_H - 8 -- the gold trend and the box beside it
+
+	-- gold: the chart and its stats on the left
+	d.title = fs(p, 0, -2, 200, "LEFT", "GameFontNormalLarge")
+	d.sub = fs(p, 0, -24, cw, "LEFT")
 	d.rangeButtons = {}
 	local bx = cw
 	for i = #RANGES, 1, -1 do
 		local r = RANGES[i]
 		local b = T.Button(p, r[1], 36, 18)
-		b:SetPoint("TOPRIGHT", p, "TOPLEFT", bx, y0 - 2)
+		b:SetPoint("TOPRIGHT", p, "TOPLEFT", bx, -2)
 		b:SetScript("OnClick", function() range = r[1]; UI.Refresh() end)
 		d.rangeButtons[r[1]] = b
 		bx = bx - 40
 	end
 	-- who counts: each character and the warband bank can be switched off
 	local who = T.Button(p, "Characters", 84, 18)
-	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, y0 - 2)
+	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, -2)
 	who:SetScript("OnClick", function(self) UI.CharacterMenu(self) end)
 	who:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
 	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.who = who
-	local chart = panel(p, 0, y0 - 44, cw, 166 + extra)
+	local chartH = topH - 44 - 40
+	local chart = panel(p, 0, -44, cw, chartH)
 	d.chart = chart
 	-- hover: a marker on the nearest point and a tooltip with who held what
 	local mark = chart:CreateTexture(nil, "OVERLAY")
@@ -432,7 +341,7 @@ local function buildDashboard(p)
 		d.grid[i] = g
 		d.gridLabels[i] = fs(chart, 4, 0, 56, "RIGHT", "GameFontDisableSmall")
 	end
-	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -150 - extra, 80, "CENTER", "GameFontDisableSmall") end
+	for i = 1, 5 do d.xLabels[i] = fs(chart, 0, -chartH + 16, 80, "CENTER", "GameFontDisableSmall") end
 
 	-- stat row under the chart
 	d.stats = {}
@@ -441,14 +350,15 @@ local function buildDashboard(p)
 	for i, l in ipairs(labels) do
 		local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
 		local sx = math.floor(col * cw / 3)
-		local lab = fs(p, sx, y0 - 218 - extra - row * 18, 104, "LEFT", "GameFontNormalSmall")
+		local sy = -44 - chartH - 6 - row * 18
+		local lab = fs(p, sx, sy, 104, "LEFT", "GameFontNormalSmall")
 		lab:SetText(l[1])
-		d.stats[l[2]] = fs(p, sx + 104, y0 - 218 - extra - row * 18, math.floor(cw / 3) - 108, "RIGHT")
+		d.stats[l[2]] = fs(p, sx + 104, sy, math.floor(cw / 3) - 108, "RIGHT")
 	end
 
-	-- sales / expenses / profit
+	-- beside the trend: where you stand now, then what changed the gold
 	local bw = PW - cw - 12
-	local box = panel(p, cw + 12, y0, bw, H - 70 + y0)
+	local box = panel(p, cw + 12, 0, bw, topH)
 	d.box = {}
 	local y = -10
 	local function section(title)
@@ -456,13 +366,30 @@ local function buildDashboard(p)
 		h:SetText(title)
 		y = y - 18
 	end
-	local function line(key, label)
-		local a = fs(box, 10, y, 150)
-		a:SetText(label)
-		d.box[key] = fs(box, bw - 170, y, 160, "RIGHT")
+	-- a figure: its label, a muted note after it, the value on the right; the row opens its page
+	d.figures = {}
+	local function figure(key, label, go)
+		local lab = fs(box, 10, y, 96)
+		lab:SetText(label)
+		local sub = fs(box, 108, y, bw - 232, "LEFT", "GameFontDisableSmall")
+		local v = fs(box, bw - 120, y, 110, "RIGHT")
+		local hit = CreateFrame("Button", nil, box)
+		hit:SetPoint("TOPLEFT", 6, y + 2)
+		hit:SetSize(bw - 12, 15)
+		hit:SetScript("OnClick", function() UI.Go(go[1], go[2]) end)
+		hit:SetScript("OnEnter", function(self) if self.tip then AuctionIQ.Window.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		d.figures[key] = { value = v, sub = sub, hit = hit }
 		y = y - 15
 	end
-	-- what changed, beside the gold trend: the change in gold and the three moves behind it
+	section("NOW")
+	figure("gold", "Gold", { "ledger", "inventory" })
+	figure("stock", "Stock value", { "ledger", "inventory" })
+	figure("worth", "Net worth", { "ledger", "balance" })
+	figure("queued", "Queued crafts", { "operations", "queue" })
+	figure("conc", "Concentration", { "operations", "professions" })
+	y = y - 6
+	-- what changed: the change in gold and the three moves behind it
 	section("WHAT CHANGED")
 	d.changed = { head = fs(box, 10, y, bw - 20), rows = {} }
 	y = y - 16
@@ -485,20 +412,79 @@ local function buildDashboard(p)
 		y = y - 15
 	end
 	y = y - 4
-	section("SALES")
-	line("earned", "Total earned")
-	line("avgEarned", "Average a day")
-	line("topItem", "Top item")
-	y = y - 4
-	section("EXPENSES")
-	line("spent", "Total spent")
-	line("avgSpent", "Average a day")
-	line("topSpent", "Top item")
-	y = y - 4
-	section("PROFIT")
-	line("cash", "Cash profit")
-	line("worth", "Net worth change")
-	d.note = fs(box, 10, y - 4, bw - 20, "LEFT", "GameFontDisableSmall")
+	local cash = fs(box, 10, y, 150)
+	cash:SetText("Cash profit")
+	d.box.cash = fs(box, bw - 170, y, 160, "RIGHT")
+	d.note = fs(box, 10, -topH + 30, bw - 20, "LEFT", "GameFontDisableSmall")
+
+	-- Next moves, along the bottom: what deserves attention now, each card with a button that does it
+	local top = panel(p, 0, -(PH - MOVES_H), PW, MOVES_H)
+	d.top = top
+	-- the accent line along its top
+	d.topAccent = top:CreateTexture(nil, "OVERLAY")
+	d.topAccent:SetPoint("TOPLEFT", 1, -1)
+	d.topAccent:SetPoint("TOPRIGHT", -1, -1)
+	d.topAccent:SetHeight(2)
+	T.AccentTexture(d.topAccent)
+	d.heading = fs(top, 10, -8, PW - 20, "LEFT", "GameFontNormal")
+	d.cards = {}
+	local CW = math.floor((PW - 24) / 2)
+	for i = 1, CARDS do
+		local c = {}
+		local x = 8 + ((i - 1) % 2) * (CW + 8)
+		local cy = -32 - math.floor((i - 1) / 2) * 68
+		c.bg = panel(top, x, cy, CW, 64)
+		-- the text sits on the card itself: a card is a frame of its own, drawn over its parent's text
+		c.who = fs(c.bg, 8, -6, CW - 200)
+		c.time = fs(c.bg, CW - 196, -6, 100, "RIGHT")
+		c.l1 = fs(c.bg, 8, -22, CW - 104)
+		if c.l1.SetMaxLines then c.l1:SetWordWrap(true); c.l1:SetMaxLines(2) end
+		c.l2 = fs(c.bg, 8, -48, CW - 104)
+		c.l3 = fs(c.bg, CW - 92, -22, 84, "RIGHT")
+		-- the card opens where the work is; its button does the work
+		c.hit = CreateFrame("Button", nil, top)
+		c.hit:SetPoint("TOPLEFT", x, cy)
+		c.hit:SetSize(CW - 96, 64)
+		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2], self.go[3]) end end)
+		c.hit:SetScript("OnEnter", function(self)
+			local lines = {}
+			for _, f in ipairs({ c.who, c.l1, c.l2 }) do
+				local s = f:GetText()
+				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
+			end
+			-- why, what it's worth, and what could make it wrong
+			local e = self.entry
+			-- the modeled gain and the observed evidence, each labelled for what it is
+			if e and e.value then
+				table.insert(lines, { "Expected gain, next 7 days (modeled)", AuctionIQ.FormatMoney(e.value.amount) })
+				if e.value.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. e.value.basis) }) end
+			elseif e and e.tier then
+				table.insert(lines, { AuctionIQ.Theme.Color("muted", "No expected gain worked out: ranked by urgency, not gold") })
+			end
+			local ev = e and e.evidence
+			if ev and ev.amount then
+				local kind = ({ pastSales = "Your sales (observed)", cost = "Gold it takes", stock = "Stock at market" })[ev.kind] or "Evidence"
+				table.insert(lines, { kind, AuctionIQ.FormatMoney(ev.amount) })
+				if ev.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. ev.basis) }) end
+			end
+			if e and e.risk then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
+			if self.go then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
+			if #lines > 0 then AuctionIQ.Window.Tooltip(self, lines) end
+		end)
+		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		c.act = T.Primary(T.Button(top, "", 84, 22))
+		c.act:SetPoint("TOPLEFT", x + CW - 92, cy - 21)
+		c.act:SetScript("OnClick", function(self)
+			if not self.run then return end
+			local ok, msg = self.run()
+			-- what happened stays on the card (by its title), not only in chat
+			if self.key and msg then d.acted[self.key] = { ok = ok ~= false, msg = msg } end
+			UI.Refresh()
+		end)
+		c.act:Hide()
+		d.cards[i] = c
+	end
+	d.acted = {} -- [card title] = { ok, msg } after its button was pressed
 end
 
 local function buildLedger(p)
@@ -1083,6 +1069,11 @@ local function refreshFigures(d)
 	F.stock.value:SetText(f.stock and AuctionIQ.FormatMoney(f.stock) or T.Color("muted", "-"))
 	F.stock.sub:SetText(T.Color("muted", "estimated"))
 	F.stock.hit.tip = { { "What you hold, at market value. An estimate, not gold in hand." }, { T.Color("muted", "Click for the inventory records.") } }
+	f.worth = f.gold and f.stock and (f.gold + f.stock)
+	F.worth.value:SetText(f.worth and AuctionIQ.FormatMoney(f.worth) or T.Color("muted", "-"))
+	F.worth.sub:SetText("")
+	F.worth.hit.tip = { { "Gold plus stock value: what you'd have if everything you hold sold at market." },
+		{ T.Color("muted", "The stock part is an estimate. Click for the Balance Sheet.") } }
 	F.queued.value:SetText(tostring(f.queued))
 	F.queued.sub:SetText(f.queued > 0 and (f.short > 0 and T.Color("bad", f.short .. " short") or T.Color("ok", f.ready .. " ready")) or "")
 	F.queued.hit.tip = { { "Crafts in the queue on every character." },
@@ -1130,12 +1121,6 @@ local function refreshDashboard()
 	d.stats.topSale:SetText(money(data.topSale))
 	d.stats.topBuy:SetText(money(data.topBuy))
 	local s = data.summary
-	d.box.earned:SetText(T.Color("ok", money(s.earned)))
-	d.box.avgEarned:SetText(money(data.avgEarned))
-	d.box.topItem:SetText(s.topItem and (AuctionIQ.Window.ItemIcon(s.topItem, 14) .. itemName(s.topItem)) or "-")
-	d.box.spent:SetText(T.Color("bad", money(s.spent)))
-	d.box.avgSpent:SetText(money(data.avgSpent))
-	d.box.topSpent:SetText(data.topSpentItem and (AuctionIQ.Window.ItemIcon(data.topSpentItem, 14) .. itemName(data.topSpentItem)) or "-")
 	d.box.cash:SetText(T.Color(s.cash >= 0 and "ok" or "bad", money(s.cash, true)))
 	local wch = UI.WhatChanged(data)
 	d.changed.head:SetText(wch and ("Gold " .. T.Color(wch.gold >= 0 and "ok" or "bad", money(wch.gold, true)) .. T.Color("muted", " over the range")) or T.Color("muted", "No gold history yet."))
@@ -1147,16 +1132,17 @@ local function refreshDashboard()
 		r.hit:SetShown(m ~= nil)
 	end
 	d.whatChanged = wch
+	-- net worth's change over the range, beside it
 	local wc = data.worthChange
-	d.box.worth:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
-	d.note:SetText("Cash profit counts reagents as spent, like TSM.\nNet worth change counts stock you still hold.")
-	-- Recommendations: the few decisions that matter most
+	d.figures.worth.sub:SetText(wc and T.Color(wc >= 0 and "ok" or "bad", money(wc, true)) or T.Color("muted", "tracking from today"))
+	d.note:SetText("Cash profit counts reagents as spent, like TSM.\nNet worth counts stock you still hold, at estimate.")
+	-- Next moves: the few decisions that matter most
 	do
 		-- the few decisions that matter most, one card per kind of action: no list to scroll
 		local list, all = AuctionIQ.Next.Ranked(nil, #d.cards)
 		local urgent = 0
 		for _, e in ipairs(list) do if e.tier == 1 then urgent = urgent + 1 end end
-		d.heading:SetText("Recommendations" .. T.Color("muted", #list == 0 and "  nothing waiting"
+		d.heading:SetText("Next moves" .. T.Color("muted", #list == 0 and "  nothing waiting"
 			or string.format("  the %d that matter most%s", #list, all > #list and string.format(" (of %d)", all) or "")))
 		for i, c in ipairs(d.cards) do
 			local e = list[i]

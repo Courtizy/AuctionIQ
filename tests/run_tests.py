@@ -2522,10 +2522,19 @@ c2risk = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].l2:GetText()")
 check("Do next: the cards show the reason and the biggest uncertainty, with no list to scroll",
       plain(c2who) == "Repost 9 items" and plain(c2risk) == "Risk: it expired once"
       and "matter most" in plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")))
-check("Dashboard: the block is called Recommendations, with no Do next or Activity buttons beside it",
-      plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")).startswith("Recommendations")
+check("Overview: the block is called Next moves, with no Do next or Activity buttons beside it",
+      plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")).startswith("Next moves")
       and L.eval("AuctionIQ.UI.Pages().dashboard.d.modeButtons") is None and L.eval("AuctionIQ.UI.DashboardData(STUB.now).activity") is None)
 run("AuctionIQ.Next.List = STUB.oldNextList")
+ov = L.eval("""(function()
+  local d = AuctionIQ.UI.Pages().dashboard.d
+  local f = AuctionIQ.UI.DashboardFigures()
+  return { chartY = d.chart.point[3], movesY = d.top.point[3], boxY = d.figures.gold.hit:GetParent().point[3],
+    worth = d.figures.worth.value:GetText(), sum = AuctionIQ.FormatMoney(f.gold + f.stock) }
+end)()""")
+check("Overview: the gold trend and where you stand now on top, Next moves along the bottom",
+      ov.chartY == -44 and ov.boxY == 0 and ov.movesY < ov.chartY)
+check("Overview: net worth is gold plus stock value", plain(ov.worth) == plain(ov.sum))
 wc = L.eval("AuctionIQ.UI.Pages().dashboard.d.whatChanged")
 check("What changed: the change in gold and up to three moves behind it, each opening Accounting",
       wc is not None and len(list(wc.moves.values())) <= 3 and all(m.go[1] == "ledger" for m in wc.moves.values())
