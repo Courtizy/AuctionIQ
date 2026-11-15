@@ -3,8 +3,8 @@
 [Back to the README](../README.md)
 
 Plain Lua, no libraries. The folders follow the tabs: `Dashboard` (the Overview tab); `Crafting` with `Craft` (advisor,
-scans, specializations, plans) and `Queue` (queue, work orders, shopping, cooldowns); `Operations/Trade`
-(posting, groups, markets; shown under Accounting > Markets); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
+scans, specializations, plans) and `Queue` (queue, work orders, shopping, cooldowns); and `Accounting` (statements,
+ledger, craft results, performance) with `Markets` (trends, risk, posting, groups and stock targets). `Core` (startup,
 settings, theme, windows, cleanup, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
 statistics) sit underneath them. `Professions` holds one load-on-demand addon per profession
 (`AuctionIQ_Alchemy` and so on) with its specialization data, and `AuctionIQ_Paths`: the knowledge point
