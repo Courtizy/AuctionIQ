@@ -9,9 +9,9 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 |---|---|---|
 | Live profession-window Advisor kept | ✓ | `Operations/Craft/AdvisorUI.lua` |
 | Crafting tab: recipe scans, work orders, specialization, compact queue | ◐ | All four exist under Operations. The rename to Crafting isn't done |
-| Saved results labelled with character, age, price source | ◐ | `Plan.Provenance` gives the label. Showing it on every view is step 1.2 |
-| Craft vs sell materials vs wait, when meaningful | ◐ | Craft and sell exist (`Decide.Alternatives`). "Wait" isn't an option yet |
-| Batch size, cash now, break-even, expected net, stock left, gain per Concentration point vs a feasible plain craft | ◐ | Every figure exists. They aren't on one panel, and "feasible plain" isn't checked against reagents held |
+| Saved results labelled with character, age, price source | ◐ | The Crafting panel's note shows it (red when over a day old). Queue rows and the Overview still to do |
+| Craft vs sell materials vs wait, when meaningful | ◐ | `Plan.Batch` choices: craft, sell the reagents you hold, wait (stock covers or numbers stale). The panel's verdict still shows only craft vs sell |
+| Batch size, cash now, break-even, expected net, stock left, gain per Concentration point vs a feasible plain craft | ✓ | Crafting panel rows from `Plan.Batch`; EXTRA/PT compares against the plain craft only when you can make it; tests "crafting plan panel:" |
 | One craft plan across Advisor, Scan, forecast, shopping, Queue | ✓ | `Operations/Craft/Plan.lua`: one shape from the advisor or a saved scan; tests "craft plan:" |
 | Last good scan kept after a failed refresh | ✓ | tests "scan: when every recipe errors..." |
 | Enchant scroll IDs by rank; vellum in cost, shopping, execution | ✓ | `EnchantScrolls.lua`, tests "enchant:", acceptance 2 |

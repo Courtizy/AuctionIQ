@@ -955,6 +955,56 @@ check("craft plan: the saved scan's plan and the live advisor's are the same cra
 check("craft plan: a scan's Concentration plan carries its Ingenuity chance and refund, as the advisor's does", pl.ing)
 check("craft plan: says who, how old and which prices (2h ago, fresh; 3 days ago, stale)",
       pl.src == "scan" and pl.label.startswith("Seyko, scanned 2h ago") and not pl.stale and "3 days ago" in pl.label2 and pl.stale2)
+# The batch decision a scan row's panel shows: the same numbers Decide works out for that batch
+pb = L.eval("""(function()
+  local P, D = AuctionIQ.Plan, AuctionIQ.Decide
+  local s = AuctionIQ.Scan.Results(AuctionIQ.OpenProfessionID())
+  local row
+  for _, r in ipairs(s.rows) do if r.concProfit and r.profit and D.ScanInputs(r, false) then row = r; break end end
+  local out = { found = row ~= nil }
+  if not row then return out end
+  local b = P.Batch(row, false, 4, { gold = 10^9, now = row.at + 60 })
+  local inp = D.ScanInputs(row, false)
+  local mat, cash = D.BatchCost(inp, 4)
+  local sc = D.Scenarios(inp, 4, { held = inp.have(inp.item) })
+  out.n, out.cashOk, out.netOk, out.leftOk = b.n, b.cashNow == cash and b.material == mat, math.abs(b.net - sc.expected.net) < 1e-6, math.abs(b.stockLeft - sc.expected.left) < 1e-6
+  out.be = b.breakEven == row.breakEven
+  out.firstChoice = b.choices[1].key
+  out.fresh = not b.stale
+  out.noWait = true; for _, c in ipairs(b.choices) do if c.key == "wait" then out.noWait = false end end
+  local old = P.Batch(row, false, 4, { now = row.at + 3 * 86400 })
+  out.oldWait = false; for _, c in ipairs(old.choices) do if c.key == "wait" then out.oldWait = true end end
+  -- Concentration: against the plain craft only when you can make it now
+  local r2 = setmetatable({ canMake = 5 }, { __index = row })
+  local r0 = setmetatable({ canMake = 0 }, { __index = row })
+  local gp, g0 = P.Batch(r2, true, 1).gain, P.Batch(r0, true, 1).gain
+  out.versus = gp and gp.versus, g0 and g0.versus
+  out.v1, out.v0 = gp and gp.versus, g0 and g0.versus
+  local avg = row.avgConcentration or row.concentration
+  out.ppOk = gp and math.abs(gp.perPoint - (row.concProfit - math.max(0, row.profit)) / avg) < 1e-6
+  out.p0Ok = g0 and math.abs(g0.perPoint - row.concProfit / avg) < 1e-6
+  -- the panel rows (profession window closed: the scan's numbers, not the live card)
+  local SUI = AuctionIQ.ScanUI
+  local lc = SUI.LiveCard; SUI.LiveCard = function() return nil end
+  local panel = SUI.RecipePanel(row, 4, "craft")
+  SUI.LiveCard = lc
+  out.labels = {}
+  for _, x in ipairs(panel.rows) do out.labels[#out.labels + 1] = x[1] end
+  out.nrows = #panel.rows
+  out.note = panel.note
+  return out
+end)()""")
+check("crafting plan panel: a scan row has a batch to decide on", pb.found)
+check("crafting plan panel: cash now, material, expected net and stock left are Decide's numbers for that batch, break-even the scan's",
+      pb.n == 4 and pb.cashOk and pb.netOk and pb.leftOk and pb.be)
+check("crafting plan panel: craft comes first among the choices; wait appears only when the numbers are stale (or stock covers)",
+      pb.firstChoice == "craft" and pb.fresh and pb.noWait and pb.oldWait)
+check("crafting plan panel: Concentration gain per point is over the plain craft when you can make it, else over not crafting",
+      pb.v1 == "plain" and pb.v0 == "nothing" and pb.ppOk and pb.p0Ok)
+labels = list(pb.labels.values())
+check("crafting plan panel: rows show batch, cash now, break-even, expected net and stock left, within the panel's 6 rows",
+      labels[:5] == ["This batch", "Cash needed now", "Break-even, each", "Expected net, 7 days", "Stock left after 7 days"] and pb.nrows <= 6)
+check("crafting plan panel: the note says whose numbers they are and how old", "Seyko, scanned" in plain(pb.note))
 check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
 check("scan: each recipe tagged with the expansion the window has open", sr.currentLine == 2906
       and all(r.line == 2906 for r in sr.rows.values()))
