@@ -341,8 +341,58 @@ mg = L.eval("""(function()
   return { v = db.version, mail = db.mail == nil, n = #db.batches, newest = db.batches[#db.batches].at == now,
     old = #small.batches, oldestDays = (now - small.batches[1].at) / 86400 }
 end)()""")
-check("saved data: version 1 migrates to 2 (mail removed); craft records are capped at 5000, oldest first",
-      mg.v == 2 and mg.mail and mg.n == 5000 and mg.newest)
+check("saved data: version 1 migrates to the current version (mail removed); craft records are capped at 5000, oldest first",
+      mg.v == L.eval("AuctionIQ.DB_VERSION") and mg.mail and mg.n == 5000 and mg.newest)
+# Version 3: day-by-day history older than 120 days rolls into months, with the totals kept exactly
+mo = L.eval("""(function()
+  local Lg, now = AuctionIQ.Ledger, time()
+  local today = math.floor(now / 86400)
+  local days, worth, comp = {}, {}, {}
+  local tot = { sales = 0, buys = 0, income = 0, expense = 0, sold = 0 }
+  for k = today - 400, today do
+    local e = { sales = 1000 + k % 7, buys = 300, income = 10, expense = 5, sold = 2, items = {} }
+    for j = 1, 40 do e.items[1000 + j] = j end
+    days[k] = e
+    for f in pairs(tot) do tot[f] = tot[f] + e[f] end
+    worth[k] = { gold = 1000 + k % 3, inventory = 500 }
+  end
+  for i = 1, 800 do comp[i] = { seen = 1, beaten = 1, at = now - i, by = {} } end
+  for j = 1, 30 do comp[1].by["rival" .. j] = j end
+  local db = { version = 2, queue = {}, batches = {}, ledger = { days = days, worth = worth, exclude = {}, net = true }, competition = comp }
+  local saved = AuctionIQ.db
+  AuctionIQ.Migrate(db)
+  AuctionIQ.db = db
+  local nDays, nWorth, nMonths, nComp, owners, maxItems = 0, 0, 0, 0, 0, 0
+  for k in pairs(db.ledger.days) do nDays = nDays + 1 end
+  for k in pairs(db.ledger.worth) do nWorth = nWorth + 1 end
+  for _, m in pairs(db.ledger.months) do
+    nMonths = nMonths + 1
+    local n = 0; for _ in pairs(m.items) do n = n + 1 end
+    if n > maxItems then maxItems = n end
+  end
+  for _ in pairs(db.competition) do nComp = nComp + 1 end
+  for _ in pairs(db.competition[1].by) do owners = owners + 1 end
+  local sum = Lg.Summary(-1e12)
+  local wc = Lg.WorthChange(-1e12)
+  local avg, avgN = Lg.AverageInventory(-1e12, now)
+  -- the archive doesn't bring rolled-up days back from TSM's records
+  Lg.ArchiveCommit({ [today - 300] = { sales = 1, buys = 0, income = 0, expense = 0, sold = 0, items = {} } })
+  local revived = db.ledger.days[today - 300] ~= nil
+  local pr = Lg.PruneHistory(200, false, now)
+  AuctionIQ.db = saved
+  return { v = db.version, nDays = nDays, nWorth = nWorth, nMonths = nMonths, nComp = nComp, owners = owners, maxItems = maxItems,
+    sales = sum.sales, tSales = tot.sales, buys = sum.buys, tBuys = tot.buys, sold = sum.sold, tSold = tot.sold, sumDays = sum.days,
+    wc = wc, avg = avg, avgN = avgN, revived = revived, prunable = pr.days }
+end)()""")
+check("saved data: version 3 rolls days over 120 days old into months, and keeps the newer days as they are",
+      mo.v == 3 and mo.nDays == 121 and mo.nWorth == 121 and 9 <= mo.nMonths <= 11)
+check("saved data: after the roll-up, All time still adds up to every day's sales, purchases and units",
+      abs(mo.sales - mo.tSales) < 1 and abs(mo.buys - mo.tBuys) < 1 and mo.sold == mo.tSold and mo.sumDays == 401)
+check("saved data: a month keeps its 25 best-selling items; net worth and average inventory read the months too",
+      mo.maxItems == 25 and mo.wc is not None and mo.avgN == 401 and abs(mo.avg - 500) < 1e-6)
+check("saved data: days rolled into a month don't come back from TSM's records", not mo.revived)
+check("saved data: Prune history counts the whole months older than its cut", 170 <= mo.prunable <= 201)
+check("saved data: competition notes are capped at the 500 most recently seen, 10 rivals each", mo.nComp == 500 and mo.owners == 10)
 check("saved data: craft records have no age limit (CraftSim's rule): a 400-day-old batch under the cap stays",
       mg.old == 3 and mg.oldestDays == 400)
 

@@ -464,8 +464,9 @@ function Lg.ArchiveCommit(days)
 		end
 		s.net = true
 	end
-	-- days you pruned stay gone even while TSM still has their records
-	local from = s.keepFrom or -math.huge
+	-- days you pruned stay gone even while TSM still has their records, and days rolled into a
+	-- month stay in it
+	local from = math.max(s.keepFrom or -math.huge, s.monthsTo or -math.huge)
 	for k, v in pairs(days) do if k >= from then s.days[k] = v end end
 	return s.days
 end
@@ -486,6 +487,8 @@ function Lg.PruneHistory(days, apply, now)
 	local s = store()
 	for k in pairs(s.days or {}) do if k < cut then out.days = out.days + 1; if apply then s.days[k] = nil end end end
 	for k in pairs(s.worth or {}) do if k < cut then out.worth = out.worth + 1; if apply then s.worth[k] = nil end end end
+	for mk, m in pairs(s.months or {}) do if m.to < cut then out.days = out.days + (m.to - m.from + 1); if apply then s.months[mk] = nil end end end
+	for mk, m in pairs(s.worthMonths or {}) do if m.day < cut then out.worth = out.worth + m.n; if apply then s.worthMonths[mk] = nil end end end
 	for id, c in pairs(AuctionIQ.db.competition or {}) do
 		if not c.at or c.at < cutTime then
 			out.rivals = out.rivals + 1
@@ -493,6 +496,89 @@ function Lg.PruneHistory(days, apply, now)
 		end
 	end
 	if apply then s.keepFrom = math.max(s.keepFrom or cut, cut) end
+	return out
+end
+
+-- Monthly archive ------------------------------------------------------------------------------
+-- Day-by-day totals and net worth snapshots older than Lg.MONTHS_AFTER days are rolled into one
+-- entry a month, so the saved file stops growing a day at a time. A month keeps its sales, buys,
+-- income, expense and units sold exactly, its Lg.MONTH_ITEMS best-selling items, and its last net
+-- worth snapshot with the month's average inventory. Every view reads the months beside the days.
+-- Competition notes are capped at Lg.RIVALS_MAX items, the most recently seen kept.
+Lg.MONTHS_AFTER = 120
+Lg.MONTH_ITEMS = 25
+Lg.RIVALS_MAX = 500
+Lg.RIVAL_OWNERS = 10
+
+local function monthOf(k) return tonumber(date("%Y%m", k * DAY + DAY / 2)) end
+
+--- Roll days older than `after` days into months, in db (AuctionIQDB, or AuctionIQ.db by default),
+--- and cap the competition notes. Returns { days, worth, rivals } (how many entries went).
+function Lg.ArchiveMonths(db, now, after)
+	db = db or AuctionIQ.db
+	now = now or time()
+	local out = { days = 0, worth = 0, rivals = 0 }
+	local s = db and db.ledger
+	if s then
+		local cut = dayOf(now) - (after or Lg.MONTHS_AFTER)
+		s.months, s.worthMonths = s.months or {}, s.worthMonths or {}
+		local touched = {}
+		for k, e in pairs(s.days or {}) do
+			if k < cut then
+				local mk = monthOf(k)
+				local m = s.months[mk]
+				if not m then m = { sales = 0, buys = 0, income = 0, expense = 0, sold = 0, items = {}, from = k, to = k }; s.months[mk] = m end
+				m.sales, m.buys = m.sales + (e.sales or 0), m.buys + (e.buys or 0)
+				m.income, m.expense, m.sold = m.income + (e.income or 0), m.expense + (e.expense or 0), m.sold + (e.sold or 0)
+				m.from, m.to = math.min(m.from, k), math.max(m.to, k)
+				for id, g in pairs(e.items or {}) do m.items[id] = (m.items[id] or 0) + g end
+				touched[mk] = true
+				s.days[k] = nil
+				out.days = out.days + 1
+			end
+		end
+		-- a month keeps its best sellers; the rest of its items' gold stays in its totals
+		for mk in pairs(touched) do
+			local m, list = s.months[mk], {}
+			for id, g in pairs(m.items) do list[#list + 1] = { id, g } end
+			if #list > Lg.MONTH_ITEMS then
+				table.sort(list, function(a, b) return a[2] > b[2] end)
+				m.items = {}
+				for i = 1, Lg.MONTH_ITEMS do m.items[list[i][1]] = list[i][2] end
+			end
+		end
+		for k, w in pairs(s.worth or {}) do
+			if k < cut then
+				local mk = monthOf(k)
+				local m = s.worthMonths[mk]
+				if not m then m = { day = k, gold = w.gold, inventory = w.inventory, invSum = 0, n = 0 }; s.worthMonths[mk] = m end
+				if k >= m.day then m.day, m.gold, m.inventory = k, w.gold, w.inventory end
+				m.invSum, m.n = m.invSum + (w.inventory or 0), m.n + 1
+				s.worth[k] = nil
+				out.worth = out.worth + 1
+			end
+		end
+		s.monthsTo = math.max(s.monthsTo or cut, cut)
+	end
+	local c = db and db.competition
+	if c then
+		local list = {}
+		for id, x in pairs(c) do
+			list[#list + 1] = { id, x.at or 0 }
+			-- the few rivals who beat you most are what the notes are for
+			local owners = {}
+			for o, n in pairs(x.by or {}) do owners[#owners + 1] = { o, n } end
+			if #owners > Lg.RIVAL_OWNERS then
+				table.sort(owners, function(a, b) return a[2] > b[2] end)
+				x.by = {}
+				for i = 1, Lg.RIVAL_OWNERS do x.by[owners[i][1]] = owners[i][2] end
+			end
+		end
+		if #list > Lg.RIVALS_MAX then
+			table.sort(list, function(a, b) return a[2] > b[2] end)
+			for i = Lg.RIVALS_MAX + 1, #list do c[list[i][1]] = nil; out.rivals = out.rivals + 1 end
+		end
+	end
 	return out
 end
 
@@ -509,6 +595,15 @@ function Lg.Summary(since)
 			t.income, t.expense, t.sold = t.income + e.income, t.expense + e.expense, t.sold + (e.sold or 0)
 			for id, v in pairs(e.items or {}) do items[id] = (items[id] or 0) + v end
 			if not seen[k] then seen[k] = true; t.days = t.days + 1 end
+		end
+	end
+	-- months rolled up from older days, counted when the whole month is in range
+	for _, m in pairs(store().months or {}) do
+		if m.from >= first then
+			t.sales, t.buys = t.sales + m.sales, t.buys + m.buys
+			t.income, t.expense, t.sold = t.income + m.income, t.expense + m.expense, t.sold + (m.sold or 0)
+			for id, v in pairs(m.items or {}) do items[id] = (items[id] or 0) + v end
+			t.days = t.days + (m.to - m.from + 1)
 		end
 	end
 	local best, bestV = nil, 0
@@ -587,6 +682,9 @@ function Lg.AverageInventory(from, to)
 	for k, w in pairs(s.worth or {}) do
 		if k >= dayOf(from) and k <= dayOf(to) and w.inventory then sum, n = sum + w.inventory, n + 1 end
 	end
+	for _, m in pairs(s.worthMonths or {}) do
+		if m.day >= dayOf(from) and m.day <= dayOf(to) and m.n > 0 then sum, n = sum + m.invSum, n + m.n end
+	end
 	if n == 0 then return nil, 0 end
 	return sum / n, n
 end
@@ -597,6 +695,10 @@ function Lg.WorthChange(since)
 	local first, firstK = nil, nil
 	for k, w in pairs(s.worth) do
 		if k >= dayOf(since) and (not firstK or k < firstK) then firstK, first = k, w end
+	end
+	-- an archived month stands for its last snapshot
+	for _, m in pairs(s.worthMonths or {}) do
+		if m.day >= dayOf(since) and (not firstK or m.day < firstK) then firstK, first = m.day, m end
 	end
 	local nowK, now = nil, nil
 	for k, w in pairs(s.worth) do if not nowK or k > nowK then nowK, now = k, w end end

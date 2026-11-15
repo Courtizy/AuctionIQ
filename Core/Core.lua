@@ -176,11 +176,16 @@ end)
 
 -- SavedVariables versions. Each step brings data saved by an older build up to the next version;
 -- AuctionIQ.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
-AuctionIQ.DB_VERSION = 2
+AuctionIQ.DB_VERSION = 3
 AuctionIQ.MIGRATIONS = {
 	-- 1 -> 2: the mail feature was removed; craft records (batches) get a bounded history
 	[2] = function(db)
 		db.mail = nil
+	end,
+	-- 2 -> 3: day-by-day history older than a few months is rolled into months, and competition
+	-- notes are capped (Ledger.ArchiveMonths); every load after keeps it that way (Tidy)
+	[3] = function(db)
+		AuctionIQ.Ledger.ArchiveMonths(db)
 	end,
 }
 -- Craft records follow CraftSim's rule: no age limit (they go with the profession), only a cap on
@@ -217,6 +222,8 @@ function AuctionIQ.Tidy(db, now)
 		end
 	end
 	db.queue = keep
+	-- old days roll into months as they age (the version 3 migration did it once for what was there)
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.ArchiveMonths then pcall(AuctionIQ.Ledger.ArchiveMonths, db, now) end
 	local b = db.batches
 	if type(b) == "table" then
 		local extra = #b - AuctionIQ.BATCHES_MAX
