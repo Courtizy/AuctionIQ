@@ -279,7 +279,7 @@ function Next.List(now)
 					evidence = Next.Value("pastSales", e.gold, string.format("%d sold in 30 days, before the cut", e.sold)),
 					tier = 1,
 					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
-					go = { "operations", "post", (function()
+					go = { "ledger", "post", (function()
 						local a = postCall(e.id)
 						return { name = name(e.id), id = e.id, title = "Post now", qty = a and a.qty, unit = "items",
 							action = a and a.action, why = a and a.reason }
@@ -303,12 +303,12 @@ function Next.List(now)
 				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n),
 					value = each and Next.Value("gain", each * e.n, string.format("%d reposted, each after the cut and expected deposits", e.n)) or nil, tier = 2,
 					risk = "it already expired once at this price",
-					go = { "operations", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
+					go = { "ledger", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
 			end
 			for _, e in ipairs(r.stale or {}) do
 				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
 					risk = "a cut may not sell it either: check who's undercutting",
-					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
+					go = { "ledger", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
 		end
 		for _, e in ipairs(AuctionIQ.Par and AuctionIQ.Par.List(now) or {}) do

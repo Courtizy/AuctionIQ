@@ -345,7 +345,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 			d.dust, d.shard, d.crystal, src))
 	elseif msg == "overview" or msg == "dashboard" then AuctionIQ.UI.Page("today") -- dashboard: the old name
 	elseif msg == "crafting" or msg == "operations" or msg == "craft" then AuctionIQ.UI.Page("operations", "scenarios") -- operations: the old name
-	elseif msg == "trade" then AuctionIQ.UI.Page("operations", "post")
+	elseif msg == "trade" or msg == "markets" then AuctionIQ.UI.Page("ledger", "markets")
 	elseif msg == "shopping" then AuctionIQ.UI.Page("operations", "shopping")
 	elseif msg:match("^scenario") then
 		local r, p = msg:match("^scenarios?%s+(%d+)%s+(%d+)")
@@ -360,7 +360,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	elseif msg:match("^prune") then
 		AuctionIQ.Cleanup.AskPrune(tonumber(msg:match("^prune%s+(%d+)")))
 	elseif msg == "help" then
-		AuctionIQ.Print("/aiq opens the window. /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq overview, crafting (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup lets go of what AuctionIQ keeps only for speed and drops saved data nothing uses (the saved part also runs at logout). /aiq prune 365 removes history older than 365 days, after asking.")
+		AuctionIQ.Print("/aiq opens the window. /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq overview, crafting (or craft, shopping) or accounting opens that tab; /aiq markets opens Accounting > Markets. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup lets go of what AuctionIQ keeps only for speed and drops saved data nothing uses (the saved part also runs at logout). /aiq prune 365 removes history older than 365 days, after asking.")
 	else
 		AuctionIQ.UI.Toggle()
 	end

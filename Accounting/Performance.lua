@@ -635,5 +635,5 @@ if LUI and LUI.Register then
 		if d then d.parent, d.section = "Statements", d.section or "ledger" end
 	end
 	LUI.AddNav("ledger", "Statements", "overview")
-	LUI.Order("ledger", { "Statements", "Ledger" })
+	LUI.Order("ledger", { "Statements", "Ledger", "Markets" })
 end
