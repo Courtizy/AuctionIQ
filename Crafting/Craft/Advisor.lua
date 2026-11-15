@@ -26,7 +26,7 @@ end
 -- A reagent's price in a recipe: buying it, or making it when someone on the warband crafts it for
 -- less (Scan.ReagentPrice). Marks the model when a crafted price was used.
 local function reagentPrice(model, itemID)
-	if not (AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice) then return price("chmat", itemID) end
+	if not (AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice) then return price("aiqbuy", itemID) end
 	local p, via = AuctionIQ.Scan.ReagentPrice(itemID, model and model.recipeID)
 	if via and model then model.viaCraft = true end
 	return p, via
@@ -61,7 +61,7 @@ local function listedEach(model, id, n, via)
 	if c == nil then
 		local basis = AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() or "replacement"
 		local d = (basis == "replacement" or basis == "held") and AuctionIQ.Depth.Cost(id, n)
-		c = d and d.source ~= "chmat" and d.unit or false
+		c = d and d.source ~= "aiqbuy" and d.unit or false
 		model.listedCache[key] = c
 	end
 	return c or nil
@@ -409,7 +409,7 @@ function A.Measure(recipeID, opts)
 	for _, slot in ipairs(finishing) do
 		local options = {}
 		for _, id in ipairs(slot.items) do
-			local p = price("chmat", id)
+			local p = price("aiqbuy", id)
 			local own = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
 			if p or own > 0 then
 				local op = operation(model, base, false, { { itemID = id, slot = slot.index } })
@@ -424,7 +424,7 @@ function A.Measure(recipeID, opts)
 						-- never more than buying one; one you'd buy costs its price.
 						local cost = p or 0
 						if own > 0 then
-							local sell = price("chvalue", id)
+							local sell = price("aiqvalue", id)
 							cost = sell and math.min(cost > 0 and cost or math.huge, sell * AuctionIQ.AH_CUT) or cost
 						end
 						table.insert(options, { itemID = id, slot = slot.index, cost = cost, buy = p, own = own, delta = d })
@@ -480,7 +480,7 @@ end
 -- A row's value: item price after cut (or the order's commission) and the average profit.
 local function valueRow(model, row, stats, item, costR, fin)
 	local key = model.outputKeys and model.outputKeys[row.quality]
-	local unit = key and AuctionIQ.Prices.Get("chvalue", key) or price("chvalue", item)
+	local unit = key and AuctionIQ.Prices.Get("aiqvalue", key) or price("aiqvalue", item)
 	local total = costR + finCost(fin)
 	-- the reagents Resourcefulness can save: all the required ones but the vellum
 	local saveable = math.max(0, costR - vellumCost(model))
@@ -508,7 +508,7 @@ local function valueRow(model, row, stats, item, costR, fin)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
 	if model.recraftFrom then
 		local okey = model.outputKeys and model.outputKeys[model.recraftFrom]
-		local old = okey and AuctionIQ.Prices.Get("chvalue", okey) or price("chvalue", model.outputs[model.recraftFrom] or model.output)
+		local old = okey and AuctionIQ.Prices.Get("aiqvalue", okey) or price("aiqvalue", model.outputs[model.recraftFrom] or model.output)
 		row.oldValue = old and old * AuctionIQ.AH_CUT
 		row.profit = row.oldValue and (row.profit - row.oldValue) or nil
 	end
@@ -983,7 +983,7 @@ function A.HeldText(l)
 	local M, T = AuctionIQ.FormatMoney, AuctionIQ.Theme
 	local function m(v) return v and M(v) or T.Color("muted", "-") end
 	local B = AuctionIQ.Window.Book
-	local list = AuctionIQ.Prices.Get("chvalue", "i:" .. l.id)
+	local list = AuctionIQ.Prices.Get("aiqvalue", "i:" .. l.id)
 	local lowest = AuctionIQ.Prices.Raw and AuctionIQ.Prices.Raw("dbminbuyout", l.id) or l.buy
 	out[#out + 1] = B.Sub(string.format("Opportunity cost (%d yours)", l.own), m(l.ownEach))
 	out[#out + 1] = B.Sub("   Stock", tostring(l.stock or l.own))
@@ -1025,7 +1025,7 @@ function A.CraftOrSellLines(result, r)
 		cs.gain >= 0 and B.Total("Crafting earns more by", cs.gain) or B.Total("Selling the reagents earns more by", cs.gain) }
 end
 
---- Each reagent in a row: id, name, rank, units, price per unit (chmat: an estimate), line total.
+--- Each reagent in a row: id, name, rank, units, price per unit (aiqbuy: an estimate), line total.
 --- Fixed reagents have no rank.
 function A.CostLines(result, picks, fin)
 	local out = {}
@@ -1056,7 +1056,7 @@ function A.CostLines(result, picks, fin)
 	return out
 end
 
--- TSM's own sources behind chvalue, labelled by where they come from.
+-- TSM's own sources behind aiqvalue, labelled by where they come from.
 A.SOURCES = {
 	{ "dbminbuyout", "Lowest listing, realm" },
 	{ "dbmarket", "MV  Market Value, realm" },

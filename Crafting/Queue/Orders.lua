@@ -7,7 +7,7 @@ local _, AuctionIQ = ...
 local O = {}
 AuctionIQ.Orders = O
 
-local function price(id) return id and AuctionIQ.Prices.Get("chvalue", "i:" .. id) end
+local function price(id) return id and AuctionIQ.Prices.Get("aiqvalue", "i:" .. id) end
 
 --- Advisor options for a crafting order (as the game hands it to the order view).
 function O.FromOrder(order)

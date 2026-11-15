@@ -553,7 +553,7 @@ function Lg.Inventory(filter, char)
 		e.name = e.id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(e.id) or nil
 		if not key or (e.name and string.lower(e.name):find(key, 1, true)) then
 			e.bound = AuctionIQ.Unsellable(e.id)
-			local unit = not e.bound and AuctionIQ.Prices.Get("chvalue", e.item) or nil
+			local unit = not e.bound and AuctionIQ.Prices.Get("aiqvalue", e.item) or nil
 			e.unit = unit
 			e.value = unit and unit * e.total or 0
 			table.insert(out, e)

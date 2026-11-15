@@ -1,18 +1,19 @@
 -- AuctionIQ prices. One adapter so other price addons can plug in later; version 1 reads TSM.
 --
--- chmat   what a reagent costs to buy today: the cheapest listing, floored at 80% of market
--- chvalue what a crafted item sells for: the lower of that and the price TSM would post it at
--- If the player hasn't added the chmat/chvalue custom sources to TSM, the same formulas are
--- passed to TSM directly, so everyone gets the same numbers.
+-- aiqbuy   what a reagent costs to buy today: the cheapest listing, floored at 80% of market
+-- aiqvalue what a crafted item sells for: the lower of that and the price TSM would post it at
+-- aiqpost what AuctionIQ would post it at
+-- A custom source of that name in TSM wins; else one under the old name (chmat, chvalue, chpost,
+-- from before the rename); else the same formulas go to TSM directly, so everyone gets the same numbers.
 local _, AuctionIQ = ...
 
 local NOW = "max(first(dbminbuyout,dbmarket,dbregionmarketavg),80%first(dbmarket,dbregionmarketavg))"
 local POST = "max(first(dbregionsaleavg,dbregionmarketavg),min(dbmarket,400%first(dbregionsaleavg,dbregionmarketavg)))"
 local FORMULA = {
-	chmat = NOW,
-	chpost = POST,
+	aiqbuy = NOW,
+	aiqpost = POST,
 	avgsell = "avgsell",
-	chvalue = "min(" .. NOW .. "," .. POST .. ")",
+	aiqvalue = "min(" .. NOW .. "," .. POST .. ")",
 	crafting = "crafting",
 	matprice = "matprice", -- TSM's material cost, as set in TSM's Crafting settings
 	-- Oribos Exchange (Undermine Exchange's addon), through TSM, when it's installed
@@ -25,7 +26,13 @@ local FORMULA = {
 	dbregionmarketavg = "dbregionmarketavg",
 }
 
-local Prices = { FORMULA = FORMULA }
+--- The old names, from before AuctionIQ's sources were renamed: still read everywhere, and still
+--- tried as a TSM custom source when there's none under the new name.
+local LEGACY = { chmat = "aiqbuy", chvalue = "aiqvalue", chpost = "aiqpost" }
+local OLD = {}
+for old, new in pairs(LEGACY) do OLD[new] = old end
+
+local Prices = { FORMULA = FORMULA, LEGACY = LEGACY }
 AuctionIQ.Prices = Prices
 
 local CACHE_SECONDS = 60
@@ -41,21 +48,28 @@ function Prices.ItemString(item)
 	return TSM_API.ToItemString(item)
 end
 
+local function custom(name)
+	if customOK[name] == nil then customOK[name] = TSM_API.IsCustomPriceValid(name) and true or false end
+	return customOK[name]
+end
+
 local function query(kind, itemString)
 	if kind ~= "crafting" then
-		if customOK[kind] == nil then
-			customOK[kind] = TSM_API.IsCustomPriceValid(kind) and true or false
-		end
-		if customOK[kind] then
-			local v = TSM_API.GetCustomPriceValue(kind, itemString)
-			if v then return v end
+		-- your own TSM source under the new name, else under the old one
+		for _, name in ipairs({ kind, OLD[kind] }) do
+			if custom(name) then
+				local v = TSM_API.GetCustomPriceValue(name, itemString)
+				if v then return v end
+				break
+			end
 		end
 	end
 	return (TSM_API.GetCustomPriceValue(FORMULA[kind], itemString))
 end
 
---- Price in copper, or nil when TSM has none. kind: "chmat", "chvalue" or "crafting".
+--- Price in copper, or nil when TSM has none. kind: "aiqbuy", "aiqvalue" or "crafting".
 function Prices.Get(kind, item)
+	kind = LEGACY[kind] or kind
 	local itemString = Prices.ItemString(item)
 	if not itemString or not FORMULA[kind] then return nil end
 	local key = kind .. "|" .. itemString
@@ -72,7 +86,7 @@ end
 --- Profit in copper for crafting `item` and selling it: its expected value (after the cut, lost
 --- deposits and carrying, see Expect.lua) less the cost. nil if unknown.
 function Prices.CraftProfit(item, quantity)
-	local value, cost = Prices.Get("chvalue", item), Prices.Get("crafting", item)
+	local value, cost = Prices.Get("aiqvalue", item), Prices.Get("crafting", item)
 	if not value or not cost then return nil end
 	local id = tonumber(tostring(Prices.ItemString(item) or ""):match("^i:(%d+)"))
 	local ev = id and AuctionIQ.Expect and AuctionIQ.Expect.Value(id, value) or value * AuctionIQ.AH_CUT
@@ -127,14 +141,14 @@ function Prices.Raw(name, id, level)
 end
 
 --- How reagents are costed for crafting decisions (Settings, /aiq basis):
----   replacement  what buying it costs today: chmat (the default)
+---   replacement  what buying it costs today: aiqbuy (the default)
 ---   tsm          TSM's material cost (matprice), however you set it up in TSM
 ---   paid         what you paid on average over your last 30 days of buying it (TSM's purchase
 ---                records), else replacement
 ---   held         (default) the units you hold at their opportunity cost, what they'd sell for after
 ---                the cut, and only what you'd buy at today's price
 Prices.BASES = { "held", "replacement", "tsm", "paid" }
-Prices.BASIS_NAMES = { held = "What you hold at sale value, the rest at today's price", replacement = "Replacement cost (chmat)",
+Prices.BASIS_NAMES = { held = "What you hold at sale value, the rest at today's price", replacement = "Replacement cost (aiqbuy)",
 	tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
 function Prices.CostBasis(v)
 	local st = AuctionIQ.db and AuctionIQ.db.settings
@@ -166,7 +180,7 @@ end
 --- (Expect.Value), so a reagent that barely moves isn't valued as if it sold at once. nil with no
 --- sale price. Second value: Expect's breakdown { gross, deposits, carry, days }.
 function Prices.SellValue(id)
-	local v = id and Prices.Get("chvalue", "i:" .. id)
+	local v = id and Prices.Get("aiqvalue", "i:" .. id)
 	if not v then return nil end
 	if AuctionIQ.Expect and AuctionIQ.Expect.Value then
 		local ok, net, how = pcall(AuctionIQ.Expect.Value, id, v)
@@ -187,7 +201,7 @@ function Prices.ReagentCost(id, basis)
 		local v = paidEach(id)
 		if v then return v, "paid" end
 	end
-	return Prices.Get("chmat", "i:" .. id), "replacement"
+	return Prices.Get("aiqbuy", "i:" .. id), "replacement"
 end
 
 function Prices.ClearCache()
@@ -205,7 +219,7 @@ AuctionIQ.GLOSSARY = {
 --- The four values that explain an item's price, each with where it comes from:
 ---   mv        Market Value: TSM's market value on this realm (dbmarket). Observed, from AH scans.
 ---   rv        Region Value: TSM's average market value across the region (dbregionmarketavg).
----   ev        Estimated Value: what one is worth to you if you list it at chvalue, after the cut,
+---   ev        Estimated Value: what one is worth to you if you list it at aiqvalue, after the cut,
 ---             deposits lost to expiries and gold tied up while it waits (Expect.lua). An estimate.
 ---   realized  Realized Value: what you really sold it for, on average after the cut, over the last
 ---             30 days of your sales (n of them, last at lastSale). nil when you haven't sold one.
@@ -213,7 +227,7 @@ function Prices.Values(id, now)
 	if not id then return {} end
 	now = now or time()
 	local out = { mv = Prices.Raw("dbmarket", id), rv = Prices.Raw("dbregionmarketavg", id) }
-	local sale = Prices.Get("chvalue", "i:" .. id)
+	local sale = Prices.Get("aiqvalue", "i:" .. id)
 	if sale and AuctionIQ.Expect then out.ev = AuctionIQ.Expect.Value(id, sale) end
 	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
 		local e = Prices.RecentSales(now)[id]

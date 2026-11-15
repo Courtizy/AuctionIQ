@@ -97,7 +97,7 @@ function Par.List(now)
 		if not target then return end
 		local held = Par.Held(id)
 		local short = math.max(0, target - held)
-		local unit = AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+		local unit = AuctionIQ.Prices.Get("aiqvalue", "i:" .. id)
 		table.insert(out, { id = id, weekly = Par.Weekly(now)[id] or 0, target = target, manual = manual, held = held, short = short,
 			value = unit and unit * AuctionIQ.AH_CUT * short or 0 })
 	end

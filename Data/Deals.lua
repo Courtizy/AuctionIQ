@@ -3,7 +3,7 @@
 -- From every item the AH has shown (Scans.lua: your searches, AuctionIQ's and TSM's full scans):
 --
 --   resale  what one is worth to relist: the lower of TSM's realm market value and the price
---           AuctionIQ would post at (chpost), not chvalue, which follows the cheapest listing and
+--           AuctionIQ would post at (aiqpost), not aiqvalue, which follows the cheapest listing and
 --           so would call any cheap listing fair
 --   each    resale after the cut, the deposits you expect to lose to expiries and the gold tied up
 --           while it waits (Expect.Value): what one bought now brings back
@@ -22,7 +22,7 @@ AuctionIQ.Deals = Dl
 -- the price to relist at: the lower of the realm's market value and what AuctionIQ would post at
 local function resale(id)
 	local P = AuctionIQ.Prices
-	local post = P.Get("chpost", "i:" .. id)
+	local post = P.Get("aiqpost", "i:" .. id)
 	local market = P.Get("dbmarket", "i:" .. id)
 	if post and market then return math.min(post, market) end
 	return post or market

@@ -29,9 +29,9 @@ function QUI.CostLines(s)
 	local out = {}
 	if not s or s.buy <= 0 or not s.cost then return out end
 	local from = s.source == "ah" and "your AH search" or s.source == "scan" and ("your last AH scan, " .. AuctionIQ.Scans.Age(s.age) .. " old")
-		or "chmat (no listings seen)"
+		or "aiqbuy (no listings seen)"
 	out[#out + 1] = "Buying " .. s.buy .. " costs " .. M(s.cost)
-	if s.first and s.source ~= "chmat" then
+	if s.first and s.source ~= "aiqbuy" then
 		out[#out + 1] = T.Color("muted", "Cheapest " .. M(s.first) .. " each, " .. M(math.floor(s.unit + 0.5)) .. " each on average")
 		local slip = s.first > 0 and s.unit / s.first - 1 or 0
 		if slip >= 0.005 then out[#out + 1] = T.Color("accent", string.format("%d%% above the cheapest listing", math.floor(slip * 100 + 0.5))) end

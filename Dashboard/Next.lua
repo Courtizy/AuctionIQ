@@ -29,7 +29,7 @@ end
 -- What one item you hold brings when posted: its price after the cut, less expected lost deposits
 -- and gold tied up while it waits (Expect.Value). nil without a price.
 local function postedEach(id)
-	local price = id and AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+	local price = id and AuctionIQ.Prices.Get("aiqvalue", "i:" .. id)
 	if not price then return nil end
 	if AuctionIQ.Expect and AuctionIQ.Expect.Value then
 		local ok, ev = pcall(AuctionIQ.Expect.Value, id, price)
@@ -221,7 +221,7 @@ function Next.List(now)
 	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				local now = r.breakEven and r.item and r.profit and r.profit > 0 and AuctionIQ.Prices.Get("chvalue", "i:" .. r.item)
+				local now = r.breakEven and r.item and r.profit and r.profit > 0 and AuctionIQ.Prices.Get("aiqvalue", "i:" .. r.item)
 				if now and now < r.breakEven then
 					table.insert(below, { name = r.name, now = now, be = r.breakEven, char = c.name })
 				end

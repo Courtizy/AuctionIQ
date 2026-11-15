@@ -240,11 +240,12 @@ end
 
 -- Price sources -----------------------------------------------------------------------------------
 -- Names the formulas already use; a source of yours can't take one.
-local BUILT_IN = { crafting = true, vendorsell = true, numexpires = true, avgbuy = true, avgsell = true, chvalue = true,
-	chmat = true, chpost = true, dbmarket = true, dbminbuyout = true, dbhistorical = true, dbregionmarketavg = true,
+local BUILT_IN = { crafting = true, vendorsell = true, numexpires = true, avgbuy = true, avgsell = true, aiqvalue = true,
+	aiqbuy = true, aiqpost = true, dbmarket = true, dbminbuyout = true, dbhistorical = true, dbregionmarketavg = true,
 	dbregionsaleavg = true, dbregionhistorical = true, dbregionsoldperday = true, dbregionsalerate = true, destroy = true,
 	normal = true, min = true, max = true, first = true, avg = true, check = true, round = true, roundup = true,
-	rounddown = true, ifgte = true, ifgt = true, iflte = true, iflt = true, ifeq = true }
+	rounddown = true, ifgte = true, ifgt = true, iflte = true, iflt = true, ifeq = true,
+	chvalue = true, chmat = true, chpost = true } -- the old names of aiqvalue, aiqbuy and aiqpost
 
 --- Your price sources as { { name, formula } }, A to Z.
 function S.Sources()

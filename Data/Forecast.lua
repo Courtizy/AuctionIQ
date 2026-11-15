@@ -31,7 +31,7 @@ function Fc.Clear() cache, cacheAt = nil, nil end
 function Fc.Record(itemID, qty, f)
 	if not itemID or not qty or qty <= 0 then return nil end
 	f = f or {}
-	local value = AuctionIQ.Prices.Get("chvalue", "i:" .. itemID)
+	local value = AuctionIQ.Prices.Get("aiqvalue", "i:" .. itemID)
 	local cost = f.cost
 	if not cost and AuctionIQ.Groups and AuctionIQ.Groups.CostEach then
 		local each = AuctionIQ.Groups.CostEach(itemID)

@@ -161,7 +161,7 @@ function STUB.Fire(event, ...)
 	for _, f in ipairs(events[event] or {}) do f.scripts.OnEvent(f, event, ...) end
 end
 
--- TSM: prices keyed by item string; "crafting" costs separately. chvalue is not a custom source here,
+-- TSM: prices keyed by item string; "crafting" costs separately. aiqvalue is not a custom source here,
 -- so AuctionIQ must fall back to passing the formula itself.
 STUB.prices = { ["i:100"] = { formula_value = 5000000, crafting = 1000000, mat = 4500000 } }
 for id, g in pairs({ [201] = 10, [202] = 15, [203] = 5, [204] = 30, [205] = 1, [211] = 2, [212] = 6, [221] = 3, [222] = 8 }) do STUB.prices["i:" .. id] = { mat = g * 10000 } end
@@ -178,7 +178,7 @@ TSM_API = {
 		if tostring(item):match("^i:%d+::i%d+$") then return item end
 		local id = tostring(item):match("item:(%d+)") or tostring(item):match("^i:(%d+)"); return id and ("i:" .. id)
 	end,
-	IsCustomPriceValid = function(s) return s ~= "chvalue" and s ~= "chmat" end,
+	IsCustomPriceValid = function(s) return not ({ aiqvalue = 1, aiqbuy = 1, aiqpost = 1, chvalue = 1, chmat = 1, chpost = 1 })[s] end,
 	GetCustomPriceValue = function(s, item)
 		local p = STUB.prices[item]; if not p then return nil, "no data" end
 		if s == "crafting" then return p.crafting end
