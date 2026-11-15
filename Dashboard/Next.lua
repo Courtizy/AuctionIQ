@@ -1,4 +1,4 @@
--- Recommendations (Next.List): the Dashboard's ranked list of what to do now, from the same sources as the Report.
+-- Next moves (Next.List): the Overview's ranked list of what to do now, from the same sources as the Report.
 -- Things that waste value while they wait (full Concentration, ready cooldowns, a selling window
 -- about to open, gold sitting in the mail) come first; then stock work.
 --
@@ -355,7 +355,7 @@ function Next.Order(out)
 	return out
 end
 
---- Recommendations as decisions, not a list: the same action on several items (Repost, Restock, Post now...)
+--- Next moves as decisions, not a list: the same action on several items (Repost, Restock, Post now...)
 --- becomes one card ("Repost 9 items"), its gold the sum, opening its view on all of them. Best first,
 --- `max` of them at most (4 by default). Each card keeps its reason, gold and biggest uncertainty.
 function Next.Ranked(now, max)
