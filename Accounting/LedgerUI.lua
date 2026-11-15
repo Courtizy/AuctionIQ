@@ -918,7 +918,7 @@ end
 function LUI.FocusText(f)
 	local T = AuctionIQ.Theme
 	local what = (f.qty and f.qty > 0 and (f.qty .. " x ") or "") .. (f.name or "")
-	return T.Color("accent", "From Dashboard: " .. (f.title or "") .. (what ~= "" and (", " .. what) or ""))
+	return T.Color("accent", "From Overview: " .. (f.title or "") .. (what ~= "" and (", " .. what) or ""))
 		.. (f.char and T.Color("muted", " on " .. f.char) or "")
 end
 --- What the open view was handed (nil when nothing was, or you've moved on).

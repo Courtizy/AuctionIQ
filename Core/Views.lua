@@ -577,7 +577,7 @@ function AV.Selection(x, focus)
 	local n, from
 	if f and f.qty and f.qty > 0 then
 		n = f.unit == "items" and math.max(1, math.ceil(f.qty / math.max(made, 0.01) - 1e-9)) or math.floor(f.qty)
-		from = f.unit == "items" and string.format("%d items from %s", f.qty, f.title or "Dashboard") or (f.title or "Dashboard")
+		from = f.unit == "items" and string.format("%d items from %s", f.qty, f.title or "Overview") or (f.title or "Overview")
 	else
 		n = q and q.n > 0 and q.n or sug and sug.n > 0 and sug.n or 1
 	end

@@ -30,7 +30,7 @@
 
 | | The question it answers | Inside |
 |---|---|---|
-| <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What should I do next? | Next Move, Concentration, stock and work that needs you |
+| <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Overview** | What should I do next? | Next Move, Concentration, stock and work that needs you |
 | <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Crafting** | What should I craft, buy or post? | Craft (Compare crafts, Specialization), Trade (Ready to post, rules), Queue (queue, shopping, restock) |
 | <img src="../Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger |
 
@@ -59,12 +59,12 @@
 4. **Read the craft card.** Pick a recipe and the card beside the profession window shows the quality to aim for, the reagents to use, the profit and where that estimate could go wrong. Flip the Concentrate switch to compare.
 5. **Queue it.** Add the craft to the queue. The shopping list fills in with the reagents you're missing.
 6. **Buy and post at the AH.** The panel beside the Auction House buys the shopping list, one click each. Post what you've made with TSM's Post scan.
-7. **Check the Dashboard** (`/aiq`) whenever you log in: it lists what deserves your attention, ranked by what acting now is expected to add.
+7. **Check the Overview** (`/aiq`) whenever you log in: it lists what deserves your attention, ranked by what acting now is expected to add.
 
 ## Chat commands
 
 `/aiq` - open or close the window<br>
-`/aiq dashboard`, `crafting` (or `craft`, `operations`, `trade`, `shopping`), `accounting` - open a tab<br>
+`/aiq overview` (or `dashboard`), `crafting` (or `craft`, `operations`, `trade`, `shopping`), `accounting` - open a tab<br>
 `/aiq settings` - open Settings<br>
 `/aiq scan` - rank every recipe of the open profession<br>
 `/aiq advisor` - crafting advisor on or off<br>

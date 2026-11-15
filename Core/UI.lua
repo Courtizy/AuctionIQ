@@ -515,7 +515,7 @@ end
 -- I craft, buy or post (Craft, Trade, Queue)? Accounting: what happened, and what should
 -- I learn from it (Overview, Revenue, Expenses, Profit, Performance)? The AH, profession and mailbox
 -- windows carry out what Operations plans.
-local TABS = { { "today", "Dashboard" }, { "operations", "Crafting" }, { "ledger", "Accounting" } }
+local TABS = { { "today", "Overview", "Dashboard" }, { "operations", "Crafting", "Operations" }, { "ledger", "Accounting", "Accounting" } } -- key, label, icon (Media\Tab-<icon>)
 -- which page frame each tab shows; Operations and Accounting share the table page
 local FRAME = { today = "dashboard", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
@@ -692,8 +692,8 @@ function build()
 	-- AuctionIQ's pages first, then its Accounting ledger last
 	for _, pg in ipairs(TABS) do
 		-- a small symbol before each name, the same size and style on every tab
-		local b = T.Button(frame.bar, iconText(pg[2], T.muted, pg[2]), 84, 20)
-		b.aiqIcon, b.aiqLabel = pg[2], pg[2]
+		local b = T.Button(frame.bar, iconText(pg[3], T.muted, pg[2]), 84, 20)
+		b.aiqIcon, b.aiqLabel = pg[3], pg[2]
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
@@ -1115,7 +1115,7 @@ local function refreshDashboard()
 	refreshFigures(d)
 	for k, b in pairs(d.rangeButtons) do colorButton(b, k == range) end
 	if not AuctionIQ.Ledger.Available() then
-		d.title:SetText("Dashboard")
+		d.title:SetText("Overview")
 		d.sub:SetText(T.Color("muted", "Needs TradeSkillMaster: the dashboard reads its gold log and accounting."))
 		return nil
 	end

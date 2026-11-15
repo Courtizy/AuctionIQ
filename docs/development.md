@@ -2,7 +2,7 @@
 
 [Back to the README](../README.md)
 
-Plain Lua, no libraries. The folders follow the tabs: `Dashboard`; `Crafting` with `Craft` (advisor,
+Plain Lua, no libraries. The folders follow the tabs: `Dashboard` (the Overview tab); `Crafting` with `Craft` (advisor,
 scans, specializations, plans) and `Queue` (queue, work orders, shopping, cooldowns); `Operations/Trade`
 (posting, groups, markets; shown under Crafting > Trade until it's retired); and `Accounting` (statements, ledger, craft results, performance). `Core` (startup,
 settings, theme, windows, cleanup, where each view is filed) and `Data` (prices, TSM ledger, forecasts,
@@ -13,12 +13,12 @@ planner, its presets and the Paths page, loaded the first time Paths opens.
 **Tests:** `python3 tests/run_tests.py` (needs `pip install lupa`) runs the addon in a stubbed WoW
 environment, on every pull request.
 
-**Benchmarks:** `python3 tests/bench.py --quick` times scans, the advisor, the ledger and the Dashboard
+**Benchmarks:** `python3 tests/bench.py --quick` times scans, the advisor, the ledger and the Overview
 in the same harness (relative costs, not in-game frame times). TSM's records are read through a
 time-ordered view kept until they change (`Ledger.ByTime`, `Ledger.From`), so a range reads only the
 records in it. Login's warm-up (`Ledger.WarmAll`) parses them, orders them, builds the day archive,
 each item's sell-through stats (`Ledger.StatsJob`), when each item sells over 30 days
-(`Ledger.SaleTimesJob`) and the indexes a few milliseconds a frame, so the Dashboard's first open finds
+(`Ledger.SaleTimesJob`) and the indexes a few milliseconds a frame, so the Overview's first open finds
 them ready. Each is kept until TSM's records change or a record it counted ages out of its window. Stock
 targets read only the last two weeks of the time-ordered sales, and the Recommendations list looks up
 each item's best scan row from one index per refresh. Background work aims for 4 ms a frame
