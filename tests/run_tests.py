@@ -922,6 +922,39 @@ bgr = L.eval("""(function()
 end)()""")
 check("crafting window: a bag change shows the last numbers at once and finishes re-pricing over the next frames, same result",
       bgr.waiting > 0 and bgr.steps >= 1 and bgr.same and bgr.waiting2 > 0 and bgr.stopped)
+# One craft plan: the plan the scan saved and the plan the live advisor makes are the same craft
+# (who, rank, Concentration, exact reagents and shopping), for every scanned recipe, plain and
+# Concentration; and each says where its numbers come from.
+pl = L.eval("""(function()
+  local P, A = AuctionIQ.Plan, AuctionIQ.Advisor
+  local s = AuctionIQ.Scan.Results(AuctionIQ.OpenProfessionID())
+  local out = { checked = 0, same = true, shop = true, ing = true, bad = {} }
+  local function shopKey(e) local t = {}; for _, x in ipairs(e.shop) do t[#t + 1] = x.itemID .. "x" .. x.n end; table.sort(t); return table.concat(t, ",") end
+  for _, row in ipairs(s.rows) do
+    local res = A.Analyze(row.recipeID, { professionID = AuctionIQ.OpenProfessionID() })
+    for _, conc in ipairs({ false, true }) do
+      local fromScan = P.FromScan(AuctionIQ.CharacterKey(), AuctionIQ.Me(), row, conc)
+      local live = conc and res.bestConc or res.best
+      if fromScan and live then
+        local fromLive = P.FromAdvisor(res, live)
+        out.checked = out.checked + 1
+        if not P.Same(fromScan, fromLive) then out.same = false; out.bad[#out.bad + 1] = row.name .. (conc and " conc" or "") end
+        if shopKey(fromScan) ~= shopKey(fromLive) then out.shop = false end
+        if conc and not (fromScan.ingenuity and fromScan.refund) then out.ing = false end
+      end
+    end
+  end
+  local e = P.FromScan(AuctionIQ.CharacterKey(), AuctionIQ.Me(), s.rows[1], false)
+  out.label, out.stale = P.Provenance(e, (e.at or 0) + 7200)
+  out.label2, out.stale2 = P.Provenance(e, (e.at or 0) + 3 * 86400)
+  out.src = e.source
+  return out
+end)()""")
+check("craft plan: the saved scan's plan and the live advisor's are the same craft, plain and Concentration",
+      pl.checked >= 2 and pl.same and pl.shop)
+check("craft plan: a scan's Concentration plan carries its Ingenuity chance and refund, as the advisor's does", pl.ing)
+check("craft plan: says who, how old and which prices (2h ago, fresh; 3 days ago, stale)",
+      pl.src == "scan" and pl.label.startswith("Seyko, scanned 2h ago") and not pl.stale and "3 days ago" in pl.label2 and pl.stale2)
 check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
 check("scan: each recipe tagged with the expansion the window has open", sr.currentLine == 2906
       and all(r.line == 2906 for r in sr.rows.values()))

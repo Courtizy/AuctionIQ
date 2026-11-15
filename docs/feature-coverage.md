@@ -9,10 +9,10 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 |---|---|---|
 | Live profession-window Advisor kept | ✓ | `Operations/Craft/AdvisorUI.lua` |
 | Crafting tab: recipe scans, work orders, specialization, compact queue | ◐ | All four exist under Operations. The rename to Crafting isn't done |
-| Saved results labelled with character, age, price source | ◐ | Age and source are shown. The character isn't, on every view |
+| Saved results labelled with character, age, price source | ◐ | `Plan.Provenance` gives the label. Showing it on every view is step 1.2 |
 | Craft vs sell materials vs wait, when meaningful | ◐ | Craft and sell exist (`Decide.Alternatives`). "Wait" isn't an option yet |
 | Batch size, cash now, break-even, expected net, stock left, gain per Concentration point vs a feasible plain craft | ◐ | Every figure exists. They aren't on one panel, and "feasible plain" isn't checked against reagents held |
-| One craft plan across Advisor, Scan, forecast, shopping, Queue | ◐ | Shared by queue entry and forecast. No single plan object yet |
+| One craft plan across Advisor, Scan, forecast, shopping, Queue | ✓ | `Operations/Craft/Plan.lua`: one shape from the advisor or a saved scan; tests "craft plan:" |
 | Last good scan kept after a failed refresh | ✓ | tests "scan: when every recipe errors..." |
 | Enchant scroll IDs by rank; vellum in cost, shopping, execution | ✓ | `EnchantScrolls.lua`, tests "enchant:", acceptance 2 |
 | Work orders: final allocation and minimum quality after customer reagents | ✓ | `Q.OrderAllocation`, acceptance 2 |

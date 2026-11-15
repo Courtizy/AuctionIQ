@@ -54,6 +54,7 @@ Core\UI.lua
 Core\Minimap.lua
 Operations\Craft\Advisor.lua
 Operations\Craft\Gear.lua
+Operations\Craft\Plan.lua
 Operations\Queue\Orders.lua
 Operations\Craft\Scan.lua
 Operations\Craft\AdvisorUI.lua

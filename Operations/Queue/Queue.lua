@@ -28,40 +28,8 @@ local function keyOf(e)
 	return table.concat({ tostring(e.char), tostring(e.recipeID), tostring(e.quality or ""), e.concentration and tostring(e.concentration) or "", e.orderID and tostring(e.orderID) or "", mixOf(e) }, ":")
 end
 
---- Turn an advisor row into a queue entry for this character.
-function Q.FromRow(result, r)
-	local reagents, shop = {}, {}
-	for i, slot in ipairs(result.qual) do
-		for q, id in ipairs(slot.items) do
-			local n = r.picks[i][q] or 0
-			if n > 0 then
-				table.insert(reagents, { itemID = id, slot = slot.index, n = n })
-				table.insert(shop, { itemID = id, n = n, rank = q, tiers = #slot.items })
-			end
-		end
-	end
-	for _, slot in ipairs(result.fixed) do table.insert(shop, { itemID = slot.items[1], n = slot.qty }) end
-	for _, f in ipairs(r.finishing or {}) do
-		table.insert(reagents, { itemID = f.itemID, slot = f.slot, n = 1 })
-		table.insert(shop, { itemID = f.itemID, n = 1 })
-	end
-	-- what the customer gives, as the advisor planned it: the craft supplies only the rest
-	local given
-	for _, g in ipairs(result.order and result.order.provided or {}) do
-		given = given or {}
-		given[g.itemID] = (given[g.itemID] or 0) + (g.quantity or 0)
-	end
-	local me = CH.Me()
-	return { given = given,
-		char = CH.CharacterKey(), charName = me.name, class = me.class,
-		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
-		concentration = r.concentration, profit = r.profit, cost = r.cost, item = r.item, basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or nil,
-		-- Ingenuity: the chance a Concentration craft refunds, and how many points it gives back
-		ingenuity = r.concentration and r.ingenuity or nil,
-		refund = r.concentration and r.concentration * ((CH.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
-		reagents = reagents, shop = shop, qty = 0,
-	}
-end
+--- Turn an advisor row into a queue entry for this character: a craft plan (Operations/Craft/Plan.lua).
+function Q.FromRow(result, r) return CH.Plan.FromAdvisor(result, r) end
 
 --- Add qty crafts of an advisor row; the same recipe, quality and Concentration choice stack.
 --- extra adds fields to a new entry: firstCraft, orderID, customer, rewards.
@@ -95,21 +63,9 @@ function Q.AddEntry(e, qty)
 	return e
 end
 
---- A queue entry from a saved scan row, for any character, without the profession window open.
---- conc picks the Concentration craft. nil when the scan predates saving reagent slots.
-function Q.FromScan(charKey, char, row, conc)
-	-- the Concentration craft needs its own saved mix: never the plain one under its name
-	local acc
-	if conc then acc = row.concAccounts else acc = row.accounts end
-	if not acc or not acc.queue then return nil end
-	local shop = {}
-	for _, s in ipairs(acc.reagents or {}) do table.insert(shop, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers }) end
-	return { char = charKey, charName = char.name, class = char.class, recipeID = row.recipeID, name = row.name,
-		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = conc and row.concentration or nil,
-		profit = conc and row.concProfit or row.profit, cost = acc.cost, basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or nil, item = conc and (row.concItem or row.item) or row.item,
-		avgConcentration = conc and (row.avgConcentration or acc.avgConcentration) or nil,
-		reagents = acc.queue, shop = shop, qty = 0 }
-end
+--- A queue entry from a saved scan row, for any character, without the profession window open:
+--- a craft plan (Plan.FromScan). nil when the scan predates saving reagent slots.
+function Q.FromScan(charKey, char, row, conc) return CH.Plan.FromScan(charKey, char, row, conc) end
 
 --- Every item's best saved scan row, in one pass: { [itemID] = { charKey, char, row } }. The same
 --- picks as ScanRowFor, for a list that asks about many items at once.
