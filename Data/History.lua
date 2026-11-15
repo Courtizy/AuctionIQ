@@ -1,10 +1,10 @@
 -- History: daily market prices from before the addon's own 30 days, from the AuctionIQ_History
 -- addon, which companion.py (in that addon's folder) writes from your saved scans. Without it, or
 -- before it has run, an item's series is just its scans (Scans.Daily).
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local H = {}
-CH.History = H
+AuctionIQ.History = H
 
 local cache, cacheFor = {}, nil
 
@@ -34,7 +34,7 @@ end
 --- scans', which may have more searches since the history was written; the history can also hold
 --- days another account's scans saw). Oldest first: { { day, price } }.
 function H.Series(id)
-	local scans = CH.Scans and CH.Scans.Daily and CH.Scans.Daily(id)
+	local scans = AuctionIQ.Scans and AuctionIQ.Scans.Daily and AuctionIQ.Scans.Daily(id)
 	local hist = H.Points(id)
 	if not hist then return scans end
 	if not scans then return hist end

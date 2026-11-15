@@ -3,7 +3,7 @@
 -- Montserrat titles. Every tab uses the AuctionIQ palette (the old plum Accounting palette is kept but unused). With ElvUI (and ToxiUI on
 -- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
 -- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local function hex(h)
 	return { tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255 }
@@ -31,7 +31,7 @@ local BRAND = "3fc7eb"
 local BRAND_GRADIENT = { "0080d7", "00d8ff" }
 local T = { hex = {}, PALETTES = PALETTES, GRADIENTS = GRADIENTS, BRAND = BRAND }
 local toxiLoaded
-CH.Theme = T
+AuctionIQ.Theme = T
 
 toxiLoaded = function()
 	local f = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
@@ -163,14 +163,14 @@ function T.Follow()
 		local name = rawget(fs, "aiqName")
 		fs:SetText(T.Wordmark() .. (type(name) == "string" and name ~= "" and ("  " .. T.Color("muted", name)) or ""))
 	end
-	if CH.TintMinimapButton then CH.TintMinimapButton() end
+	if AuctionIQ.TintMinimapButton then AuctionIQ.TintMinimapButton() end
 	local f = _G.AuctionIQFrame
-	if f and f.IsShown and f:IsShown() and CH.UI and CH.UI.Refresh then CH.UI.Refresh() end
-	if CH.AdvisorUI and CH.AdvisorUI.Show and _G.AuctionIQAdvisor and _G.AuctionIQAdvisor:IsShown() then CH.AdvisorUI.Show() end
+	if f and f.IsShown and f:IsShown() and AuctionIQ.UI and AuctionIQ.UI.Refresh then AuctionIQ.UI.Refresh() end
+	if AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.Show and _G.AuctionIQAdvisor and _G.AuctionIQAdvisor:IsShown() then AuctionIQ.AdvisorUI.Show() end
 end
 
 local function elvColours()
-	return CH.db and CH.db.settings and CH.db.settings.theme == "elvui"
+	return AuctionIQ.db and AuctionIQ.db.settings and AuctionIQ.db.settings.theme == "elvui"
 end
 
 --- Switch palette: "auctioniq" (default) or "accounting" (the Accounting tab). ElvUI's colours win when /aiq theme says so.
@@ -472,7 +472,7 @@ end
 
 -- ElvUI sets its media during its own login; take its colours once everything has loaded.
 T.Use("auctioniq")
-CH.On("PLAYER_LOGIN", function()
+AuctionIQ.On("PLAYER_LOGIN", function()
 	T.Use(T.palette)
 	-- ElvUI tells its listeners when the value colour changes (ToxiUI's theme settings): follow it
 	local E = T.Elv()

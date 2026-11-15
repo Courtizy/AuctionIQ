@@ -47,7 +47,7 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 
 | Item | State |
 |---|---|
-| Versioned SavedVariables migrations | ◐ (`CH.Migrate`, `db.version = 1`) |
+| Versioned SavedVariables migrations | ◐ (`AuctionIQ.Migrate`, `db.version = 1`) |
 | TOC checked in CI | ✓ (this PR) |
 | Extracted release package tested | ○ |
 | Docs: baseline, bug register, benchmarks, live validation, coverage | ✓ (this PR) |

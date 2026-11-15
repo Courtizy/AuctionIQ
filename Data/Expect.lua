@@ -6,27 +6,27 @@
 --   EV     = P*cut - D*(1-p)/p - P*cut*carry*days,   days = hours / (24*p)
 --   D      deposit per unit: 15% of the vendor price per 12 hours listed
 --
--- Settings (CH.db.settings.model): service (stock target service level), carry (gold a day it
+-- Settings (AuctionIQ.db.settings.model): service (stock target service level), carry (gold a day it
 -- costs to have gold tied up, 0.01 = 1%), cover (days of sales a stock target covers).
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local E = {}
-CH.Expect = E
+AuctionIQ.Expect = E
 
 E.DEFAULTS = { service = 0.9, carry = 0.01, cover = 7 }
 E.HOURS = { 12, 24, 48 }   -- operation durations 1, 2, 3
 E.MIN_P = 0.05
 
 function E.Setting(key)
-	local m = CH.db and CH.db.settings and CH.db.settings.model
+	local m = AuctionIQ.db and AuctionIQ.db.settings and AuctionIQ.db.settings.model
 	local v = m and m[key]
 	if v == nil then v = E.DEFAULTS[key] end
 	return v
 end
 
 function E.Set(key, v)
-	CH.db.settings.model = CH.db.settings.model or {}
-	CH.db.settings.model[key] = v
+	AuctionIQ.db.settings.model = AuctionIQ.db.settings.model or {}
+	AuctionIQ.db.settings.model[key] = v
 end
 
 --- The region's sale rate for an item from TSM, 0-1, or nil.
@@ -41,10 +41,10 @@ end
 --- or nil when there is neither your record nor a region rate.
 function E.SellChance(id)
 	local sold, expired = 0, 0
-	if CH.Ledger and CH.Ledger.Available() then sold, expired = CH.Ledger.SellThrough(id) end
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then sold, expired = AuctionIQ.Ledger.SellThrough(id) end
 	local prior = E.RegionRate(id)
 	if not prior and sold + expired == 0 then return nil end
-	local st = CH.Prob.SellThrough(sold, expired, prior or 0.5)
+	local st = AuctionIQ.Prob.SellThrough(sold, expired, prior or 0.5)
 	return math.max(E.MIN_P, st.mean), st
 end
 
@@ -56,7 +56,7 @@ end
 
 --- How long an item's own posting operation lists it, in hours.
 function E.Hours(id)
-	local op = CH.Groups and CH.Groups.Operation and CH.Groups.Operation(id)
+	local op = AuctionIQ.Groups and AuctionIQ.Groups.Operation and AuctionIQ.Groups.Operation(id)
 	return E.HOURS[op and op.duration or 2] or 24
 end
 
@@ -64,7 +64,7 @@ end
 --- carry, hours, belief }. Without any sale rate, ev is just the price after the cut.
 function E.Value(id, price, hours)
 	if not price then return nil end
-	local gross = price * CH.AH_CUT
+	local gross = price * AuctionIQ.AH_CUT
 	local p, belief = E.SellChance(id)
 	if not p then return gross, { gross = gross } end
 	hours = hours or E.Hours(id)

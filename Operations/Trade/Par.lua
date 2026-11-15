@@ -4,17 +4,17 @@
 -- target is the smallest stock it stays under 90% of the time. 2 a day over 7 days: 19, not 14.
 -- The Queue's Fill crafts up to the target; the Analytics Stock targets view and the briefing show
 -- what's short.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Par = {}
-CH.Par = Par
+AuctionIQ.Par = Par
 
 local DAY = 86400
 
 local function store()
-	CH.db.par = CH.db.par or { manual = {}, weeks = 1 }
-	CH.db.par.manual = CH.db.par.manual or {}
-	return CH.db.par
+	AuctionIQ.db.par = AuctionIQ.db.par or { manual = {}, weeks = 1 }
+	AuctionIQ.db.par.manual = AuctionIQ.db.par.manual or {}
+	return AuctionIQ.db.par
 end
 
 local soldCache, soldFrom, soldN, soldStart, soldNow
@@ -23,7 +23,7 @@ local soldCache, soldFrom, soldN, soldStart, soldNow
 --- the same and the two weeks start at the same sale (it's asked once per item in a list).
 function Par.Weekly(now)
 	now = now or time()
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local list = L and L.Available() and L.ByTime and L.ByTime("Sales") or nil
 	if not list then soldCache, soldFrom = {}, nil; return soldCache end
 	-- asked once per item in a list, at the same time: the same list and the same moment need no search
@@ -50,9 +50,9 @@ function Par.Target(itemID, now)
 	if s.manual[itemID] then return s.manual[itemID], true end
 	local w = Par.Weekly(now)[itemID]
 	if w and w > 0 then
-		local E = CH.Expect
+		local E = AuctionIQ.Expect
 		local cover = E and E.Setting("cover") or 7
-		return CH.Prob.PoissonQuantile(w / 7 * cover, E and E.Setting("service") or 0.9), false
+		return AuctionIQ.Prob.PoissonQuantile(w / 7 * cover, E and E.Setting("service") or 0.9), false
 	end
 	return nil
 end
@@ -66,10 +66,10 @@ end
 local heldCache
 --- How many you hold across your characters and the warband bank (TSM's counts), else in reach now.
 function Par.Held(itemID)
-	if CH.Ledger and CH.Ledger.Available() then
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
 		if not heldCache then
 			heldCache = {}
-			for _, e in ipairs(CH.Ledger.Inventory()) do if e.id then heldCache[e.id] = e.total end end
+			for _, e in ipairs(AuctionIQ.Ledger.Inventory()) do if e.id then heldCache[e.id] = e.total end end
 			C_Timer.After(5, function() heldCache = nil end)
 		end
 		return heldCache[itemID] or 0
@@ -80,7 +80,7 @@ end
 
 --- Held (above) for every item: { [id] = count }, or nil without TSM's counts. Don't change it.
 function Par.HeldAll()
-	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available()) then return nil end
 	Par.Held(0)
 	return heldCache
 end
@@ -97,9 +97,9 @@ function Par.List(now)
 		if not target then return end
 		local held = Par.Held(id)
 		local short = math.max(0, target - held)
-		local unit = CH.Prices.Get("chvalue", "i:" .. id)
+		local unit = AuctionIQ.Prices.Get("chvalue", "i:" .. id)
 		table.insert(out, { id = id, weekly = Par.Weekly(now)[id] or 0, target = target, manual = manual, held = held, short = short,
-			value = unit and unit * CH.AH_CUT * short or 0 })
+			value = unit and unit * AuctionIQ.AH_CUT * short or 0 })
 	end
 	for id in pairs(store().manual) do add(id) end
 	for id in pairs(Par.Weekly(now)) do add(id) end

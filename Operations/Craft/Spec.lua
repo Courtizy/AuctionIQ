@@ -1,9 +1,9 @@
 -- Specialization trees: reads the ranks you have, works out what each node gives a recipe (from the
 -- node data in Professions/AuctionIQ_<Profession>/Spec.lua, built from Blizzard's game tables), and the stats a different set of ranks would give.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local S = {}
-CH.Spec = S
+AuctionIQ.Spec = S
 
 local STAT_KEYS = { skill = "skill", multicraft = "multicraft", resourcefulness = "resourcefulness",
 	ingenuity = "ingenuity", craftingspeed = "craftingspeed" }
@@ -11,7 +11,7 @@ local STAT_KEYS = { skill = "skill", multicraft = "multicraft", resourcefulness 
 local EXTRA_KEYS = { additionalitemscraftedwithmulticraft = "mcExtra", reagentssavedfromresourcefulness = "resExtra",
 	ingenuityrefundincrease = "refundExtra", reduceconcentrationcost = "concReduce" }
 
-function S.Data(professionID) return CH.SpecData and CH.SpecData[professionID] end
+function S.Data(professionID) return AuctionIQ.SpecData and AuctionIQ.SpecData[professionID] end
 
 -- Each profession's tree (and Enchanting's scrolls) is its own addon, AuctionIQ_<Profession>, loaded
 -- on demand: only the professions this character has are loaded.
@@ -36,9 +36,9 @@ function S.LoadData()
 	end
 	return out
 end
-CH.On("PLAYER_LOGIN", function() S.LoadData() end)
-CH.On("SKILL_LINES_CHANGED", function() S.LoadData() end)
-CH.On("TRADE_SKILL_SHOW", function() S.LoadData() end)
+AuctionIQ.On("PLAYER_LOGIN", function() S.LoadData() end)
+AuctionIQ.On("SKILL_LINES_CHANGED", function() S.LoadData() end)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() S.LoadData() end)
 
 local function nodeName(configID, nodeID)
 	local ok, info = pcall(C_Traits.GetNodeInfo, configID, nodeID)
@@ -121,7 +121,7 @@ end
 --- What the tree gives one recipe at these ranks: skill and stat ratings plus perk extras.
 function S.RecipeStats(professionID, tree, ranks, recipeID)
 	local data = S.Data(professionID)
-	local out = CH.Stats.New()
+	local out = AuctionIQ.Stats.New()
 	if not data or not tree then return out end
 	for _, perkID in ipairs(data.recipes[recipeID] or {}) do
 		local n = data.nodes[perkID]
@@ -175,7 +175,7 @@ end
 function S.Delta(professionID, tree, ranks, recipeID)
 	local now = S.CurrentStats(professionID, tree, recipeID)
 	local sim = S.RecipeStats(professionID, tree, ranks, recipeID)
-	return CH.Stats.Diff(sim, now)
+	return AuctionIQ.Stats.Diff(sim, now)
 end
 
 -- Which recipes each node touches, worked out once per profession's data: the data never changes,
@@ -251,15 +251,15 @@ end
 function S.Record(professionID)
 	local tree = S.Read(professionID)
 	if not tree then return nil end
-	local p = CH.Me().professions[professionID]
+	local p = AuctionIQ.Me().professions[professionID]
 	if p then p.spec = tree end
 	return tree
 end
 
 local cache = {}
-CH.On("TRAIT_NODE_CHANGED", function() wipe(cache) end)
-CH.On("TRAIT_TREE_CURRENCY_INFO_UPDATED", function() wipe(cache) end)
-CH.On("TRADE_SKILL_CLOSE", function() wipe(cache) end)
+AuctionIQ.On("TRAIT_NODE_CHANGED", function() wipe(cache) end)
+AuctionIQ.On("TRAIT_TREE_CURRENCY_INFO_UPDATED", function() wipe(cache) end)
+AuctionIQ.On("TRADE_SKILL_CLOSE", function() wipe(cache) end)
 
 --- The tree for this character's profession: freshly read when the window is open (kept for a few
 --- seconds, since a recipe scan asks for it once per recipe), else the saved one.
@@ -269,10 +269,10 @@ function S.Tree(professionID)
 	local tree = S.Read(professionID)
 	if tree then
 		cache[professionID] = { tree = tree, at = GetTime() }
-		local p = CH.Me().professions[professionID]
+		local p = AuctionIQ.Me().professions[professionID]
 		if p then p.spec = tree end
 		return tree
 	end
-	local p = CH.Me().professions[professionID]
+	local p = AuctionIQ.Me().professions[professionID]
 	return p and p.spec
 end

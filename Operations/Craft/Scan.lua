@@ -2,17 +2,17 @@
 -- best reagents (and finishing reagents) for each, and ranks them. Spread over frames so the game
 -- doesn't stall. Results are saved with the character, so the briefing and the path planner can use
 -- them when the profession is closed.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Sc = {}
-CH.Scan = Sc
+AuctionIQ.Scan = Sc
 Sc.models = {} -- [professionID][recipeID] = advisor model, for simulations this session
 
 local PER_FRAME = 2  -- at least this many recipes a frame without a clock...
 local BUDGET_MS = 6  -- ...and with one, more while the next recipe should still finish inside this
 local running
 
-local function settings() return CH.db.settings.scan end
+local function settings() return AuctionIQ.db.settings.scan end
 
 local function eligible(info)
 	return info and info.learned and not info.isRecraft and not info.isSalvageRecipe and not info.isGatheringRecipe
@@ -23,7 +23,7 @@ end
 --- with the region's figure (counted at most your cap) while your record is thin. See Demand.lua.
 function Sc.DailyUnits(itemID)
 	if not itemID then return 0 end
-	return CH.Demand.Estimate(itemID).units
+	return AuctionIQ.Demand.Estimate(itemID).units
 end
 
 --- A craft's accounts, saved with the scan for the item tooltip: reagents (with what each cost at
@@ -38,7 +38,7 @@ local function accounts(result, r)
 			for _, id in ipairs(slot.items) do ranksOf[id] = slot.items end
 		end
 	end
-	local ok, e = pcall(CH.Queue.FromRow, result, r)
+	local ok, e = pcall(AuctionIQ.Queue.FromRow, result, r)
 	for _, s in ipairs(ok and e and e.shop or {}) do
 		local unit, via = Sc.ReagentPrice(s.itemID, result.recipeID)
 		table.insert(reagents, { itemID = s.itemID, n = s.n, rank = s.rank, tiers = s.tiers, cost = unit and unit * s.n,
@@ -74,7 +74,7 @@ local function crafted()
 	if craftedIndex then return craftedIndex end
 	craftedIndex = {}
 	local now = time()
-	for key, c in pairs(CH.db and CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db and AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			local sc = p.scan
 			if sc and sc.at and now - sc.at <= Sc.CRAFTED_MAX_AGE then
@@ -94,13 +94,13 @@ end
 function Sc.Crafted(itemID) return itemID and crafted()[itemID] or nil end
 
 --- Whether reagents you can craft are priced at what making them costs (Settings, on by default).
-function Sc.SubrecipesOn() return not (CH.db and CH.db.settings.subrecipes == false) end
+function Sc.SubrecipesOn() return not (AuctionIQ.db and AuctionIQ.db.settings.subrecipes == false) end
 
 --- A reagent's price for a craft: buying it (chmat), or making it when that's cheaper. Returns the
 --- price and the craft it came from (nil when buying wins). notRecipe skips the recipe being priced.
 function Sc.ReagentPrice(itemID, notRecipe)
 	-- buying it, on the costing basis in Settings (replacement by default: chmat)
-	local buy = itemID and CH.Prices.ReagentCost(itemID)
+	local buy = itemID and AuctionIQ.Prices.ReagentCost(itemID)
 	if not Sc.SubrecipesOn() then return buy end
 	local c = Sc.Crafted(itemID)
 	if c and c.recipeID ~= notRecipe and (not buy or c.each < buy) then return c.each, c end
@@ -113,9 +113,9 @@ function Sc.BuyOrCraft(r)
 	local item = r and (r.item or r.concItem)
 	local craft = r and r.craftEach
 	if not item then return nil end
-	local buy = CH.Prices.Get("chmat", "i:" .. item)
-	local value = CH.Prices.Get("chvalue", "i:" .. item)
-	local resell = value and CH.Expect.Value(item, value)
+	local buy = AuctionIQ.Prices.Get("chmat", "i:" .. item)
+	local value = AuctionIQ.Prices.Get("chvalue", "i:" .. item)
+	local resell = value and AuctionIQ.Expect.Value(item, value)
 	return { buy = buy, craft = craft, resell = resell, flip = buy and resell and resell - buy,
 		save = buy and craft and craft - buy }
 end
@@ -135,20 +135,20 @@ end
 --- gain per point, gold a day and sell-instead come from the same live statement the hovers show.
 --- Rows saved without accounts come back as they are.
 function Sc.Live(r)
-	if not (r and (r.accounts or r.concAccounts)) or not CH.CraftBook then return r end
+	if not (r and (r.accounts or r.concAccounts)) or not AuctionIQ.CraftBook then return r end
 	local v = { scanned = r }
 	local function live(acc)
 		if not acc then return nil end
-		local ok, _, profit = pcall(CH.CraftBook, acc)
+		local ok, _, profit = pcall(AuctionIQ.CraftBook, acc)
 		if not ok or not profit then return nil end
-		local _, cost = CH.ReagentBook(acc)
+		local _, cost = AuctionIQ.ReagentBook(acc)
 		return profit, cost
 	end
 	local p, c = live(r.accounts)
 	if p then
 		v.profit, v.cost = p, c
 		v.pct = c and c > 0 and p / c or nil
-		local cs = CH.CraftOrSell(r.accounts)
+		local cs = AuctionIQ.CraftOrSell(r.accounts)
 		v.sellInstead = cs and cs.verdict == "sell" and cs.sell or false
 	end
 	local cp, cc = live(r.concAccounts)
@@ -184,7 +184,7 @@ local function summary(result)
 	if c and c.profit and c.profit > 0 and avg and avg > 0 then
 		local same = not b or c.item == b.item
 		local cUnits = same and units or Sc.DailyUnits(c.item)
-		local crafts = math.min(cUnits / yield(c), CH.CONC_PER_HOUR * 24 / avg)
+		local crafts = math.min(cUnits / yield(c), AuctionIQ.CONC_PER_HOUR * 24 / avg)
 		local plain = math.max(0, b and b.profit or 0)
 		local conc
 		if same then
@@ -211,13 +211,13 @@ local function summary(result)
 		concBreakEven = c and c.breakEven and c.breakEven.price,
 		-- priced with a reagent you craft: not used to price other crafts, so costs never loop
 		viaCraft = result.model and result.model.viaCraft or nil,
-		soldPerDay = CH.Advisor.SoldPerDay(item),
+		soldPerDay = AuctionIQ.Advisor.SoldPerDay(item),
 		-- the sales a day gold a day counts, and where that comes from (Demand.SOURCE)
-		dailyUnits = item and units or nil, demandSource = item and CH.Demand.Estimate(item).source or nil,
+		dailyUnits = item and units or nil, demandSource = item and AuctionIQ.Demand.Estimate(item).source or nil,
 		perDay = perDay,
 		-- selling the reagents you hold beats crafting: what they'd bring after the cut
 		sellInstead = (function()
-			local ok, cs = pcall(CH.Advisor.CraftOrSell, result, b)
+			local ok, cs = pcall(AuctionIQ.Advisor.CraftOrSell, result, b)
 			return ok and cs and cs.gain < 0 and cs.sell or nil
 		end)(),
 	}
@@ -313,10 +313,10 @@ function Sc.Stop() if running then running = "stop" end end
 --- longer pauses part-way and resumes next frame.
 function Sc.Run(onStep, onDone)
 	if running then return false end
-	local profID = CH.OpenProfessionID()
+	local profID = AuctionIQ.OpenProfessionID()
 	if not profID then return false end
-	if not CH.Prices.Available() then return false end
-	pcall(CH.Demand.Warm) -- the sales index, once, before the frame-budgeted work starts
+	if not AuctionIQ.Prices.Available() then return false end
+	pcall(AuctionIQ.Demand.Warm) -- the sales index, once, before the frame-budgeted work starts
 	local ids = Sc.Recipes()
 	local i, rows = 0, {}
 	Sc.models[profID] = Sc.models[profID] or {}
@@ -326,7 +326,7 @@ function Sc.Run(onStep, onDone)
 	local function finish(why)
 		running, work = false, nil
 		local report
-		local p = CH.Me().professions[profID]
+		local p = AuctionIQ.Me().professions[profID]
 		if not why and #failed > 0 then
 			local old = {}
 			for _, r in ipairs(p and p.scan and p.scan.rows or {}) do if r.recipeID then old[r.recipeID] = r end end
@@ -334,12 +334,12 @@ function Sc.Run(onStep, onDone)
 			-- nothing scanned at all: keep the last scan as it was
 			if #rows == 0 or #failed >= #ids then
 				why = "failed: every recipe errored (" .. tostring(firstError) .. "), so the last scan is kept"
-				CH.Print("scan " .. why .. ".")
+				AuctionIQ.Print("scan " .. why .. ".")
 			else
 				for _, id in ipairs(failed) do
 					if old[id] then old[id].stale = true; table.insert(rows, old[id]); kept = kept + 1 end
 				end
-				CH.Print(string.format("scan: %d of %d recipes errored (%s); %d kept their last scan's numbers.", #failed, #ids, tostring(firstError), kept))
+				AuctionIQ.Print(string.format("scan: %d of %d recipes errored (%s); %d kept their last scan's numbers.", #failed, #ids, tostring(firstError), kept))
 			end
 			report = { failed = #failed, kept = kept, total = #ids, error = firstError }
 		end
@@ -352,21 +352,21 @@ function Sc.Run(onStep, onDone)
 	end
 	local function begin(id)
 		return coroutine.create(function()
-			local model = CH.Advisor.Measure(id, { professionID = profID })
+			local model = AuctionIQ.Advisor.Measure(id, { professionID = profID })
 			if not model then return nil end
 			Sc.models[profID][id] = model
-			local result = CH.Advisor.Evaluate(model)
+			local result = AuctionIQ.Advisor.Evaluate(model)
 			-- what the card shows about finishing reagents, worked out now while the scan has the time
-			if CH.Advisor.FinishingAdvice then pcall(CH.Advisor.FinishingAdvice, result) end
+			if AuctionIQ.Advisor.FinishingAdvice then pcall(AuctionIQ.Advisor.FinishingAdvice, result) end
 			-- the craft card reuses it: a click on this recipe needn't work it out again
-			if CH.AdvisorUI and CH.AdvisorUI.Remember then CH.AdvisorUI.Remember(id, model, result) end
+			if AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.Remember then AuctionIQ.AdvisorUI.Remember(id, model, result) end
 			return model, result
 		end)
 	end
 	local function step()
 		if running == "stop" then return finish("stopped") end
 		-- the profession changed under us: this scan's results would be for the wrong one
-		if CH.OpenProfessionID() ~= profID then return finish("stopped: the profession changed") end
+		if AuctionIQ.OpenProfessionID() ~= profID then return finish("stopped: the profession changed") end
 		frameStart = clock and clock()
 		local n = 0
 		while true do
@@ -426,7 +426,7 @@ end
 -- Is the profession window showing this base profession (Alchemy, not someone else's), ready to scan?
 local function showing(skillLine)
 	local ui = C_TradeSkillUI
-	if not (ui.IsTradeSkillReady and ui.IsTradeSkillReady()) or not CH.OpenProfessionID() then return false end
+	if not (ui.IsTradeSkillReady and ui.IsTradeSkillReady()) or not AuctionIQ.OpenProfessionID() then return false end
 	local base = ui.GetBaseProfessionInfo and ui.GetBaseProfessionInfo()
 	return not base or not base.professionID or base.professionID == skillLine
 end
@@ -450,11 +450,11 @@ end
 function Sc.ScanAll(onStep, onDone)
 	if Sc.IsRunning() then return false, "a scan is already running" end
 	if InCombatLockdown and InCombatLockdown() then return false, "you're in combat" end
-	if not CH.Prices.Available() then return false, "prices aren't loaded (TSM)" end
+	if not AuctionIQ.Prices.Available() then return false, "prices aren't loaded (TSM)" end
 	local list = Sc.MyProfessions()
 	if #list == 0 then return false, "this character has no professions to scan" end
 	local ui = C_TradeSkillUI
-	local wasOpen = CH.OpenProfessionID() ~= nil
+	local wasOpen = AuctionIQ.OpenProfessionID() ~= nil
 	local all = { list = list, i = 0, results = {} }
 	Sc.all = all
 	local nextOne
@@ -525,7 +525,7 @@ end
 
 --- The saved scan for a profession on this character.
 function Sc.Results(profID)
-	local p = profID and CH.Me().professions[profID]
+	local p = profID and AuctionIQ.Me().professions[profID]
 	return p and p.scan
 end
 
@@ -652,7 +652,7 @@ end
 function Sc.Model(profID, recipeID)
 	local m = Sc.models[profID] and Sc.models[profID][recipeID]
 	if m then return m end
-	local ok, model = pcall(CH.Advisor.Measure, recipeID, { professionID = profID })
+	local ok, model = pcall(AuctionIQ.Advisor.Measure, recipeID, { professionID = profID })
 	if ok and model then
 		Sc.models[profID] = Sc.models[profID] or {}
 		Sc.models[profID][recipeID] = model
@@ -660,10 +660,10 @@ function Sc.Model(profID, recipeID)
 	end
 end
 
-CH.On("TRADE_SKILL_CLOSE", function() wipe(Sc.models) end)
+AuctionIQ.On("TRADE_SKILL_CLOSE", function() wipe(Sc.models) end)
 
 --- /aiq mem: how much AuctionIQ is holding, by kind (counts, to see what grows).
-function CH.MemLines()
+function AuctionIQ.MemLines()
 	local out = {}
 	local nm, nf = 0, 0
 	for _, byRecipe in pairs(Sc.models) do
@@ -673,12 +673,12 @@ function CH.MemLines()
 		end
 	end
 	table.insert(out, string.format("recipe models this session: %d (%d reagent-mix states)", nm, nf))
-	if CH.AdvisorUI and CH.AdvisorUI.KnownCount then table.insert(out, "recipes worked out and kept: " .. CH.AdvisorUI.KnownCount()) end
-	if CH.Ledger and CH.Ledger.ParsedCounts then
-		for _, l in ipairs(CH.Ledger.ParsedCounts()) do table.insert(out, l) end
+	if AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.KnownCount then table.insert(out, "recipes worked out and kept: " .. AuctionIQ.AdvisorUI.KnownCount()) end
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.ParsedCounts then
+		for _, l in ipairs(AuctionIQ.Ledger.ParsedCounts()) do table.insert(out, l) end
 	end
 	local scans = 0
-	for _, p in pairs(CH.Me().professions or {}) do scans = scans + (p.scan and p.scan.rows and #p.scan.rows or 0) end
+	for _, p in pairs(AuctionIQ.Me().professions or {}) do scans = scans + (p.scan and p.scan.rows and #p.scan.rows or 0) end
 	table.insert(out, "saved scan rows (this character): " .. scans)
 	return out
 end

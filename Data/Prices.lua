@@ -4,7 +4,7 @@
 -- chvalue what a crafted item sells for: the lower of that and the price TSM would post it at
 -- If the player hasn't added the chmat/chvalue custom sources to TSM, the same formulas are
 -- passed to TSM directly, so everyone gets the same numbers.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local NOW = "max(first(dbminbuyout,dbmarket,dbregionmarketavg),80%first(dbmarket,dbregionmarketavg))"
 local POST = "max(first(dbregionsaleavg,dbregionmarketavg),min(dbmarket,400%first(dbregionsaleavg,dbregionmarketavg)))"
@@ -26,7 +26,7 @@ local FORMULA = {
 }
 
 local Prices = { FORMULA = FORMULA }
-CH.Prices = Prices
+AuctionIQ.Prices = Prices
 
 local CACHE_SECONDS = 60
 local cache, cacheTime = {}, {}
@@ -75,13 +75,13 @@ function Prices.CraftProfit(item, quantity)
 	local value, cost = Prices.Get("chvalue", item), Prices.Get("crafting", item)
 	if not value or not cost then return nil end
 	local id = tonumber(tostring(Prices.ItemString(item) or ""):match("^i:(%d+)"))
-	local ev = id and CH.Expect and CH.Expect.Value(id, value) or value * CH.AH_CUT
+	local ev = id and AuctionIQ.Expect and AuctionIQ.Expect.Value(id, value) or value * AuctionIQ.AH_CUT
 	return (ev - cost) * (quantity or 1)
 end
 
 --- What the AH showed for an item at its last scan (see Scans.lua), or nil.
 function Prices.Market(id)
-	return id and CH.Scans and CH.Scans.Get(id) or nil
+	return id and AuctionIQ.Scans and AuctionIQ.Scans.Get(id) or nil
 end
 
 --- Oribos Exchange's numbers for an item: { market (realm), region, days }, or nil.
@@ -137,7 +137,7 @@ Prices.BASES = { "held", "replacement", "tsm", "paid" }
 Prices.BASIS_NAMES = { held = "What you hold at sale value, the rest at today's price", replacement = "Replacement cost (chmat)",
 	tsm = "TSM material cost (matprice)", paid = "Estimated paid cost" }
 function Prices.CostBasis(v)
-	local st = CH.db and CH.db.settings
+	local st = AuctionIQ.db and AuctionIQ.db.settings
 	if v and st and Prices.BASIS_NAMES[v] then st.costBasis = v; Prices.ClearCache() end
 	local b = st and st.costBasis
 	return Prices.BASIS_NAMES[b or ""] and b or "held"
@@ -145,9 +145,9 @@ end
 
 local paidCache, paidAt
 local function paidEach(id)
-	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available()) then return nil end
 	local now = GetTime()
-	if not paidCache or now - paidAt > CACHE_SECONDS then paidCache, paidAt = CH.Ledger.Paid(), now end
+	if not paidCache or now - paidAt > CACHE_SECONDS then paidCache, paidAt = AuctionIQ.Ledger.Paid(), now end
 	local e = paidCache[id]
 	return e and e.each or nil
 end
@@ -168,11 +168,11 @@ end
 function Prices.SellValue(id)
 	local v = id and Prices.Get("chvalue", "i:" .. id)
 	if not v then return nil end
-	if CH.Expect and CH.Expect.Value then
-		local ok, net, how = pcall(CH.Expect.Value, id, v)
+	if AuctionIQ.Expect and AuctionIQ.Expect.Value then
+		local ok, net, how = pcall(AuctionIQ.Expect.Value, id, v)
 		if ok and net then return math.max(0, net), how end
 	end
-	return v * CH.AH_CUT, { gross = v * CH.AH_CUT }
+	return v * AuctionIQ.AH_CUT, { gross = v * AuctionIQ.AH_CUT }
 end
 
 --- What one of a reagent costs on a costing basis (default: the one in Settings): copper and the
@@ -195,7 +195,7 @@ function Prices.ClearCache()
 end
 
 --- Short codes used as column headings and labels, and what each means (shown on hover).
-CH.GLOSSARY = {
+AuctionIQ.GLOSSARY = {
 	MV = "Market Value: TSM's market value on your realm, from AH scans.",
 	RV = "Region Value: TSM's average market value across the whole region.",
 	EV = "Estimated Value: what one is worth to you if you list it, after the AH cut, deposits lost to expiries and gold tied up while it waits.",
@@ -214,8 +214,8 @@ function Prices.Values(id, now)
 	now = now or time()
 	local out = { mv = Prices.Raw("dbmarket", id), rv = Prices.Raw("dbregionmarketavg", id) }
 	local sale = Prices.Get("chvalue", "i:" .. id)
-	if sale and CH.Expect then out.ev = CH.Expect.Value(id, sale) end
-	if CH.Ledger and CH.Ledger.Available() then
+	if sale and AuctionIQ.Expect then out.ev = AuctionIQ.Expect.Value(id, sale) end
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
 		local e = Prices.RecentSales(now)[id]
 		if e and e.n > 0 then out.realized, out.n, out.lastSale = e.gold / e.n, e.n, e.last end
 	end
@@ -228,7 +228,7 @@ local recent = { at = 0 }
 --- { [itemID] = { gold (after the cut), n (units), last (time) } } over the 30 days before now.
 function Prices.RecentSales(now, sync)
 	now = now or time()
-	local records = CH.Ledger.Records("Sales")
+	local records = AuctionIQ.Ledger.Records("Sales")
 	-- the same records within ten minutes: the 30-day window has barely moved
 	if recent.records == records and math.abs(now - recent.at) < 600 then return recent.by end
 	-- in a click (Prices.Values for a tooltip or the advisor), don't walk every sale now: hand back
@@ -238,7 +238,7 @@ function Prices.RecentSales(now, sync)
 		return recent.by or {}
 	end
 	local by, from = {}, now - 30 * 86400
-	local F, net = CH.Ledger.F, CH.Ledger.Net
+	local F, net = AuctionIQ.Ledger.F, AuctionIQ.Ledger.Net
 	local fid, fq, ft = F.id, F.quantity, F.time
 	for _, s in ipairs(records) do
 		-- by position: this walks every sale, and the lookup by name costs a call per field
@@ -262,7 +262,7 @@ function Prices.RecentSalesSoon(now, records)
 	local b = { records = records, now = now, i = 0, by = {} }
 	building = b
 	local from = now - 30 * 86400
-	local F, net = CH.Ledger.F, CH.Ledger.Net
+	local F, net = AuctionIQ.Ledger.F, AuctionIQ.Ledger.Net
 	local fid, fq, ft = F.id, F.quantity, F.time
 	local function step()
 		if building ~= b then return end
@@ -287,7 +287,7 @@ end
 
 --- Tooltip lines for Prices.Values: { label, money, labelColor, valueColor }.
 function Prices.ValueLines(id, now)
-	local v, m, T = Prices.Values(id, now), CH.FormatMoney, CH.Theme
+	local v, m, T = Prices.Values(id, now), AuctionIQ.FormatMoney, AuctionIQ.Theme
 	local lines = {}
 	if v.mv then table.insert(lines, { "  MV  Market Value", m(v.mv), "muted" }) end
 	if v.rv then table.insert(lines, { "  RV  Region Value", m(v.rv), "muted" }) end
@@ -302,6 +302,6 @@ end
 
 
 -- add up the 30-day sales soon after login, so the first click or hover doesn't wait for them
-CH.On("PLAYER_LOGIN", function()
-	if C_Timer then C_Timer.After(15, function() if CH.Ledger and CH.Ledger.Available() then Prices.RecentSales() end end) end
+AuctionIQ.On("PLAYER_LOGIN", function()
+	if C_Timer then C_Timer.After(15, function() if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then Prices.RecentSales() end end) end
 end)

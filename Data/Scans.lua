@@ -5,15 +5,15 @@
 -- Kept per item in AuctionIQDB.scans: the cheapest price, a market price (average of the cheapest
 -- 15% of units listed), how many were listed, a buying ladder for commodities (see Depth.lua) and
 -- one market price per day for the last 30 days.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local S = { SHARE = 0.15, KEEP_DAYS = 30, POINTS = { 1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000 } }
 S.version = 0 -- counts every change, so what's worked out from the scans (Deals) knows to redo it
-CH.Scans = S
+AuctionIQ.Scans = S
 
 local function store()
-	CH.db.scans = CH.db.scans or {}
-	return CH.db.scans
+	AuctionIQ.db.scans = AuctionIQ.db.scans or {}
+	return AuctionIQ.db.scans
 end
 
 local function day(t) return math.floor((t or time()) / 86400) end
@@ -53,7 +53,7 @@ end
 
 --- Save one item's search results ({ price, qty, mine } from Auction.Results).
 function S.Record(id, results, commodity)
-	if not id or type(results) ~= "table" or not CH.db then return end
+	if not id or type(results) ~= "table" or not AuctionIQ.db then return end
 	local all, others = {}, {}
 	for _, r in ipairs(results) do
 		if r.price and (r.qty or 0) > 0 then
@@ -90,7 +90,7 @@ end
 --- Save a browse or full-scan row (cheapest price and quantity only). A full search of the same
 --- item in the last hour is kept, since it knows more.
 function S.RecordBrowse(id, minPrice, qty)
-	if not id or not minPrice or not CH.db then return end
+	if not id or not minPrice or not AuctionIQ.db then return end
 	local now = time()
 	local e = store()[id] or {}
 	if e.full and e.at and now - e.at < 3600 then return end
@@ -109,7 +109,7 @@ end
 --- An item's cheapest price at its last scan and when that was (min, at), or nil: no table made,
 --- for a walk over every item scanned.
 function S.Cheapest(id)
-	local e = id and CH.db and store()[id]
+	local e = id and AuctionIQ.db and store()[id]
 	if not e or not e.at then return nil end
 	return e.min, e.at
 end
@@ -117,13 +117,13 @@ end
 --- An item's market price by day, oldest first: { { day, price, scans } } (day is time() / 86400,
 --- rounded down), the list kept in the saved variables (don't change it), or nil.
 function S.Daily(id)
-	local e = id and CH.db and store()[id]
+	local e = id and AuctionIQ.db and store()[id]
 	return e and e.daily and e.daily[1] and e.daily or nil
 end
 
 --- An item's last scan: { min, market, qty, at, age, avg7, change7, days, full, source = "scan" }, or nil.
 function S.Get(id)
-	local e = id and CH.db and store()[tonumber(id)]
+	local e = id and AuctionIQ.db and store()[tonumber(id)]
 	if not e or not e.at then return nil end
 	local now = time()
 	local sum, n, days = 0, 0, 0
@@ -138,7 +138,7 @@ end
 
 --- A commodity's buying ladder from its last full search: { { qty, avg } }, and when it was taken.
 function S.Depth(id)
-	local e = id and CH.db and store()[id]
+	local e = id and AuctionIQ.db and store()[id]
 	if not e or not e.ladder or not e.ladder[1] then return nil end
 	return e.ladder, e.ladderAt or e.at
 end
@@ -168,7 +168,7 @@ function S.Prune(now)
 	end
 end
 
-CH.On("PLAYER_LOGIN", function() if CH.db then S.Prune() end end)
+AuctionIQ.On("PLAYER_LOGIN", function() if AuctionIQ.db then S.Prune() end end)
 
 -- Browse results (the AH's front page, TSM's full scans): cheapest price and quantity per item.
 local function browse(rows)
@@ -179,7 +179,7 @@ local function browse(rows)
 		end
 	end
 end
-CH.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function()
+AuctionIQ.On("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED", function()
 	if C_AuctionHouse and C_AuctionHouse.GetBrowseResults then browse(C_AuctionHouse.GetBrowseResults()) end
 end)
-CH.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", function(_, added) browse(added) end)
+AuctionIQ.On("AUCTION_HOUSE_BROWSE_RESULTS_ADDED", function(_, added) browse(added) end)

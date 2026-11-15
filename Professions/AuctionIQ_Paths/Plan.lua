@@ -10,11 +10,11 @@
 -- A node under another is only planned once the one above it is full (the planner's assumption;
 -- the game's own "available" flag is used for nodes it already reports).
 --
--- Part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load): it adds the planner to CH.Paths, which
+-- Part of AuctionIQ_Paths, loaded on demand (AuctionIQ.Paths.Load): it adds the planner to AuctionIQ.Paths, which
 -- AuctionIQ itself defines (Operations/Craft/Paths.lua: groups, yields, the current plan).
-local CH = AuctionIQ
+local AuctionIQ = AuctionIQ
 
-local P = CH.Paths
+local P = AuctionIQ.Paths
 local unpack = unpack or table.unpack
 local words, MAIN, YIELD, EVERYTHING = P.Words, P.MAIN, P.YIELD, P.EVERYTHING
 
@@ -52,7 +52,7 @@ end
 --- Recipe categories in the open profession, as goals to pick from: { name, recipes = {id...} }.
 function P.Goals()
 	local byName, out = {}, {}
-	for _, id in ipairs(CH.Scan.Recipes()) do
+	for _, id in ipairs(AuctionIQ.Scan.Recipes()) do
 		local info = C_TradeSkillUI.GetRecipeInfo(id)
 		local names = categoryNames(info and info.categoryID)
 		local name = names[1]
@@ -68,9 +68,9 @@ end
 --- The open profession's recipes in main groups, each with the spec nodes that split it (Light
 --- and Void potions, say): { { name, recipes, subs = { { name, node, recipes } } } }.
 function P.GoalGroups(prof)
-	prof = prof or CH.OpenProfessionID()
+	prof = prof or AuctionIQ.OpenProfessionID()
 	local byName, out = {}, {}
-	for _, id in ipairs(CH.Scan.Recipes()) do
+	for _, id in ipairs(AuctionIQ.Scan.Recipes()) do
 		local info = C_TradeSkillUI.GetRecipeInfo(id)
 		local cats = table.concat(categoryNames(info and info.categoryID), " ")
 		local name = P.MainGroup(cats, prof) or P.MainGroup(info and info.name, prof) or "Other"
@@ -87,14 +87,14 @@ function P.GoalGroups(prof)
 		table.insert(out, { name = y.name, recipes = {}, subs = {}, yield = true })
 	end
 	table.sort(out, function(a, b) return order[a.name] < order[b.name] end)
-	local tree = prof and CH.Spec.Tree(prof)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
 	if tree then
 		for _, g in ipairs(out) do
 			local set = {}
 			for _, id in ipairs(g.recipes) do set[id] = true end
 			for nodeID, n in pairs(tree.nodes) do
 				local ids = {}
-				for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do if set[recipeID] then table.insert(ids, recipeID) end end
+				for recipeID in pairs(AuctionIQ.Spec.NodeRecipes(prof, nodeID)) do if set[recipeID] then table.insert(ids, recipeID) end end
 				-- a node that covers some of the group but not all of it splits the group
 				if #ids > 0 and #ids < #g.recipes then
 					local label = (n.name or ""):match(" %- (.+)$") or n.name or ("node " .. nodeID)
@@ -111,7 +111,7 @@ end
 
 --- Points to finish every node that helps these recipes, including locked nodes on the way.
 function P.PathCost(prof, recipes, goal)
-	local tree = prof and CH.Spec.Tree(prof)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
 	if not tree then return 0 end
 	local want = {}
 	local y = goal and P.Yield(prof, goal)
@@ -122,7 +122,7 @@ function P.PathCost(prof, recipes, goal)
 	local set = {}
 	for _, id in ipairs(recipes or {}) do set[id] = true end
 	for nodeID in pairs(tree.nodes) do
-		for recipeID in pairs(CH.Spec.NodeRecipes(prof, nodeID)) do
+		for recipeID in pairs(AuctionIQ.Spec.NodeRecipes(prof, nodeID)) do
 			if set[recipeID] then want[nodeID] = true; break end
 		end
 	end
@@ -147,7 +147,7 @@ function P.Match(text)
 		if EVERYTHING[w] then all = true elseif not STOP[w] then table.insert(keys, w) end
 	end
 	local ids = {}
-	for _, id in ipairs(CH.Scan.Recipes()) do
+	for _, id in ipairs(AuctionIQ.Scan.Recipes()) do
 		local info = C_TradeSkillUI.GetRecipeInfo(id)
 		if all or #keys == 0 then
 			table.insert(ids, id)
@@ -163,18 +163,18 @@ function P.Match(text)
 end
 
 local function sellValue(id)
-	local p = id and CH.Prices.Get("chvalue", "i:" .. id)
-	return p and p * CH.AH_CUT
+	local p = id and AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+	return p and p * AuctionIQ.AH_CUT
 end
 
 --- A gathering line's skill at these ranks, and the most the tree can give it.
 local function lineSkill(ctx, ranks, line)
 	local paths = { [ctx.yield.all] = true, [line.path] = true }
-	local skill = CH.Spec.GatherStat(ctx.prof, ctx.tree, ranks, paths, ctx.yield.stat)
+	local skill = AuctionIQ.Spec.GatherStat(ctx.prof, ctx.tree, ranks, paths, ctx.yield.stat)
 	if not line.cap then
 		local full = {}
 		for id, n in pairs(ctx.tree.nodes) do full[id] = n.max end
-		line.cap = CH.Spec.GatherStat(ctx.prof, ctx.tree, full, paths, ctx.yield.stat)
+		line.cap = AuctionIQ.Spec.GatherStat(ctx.prof, ctx.tree, full, paths, ctx.yield.stat)
 	end
 	return skill, line.cap
 end
@@ -198,7 +198,7 @@ end
 local function yieldValue(ctx, ranks)
 	local total, per = 0, {}
 	local daily = P.DailyYield(ctx.prof)
-	if ctx.seen == nil then ctx.seen = P.Observed(ctx.prof) or false; ctx.ranks0 = CH.Spec.Ranks(ctx.tree) end
+	if ctx.seen == nil then ctx.seen = P.Observed(ctx.prof) or false; ctx.ranks0 = AuctionIQ.Spec.Ranks(ctx.tree) end
 	for _, line in ipairs(ctx.yield.lines) do
 		local skill, cap = lineSkill(ctx, ranks, line)
 		local share = shareAt(ctx, line, skill, cap)
@@ -231,7 +231,7 @@ local function recipeNodes(ctx, id)
 	local list = ctx.nodesOf[id]
 	if list then return list end
 	list = {}
-	local data, seen = CH.Spec.Data(ctx.prof), {}
+	local data, seen = AuctionIQ.Spec.Data(ctx.prof), {}
 	for _, perkID in ipairs(data and data.recipes[id] or {}) do
 		local n = data.nodes[perkID]
 		if n and ctx.tree.nodes[n.nodeID] and not seen[n.nodeID] then seen[n.nodeID] = true; list[#list + 1] = n.nodeID end
@@ -251,7 +251,7 @@ end
 
 local function evaluate(ctx, ranks, id)
 	if not ctx.memo then ctx.memo = {} end
-	if not ctx.base then ctx.base, ctx.nodesOf, ctx.ranksNow = {}, {}, CH.Spec.Ranks(ctx.tree) end
+	if not ctx.base then ctx.base, ctx.nodesOf, ctx.ranksNow = {}, {}, AuctionIQ.Spec.Ranks(ctx.tree) end
 	local known = ctx.memo[id]
 	if not known then known = {}; ctx.memo[id] = known end
 	local rk = ranksKey(ctx, ranks, id)
@@ -259,19 +259,19 @@ local function evaluate(ctx, ranks, id)
 	if rec ~= nil then return rec end
 	local base = ctx.base[id]
 	if not base then
-		base = CH.Spec.RecipeStats(ctx.prof, ctx.tree, ctx.ranksNow, id)
+		base = AuctionIQ.Spec.RecipeStats(ctx.prof, ctx.tree, ctx.ranksNow, id)
 		ctx.base[id] = base
 	end
-	local delta = CH.Stats.Diff(CH.Spec.RecipeStats(ctx.prof, ctx.tree, ranks, id), base)
+	local delta = AuctionIQ.Stats.Diff(AuctionIQ.Spec.RecipeStats(ctx.prof, ctx.tree, ranks, id), base)
 	local k = deltaKey(delta)
 	rec = known[k]
 	if rec ~= nil then known[rk] = rec; return rec end
 	P.stats.evals = P.stats.evals + 1
-	local ok, r = pcall(CH.Advisor.Evaluate, ctx.models[id], { sim = delta, lean = true })
+	local ok, r = pcall(AuctionIQ.Advisor.Evaluate, ctx.models[id], { sim = delta, lean = true })
 	if ok and r then
 		local b, c = r.best, r.bestConc
 		local item = b and b.item or (c and c.item)
-		rec = { name = r.name, item = item, crafts = CH.Scan.DailyUnits(item) / (r.made or 1),
+		rec = { name = r.name, item = item, crafts = AuctionIQ.Scan.DailyUnits(item) / (r.made or 1),
 			quality = b and b.quality, profit = b and b.profit, cost = b and b.cost,
 			perPoint = c and c.perPoint, concQ = c and c.quality, concProfit = c and c.profit,
 			conc = c and c.avgConcentration or (c and c.concentration) }
@@ -296,7 +296,7 @@ P.stats = { evals = 0 }
 -- the total. A full call (no changed) works out every recipe and returns the per-recipe table.
 local function value(ctx, ranks, changed)
 	if ctx.yield then return yieldValue(ctx, ranks) end
-	local touched = changed and ctx.cur and CH.Spec.NodeRecipes(ctx.prof, changed) or nil
+	local touched = changed and ctx.cur and AuctionIQ.Spec.NodeRecipes(ctx.prof, changed) or nil
 	local cur = ctx.cur
 	local full = not touched
 	local nowRecs = full and {} or nil
@@ -331,7 +331,7 @@ local function value(ctx, ranks, changed)
 	end
 	for i = nsw + 1, #swaps do swaps[i] = nil end
 	table.sort(swaps, function(a, b) return a.gain > b.gain end)
-	local left, concDay = CH.CONC_PER_HOUR * 24, 0
+	local left, concDay = AuctionIQ.CONC_PER_HOUR * 24, 0
 	for _, w in ipairs(swaps) do
 		if left <= 0 then break end
 		local n = math.min(w.crafts, left / w.points)
@@ -353,7 +353,7 @@ local function relevantNodes(ctx)
 	local set = {}
 	for _, id in ipairs(ctx.recipes) do set[id] = true end
 	for nodeID in pairs(ctx.tree.nodes) do
-		for recipeID in pairs(CH.Spec.NodeRecipes(ctx.prof, nodeID)) do
+		for recipeID in pairs(AuctionIQ.Spec.NodeRecipes(ctx.prof, nodeID)) do
 			if set[recipeID] then table.insert(out, nodeID); break end
 		end
 	end
@@ -389,7 +389,7 @@ local function perksBetween(ctx, nodeID, from, to)
 	local out = {}
 	for perkID, th in pairs(ctx.tree.nodes[nodeID].perks) do
 		if th > from and th <= to then
-			local text = CH.Spec.PerkText(ctx.prof, perkID)
+			local text = AuctionIQ.Spec.PerkText(ctx.prof, perkID)
 			if text ~= "" then table.insert(out, text) end
 		end
 	end
@@ -398,10 +398,10 @@ end
 
 -- What a plan or a worth check works on: the goal's recipes we can value (best first if many).
 local function makeCtx(opts)
-	local prof = opts.prof or CH.OpenProfessionID()
+	local prof = opts.prof or AuctionIQ.OpenProfessionID()
 	if not prof then return nil, "Open the profession you want a plan for." end
-	if not CH.Spec.Data(prof) then return nil, "No specialization data for this profession yet." end
-	local tree = CH.Spec.Tree(prof)
+	if not AuctionIQ.Spec.Data(prof) then return nil, "No specialization data for this profession yet." end
+	local tree = AuctionIQ.Spec.Tree(prof)
 	if not tree then return nil, "Couldn't read your specialization tree. Open the profession window." end
 	local ids, label = opts.recipes, opts.label
 	local y = not ids and P.Yield(prof, opts.goal)
@@ -410,14 +410,14 @@ local function makeCtx(opts)
 	local ctx = { prof = prof, tree = tree, models = {}, recipes = {}, yield = y or nil, label = label,
 		memo = opts.memo or {} }
 	for _, id in ipairs(ids) do
-		local m = CH.Scan.Model(prof, id)
+		local m = AuctionIQ.Scan.Model(prof, id)
 		if m then ctx.models[id] = m; table.insert(ctx.recipes, id) end
 	end
 	if #ctx.recipes == 0 and not ctx.yield then return nil, "None of your recipes match \"" .. (opts.goal or "") .. "\", or none have prices." end
 	if #ctx.recipes > MAX_RECIPES then
-		local scan = CH.Scan.Results(prof)
+		local scan = AuctionIQ.Scan.Results(prof)
 		local rank = {}
-		for i, r in ipairs(scan and CH.Scan.Sort({ unpack(scan.rows) }, "perDay") or {}) do rank[r.recipeID] = i end
+		for i, r in ipairs(scan and AuctionIQ.Scan.Sort({ unpack(scan.rows) }, "perDay") or {}) do rank[r.recipeID] = i end
 		table.sort(ctx.recipes, function(a, b) return (rank[a] or 999) < (rank[b] or 999) end)
 		for i = #ctx.recipes, MAX_RECIPES + 1, -1 do ctx.recipes[i] = nil end
 	end
@@ -429,7 +429,7 @@ end
 function P.Worth(opts, ranks)
 	local ctx, why = makeCtx(opts)
 	if not ctx then return nil, why end
-	local now = value(ctx, CH.Spec.Ranks(ctx.tree))
+	local now = value(ctx, AuctionIQ.Spec.Ranks(ctx.tree))
 	return value(ctx, ranks), now, ctx.label
 end
 
@@ -442,7 +442,7 @@ function P.Plan(opts)
 	local prof, tree, label = ctx.prof, ctx.tree, ctx.label
 
 	local budget = (tree.unspent or 0) + (opts.points or 0)
-	local ranks = CH.Spec.Ranks(tree)
+	local ranks = AuctionIQ.Spec.Ranks(tree)
 	local plan = { prof = prof, goal = opts.goal, label = label, recipes = ctx.recipes, budget = budget, yield = ctx.yield,
 		unspent = tree.unspent or 0, steps = {}, ranks = nil }
 
@@ -515,13 +515,13 @@ function P.Plan(opts)
 	return plan
 end
 
-local function m(c) return CH.FormatMoney(c) end
+local function m(c) return AuctionIQ.FormatMoney(c) end
 
 --- The plan in plain words, as lines.
 function P.Describe(plan)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local L = {}
-	local prof = CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or "this profession"
+	local prof = AuctionIQ.SpecData[plan.prof] and AuctionIQ.SpecData[plan.prof].name or "this profession"
 	local y = plan.yield
 	if y then
 		local parts = {}
@@ -575,6 +575,6 @@ function P.Describe(plan)
 		return L
 	end
 	table.insert(L, T.Color("muted", string.format("Gold a day counts your own sales a day where you've listed an item, else the region's figure up to %d a day (/aiq cap to change), and a day's Concentration on the best recipe.",
-		CH.db.settings.scan.dailyCap or 10)))
+		AuctionIQ.db.settings.scan.dailyCap or 10)))
 	return L
 end

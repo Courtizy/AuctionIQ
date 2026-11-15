@@ -1,5 +1,5 @@
 -- AuctionIQ tooltip lines on every item.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 
 local function itemID(link)
@@ -9,10 +9,10 @@ end
 
 --- The scanned craft that makes this item, on any of your characters: the newest scan wins.
 --- Returns the scan row, its accounts (with or without Concentration) and when it was scanned.
-function CH.CraftAccounts(id)
+function AuctionIQ.CraftAccounts(id)
 	if not id then return nil end
 	local found, foundAcc, at
-	for _, char in pairs(CH.db.characters or {}) do
+	for _, char in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(char.professions or {}) do
 			local scan = p.scan
 			for _, r in ipairs(scan and scan.rows or {}) do
@@ -28,8 +28,8 @@ end
 --- that gets back what the reagents cost you (what you paid for those you hold, today's price for
 --- the rest). Returns the price and the scan row, or nil. For the auctioning side to check a list
 --- price against.
-function CH.BreakEvenFor(id)
-	local row, acc = CH.CraftAccounts(id)
+function AuctionIQ.BreakEvenFor(id)
+	local row, acc = AuctionIQ.CraftAccounts(id)
 	if not row then return nil end
 	local be = (row.concItem == id and acc == row.concAccounts) and row.concBreakEven or row.breakEven
 	return be, row
@@ -37,17 +37,17 @@ end
 
 -- Lines are { left, right, right colour, left colour }. A left text starting with spaces is a
 -- line item under the heading above it; four spaces is a detail under a line item.
-local function cutPct() return string.format("AH cut (%d%%)", math.floor((1 - CH.AH_CUT) * 100 + 0.5)) end
+local function cutPct() return string.format("AH cut (%d%%)", math.floor((1 - AuctionIQ.AH_CUT) * 100 + 0.5)) end
 
 -- A craft as a statement: revenue (sales, Multicraft, the cut), then reagents itemised, then profit.
 local function craftLines(lines, row, acc, at)
-	local T, m = CH.Theme, CH.FormatMoney
+	local T, m = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local isConc = acc == row.concAccounts
 	local how = acc.concentration and string.format("with Concentration (%d)", acc.concentration) or "without Concentration"
 	table.insert(lines, { "Crafting, per craft", T.Color("muted", how .. (at and date and date(", scan %H:%M", at) or "")) })
 	-- revenue, before the cut
 	-- the sale price (older scans didn't save it: then it's worked back from what you keep)
-	local cut = CH.AH_CUT
+	local cut = AuctionIQ.AH_CUT
 	local sales, mc = acc.sales or 0, acc.mcGold or 0
 	local made = math.floor((acc.made or 0) * 10 + 0.5) / 10
 	local items = (acc.made or 0) + (acc.extraItems or 0)
@@ -63,7 +63,7 @@ local function craftLines(lines, row, acc, at)
 	if losses >= 1 then table.insert(lines, { "  Deposits and waiting to sell", m(-losses), "bad" }) end
 	table.insert(lines, { "  Revenue after cut", m(sales + mc), nil, "accent" })
 	-- reagents, itemised at what they cost you now: yours at what they'd sell for, the rest at the buy price
-	local book, rcost = CH.ReagentBook(acc, { short = true })
+	local book, rcost = AuctionIQ.ReagentBook(acc, { short = true })
 	table.insert(lines, { "  Reagents", m(-rcost), "bad" })
 	for k = 2, #book - 1 do
 		local l = book[k]
@@ -92,11 +92,11 @@ end
 --- Craft or sell, live: crafting and selling the item (buying only the reagents you're short of)
 --- against selling the reagents you hold instead, at what they'd bring after the cut.
 --- { craft, sell, gain } or nil when you hold none of the craft's reagents.
-CH.CRAFT_OR_SELL_EVEN = 0.05 -- within 5% of what your reagents would bring, it's about even
+AuctionIQ.CRAFT_OR_SELL_EVEN = 0.05 -- within 5% of what your reagents would bring, it's about even
 
-function CH.CraftOrSell(acc)
+function AuctionIQ.CraftOrSell(acc)
 	if not (acc and acc.reagents) then return nil end
-	local P = CH.Prices
+	local P = AuctionIQ.Prices
 	local sell, buy, paid, paidAll = 0, 0, 0, true
 	for _, rg in ipairs(acc.reagents) do
 		local n = rg.n or 0
@@ -116,14 +116,14 @@ function CH.CraftOrSell(acc)
 	local craft = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - buy
 	local gain = craft - sell
 	-- a small difference isn't worth acting on: about even, so crafting stays the plan
-	local verdict = math.abs(gain) <= CH.CRAFT_OR_SELL_EVEN * sell and "even" or gain > 0 and "craft" or "sell"
+	local verdict = math.abs(gain) <= AuctionIQ.CRAFT_OR_SELL_EVEN * sell and "even" or gain > 0 and "craft" or "sell"
 	return { craft = craft, sell = sell, gain = gain, buy = buy, verdict = verdict,
 		paid = paidAll and paid > 0 and paid or nil }
 end
 
 local function reagentName(rg)
 	local name = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(rg.itemID)) or ("item " .. rg.itemID)
-	local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. CH.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
+	local q = rg.rank and rg.tiers and rg.tiers > 1 and (" " .. AuctionIQ.Window.QualityIcon(rg.rank, 12, rg.tiers)) or ""
 	return string.format("%gx %s%s", math.floor((rg.n or 0) * 10 + 0.5) / 10, name, q)
 end
 
@@ -131,8 +131,8 @@ end
 --- cost what they'd sell for after the cut (the opportunity cost) and the rest what they cost to buy.
 --- Under each reagent you hold: the opportunity cost, stock, paid, current and sell prices, and what
 --- you'd buy (opts.short: one row each for yours and to buy). Returns the lines and the total.
-function CH.ReagentBook(acc, opts)
-	local B, P, M = CH.Window.Book, CH.Prices, CH.FormatMoney
+function AuctionIQ.ReagentBook(acc, opts)
+	local B, P, M = AuctionIQ.Window.Book, AuctionIQ.Prices, AuctionIQ.FormatMoney
 	local held = P.CostBasis and P.CostBasis() == "held"
 	local lines, total = { B.Head("Reagents", "per craft") }, 0
 	for _, rg in ipairs(acc and acc.reagents or {}) do
@@ -150,8 +150,8 @@ function CH.ReagentBook(acc, opts)
 			if opts and opts.short then
 				lines[#lines + 1] = B.Sub(string.format("%g yours, at sell price", own), M(ownEach or 0))
 				if n - own > 0 then lines[#lines + 1] = B.Sub(string.format("%g to buy", n - own), buy and M(buy) or "-") end
-			elseif CH.Advisor and CH.Advisor.HeldText then
-				for _, t in ipairs(CH.Advisor.HeldText({ id = rg.itemID, own = own, ownEach = ownEach, stock = stock,
+			elseif AuctionIQ.Advisor and AuctionIQ.Advisor.HeldText then
+				for _, t in ipairs(AuctionIQ.Advisor.HeldText({ id = rg.itemID, own = own, ownEach = ownEach, stock = stock,
 					paidEach = P.PaidEach and P.PaidEach(rg.itemID), buyN = n - own, buy = buy })) do lines[#lines + 1] = t end
 			end
 		end
@@ -163,10 +163,10 @@ end
 
 --- Craft or sell, as a Book block: crafting (after buying what you're short of) against selling the
 --- reagents you hold. Empty when you hold none of them.
-function CH.CraftOrSellBook(acc)
-	local cs = CH.CraftOrSell(acc)
+function AuctionIQ.CraftOrSellBook(acc)
+	local cs = AuctionIQ.CraftOrSell(acc)
 	if not cs then return {} end
-	local B, M = CH.Window.Book, CH.FormatMoney
+	local B, M = AuctionIQ.Window.Book, AuctionIQ.FormatMoney
 	local out = { B.Head("Craft or sell?", "with the reagents you hold"), B.Line("Craft and sell the item", cs.craft) }
 	if cs.buy and cs.buy >= 1 then out[#out + 1] = B.Sub("after buying the rest for", M(cs.buy)) end
 	out[#out + 1] = B.Line("Sell your reagents instead", cs.sell)
@@ -189,9 +189,9 @@ end
 
 --- A scanned craft as a statement at today's prices: revenue, reagents (at what they cost you now),
 --- Resourcefulness, profit, then craft or sell. For the Scan tab's profit hovers.
-function CH.CraftBook(acc, title)
-	local B, M = CH.Window.Book, CH.FormatMoney
-	local _, rcost = CH.ReagentBook(acc)
+function AuctionIQ.CraftBook(acc, title)
+	local B, M = AuctionIQ.Window.Book, AuctionIQ.FormatMoney
+	local _, rcost = AuctionIQ.ReagentBook(acc)
 	local out = { B.Head(title or "Revenue", "per craft") }
 	out[#out + 1] = B.Line("Sales after the AH cut", acc.sales or 0)
 	if (acc.mcGold or 0) ~= 0 then out[#out + 1] = B.Line("Multicraft", acc.mcGold) end
@@ -201,22 +201,22 @@ function CH.CraftBook(acc, title)
 	local profit = (acc.sales or 0) + (acc.mcGold or 0) + (acc.resGold or 0) - rcost
 	out[#out + 1] = B.Total("Profit", profit)
 	if acc.profit and math.abs(profit - acc.profit) >= 100 then out[#out + 1] = B.Sub("at the scan", M(acc.profit)) end
-	for _, l in ipairs(CH.CraftOrSellBook(acc)) do out[#out + 1] = l end
+	for _, l in ipairs(AuctionIQ.CraftOrSellBook(acc)) do out[#out + 1] = l end
 	return out, profit
 end
 
 local function craftOrSellLines(lines, acc)
-	for _, l in ipairs(CH.CraftOrSellBook(acc)) do table.insert(lines, l) end
+	for _, l in ipairs(AuctionIQ.CraftOrSellBook(acc)) do table.insert(lines, l) end
 end
 
-function CH.TooltipLines(link)
+function AuctionIQ.TooltipLines(link)
 	local lines = {}
-	local m = CH.FormatMoney
-	if CH.Unsellable(itemID(link)) then
-		return { { "AuctionIQ", CH.Theme.Color("muted", "bound: can't go on the AH"), nil, "accent" } }
+	local m = AuctionIQ.FormatMoney
+	if AuctionIQ.Unsellable(itemID(link)) then
+		return { { "AuctionIQ", AuctionIQ.Theme.Color("muted", "bound: can't go on the AH"), nil, "accent" } }
 	end
-	local value = CH.Prices.Get("chvalue", link)
-	local now, post = CH.Prices.Get("chmat", link), CH.Prices.Get("chpost", link)
+	local value = AuctionIQ.Prices.Get("chvalue", link)
+	local now, post = AuctionIQ.Prices.Get("chmat", link), AuctionIQ.Prices.Get("chpost", link)
 	if value then
 		-- sale price, the cut, what you keep
 		table.insert(lines, { "AuctionIQ value", "" })
@@ -228,15 +228,15 @@ function CH.TooltipLines(link)
 		else
 			table.insert(lines, { "  Sale price", m(value) })
 		end
-		table.insert(lines, { "  " .. cutPct(), m(-(value - value * CH.AH_CUT)), "bad" })
-		table.insert(lines, { "  Value after cut", m(value * CH.AH_CUT), "ok", "accent" })
+		table.insert(lines, { "  " .. cutPct(), m(-(value - value * AuctionIQ.AH_CUT)), "bad" })
+		table.insert(lines, { "  Value after cut", m(value * AuctionIQ.AH_CUT), "ok", "accent" })
 	elseif now then
 		table.insert(lines, { "AuctionIQ buy price", m(now) })
 	end
-	for _, l in ipairs(CH.Prices.ValueLines(itemID(link))) do table.insert(lines, l) end
-	local mk = CH.Prices.Market(itemID(link))
+	for _, l in ipairs(AuctionIQ.Prices.ValueLines(itemID(link))) do table.insert(lines, l) end
+	local mk = AuctionIQ.Prices.Market(itemID(link))
 	if mk and mk.market then
-		table.insert(lines, { "Your AH scan", CH.Theme.Color("muted", CH.Scans.Age(mk.age) .. " old") })
+		table.insert(lines, { "Your AH scan", AuctionIQ.Theme.Color("muted", AuctionIQ.Scans.Age(mk.age) .. " old") })
 		table.insert(lines, { "  Market then", m(mk.market) })
 		if mk.avg7 and (mk.days or 0) > 1 then
 			local ch = mk.change7 and string.format("  %+.0f%% in 7 days", mk.change7 * 100) or ""
@@ -244,9 +244,9 @@ function CH.TooltipLines(link)
 		end
 		if mk.qty then table.insert(lines, { "  Listed now", tostring(mk.qty), "muted", "muted" }) end
 	end
-	local oeR, oeG = CH.Prices.Get("oerealm", link), CH.Prices.Get("oeregion", link)
+	local oeR, oeG = AuctionIQ.Prices.Get("oerealm", link), AuctionIQ.Prices.Get("oeregion", link)
 	if not (oeR or oeG) then
-		local oe = CH.Prices.Oribos(itemID(link))
+		local oe = AuctionIQ.Prices.Oribos(itemID(link))
 		if oe then oeR, oeG = oe.market, oe.region end
 	end
 	if oeR or oeG then
@@ -256,26 +256,26 @@ function CH.TooltipLines(link)
 	end
 	-- how AuctionIQ will post it: its group's operation and prices
 	local id = itemID(link)
-	local path = id and CH.Groups and CH.Groups.Path(id)
+	local path = id and AuctionIQ.Groups and AuctionIQ.Groups.Path(id)
 	if path then
-		local ok, p = pcall(CH.Groups.Prices, id)
+		local ok, p = pcall(AuctionIQ.Groups.Prices, id)
 		if ok and p then
-			table.insert(lines, { "Posting", CH.Theme.Color("muted", (p.op or "?") .. (p.post and "" or ", doesn't post") .. ", " .. path) })
+			table.insert(lines, { "Posting", AuctionIQ.Theme.Color("muted", (p.op or "?") .. (p.post and "" or ", doesn't post") .. ", " .. path) })
 			if p.post and p.normal then
 				table.insert(lines, { "  Min / normal / max", m(p.min or 0) .. " / " .. m(p.normal) .. " / " .. m(p.max or p.normal), "muted" })
 			end
-			if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
-				local n = CH.Ledger.NumExpires(id)
+			if p.maxExpires and p.maxExpires > 0 and AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+				local n = AuctionIQ.Ledger.NumExpires(id)
 				table.insert(lines, { "  Expired since it last sold", string.format("%d of %d", n, p.maxExpires), n >= p.maxExpires and "bad" or "muted" })
 			end
 		end
 	end
-	local row, acc, at = CH.CraftAccounts(itemID(link))
+	local row, acc, at = AuctionIQ.CraftAccounts(itemID(link))
 	if row and acc and acc.profit then
 		craftLines(lines, row, acc, at)
 		craftOrSellLines(lines, acc)
 	else
-		local profit = CH.Prices.CraftProfit(link)
+		local profit = AuctionIQ.Prices.CraftProfit(link)
 		if profit then
 			local word = profit >= 0 and "Craft profit" or "Craft loss"
 			table.insert(lines, { word, m(profit), profit >= 0 and "ok" or "bad" })
@@ -285,14 +285,14 @@ function CH.TooltipLines(link)
 end
 
 local function onItemTooltip(tooltip)
-	if not CH.db or not CH.db.settings.tooltip or not CH.Prices.Available() then return end
+	if not AuctionIQ.db or not AuctionIQ.db.settings.tooltip or not AuctionIQ.Prices.Available() then return end
 	if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
 	local _, link = tooltip:GetItem()
 	if not link then return end
-	local lines = CH.TooltipLines(link)
+	local lines = AuctionIQ.TooltipLines(link)
 	for _, l in ipairs(lines) do
-		local r = CH.Theme[l[3] or "fg"]
-		local a = CH.Theme[l[4] or (l[1]:sub(1, 2) == "  " and "fg" or "accent")]
+		local r = AuctionIQ.Theme[l[3] or "fg"]
+		local a = AuctionIQ.Theme[l[4] or (l[1]:sub(1, 2) == "  " and "fg" or "accent")]
 		tooltip:AddDoubleLine(l[1], l[2], a[1], a[2], a[3], r[1], r[2], r[3])
 	end
 end
@@ -300,6 +300,6 @@ end
 if TooltipDataProcessor and Enum and Enum.TooltipDataType then
 	-- A price lookup must never break someone's tooltip, so errors are swallowed here.
 	TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)
-		CH.Measure("item tooltip", pcall, onItemTooltip, tooltip)
+		AuctionIQ.Measure("item tooltip", pcall, onItemTooltip, tooltip)
 	end)
 end

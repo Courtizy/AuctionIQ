@@ -4,10 +4,10 @@
 -- stock you bought afterwards are counted as selling first (see match below), so a resold stack
 -- never lifts a batch. The crafting advisor shades an item's expected sale price by that
 -- record, so items that keep falling short drop down the scan.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Fc = {}
-CH.Forecast = Fc
+AuctionIQ.Forecast = Fc
 
 local DAY = 86400
 Fc.PRIOR = 5             -- shading trusts your record as much as this many units sold on forecast
@@ -16,8 +16,8 @@ Fc.WINDOW = 90 * DAY     -- only crafts from the last 90 days count toward the r
 Fc.SHADE_MIN, Fc.SHADE_MAX = 0.3, 1.5 -- only a guard; shrinkage keeps it near 1
 
 local function store()
-	CH.db.batches = CH.db.batches or {}
-	return CH.db.batches
+	AuctionIQ.db.batches = AuctionIQ.db.batches or {}
+	return AuctionIQ.db.batches
 end
 Fc.Store = store
 
@@ -31,14 +31,14 @@ function Fc.Clear() cache, cacheAt = nil, nil end
 function Fc.Record(itemID, qty, f)
 	if not itemID or not qty or qty <= 0 then return nil end
 	f = f or {}
-	local value = CH.Prices.Get("chvalue", "i:" .. itemID)
+	local value = AuctionIQ.Prices.Get("chvalue", "i:" .. itemID)
 	local cost = f.cost
-	if not cost and CH.Groups and CH.Groups.CostEach then
-		local each = CH.Groups.CostEach(itemID)
+	if not cost and AuctionIQ.Groups and AuctionIQ.Groups.CostEach then
+		local each = AuctionIQ.Groups.CostEach(itemID)
 		cost = each and each * qty
 	end
 	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
-		cost = cost, costRepl = f.costRepl, expectEach = value and value * CH.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
+		cost = cost, costRepl = f.costRepl, expectEach = value and value * AuctionIQ.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
 		recipe = f.recipeID, held = f.held }
 	-- the batch decision this craft fills, if you queued one for this item on this character
 	local d = Fc.OpenDecision(itemID, b.char, b.at)
@@ -52,7 +52,7 @@ function Fc.Record(itemID, qty, f)
 	local list = store()
 	table.insert(list, b)
 	-- bounded: the record only reads the last Fc.WINDOW, so the oldest past the cap can go
-	while #list > (CH.BATCHES_MAX or 5000) do table.remove(list, 1) end
+	while #list > (AuctionIQ.BATCHES_MAX or 5000) do table.remove(list, 1) end
 	Fc.Clear()
 	return b
 end
@@ -68,8 +68,8 @@ Fc.KEEP = 200            -- decisions kept
 Fc.LINK = 14 * DAY       -- crafts this long after queueing still fill the decision
 
 local function decisions()
-	CH.db.decisions = CH.db.decisions or {}
-	return CH.db.decisions
+	AuctionIQ.db.decisions = AuctionIQ.db.decisions or {}
+	return AuctionIQ.db.decisions
 end
 Fc.Decisions = decisions
 
@@ -81,8 +81,8 @@ Fc.Decisions = decisions
 function Fc.SaveDecision(f, now)
 	if not (f and f.item and f.n and f.n > 0) then return nil end
 	local list = decisions()
-	CH.db.decisionSeq = (CH.db.decisionSeq or 0) + 1
-	f.key = CH.db.decisionSeq
+	AuctionIQ.db.decisionSeq = (AuctionIQ.db.decisionSeq or 0) + 1
+	f.key = AuctionIQ.db.decisionSeq
 	f.at = now or time()
 	f.char = f.char or (UnitName and UnitName("player")) or nil
 	f.crafts, f.made, f.paid = 0, 0, 0
@@ -196,11 +196,11 @@ local function match()
 	-- one timeline per item: buys add other stock, a batch's snapshot resets it, sales take from it first
 	local events = {}
 	local function add(id, e) local t = events[id]; if not t then t = {}; events[id] = t end; t[#t + 1] = e end
-	if CH.Ledger and CH.Ledger.Available() then
-		for _, s in ipairs(CH.Ledger.Records("Sales")) do
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+		for _, s in ipairs(AuctionIQ.Ledger.Records("Sales")) do
 			if s.id and byItem[s.id] and s.quantity > 0 then add(s.id, { t = s.time, k = 3, s = s }) end
 		end
-		for _, r in ipairs(CH.Ledger.Records("Buys")) do
+		for _, r in ipairs(AuctionIQ.Ledger.Records("Buys")) do
 			if r.id and byItem[r.id] and (r.quantity or 0) > 0 then add(r.id, { t = r.time, k = 1, n = r.quantity }) end
 		end
 	end
@@ -227,7 +227,7 @@ local function match()
 			elseif started then
 				local s = e.s
 				local left = s.quantity
-				local each = CH.Ledger.Net(s) / s.quantity
+				local each = AuctionIQ.Ledger.Net(s) / s.quantity
 				local skip = math.min(left, other)
 				other, left = other - skip, left - skip
 				otherSold[id] = (otherSold[id] or 0) + skip

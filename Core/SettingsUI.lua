@@ -1,13 +1,13 @@
 -- Settings page of the main window: the options the /aiq commands change, your posting operations
 -- with every rule and price formula, and your own price sources. All edits save as you make them.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local SUI = {}
-CH.SettingsUI = SUI
+AuctionIQ.SettingsUI = SUI
 local page, selected, opOffset, srcOffset = nil, "Default", 0, 0
 local OP_ROWS, SRC_ROWS = 12, 5
 
-local function say(text, bad) if page then page.status:SetText(CH.Theme.Color(bad and "bad" or "muted", text)) end end
+local function say(text, bad) if page then page.status:SetText(AuctionIQ.Theme.Color(bad and "bad" or "muted", text)) end end
 local function label(b, t) if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end end
 local function box(parent, x, y, w)
 	local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
@@ -22,7 +22,7 @@ function SUI.Select(name) selected = name; SUI.Refresh() end
 function SUI.Selected() return selected end
 
 function SUI.Build(p, fs, panel)
-	local T, S = CH.Theme, CH.Settings
+	local T, S = AuctionIQ.Theme, AuctionIQ.Settings
 	page = p
 	-- General ------------------------------------------------------------------------------------
 	local gen = panel(p, 0, 0, 280, 552)
@@ -33,7 +33,7 @@ function SUI.Build(p, fs, panel)
 		fs(gen, 12, y - 3, 170, "LEFT"):SetText(o[2])
 		local b = T.Button(gen, "", 80, 18)
 		b:SetPoint("TOPLEFT", 186, y)
-		b:SetScript("OnClick", function() S.Flip(o[1]); if CH.UI.IsShown() then CH.UI.Refresh() end end)
+		b:SetScript("OnClick", function() S.Flip(o[1]); if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end end)
 		p.general[i] = { b = b, key = o[1] }
 	end
 	local cy = -34 - #S.GENERAL * 24
@@ -48,25 +48,25 @@ function SUI.Build(p, fs, panel)
 	fs(gen, 12, gy, 140, "LEFT", "GameFontNormal"):SetText("Groups")
 	local groupsBtn = T.Button(gen, "Edit groups", 110, 18)
 	groupsBtn:SetPoint("TOPLEFT", 156, gy + 2)
-	groupsBtn:SetScript("OnClick", function() CH.UI.Go("settings", "groups") end)
-	groupsBtn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The group tree: which items are in which group and their prices." } }) end)
+	groupsBtn:SetScript("OnClick", function() AuctionIQ.UI.Go("settings", "groups") end)
+	groupsBtn:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "The group tree: which items are in which group and their prices." } }) end)
 	groupsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	p.useTSM = T.Button(gen, "", 80, 18); p.useTSM:SetPoint("TOPLEFT", 186, gy - 24)
 	fs(gen, 12, gy - 27, 170, "LEFT"):SetText("Use TSM's groups")
-	p.useTSM:SetScript("OnClick", function() S.UseTSM(not S.UseTSM()); CH.UI.Refresh() end)
+	p.useTSM:SetScript("OnClick", function() S.UseTSM(not S.UseTSM()); AuctionIQ.UI.Refresh() end)
 	p.preferTSM = T.Button(gen, "", 80, 18); p.preferTSM:SetPoint("TOPLEFT", 186, gy - 48)
 	fs(gen, 12, gy - 51, 170, "LEFT"):SetText("TSM's groups come first")
-	p.preferTSM:SetScript("OnClick", function() S.PreferTSM(not S.PreferTSM()); CH.UI.Refresh() end)
+	p.preferTSM:SetScript("OnClick", function() S.PreferTSM(not S.PreferTSM()); AuctionIQ.UI.Refresh() end)
 	local import = T.Button(gen, "Import TSM rules", 150, 18)
 	import:SetPoint("TOPLEFT", 12, gy - 78)
 	import:SetScript("OnClick", function()
-		local n, err = CH.Groups.ImportTSM()
+		local n, err = AuctionIQ.Groups.ImportTSM()
 		if n then
-			local head, lines = CH.Groups.ImportSummary(n)
+			local head, lines = AuctionIQ.Groups.ImportSummary(n)
 			say("Copied from TSM: " .. head .. "." .. (#lines > 0 and string.format(" %d differences from TSM, listed in chat.", #lines) or ""))
-			for _, l in ipairs(lines) do CH.Print(l) end
+			for _, l in ipairs(lines) do AuctionIQ.Print(l) end
 		else say("Couldn't import: " .. tostring(err), true) end
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	local my = gy - 104
 	fs(gen, 12, my, 256, "LEFT", "GameFontNormal"):SetText("Math")
@@ -87,18 +87,18 @@ function SUI.Build(p, fs, panel)
 	p.cleanup = T.Button(gen, "Clean up", 76, 18); p.cleanup:SetPoint("TOPLEFT", 82, dy)
 	p.cleanup:SetScript("OnClick", function()
 		say("Cleaning up...")
-		CH.Cleanup.Report(function(r)
+		AuctionIQ.Cleanup.Report(function(r)
 			say(string.format("Let go of %d caches and %d unused scans; addon memory %.1f MB, was %.1f. Nothing you keep was touched.",
 				r.caches, r.scans, r.after / 1024, r.before / 1024))
 		end)
 	end)
-	p.cleanup:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Clean up" },
+	p.cleanup:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Clean up" },
 		{ "Lets go of what AuctionIQ keeps only for speed: prices, auction depth, TSM's parsed records and worked-out results. They rebuild when needed." },
 		{ "Your queue, settings, crafting records and history aren't touched." } }) end)
 	p.cleanup:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	p.prune = T.Button(gen, "Prune history", 108, 18); p.prune:SetPoint("TOPLEFT", 162, dy)
-	p.prune:SetScript("OnClick", function() CH.Cleanup.AskPrune() end)
-	p.prune:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Prune history" },
+	p.prune:SetScript("OnClick", function() AuctionIQ.Cleanup.AskPrune() end)
+	p.prune:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Prune history" },
 		{ "Removes AuctionIQ's day totals, net worth days and competition notes older than the days you choose (365 to start, as in TSM). It says what will go and asks first." },
 		{ "Crafting records stay: as in CraftSim, they go only when you drop the profession." } }) end)
 	p.prune:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -111,7 +111,7 @@ function SUI.Build(p, fs, panel)
 	logo:SetPoint("TOPLEFT", 12, ay0)
 	p.logo = logo
 	p.about = {}
-	local ver = tostring(CH.version or "dev")
+	local ver = tostring(AuctionIQ.version or "dev")
 	if ver:find("^@") then ver = "dev build" end -- unpackaged: the toc still says @project-version@
 	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 16 }, { "crafters and traders.", 28 },
 		{ "On GitHub:", 42 }, { "Courtizy/AuctionIQ", 54 } }) do
@@ -132,7 +132,7 @@ function SUI.Build(p, fs, panel)
 		b:SetScript("OnClick", function(self) if self.name then SUI.Select(self.name) end end)
 		p.opList[i] = b
 	end
-	CH.Window.Wheel(ops, OP_ROWS, function() return opOffset end, function(v) opOffset = v end, function() return #S.OpNames() end, SUI.Refresh)
+	AuctionIQ.Window.Wheel(ops, OP_ROWS, function() return opOffset end, function(v) opOffset = v end, function() return #S.OpNames() end, SUI.Refresh)
 	local by = -32 - OP_ROWS * 19 - 6
 	p.nameBox = box(ops, 8, by - 26, 140)
 	local new = T.Button(ops, "New", 46, 18); new:SetPoint("TOPLEFT", 8, by)
@@ -153,13 +153,13 @@ function SUI.Build(p, fs, panel)
 	del:SetScript("OnClick", function()
 		local n, err = S.DeleteOp(selected)
 		if n then say(string.format("Deleted %s; %d groups now inherit.", selected, n)); selected = "Default" else say(err, true) end
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	p.nameBox:SetScript("OnEnterPressed", function(self)
 		self:ClearFocus()
 		local name, err = S.RenameOp(selected, self:GetText())
 		if name then selected = name; self:SetText(""); say("Renamed to " .. name .. ".") else say(err, true) end
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	fs(ops, 8, by - 50, 150, "LEFT", "GameFontDisableSmall"):SetText("Type a name: New, Copy")
 	fs(ops, 8, by - 64, 150, "LEFT", "GameFontDisableSmall"):SetText("or Enter to rename")
@@ -176,11 +176,11 @@ function SUI.Build(p, fs, panel)
 			local m = T.Button(ops, "-", 18, 18); m:SetPoint("TOPLEFT", x + 112, y)
 			e.val = fs(ops, x + 130, y - 3, 52, "CENTER")
 			local pl = T.Button(ops, "+", 18, 18); pl:SetPoint("TOPLEFT", x + 182, y)
-			m:SetScript("OnClick", function() S.OpStep(selected, f[1], -1); CH.UI.Refresh() end)
-			pl:SetScript("OnClick", function() S.OpStep(selected, f[1], 1); CH.UI.Refresh() end)
+			m:SetScript("OnClick", function() S.OpStep(selected, f[1], -1); AuctionIQ.UI.Refresh() end)
+			pl:SetScript("OnClick", function() S.OpStep(selected, f[1], 1); AuctionIQ.UI.Refresh() end)
 		else
 			e.button = T.Button(ops, "", 88, 18); e.button:SetPoint("TOPLEFT", x + 112, y)
-			e.button:SetScript("OnClick", function() S.OpStep(selected, f[1], 1); CH.UI.Refresh() end)
+			e.button:SetScript("OnClick", function() S.OpStep(selected, f[1], 1); AuctionIQ.UI.Refresh() end)
 		end
 		p.fields[i] = e
 	end
@@ -194,7 +194,7 @@ function SUI.Build(p, fs, panel)
 			self:ClearFocus()
 			local ok, err = S.SetOpFormula(selected, f[1], self:GetText())
 			if ok then say(f[2] .. " saved.") else say("That formula doesn't read: " .. tostring(err), true) end
-			CH.UI.Refresh()
+			AuctionIQ.UI.Refresh()
 		end)
 		p.formulas[i] = { box = eb, f = f }
 	end
@@ -230,7 +230,7 @@ function SUI.Build(p, fs, panel)
 		end)
 		p.sources[i] = r
 	end
-	CH.Window.Wheel(src, SRC_ROWS, function() return srcOffset end, function(v) srcOffset = v end, function() return #S.Sources() end, SUI.Refresh)
+	AuctionIQ.Window.Wheel(src, SRC_ROWS, function() return srcOffset end, function(v) srcOffset = v end, function() return #S.Sources() end, SUI.Refresh)
 	local ay = -34 - SRC_ROWS * 22 - 8
 	p.newName = box(src, 6, ay, 120)
 	p.newFormula = box(src, 136, ay, 400)
@@ -250,7 +250,7 @@ end
 function SUI.Refresh()
 	local p = page
 	if not p then return {} end
-	local T, S = CH.Theme, CH.Settings
+	local T, S = AuctionIQ.Theme, AuctionIQ.Settings
 	local on = function(v) return v and T.Color("ok", "on") or T.Color("muted", "off") end
 	for _, g in ipairs(p.general) do label(g.b, on(S.Get(g.key))) end
 	p.cap:SetText(tostring(S.DailyCap()))
@@ -259,14 +259,14 @@ function SUI.Refresh()
 	label(p.preferTSM, on(S.PreferTSM()))
 
 	local names = S.OpNames()
-	if not CH.Groups.Store().ops[selected] then selected = "Default" end
+	if not AuctionIQ.Groups.Store().ops[selected] then selected = "Default" end
 	opOffset = math.max(0, math.min(opOffset, #names - OP_ROWS))
 	for i, b in ipairs(p.opList) do
 		local n = names[i + opOffset]
 		b.name = n
 		b.text:SetText(n and (n == selected and T.Color("accent", n) or n) or "")
 	end
-	local op = CH.Groups.Store().ops[selected]
+	local op = AuctionIQ.Groups.Store().ops[selected]
 	p.opsTitle:SetText("Posting operations" .. T.Color("muted", "   editing ") .. T.Color("accent", selected)
 		.. (op.imported and T.Color("muted", "  (from TSM, now yours)") or ""))
 	local used = S.OpGroups(selected)
@@ -278,7 +278,7 @@ function SUI.Refresh()
 			local v = S.OpValue(selected, k)
 			if k == "cap" and v == 0 then e.val:SetText("target")
 			elseif k == "maxExpires" and v == 0 then e.val:SetText("off")
-			elseif k == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and CH.FormatMoney(v, true) or (v .. "c"))
+			elseif k == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and AuctionIQ.FormatMoney(v, true) or (v .. "c"))
 			elseif type(v) == "string" then e.val:SetText("formula")
 			else e.val:SetText(tostring(v)) end
 		elseif e.f[3] == "bool" then
@@ -293,8 +293,8 @@ function SUI.Refresh()
 	end
 	local id = tonumber(p.tryBox:GetText() or "")
 	if id then
-		local pr = CH.Groups.Prices(id, selected)
-		local m = function(c) return c and CH.FormatMoney(c) or "-" end
+		local pr = AuctionIQ.Groups.Prices(id, selected)
+		local m = function(c) return c and AuctionIQ.FormatMoney(c) or "-" end
 		p.tryOut:SetText(string.format("min %s, normal %s, max %s", m(pr.min), m(pr.normal), m(pr.max)))
 	else
 		p.tryOut:SetText(T.Color("muted", "an item ID shows its prices"))

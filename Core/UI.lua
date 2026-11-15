@@ -1,8 +1,8 @@
 -- AuctionIQ main window, opened with /aiq or from the addon compartment, like TSM's.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local UI = {}
-CH.UI = UI
+AuctionIQ.UI = UI
 local frame
 local W, H = 920, 600
 local MIN_W, MAX_W, MIN_H, MAX_H = 920, 1800, 600, 1200 -- the corner grip resizes within these
@@ -19,7 +19,7 @@ end
 
 local function sortedCharacters()
 	local list = {}
-	for key, c in pairs(CH.db.characters) do
+	for key, c in pairs(AuctionIQ.db.characters) do
 		c.key = key
 		table.insert(list, c)
 	end
@@ -30,31 +30,31 @@ end
 -- Concentration, best crafts and buy-instead-of-craft: the Report's crafting part, also the
 -- Crafting tab's summary.
 local function craftSections(out, chars, now)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	table.insert(out, "")
-	table.insert(out, CH.Theme.Color("accent", "Concentration"))
+	table.insert(out, AuctionIQ.Theme.Color("accent", "Concentration"))
 	local any, idle = false, 0
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
-			local cur, max = CH.ConcentrationNow(p, now)
+			local cur, max = AuctionIQ.ConcentrationNow(p, now)
 			if cur then
 				any = true
 				local full = cur >= max
 				if full then idle = idle + 1 end
-				local hours = full and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR)
+				local hours = full and 0 or math.ceil((max - cur) / AuctionIQ.CONC_PER_HOUR)
 				table.insert(out, string.format("   %s%s|r %s  %d / %d  %s", classColor(c.class), c.name or c.key, p.name or "?", cur, max,
-					full and CH.Theme.Color("bad", "FULL, spend it") or ("full in " .. hours .. "h")))
+					full and AuctionIQ.Theme.Color("bad", "FULL, spend it") or ("full in " .. hours .. "h")))
 			end
 		end
 	end
 	if not any then
 		table.insert(out, "   Open each character's professions once to see Concentration here.")
 	elseif idle > 0 then
-		table.insert(out, "   " .. CH.Theme.Color("bad", idle .. " at full. Idle Concentration is gold left on the table."))
+		table.insert(out, "   " .. AuctionIQ.Theme.Color("bad", idle .. " at full. Idle Concentration is gold left on the table."))
 	end
 
 	table.insert(out, "")
-	table.insert(out, CH.Theme.Color("accent", "Best crafts") .. CH.Theme.Color("muted", "  profit per craft after the 5% cut, top quality"))
+	table.insert(out, AuctionIQ.Theme.Color("accent", "Best crafts") .. AuctionIQ.Theme.Color("muted", "  profit per craft after the 5% cut, top quality"))
 	local listed = false
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
@@ -68,13 +68,13 @@ local function craftSections(out, chars, now)
 					n = n + 1
 					listed = true
 					table.insert(out, string.format("   %s%s|r %s: %s%s  %s", classColor(c.class), c.name or c.key, p.name or "?", r.name or "?",
-						scanned and r.quality and (" Q" .. r.quality) or "", CH.Theme.Color(r.profit >= 0 and "ok" or "bad", CH.FormatMoney(r.profit))))
+						scanned and r.quality and (" Q" .. r.quality) or "", AuctionIQ.Theme.Color(r.profit >= 0 and "ok" or "bad", AuctionIQ.FormatMoney(r.profit))))
 				end
 			end
 		end
 	end
 	if not listed then
-		table.insert(out, CH.Prices.Available() and "   Open a profession window to rank its recipes."
+		table.insert(out, AuctionIQ.Prices.Available() and "   Open a profession window to rank its recipes."
 			or "   Needs TradeSkillMaster for prices.")
 	end
 
@@ -82,7 +82,7 @@ local function craftSections(out, chars, now)
 	for _, c in ipairs(chars) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				local bc = CH.Scan and CH.Scan.BuyOrCraft(r)
+				local bc = AuctionIQ.Scan and AuctionIQ.Scan.BuyOrCraft(r)
 				if bc and bc.save and bc.save > 0 then table.insert(buys, { r = r, bc = bc }) end
 			end
 		end
@@ -93,7 +93,7 @@ local function craftSections(out, chars, now)
 		table.insert(out, T.Color("accent", "Buy instead of craft") .. T.Color("muted", "  the cheapest listing is under your crafting cost"))
 		for i, b in ipairs(buys) do
 			if i > 4 then break end
-			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", CH.FormatMoney(b.bc.buy), CH.FormatMoney(b.bc.craft)))
+			table.insert(out, string.format("   %s  buy %s, costs %s to make", b.r.name or "?", AuctionIQ.FormatMoney(b.bc.buy), AuctionIQ.FormatMoney(b.bc.craft)))
 		end
 	end
 
@@ -112,14 +112,14 @@ local function fs(parent, x, y, w, justify, template)
 	f:SetPoint("TOPLEFT", x, y)
 	if w then f:SetWidth(w) end
 	f:SetJustifyH(justify or "LEFT")
-	return CH.Window.OneLine(f)
+	return AuctionIQ.Window.OneLine(f)
 end
 
 local function panel(parent, x, y, w, h)
 	local p = CreateFrame("Frame", nil, parent, "BackdropTemplate")
 	p:SetPoint("TOPLEFT", x, y)
 	p:SetSize(w, h)
-	CH.Theme.Panel(p, "panel", 1)
+	AuctionIQ.Theme.Panel(p, "panel", 1)
 	return p
 end
 
@@ -134,7 +134,7 @@ end
 UI.IconText = iconText
 
 local function colorButton(b, on)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local f = b.text or (b.GetFontString and b:GetFontString())
 	local c = on and T.accent or T.fg
 	local icon = rawget(b, "aiqIcon")
@@ -158,8 +158,8 @@ local function colorButton(b, on)
 end
 
 local function money(c, sign)
-	if not c then return CH.Theme.Color("muted", "-") end
-	local t = CH.FormatMoney(c)
+	if not c then return AuctionIQ.Theme.Color("muted", "-") end
+	local t = AuctionIQ.FormatMoney(c)
 	if sign and c > 0 then t = "+" .. t end
 	return t
 end
@@ -181,9 +181,9 @@ end
 --- Everything the Dashboard shows for the current range.
 function UI.DashboardData(now)
 	now = now or time()
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	if not L.Available() then return nil end
-	if not next(CH.db.ledger and CH.db.ledger.days or {}) then L.Archive() end
+	if not next(AuctionIQ.db.ledger and AuctionIQ.db.ledger.days or {}) then L.Archive() end
 	local since = rangeStart(now)
 	local first = now
 	local sales, buys = L.ByTime("Sales"), L.ByTime("Buys")
@@ -218,8 +218,8 @@ function UI.DashboardData(now)
 	d.worthChange = L.WorthChange(since)
 	-- What changed explains the gold change with the Cash Flow statement for exactly this range and
 	-- these characters, so the gold series and the ledger lines can't disagree on scope
-	if CH.Statements and CH.Statements.Cash then
-		local ok, c = pcall(CH.Statements.Cash, since, now)
+	if AuctionIQ.Statements and AuctionIQ.Statements.Cash then
+		local ok, c = pcall(AuctionIQ.Statements.Cash, since, now)
 		if ok and c and c.change then d.cash = c end
 	end
 	return d
@@ -244,7 +244,7 @@ function UI.WhatChanged(data)
 	local expense = c and -c.outflows.expenses or s.expense
 	local moves = {
 		{ key = "sales", label = "Sales", gold = sales, go = { "ledger", "sales" },
-			tip = s.topItem and ("Top seller: " .. name(s.topItem) .. ", " .. CH.FormatMoney(s.topItemGold or 0)) or nil },
+			tip = s.topItem and ("Top seller: " .. name(s.topItem) .. ", " .. AuctionIQ.FormatMoney(s.topItemGold or 0)) or nil },
 		{ key = "income", label = "Other income", gold = income, go = { "ledger", "income" }, tip = "Quest gold, vendor sales, and other gold TSM logged as income." },
 		{ key = "buys", label = "Purchases", gold = -buys, go = { "ledger", "purchases" },
 			tip = data.topSpentItem and ("Most spent on: " .. name(data.topSpentItem)) or nil },
@@ -278,14 +278,14 @@ end
 
 --- Ledger rows for a view (see LedgerUI.Rows), for tests and older callers.
 function UI.LedgerRows(view, filter)
-	return CH.LedgerUI.Rows(view, { filter = filter })
+	return AuctionIQ.LedgerUI.Rows(view, { filter = filter })
 end
 
 -- Building ------------------------------------------------------------------------------------
 local CARDS = 4 -- Recommendations cards: two columns of two
 
 local function buildDashboard(p)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local d = {}
 	pages.dashboard = p
 	p.d = d
@@ -304,7 +304,7 @@ local function buildDashboard(p)
 		local hit = CreateFrame("Button", nil, box)
 		hit:SetAllPoints(box)
 		hit:SetScript("OnClick", function() UI.Go(f[3][1], f[3][2]) end)
-		hit:SetScript("OnEnter", function(self) if self.tip then CH.Window.Tooltip(self, self.tip) end end)
+		hit:SetScript("OnEnter", function(self) if self.tip then AuctionIQ.Window.Tooltip(self, self.tip) end end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		d.figures[f[1]] = { value = v, sub = sub, hit = hit }
 	end
@@ -348,20 +348,20 @@ local function buildDashboard(p)
 			local e = self.entry
 			-- the modeled gain and the observed evidence, each labelled for what it is
 			if e and e.value then
-				table.insert(lines, { "Expected gain, next 7 days (modeled)", CH.FormatMoney(e.value.amount) })
-				if e.value.basis then table.insert(lines, { CH.Theme.Color("muted", "  " .. e.value.basis) }) end
+				table.insert(lines, { "Expected gain, next 7 days (modeled)", AuctionIQ.FormatMoney(e.value.amount) })
+				if e.value.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. e.value.basis) }) end
 			elseif e and e.tier then
-				table.insert(lines, { CH.Theme.Color("muted", "No expected gain worked out: ranked by urgency, not gold") })
+				table.insert(lines, { AuctionIQ.Theme.Color("muted", "No expected gain worked out: ranked by urgency, not gold") })
 			end
 			local ev = e and e.evidence
 			if ev and ev.amount then
 				local kind = ({ pastSales = "Your sales (observed)", cost = "Gold it takes", stock = "Stock at market" })[ev.kind] or "Evidence"
-				table.insert(lines, { kind, CH.FormatMoney(ev.amount) })
-				if ev.basis then table.insert(lines, { CH.Theme.Color("muted", "  " .. ev.basis) }) end
+				table.insert(lines, { kind, AuctionIQ.FormatMoney(ev.amount) })
+				if ev.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. ev.basis) }) end
 			end
-			if e and e.risk then table.insert(lines, { CH.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
-			if self.go then table.insert(lines, { CH.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
-			if #lines > 0 then CH.Window.Tooltip(self, lines) end
+			if e and e.risk then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
+			if self.go then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
+			if #lines > 0 then AuctionIQ.Window.Tooltip(self, lines) end
 		end)
 		c.hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		c.act = T.Primary(T.Button(top, "", 84, 22))
@@ -398,7 +398,7 @@ local function buildDashboard(p)
 	local who = T.Button(p, "Characters", 84, 18)
 	who:SetPoint("TOPRIGHT", p, "TOPLEFT", bx - 4, y0 - 2)
 	who:SetScript("OnClick", function(self) UI.CharacterMenu(self) end)
-	who:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
+	who:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Pick which characters (and the warband bank) count in the gold." } }) end)
 	who:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.who = who
 	local chart = panel(p, 0, y0 - 44, cw, 166 + extra)
@@ -479,10 +479,10 @@ local function buildDashboard(p)
 		hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2]) end end)
 		hit:SetScript("OnEnter", function(self)
 			if not self.move then return end
-			local lines = { { self.move.label, CH.FormatMoney(self.move.gold) } }
-			if self.move.tip then table.insert(lines, { CH.Theme.Color("muted", self.move.tip) }) end
-			table.insert(lines, { CH.Theme.Color("muted", "Click to see the lines behind it in " .. UI.PlaceName(self.go) .. ".") })
-			CH.Window.Tooltip(self, lines)
+			local lines = { { self.move.label, AuctionIQ.FormatMoney(self.move.gold) } }
+			if self.move.tip then table.insert(lines, { AuctionIQ.Theme.Color("muted", self.move.tip) }) end
+			table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to see the lines behind it in " .. UI.PlaceName(self.go) .. ".") })
+			AuctionIQ.Window.Tooltip(self, lines)
 		end)
 		hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		r.hit = hit
@@ -508,7 +508,7 @@ end
 
 local function buildLedger(p)
 	pages.ledger = p
-	CH.LedgerUI.Build(p, fs, panel)
+	AuctionIQ.LedgerUI.Build(p, fs, panel)
 end
 
 -- Three tabs, each answering one question. Dashboard: what should I do next? Operations: what should
@@ -530,8 +530,8 @@ UI.TABS = TABS
 function UI.PlaceName(go)
 	local tabName
 	for _, t in ipairs(TABS) do if t[1] == go[1] then tabName = t[2] end end
-	local def = go[2] and CH.LedgerUI and CH.LedgerUI.ViewDef(go[2])
-	local sec = go[2] and CH.LedgerUI and CH.LedgerUI.SectionOf(go[2])
+	local def = go[2] and AuctionIQ.LedgerUI and AuctionIQ.LedgerUI.ViewDef(go[2])
+	local sec = go[2] and AuctionIQ.LedgerUI and AuctionIQ.LedgerUI.SectionOf(go[2])
 	if sec == "operations" then tabName = "Operations" elseif sec == "ledger" then tabName = "Accounting" end
 	local group = def and def.parent
 	return (tabName or "AuctionIQ") .. (group and (" > " .. group) or "")
@@ -539,7 +539,7 @@ end
 
 --- The window title: AuctionIQ, on every tab.
 local function titleText()
-	return CH.Theme.Wordmark() -- the icon is the title bar's badge, beside it
+	return AuctionIQ.Theme.Wordmark() -- the icon is the title bar's badge, beside it
 end
 UI.TitleText = titleText
 
@@ -572,8 +572,8 @@ end
 --- saved; double-click puts them back.
 local MIN_SCALE, MAX_SCALE = 0.6, 1.6
 local function settings()
-	CH.db.settings.window = CH.db.settings.window or {}
-	return CH.db.settings.window
+	AuctionIQ.db.settings.window = AuctionIQ.db.settings.window or {}
+	return AuctionIQ.db.settings.window
 end
 
 -- keep the top-left corner where it is while the window changes
@@ -590,9 +590,9 @@ function UI.SetScale(scale)
 	settings().scale = scale
 	if frame then
 		local old = frame:GetScale() or 1
-		local new = CH.Window.PixelScale() * scale -- whole screen pixels per unit at size 1
+		local new = AuctionIQ.Window.PixelScale() * scale -- whole screen pixels per unit at size 1
 		pin(old, new)
-		CH.Window.Pixel(frame, scale)
+		AuctionIQ.Window.Pixel(frame, scale)
 	end
 	return scale
 end
@@ -666,22 +666,22 @@ function UI.AddSizer(f)
 		if not self.scaling and self.toW then UI.SetSize(self.toW, self.toH); self.toW = nil end
 	end)
 	grip:SetScript("OnDoubleClick", function() UI.SetScale(1); UI.SetSize(MIN_W, MIN_H) end)
-	grip:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Drag to resize the window. Shift-drag to make everything bigger or smaller. Double-click for the normal size." } }) end)
+	grip:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Drag to resize the window. Shift-drag to make everything bigger or smaller. Double-click for the normal size." } }) end)
 	grip:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.sizer = grip
-	local saved = CH.db and CH.db.settings.window
-	CH.Window.Pixel(f, saved and saved.scale or 1)
+	local saved = AuctionIQ.db and AuctionIQ.db.settings.window
+	AuctionIQ.Window.Pixel(f, saved and saved.scale or 1)
 	return grip
 end
 
 function build()
-	local T = CH.Theme
-	local saved = CH.db and CH.db.settings.window
+	local T = AuctionIQ.Theme
+	local saved = AuctionIQ.db and AuctionIQ.db.settings.window
 	if saved then
 		W = math.max(MIN_W, math.min(MAX_W, saved.width or W))
 		H = math.max(MIN_H, math.min(MAX_H, saved.height or H))
 	end
-	frame = CH.Window.New("AuctionIQFrame", "", W, H)
+	frame = AuctionIQ.Window.New("AuctionIQFrame", "", W, H)
 	-- above the windows docked to the profession window (and other addons' crafting windows), and
 	-- brought to the front when clicked
 	frame:SetFrameStrata("DIALOG")
@@ -719,12 +719,12 @@ function build()
 	pageButtons.settings = settings
 	frame.gold = frame.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	frame.gold:SetPoint("RIGHT", settings, "LEFT", -10, 0)
-	local function buildGroups(p) pages.groups = p; CH.GroupsUI.Build(p, fs, panel) end
-	local function buildPlan(p) pages.plan = p; CH.PlanUI.Build(p, fs, panel) end
+	local function buildGroups(p) pages.groups = p; AuctionIQ.GroupsUI.Build(p, fs, panel) end
+	local function buildPlan(p) pages.plan = p; AuctionIQ.PlanUI.Build(p, fs, panel) end
 	-- the Paths page is its own addon (AuctionIQ_Paths): built the first time it's shown (UI.PathsReady)
 	local function buildPaths(p) pages.paths = p end
-	local function buildPerf(p) pages.perf = p; if CH.Performance then CH.Performance.Build(p, fs) end end
-	local function buildSettings(p) pages.settings = p; CH.SettingsUI.Build(p, fs, panel) end
+	local function buildPerf(p) pages.perf = p; if AuctionIQ.Performance then AuctionIQ.Performance.Build(p, fs) end end
+	local function buildSettings(p) pages.settings = p; AuctionIQ.SettingsUI.Build(p, fs, panel) end
 	for _, b in ipairs({ buildDashboard, buildLedger, buildGroups, buildPlan, buildPaths, buildPerf, buildSettings }) do
 		local p = CreateFrame("Frame", nil, frame)
 		p:SetPoint("TOPLEFT", 12, -36)
@@ -744,9 +744,9 @@ function build()
 	-- Concentration along the footer: a slot for every character, made in RenderConcFooter
 	frame.conc = {}
 	frame:SetScript("OnShow", function(self)
-		CH.Window.Snap(self)
-		if CH.Par then CH.Par.Refresh() end
-		if CH.Ledger.Available() then pcall(CH.Ledger.Archive); pcall(CH.Ledger.Snapshot) end
+		AuctionIQ.Window.Snap(self)
+		if AuctionIQ.Par then AuctionIQ.Par.Refresh() end
+		if AuctionIQ.Ledger.Available() then pcall(AuctionIQ.Ledger.Archive); pcall(AuctionIQ.Ledger.Snapshot) end
 		UI.Refresh()
 	end)
 	T.Fonts(frame)
@@ -778,7 +778,7 @@ local function drawChart(d, data)
 		lab:SetText(shortGold(hi - (hi - lo) * frac))
 	end
 	for _, l in pairs(d.lines) do if l then l:Hide() end end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local px = {}
 	for i, p in ipairs(series) do
 		px[i] = { left + plotW * (i - 1) / math.max(1, #series - 1), top - ch * (1 - (p.v - lo) / (hi - lo)) }
@@ -825,26 +825,26 @@ function UI.ChartHover(x)
 		d.vline:SetPoint("TOPLEFT", d.chart, "TOPLEFT", p[1], d.chartTop)
 		d.vline:SetHeight(d.chartH)
 		d.vline:Show()
-		local T = CH.Theme
-		local lines = { { date and date(range == "1D" and "%b %d %H:%M" or "%a %b %d, %Y", pt.t) or "", "" }, { "Total", CH.FormatMoney(pt.v) } }
+		local T = AuctionIQ.Theme
+		local lines = { { date and date(range == "1D" and "%b %d %H:%M" or "%a %b %d, %Y", pt.t) or "", "" }, { "Total", AuctionIQ.FormatMoney(pt.v) } }
 		local by = {}
 		for _, b in ipairs(pt.by or {}) do if b.v > 0 then table.insert(by, b) end end
 		table.sort(by, function(a, b) return a.v > b.v end)
-		for _, b in ipairs(by) do table.insert(lines, { "  " .. b.name, T.Color("muted", CH.FormatMoney(b.v)) }) end
-		CH.Window.Tooltip(d.chart, lines)
+		for _, b in ipairs(by) do table.insert(lines, { "  " .. b.name, T.Color("muted", AuctionIQ.FormatMoney(b.v)) }) end
+		AuctionIQ.Window.Tooltip(d.chart, lines)
 	end
 	return pt
 end
 
 --- The character picker: tick who counts in the gold. Without the game's menus, toggles name.
 function UI.CharacterMenu(owner, name)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	if name then L.SetIncluded(name, not L.Included(name)); return UI.Refresh() end
 	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Count gold from")
 		for _, h in ipairs(L.Holders()) do
-			root:CreateCheckbox(h.name .. "  " .. CH.FormatMoney(h.money),
+			root:CreateCheckbox(h.name .. "  " .. AuctionIQ.FormatMoney(h.money),
 				function() return L.Included(h.name) end,
 				function() L.SetIncluded(h.name, not L.Included(h.name)); UI.Refresh() end)
 		end
@@ -860,21 +860,21 @@ end
 --- other characters) and how many professions sit at full Concentration.
 function UI.DashboardFigures(now)
 	now = now or time()
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local f = { queued = 0, ready = 0, short = 0, elsewhere = 0, conc = 0, concList = {} }
 	if L and L.Available() then f.gold = L.Gold(); f.stock = L.InventoryValue() end
-	local me = CH.CharacterKey and CH.CharacterKey()
-	for _, x in ipairs(CH.TradingUI and CH.TradingUI.QueuePlan() or {}) do
+	local me = AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()
+	for _, x in ipairs(AuctionIQ.TradingUI and AuctionIQ.TradingUI.QueuePlan() or {}) do
 		f.queued = f.queued + (x.e.qty or 0)
 		if x.e.char ~= me then f.elsewhere = f.elsewhere + 1
 		elseif x.status == "buy reagents" then f.short = f.short + 1
 		else f.ready = f.ready + 1 end
 	end
 	local newest = UI.NewestExpansion()
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for id, pr in pairs(c.professions or {}) do
 			local cur, max
-			if CH.ConcentrationNow and UI.IsCurrentExpansion(id, pr, newest) then cur, max = CH.ConcentrationNow(pr, now) end
+			if AuctionIQ.ConcentrationNow and UI.IsCurrentExpansion(id, pr, newest) then cur, max = AuctionIQ.ConcentrationNow(pr, now) end
 			if cur and max and max > 0 and cur >= max then
 				f.conc = f.conc + 1
 				table.insert(f.concList, (c.name or "?") .. ": " .. (pr.name or "?"))
@@ -897,7 +897,7 @@ end
 --- name ("Midnight") }, or nil before any profession with Concentration is seen.
 function UI.NewestExpansion()
 	local best
-	for _, c in pairs(CH.db and CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db and AuctionIQ.db.characters or {}) do
 		for id, p in pairs(c.professions or {}) do
 			if type(id) == "number" and p.concMax and (not best or id > best.id) then best = { id = id, p = p } end
 		end
@@ -923,18 +923,18 @@ function UI.ConcentrationBars(now)
 	now = now or time()
 	local out = {}
 	local newest = UI.NewestExpansion()
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		for id, p in pairs(c.professions or {}) do
 			local cur, max
-			if CH.ConcentrationNow and UI.IsCurrentExpansion(id, p, newest) then cur, max = CH.ConcentrationNow(p, now) end
+			if AuctionIQ.ConcentrationNow and UI.IsCurrentExpansion(id, p, newest) then cur, max = AuctionIQ.ConcentrationNow(p, now) end
 			if cur and max and max > 0 then
 				local best
 				for _, r in ipairs(p.scan and p.scan.rows or {}) do
-					local g = CH.Scan and CH.Scan.GainPerPoint(r)
+					local g = AuctionIQ.Scan and AuctionIQ.Scan.GainPerPoint(r)
 					if g and g > 0 and (not best or g > best.gain) then best = { name = r.name, gain = g } end
 				end
 				table.insert(out, { key = key, char = c.name or key, class = c.class, prof = p.name, cur = cur, max = max,
-					hours = cur >= max and 0 or math.ceil((max - cur) / CH.CONC_PER_HOUR), best = best })
+					hours = cur >= max and 0 or math.ceil((max - cur) / AuctionIQ.CONC_PER_HOUR), best = best })
 			end
 		end
 	end
@@ -945,7 +945,7 @@ end
 -- A bar drawn in text, for tooltips: filled share of `width` pixels in one colour, the rest in another.
 local BAR = "|TInterface\\Buttons\\WHITE8X8:8:%d:0:0:8:8:0:8:0:8:%d:%d:%d|t"
 local function textBar(share, width)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local on = math.max(0, math.min(width, math.floor(share * width + 0.5)))
 	local function part(w, c) return w > 0 and string.format(BAR, w, math.floor(c[1] * 255), math.floor(c[2] * 255), math.floor(c[3] * 255)) or "" end
 	return part(on, T.accent) .. part(width - on, T.muted)
@@ -966,16 +966,16 @@ local function concSlot(i)
 	if s then return s end
 	s = CreateFrame("Frame", nil, frame)
 	s:SetSize(UI.CONC_SLOT_MAX, 16)
-	s.name = CH.Window.OneLine(fs(s, 0, -1, 60, "LEFT", "GameFontHighlightSmall"))
-	s.value = CH.Window.OneLine(fs(s, 0, -1, 30, "RIGHT", "GameFontDisableSmall"))
+	s.name = AuctionIQ.Window.OneLine(fs(s, 0, -1, 60, "LEFT", "GameFontHighlightSmall"))
+	s.value = AuctionIQ.Window.OneLine(fs(s, 0, -1, 30, "RIGHT", "GameFontDisableSmall"))
 	s.bars = {}
 	local hit = CreateFrame("Button", nil, s)
 	hit:SetAllPoints(s)
 	hit:SetScript("OnClick", function() UI.Go("operations", "professions") end)
-	hit:SetScript("OnEnter", function(self) if s.tip then CH.Window.Tooltip(self, s.tip) end end)
+	hit:SetScript("OnEnter", function(self) if s.tip then AuctionIQ.Window.Tooltip(self, s.tip) end end)
 	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	s:Hide()
-	CH.Theme.Fonts(s)
+	AuctionIQ.Theme.Fonts(s)
 	frame.conc[i] = s
 	return s
 end
@@ -991,7 +991,7 @@ end
 function UI.RenderConcFooter()
 	local out = {}
 	if not (frame and frame.conc) then return out end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	-- by character, A to Z from the left; each character's professions A to Z too
 	local by, order = {}, {}
 	for _, b in ipairs(UI.ConcentrationBars()) do
@@ -1080,13 +1080,13 @@ function UI.RenderConcFooter()
 end
 
 local function refreshFigures(d)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local f = UI.DashboardFigures()
 	local F = d.figures
-	F.gold.value:SetText(f.gold and CH.FormatMoney(f.gold) or T.Color("muted", "-"))
+	F.gold.value:SetText(f.gold and AuctionIQ.FormatMoney(f.gold) or T.Color("muted", "-"))
 	F.gold.sub:SetText("")
 	F.gold.hit.tip = { { "Gold on the characters you count, and the warband bank." }, { T.Color("muted", "Pick who counts with Characters, below.") } }
-	F.stock.value:SetText(f.stock and CH.FormatMoney(f.stock) or T.Color("muted", "-"))
+	F.stock.value:SetText(f.stock and AuctionIQ.FormatMoney(f.stock) or T.Color("muted", "-"))
 	F.stock.sub:SetText(T.Color("muted", "estimated"))
 	F.stock.hit.tip = { { "What you hold, at market value. An estimate, not gold in hand." }, { T.Color("muted", "Click for the inventory records.") } }
 	F.queued.value:SetText(tostring(f.queued))
@@ -1101,7 +1101,7 @@ local function refreshFigures(d)
 		table.insert(tip, { classColor(b.class) .. b.char .. "|r " .. T.Color("muted", b.prof or "?") .. "  " .. textBar(b.cur / b.max, 80),
 			string.format("%d/%d  ", b.cur, b.max) .. (b.hours == 0 and T.Color("bad", "full") or T.Color("muted", "full in " .. b.hours .. "h")) })
 		if b.best then
-			table.insert(tip, { T.Color("muted", "   best: " .. (b.best.name or "?")), T.Color("ok", "+" .. CH.FormatMoney(b.best.gain)) .. T.Color("muted", " a point over plain") })
+			table.insert(tip, { T.Color("muted", "   best: " .. (b.best.name or "?")), T.Color("ok", "+" .. AuctionIQ.FormatMoney(b.best.gain)) .. T.Color("muted", " a point over plain") })
 		end
 	end
 	if #tip == 1 then table.insert(tip, { T.Color("muted", "Open each character's professions once to see it here.") }) end
@@ -1111,22 +1111,22 @@ end
 
 local function refreshDashboard()
 	local d = pages.dashboard.d
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	refreshFigures(d)
 	for k, b in pairs(d.rangeButtons) do colorButton(b, k == range) end
-	if not CH.Ledger.Available() then
+	if not AuctionIQ.Ledger.Available() then
 		d.title:SetText("Dashboard")
 		d.sub:SetText(T.Color("muted", "Needs TradeSkillMaster: the dashboard reads its gold log and accounting."))
 		return nil
 	end
 	local data = UI.DashboardData()
 	d.title:SetText("Gold")
-	local holders, on = CH.Ledger.Holders(), 0
+	local holders, on = AuctionIQ.Ledger.Holders(), 0
 	for _, h in ipairs(holders) do if h.included then on = on + 1 end end
 	local who = on == #holders and ("All characters on " .. (GetRealmName and GetRealmName() or "") .. " + warband bank")
 		or string.format("%d of %d (characters + warband bank)", on, #holders)
-	local tokens = CH.Alerts and CH.Alerts.InTokens(data.gold)
-	d.sub:SetText(T.Color("muted", who .. ", now ") .. CH.FormatMoney(data.gold) .. (tokens and T.Color("muted", "  (" .. tokens .. ")") or ""))
+	local tokens = AuctionIQ.Alerts and AuctionIQ.Alerts.InTokens(data.gold)
+	d.sub:SetText(T.Color("muted", who .. ", now ") .. AuctionIQ.FormatMoney(data.gold) .. (tokens and T.Color("muted", "  (" .. tokens .. ")") or ""))
 	d.hoverIndex = nil
 	drawChart(d, data)
 	d.stats.high:SetText(money(data.high))
@@ -1138,10 +1138,10 @@ local function refreshDashboard()
 	local s = data.summary
 	d.box.earned:SetText(T.Color("ok", money(s.earned)))
 	d.box.avgEarned:SetText(money(data.avgEarned))
-	d.box.topItem:SetText(s.topItem and (CH.Window.ItemIcon(s.topItem, 14) .. itemName(s.topItem)) or "-")
+	d.box.topItem:SetText(s.topItem and (AuctionIQ.Window.ItemIcon(s.topItem, 14) .. itemName(s.topItem)) or "-")
 	d.box.spent:SetText(T.Color("bad", money(s.spent)))
 	d.box.avgSpent:SetText(money(data.avgSpent))
-	d.box.topSpent:SetText(data.topSpentItem and (CH.Window.ItemIcon(data.topSpentItem, 14) .. itemName(data.topSpentItem)) or "-")
+	d.box.topSpent:SetText(data.topSpentItem and (AuctionIQ.Window.ItemIcon(data.topSpentItem, 14) .. itemName(data.topSpentItem)) or "-")
 	d.box.cash:SetText(T.Color(s.cash >= 0 and "ok" or "bad", money(s.cash, true)))
 	local wch = UI.WhatChanged(data)
 	d.changed.head:SetText(wch and ("Gold " .. T.Color(wch.gold >= 0 and "ok" or "bad", money(wch.gold, true)) .. T.Color("muted", " over the range")) or T.Color("muted", "No gold history yet."))
@@ -1159,7 +1159,7 @@ local function refreshDashboard()
 	-- Recommendations: the few decisions that matter most
 	do
 		-- the few decisions that matter most, one card per kind of action: no list to scroll
-		local list, all = CH.Next.Ranked(nil, #d.cards)
+		local list, all = AuctionIQ.Next.Ranked(nil, #d.cards)
 		local urgent = 0
 		for _, e in ipairs(list) do if e.tier == 1 then urgent = urgent + 1 end end
 		d.heading:SetText("Recommendations" .. T.Color("muted", #list == 0 and "  nothing waiting"
@@ -1191,42 +1191,42 @@ local function refreshDashboard()
 	return data
 end
 
-local function refreshLedger() return CH.LedgerUI.Refresh() end
+local function refreshLedger() return AuctionIQ.LedgerUI.Refresh() end
 
 function UI.Refresh()
 	if not frame then return end
 	-- one palette on every tab (Accounting used to switch to plum)
 	local want = "auctioniq"
-	if CH.Theme.palette ~= want or frame.palette ~= want then
-		CH.Theme.Use(want)
-		CH.Theme.Repaint(frame)
+	if AuctionIQ.Theme.palette ~= want or frame.palette ~= want then
+		AuctionIQ.Theme.Use(want)
+		AuctionIQ.Theme.Repaint(frame)
 		frame.palette = want
 		frame.title:SetText(titleText())
 	end
-	if FRAME[page] == "ledger" then CH.LedgerUI.SetSection(page) end
+	if FRAME[page] == "ledger" then AuctionIQ.LedgerUI.SetSection(page) end
 	-- a view that is a page of its own (the Report, Professions) shows beside the nav
-	local def = FRAME[page] == "ledger" and CH.LedgerUI.ViewDef()
+	local def = FRAME[page] == "ledger" and AuctionIQ.LedgerUI.ViewDef()
 	local beside = def and def.page
 	for k, p in pairs(pages) do p:SetShown(k == frameOf(page) or k == beside) end
 	UI.LayoutSubTabs()
 	for k, b in pairs(pageButtons) do colorButton(b, k == page) end
 	if not frame.tabsLaid then frame.tabsLaid = true; layoutTabs() end -- again once fonts and positions are final
-	if CH.Ledger and CH.Ledger.Available() then frame.gold:SetText(CH.FormatMoney(CH.Ledger.Gold())) end
-	frame.foot:SetText(CH.Theme.Color("muted", "/aiq help for commands.  Esc closes."))
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then frame.gold:SetText(AuctionIQ.FormatMoney(AuctionIQ.Ledger.Gold())) end
+	frame.foot:SetText(AuctionIQ.Theme.Color("muted", "/aiq help for commands.  Esc closes."))
 	UI.RenderConcFooter()
 	if page == "today" then return refreshDashboard()
-	elseif beside == "plan" then refreshLedger(); return CH.PlanUI.Refresh()
-	elseif beside == "paths" then refreshLedger(); if not UI.PathsReady() then return end; return CH.PathsUI.Refresh()
-	elseif beside == "perf" then refreshLedger(); return CH.Performance.Refresh()
-	elseif page == "settings" then return settingsView == "groups" and CH.GroupsUI.Refresh() or CH.SettingsUI.Refresh()
+	elseif beside == "plan" then refreshLedger(); return AuctionIQ.PlanUI.Refresh()
+	elseif beside == "paths" then refreshLedger(); if not UI.PathsReady() then return end; return AuctionIQ.PathsUI.Refresh()
+	elseif beside == "perf" then refreshLedger(); return AuctionIQ.Performance.Refresh()
+	elseif page == "settings" then return settingsView == "groups" and AuctionIQ.GroupsUI.Refresh() or AuctionIQ.SettingsUI.Refresh()
 	else return refreshLedger() end
 end
 
 --- The open tab's sub-tabs across the top, and the table page moved down under them. Returns the
 --- sub-tab labels shown, for tests.
 function UI.LayoutSubTabs()
-	local groups = FRAME[page] == "ledger" and CH.LedgerUI.Groups(page)
-	local open = CH.LedgerUI.Group()
+	local groups = FRAME[page] == "ledger" and AuctionIQ.LedgerUI.Groups(page)
+	local open = AuctionIQ.LedgerUI.Group()
 	local shift = groups and 26 or 0
 	local x, shown = 12, {}
 	for i, b in ipairs(frame.subs) do
@@ -1256,7 +1256,7 @@ function UI.LayoutSubTabs()
 	-- the nav stops above the footer line
 	if pages.ledger and pages.ledger.navPanel then pages.ledger.navPanel:SetHeight(H - 54 - shift) end
 	-- as many table rows as the page has room for, above the table's footer line
-	if CH.LedgerUI.SetRows then CH.LedgerUI.SetRows(math.floor((H - 54 - shift - 52 - 34) / 18)) end
+	if AuctionIQ.LedgerUI.SetRows then AuctionIQ.LedgerUI.SetRows(math.floor((H - 54 - shift - 52 - 34) / 18)) end
 	return shown
 end
 
@@ -1264,11 +1264,11 @@ end
 local function choose(tab, view, focus)
 	if not FRAME[tab] then return false end
 	-- a view that moved tabs (stock targets and dead stock to Trading, say) opens where it lives now
-	local home = view and FRAME[tab] == "ledger" and CH.LedgerUI.SectionOf and CH.LedgerUI.SectionOf(view)
+	local home = view and FRAME[tab] == "ledger" and AuctionIQ.LedgerUI.SectionOf and AuctionIQ.LedgerUI.SectionOf(view)
 	if home and home ~= tab and FRAME[home] then tab = home end
 	page = tab
 	if tab == "settings" then settingsView = view == "groups" and "groups" or "main" end
-	if view and FRAME[tab] == "ledger" then CH.LedgerUI.Set({ view = view, focus = focus }) end
+	if view and FRAME[tab] == "ledger" then AuctionIQ.LedgerUI.Set({ view = view, focus = focus }) end
 	return true
 end
 
@@ -1281,12 +1281,12 @@ function UI.Go(tab, view, focus)
 end
 
 --- Load the Paths page's addon and build the page, the first time it's needed. False when it
---- couldn't load (CH.Paths.Load says why once).
+--- couldn't load (AuctionIQ.Paths.Load says why once).
 local pathsBuilt
 function UI.PathsReady()
 	if pathsBuilt then return true end
-	if not (pages.paths and CH.Paths.Load()) then return false end
-	CH.PathsUI.Build(pages.paths)
+	if not (pages.paths and AuctionIQ.Paths.Load()) then return false end
+	AuctionIQ.PathsUI.Build(pages.paths)
 	pathsBuilt = true
 	return true
 end

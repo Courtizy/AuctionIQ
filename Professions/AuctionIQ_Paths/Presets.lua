@@ -11,27 +11,27 @@
 --
 -- Saved per character and profession in AuctionIQDB.presets (a few KB each), worked out again
 -- when they're a day old and the profession is open, or on Recalculate.
-local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
+local AuctionIQ = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (AuctionIQ.Paths.Load)
 
 local Pr = { MAX = 8, RUNS = 200, STALE = 86400, MAX_POINTS = 150,
 	PRICE_CV = 0.15, COST_CV = 0.08, SALES_CV = 0.3, MIN_CV = 0.05, MAX_CV = 0.6 }
-CH.Presets = Pr
+AuctionIQ.Presets = Pr
 
-local function key(prof) return (CH.CharacterKey and CH.CharacterKey() or "?") .. ":" .. tostring(prof) end
+local function key(prof) return (AuctionIQ.CharacterKey and AuctionIQ.CharacterKey() or "?") .. ":" .. tostring(prof) end
 
 --- This character's presets for a profession: { at, list = { preset } }.
 function Pr.Store(prof)
-	CH.db.presets = CH.db.presets or {}
+	AuctionIQ.db.presets = AuctionIQ.db.presets or {}
 	local k = key(prof)
-	CH.db.presets[k] = CH.db.presets[k] or { list = {} }
-	return CH.db.presets[k]
+	AuctionIQ.db.presets[k] = AuctionIQ.db.presets[k] or { list = {} }
+	return AuctionIQ.db.presets[k]
 end
 
 --- The focuses a profession's presets cover: each main group, and the branches that split one
 --- (Light and Void potions), up to MAX. { { key, label, recipes, yield } }
 function Pr.Focuses(prof)
 	local out = {}
-	local groups = CH.Paths.GoalGroups(prof) or {}
+	local groups = AuctionIQ.Paths.GoalGroups(prof) or {}
 	for _, g in ipairs(groups) do
 		if g.yield then
 			table.insert(out, { key = g.name, label = g.name, yield = true })
@@ -84,7 +84,7 @@ Pr.Draw = draw
 --- How much an item's price moves day to day: the spread of its daily market prices over the last
 --- 30 days, as a share of their average. A starting guess when there are fewer than 5 days.
 function Pr.Spread(id)
-	local e = id and CH.db.scans and CH.db.scans[id]
+	local e = id and AuctionIQ.db.scans and AuctionIQ.db.scans[id]
 	local d = e and e.daily
 	if not d or #d < 5 then return Pr.PRICE_CV end
 	local sum, n = 0, 0
@@ -190,9 +190,9 @@ function Pr.AsPlan(prof, p)
 		table.insert(plan.steps, { node = s.node, name = s.name, from = s.from, to = s.to, cost = s.cost, gain = s.gain or 0, perks = {}, changes = {} })
 	end
 	-- the ranks once it's done, for the advisor's simulation
-	local tree = CH.Spec.Tree(prof)
+	local tree = AuctionIQ.Spec.Tree(prof)
 	if tree then
-		plan.ranks = CH.Spec.Ranks(tree)
+		plan.ranks = AuctionIQ.Spec.Ranks(tree)
 		for _, s in ipairs(p.steps) do
 			if plan.ranks[s.node] ~= nil and s.to > plan.ranks[s.node] then plan.ranks[s.node] = s.to end
 		end
@@ -202,8 +202,8 @@ end
 
 --- Points a focus takes to finish from the build now, capped.
 local function pointsFor(prof, focus)
-	local tree = CH.Spec.Tree(prof)
-	local need = CH.Paths.PathCost(prof, focus.recipes, focus.yield and "disenchant" or nil)
+	local tree = AuctionIQ.Spec.Tree(prof)
+	local need = AuctionIQ.Paths.PathCost(prof, focus.recipes, focus.yield and "disenchant" or nil)
 	need = math.min(Pr.MAX_POINTS, need)
 	return math.max(0, need - (tree and tree.unspent or 0))
 end
@@ -219,8 +219,8 @@ function Pr.Progress() return running or {} end
 --- Work out every preset for the open profession, one after another in the background, then rank
 --- them. onDone(store) when finished; sync runs it all at once (tests).
 function Pr.Build(prof, onDone, sync)
-	prof = prof or CH.OpenProfessionID()
-	if not prof or prof ~= CH.OpenProfessionID() then return nil, "Open the profession to work out its presets." end
+	prof = prof or AuctionIQ.OpenProfessionID()
+	if not prof or prof ~= AuctionIQ.OpenProfessionID() then return nil, "Open the profession to work out its presets." end
 	if running then return nil, "Already working them out." end
 	local focuses = Pr.Focuses(prof)
 	if #focuses == 0 then return nil, "No recipes to build presets for yet." end
@@ -254,7 +254,7 @@ function Pr.Build(prof, onDone, sync)
 		end
 		local opts = { prof = prof, recipes = f.recipes, label = f.label, goal = f.yield and "disenchant" or f.label,
 			points = pointsFor(prof, f), sync = sync, memo = memo, onDone = (not sync) and got or nil }
-		local plan, why = CH.Paths.Plan(opts)
+		local plan, why = AuctionIQ.Paths.Plan(opts)
 		if sync or not plan then got(plan) end
 		if sync then return nextOne() end
 	end
@@ -264,7 +264,7 @@ end
 
 --- This character's presets for a profession, best gold a day first, and whether they're old.
 function Pr.List(prof)
-	local store = prof and CH.db and CH.db.presets and CH.db.presets[key(prof)]
+	local store = prof and AuctionIQ.db and AuctionIQ.db.presets and AuctionIQ.db.presets[key(prof)]
 	if not store or not store.list then return {}, true end
 	local list = {}
 	for _, p in ipairs(store.list) do table.insert(list, p) end
@@ -279,7 +279,7 @@ end
 
 --- Work them out when the profession opens and they're a day old (or missing).
 function Pr.Auto(prof)
-	prof = prof or CH.OpenProfessionID()
+	prof = prof or AuctionIQ.OpenProfessionID()
 	if not prof or running then return end
 	local _, stale = Pr.List(prof)
 	if stale then Pr.Build(prof) end

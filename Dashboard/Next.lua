@@ -8,12 +8,12 @@
 -- (card.evidence), shown with the card but never ranked against a gain. Within a tier, cards with
 -- a gain come first, biggest first; cards without one keep the order they were found in, so a
 -- number of another kind never decides where they sit.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Next = {}
-CH.Next = Next
+AuctionIQ.Next = Next
 
-local function name(id) return CH.LedgerUI and select(2, CH.LedgerUI.ItemText(id)) or ("item " .. tostring(id)) end
+local function name(id) return AuctionIQ.LedgerUI and select(2, AuctionIQ.LedgerUI.ItemText(id)) or ("item " .. tostring(id)) end
 
 Next.HORIZON_DAYS = 7
 
@@ -29,13 +29,13 @@ end
 -- What one item you hold brings when posted: its price after the cut, less expected lost deposits
 -- and gold tied up while it waits (Expect.Value). nil without a price.
 local function postedEach(id)
-	local price = id and CH.Prices.Get("chvalue", "i:" .. id)
+	local price = id and AuctionIQ.Prices.Get("chvalue", "i:" .. id)
 	if not price then return nil end
-	if CH.Expect and CH.Expect.Value then
-		local ok, ev = pcall(CH.Expect.Value, id, price)
+	if AuctionIQ.Expect and AuctionIQ.Expect.Value then
+		local ok, ev = pcall(AuctionIQ.Expect.Value, id, price)
 		if ok and ev then return math.max(0, ev) end
 	end
-	return price * CH.AH_CUT
+	return price * AuctionIQ.AH_CUT
 end
 
 -- What making n of an item adds: the best saved scan's profit a craft (after the cut, deposits and
@@ -45,12 +45,12 @@ end
 Next.ALT_SECONDS = 60
 local altCache = setmetatable({}, { __mode = "k" })
 function Next.AlternativesFor(r, now)
-	local D = CH.Decide
+	local D = AuctionIQ.Decide
 	if not (r and r.accounts and D and D.Alternatives) then return nil end
 	now = now or time()
 	local c = altCache[r]
 	if c and now - c.at < Next.ALT_SECONDS then return c.alt end
-	local alt = D.Alternatives(r.accounts, { bc = CH.Scan and CH.Scan.BuyOrCraft and CH.Scan.BuyOrCraft(r) or nil, at = r.at, item = r.item, now = now })
+	local alt = D.Alternatives(r.accounts, { bc = AuctionIQ.Scan and AuctionIQ.Scan.BuyOrCraft and AuctionIQ.Scan.BuyOrCraft(r) or nil, at = r.at, item = r.item, now = now })
 	altCache[r] = { at = now, alt = alt }
 	return alt
 end
@@ -64,8 +64,8 @@ function Next.ClearAlternatives() altCache = setmetatable({}, { __mode = "k" }) 
 -- The best scan row per item, looked up once per list (Queue.ScanRowIndex) rather than once per card.
 local rowIndex
 local function scanRowFor(id)
-	if not (CH.Queue and CH.Queue.ScanRowIndex) then return nil end
-	rowIndex = rowIndex or CH.Queue.ScanRowIndex()
+	if not (AuctionIQ.Queue and AuctionIQ.Queue.ScanRowIndex) then return nil end
+	rowIndex = rowIndex or AuctionIQ.Queue.ScanRowIndex()
 	local x = rowIndex[id]
 	if x then return x[1], x[2], x[3] end
 end
@@ -74,9 +74,9 @@ local function makeGain(id, n)
 	if not (n and n > 0) then return nil, "" end
 	local _, _, r = scanRowFor(id)
 	if not (r and r.profit) then return nil, "" end
-	local D = CH.Decide
+	local D = AuctionIQ.Decide
 	if r.at and D and D.SCAN_STALE and time() - r.at > D.SCAN_STALE then
-		return nil, "; refresh first: the profession scan is " .. (CH.Scans and CH.Scans.Age and CH.Scans.Age(time() - r.at) or "old") .. " old: rescan it", r
+		return nil, "; refresh first: the profession scan is " .. (AuctionIQ.Scans and AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(time() - r.at) or "old") .. " old: rescan it", r
 	end
 	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
 	return Next.Value("gain", r.profit * crafts, string.format("%d crafts at the last scan's profit", crafts)), "", r
@@ -134,11 +134,11 @@ end
 
 -- Card buttons: each does the job itself where it can (queue the craft, search the deals).
 local function queueAct(label, charKey, char, row, conc, qty)
-	local e = CH.Queue and CH.Queue.FromScan(charKey, char, row, conc)
+	local e = AuctionIQ.Queue and AuctionIQ.Queue.FromScan(charKey, char, row, conc)
 	if not e then return nil end
 	return { label = label, run = function()
-		CH.Queue.AddEntry(e, qty)
-		if CH.QueueUI and CH.QueueUI.Show then pcall(CH.QueueUI.Show) end
+		AuctionIQ.Queue.AddEntry(e, qty)
+		if AuctionIQ.QueueUI and AuctionIQ.QueueUI.Show then pcall(AuctionIQ.QueueUI.Show) end
 		return true, string.format("Queued %d x %s%s for %s", qty, row.name or "?", conc and " with Concentration" or "", char.name or charKey)
 	end }
 end
@@ -146,9 +146,9 @@ end
 -- Search the deals on the AH and line up the buys (the buying panel's Deals button).
 local function dealAct()
 	return { label = "Deals", run = function()
-		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and CH.AuctionUI then
-			CH.AuctionUI.Build():Show()
-			CH.AuctionUI.DealScan()
+		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and AuctionIQ.AuctionUI then
+			AuctionIQ.AuctionUI.Build():Show()
+			AuctionIQ.AuctionUI.DealScan()
 			return true, "Deal search running beside the AH"
 		end
 		return false, "Open the Auction House first, then press this again"
@@ -157,7 +157,7 @@ end
 
 -- Queue enough crafts to make n of an item, from the best saved scan that makes it.
 local function makeAct(id, n)
-	if not (CH.Queue and n and n > 0) then return nil end
+	if not (AuctionIQ.Queue and n and n > 0) then return nil end
 	local k, c, r = scanRowFor(id)
 	if not r then return nil end
 	local crafts = math.max(1, math.ceil(n / (r.made or 1)))
@@ -175,17 +175,17 @@ function Next.List(now)
 	local function add(e) table.insert(out, e) end
 
 	-- 1. value that leaks while it waits
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			-- (not "a and f()": that keeps only f's first value, and max would always be nil)
 			local cur, max
-			if CH.ConcentrationNow then cur, max = CH.ConcentrationNow(p, now) end
+			if AuctionIQ.ConcentrationNow then cur, max = AuctionIQ.ConcentrationNow(p, now) end
 			if cur and max and max > 0 and cur >= max then
 				-- the craft that turns a point into the most gold, else the best plain craft
 				-- by what the points add over the plain craft, per expected point
 				local best, conc, gpp
 				for _, r in ipairs(p.scan and p.scan.rows or {}) do
-					local g = CH.Scan and CH.Scan.GainPerPoint(r)
+					local g = AuctionIQ.Scan and AuctionIQ.Scan.GainPerPoint(r)
 					if g and g > 0 and r.concProfit and (not conc or g > gpp) then conc, gpp = r, g end
 				end
 				if not conc then
@@ -207,7 +207,7 @@ function Next.List(now)
 				end
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
-					.. (conc and gpp and string.format(", +%s a point over plain", CH.FormatMoney(gpp)) or ""),
+					.. (conc and gpp and string.format(", +%s a point over plain", AuctionIQ.FormatMoney(gpp)) or ""),
 					value = value, tier = 1,
 					risk = pick and "the top-quality price holding while you sell " .. (conc and n or 1) or "which craft pays: scan the profession first",
 					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, unit = "crafts", conc = conc and true or nil, title = "Spend Concentration" } }
@@ -218,10 +218,10 @@ function Next.List(now)
 	end
 	-- crafts the scan said pay that now sell under their break-even price
 	local below = {}
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				local now = r.breakEven and r.item and r.profit and r.profit > 0 and CH.Prices.Get("chvalue", "i:" .. r.item)
+				local now = r.breakEven and r.item and r.profit and r.profit > 0 and AuctionIQ.Prices.Get("chvalue", "i:" .. r.item)
 				if now and now < r.breakEven then
 					table.insert(below, { name = r.name, now = now, be = r.breakEven, char = c.name })
 				end
@@ -233,20 +233,20 @@ function Next.List(now)
 		local names = {}
 		for i, x in ipairs(below) do
 			if i > 2 then break end
-			names[#names + 1] = string.format("%s %s < %s", x.name or "?", CH.FormatMoney(x.now), CH.FormatMoney(x.be))
+			names[#names + 1] = string.format("%s %s < %s", x.name or "?", AuctionIQ.FormatMoney(x.now), AuctionIQ.FormatMoney(x.be))
 		end
 		add({ title = "Below break-even", detail = string.format("%d %s now sell under break-even: %s%s", #below, #below == 1 and "craft" or "crafts",
 			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, rows = below,
 			risk = "today's price: one low listing can drag it under for a day",
 			go = { "operations", "scenarios", { name = below[1].name, char = below[1].char, title = "Below break-even" } } })
 	end
-	for _, cd in ipairs(CH.Cooldowns and CH.Cooldowns.All(now) or {}) do
+	for _, cd in ipairs(AuctionIQ.Cooldowns and AuctionIQ.Cooldowns.All(now) or {}) do
 		if cd.ready then add({ title = "Cooldown ready", detail = (cd.char or "?") .. ": " .. (cd.name or "?"), tier = 1,
 			go = { "operations", "professions", { char = cd.char, title = "Cooldown ready" } } }) end
 	end
 	-- the queue's shopping list: what still has to be bought before queued crafts can start
-	if CH.Queue and CH.Queue.ShoppingList then
-		local ok, list, total = pcall(CH.Queue.ShoppingList)
+	if AuctionIQ.Queue and AuctionIQ.Queue.ShoppingList then
+		local ok, list, total = pcall(AuctionIQ.Queue.ShoppingList)
 		if ok and list then
 			local buys, names, ids = {}, {}, {}
 			for _, r in ipairs(list) do
@@ -259,7 +259,7 @@ function Next.List(now)
 			if #buys > 0 then
 				-- a cost, not a gain: it goes in the text, so the card doesn't read it as expected benefit
 				add({ title = "Buy reagents", detail = string.format("%d reagent%s for your queue, about %s: %s%s", #buys, #buys == 1 and "" or "s",
-					CH.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
+					AuctionIQ.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
 					evidence = Next.Value("cost", total, "the queue's shopping list at the listings you've seen"),
 					risk = "listings move: the AH's Shop queue buys at what's up when you get there",
 					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
@@ -268,31 +268,31 @@ function Next.List(now)
 	end
 
 	-- listings well under what they resell for (Deals.lua), worked out in the background after scans
-	for _, d in ipairs(CH.Deals and CH.Deals.Cached(now) or {}) do
+	for _, d in ipairs(AuctionIQ.Deals and AuctionIQ.Deals.Cached(now) or {}) do
 		local fresh = not d.stale
-		add({ title = "Buy and relist", detail = string.format("%s: %d at %s, each brings %s back%s", name(d.id), d.buy, CH.FormatMoney(d.unit),
-				CH.FormatMoney(d.each), fresh and "" or string.format("; refresh first: scanned %s ago, search it again", CH.Scans.Age(d.age))),
+		add({ title = "Buy and relist", detail = string.format("%s: %d at %s, each brings %s back%s", name(d.id), d.buy, AuctionIQ.FormatMoney(d.unit),
+				AuctionIQ.FormatMoney(d.each), fresh and "" or string.format("; refresh first: scanned %s ago, search it again", AuctionIQ.Scans.Age(d.age))),
 			value = fresh and Next.Value("gain", d.gain, string.format("%d bought and relisted, each after the cut and expected deposits, less what they cost", d.buy)) or nil,
 			evidence = Next.Value("cost", d.cost, "what buying them costs at the listings scanned"),
 			tier = 2, act = dealAct(),
-			risk = string.format("the listing still being there (scanned %s ago) and a week's sales: %s", CH.Scans.Age(d.age), CH.Demand and CH.Demand.Text(d.demand) or "?"),
+			risk = string.format("the listing still being there (scanned %s ago) and a week's sales: %s", AuctionIQ.Scans.Age(d.age), AuctionIQ.Demand and AuctionIQ.Demand.Text(d.demand) or "?"),
 			go = { "operations", "scenarios", { name = name(d.id), id = d.id, qty = d.buy, unit = "items", title = "Buy and relist" } } })
 	end
 
-	if CH.Ledger and CH.Ledger.Available() then
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
 		local hour = tonumber(date("%H", now))
 		-- the Trade call for an item, so a card hands over the same quantity and reason Trade shows
 		local calls
 		local function postCall(id)
 			if not calls then
 				calls = {}
-				local ok, plan = pcall(function() return CH.TradingUI and CH.TradingUI.PostPlan() or {} end)
-				local ok2, adv = pcall(function() return ok and CH.TradingUI.Advice(plan, now) or {} end)
+				local ok, plan = pcall(function() return AuctionIQ.TradingUI and AuctionIQ.TradingUI.PostPlan() or {} end)
+				local ok2, adv = pcall(function() return ok and AuctionIQ.TradingUI.Advice(plan, now) or {} end)
 				if ok2 then calls = adv end
 			end
 			return calls[id]
 		end
-		for _, e in ipairs(CH.Ledger.SaleTimes(now - 30 * 86400)) do
+		for _, e in ipairs(AuctionIQ.Ledger.SaleTimes(now - 30 * 86400)) do
 			local ahead = (e.bestHour - hour) % 24
 			if e.sold >= 3 and e.share >= 0.4 and ahead <= 3 then
 				-- what posting brings: the quantity Trade would post, each at what a listing is worth to you
@@ -312,7 +312,7 @@ function Next.List(now)
 		end
 
 		-- 2. stock work, by gold
-		local ok, r = pcall(CH.Ledger.Report, now)
+		local ok, r = pcall(AuctionIQ.Ledger.Report, now)
 		if ok and r then
 			for _, e in ipairs(r.restock or {}) do
 				local value, note, row = makeGain(e.id, e.sold)
@@ -335,7 +335,7 @@ function Next.List(now)
 					go = { "operations", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
 		end
-		for _, e in ipairs(CH.Par and CH.Par.List(now) or {}) do
+		for _, e in ipairs(AuctionIQ.Par and AuctionIQ.Par.List(now) or {}) do
 			if e.short > 0 then
 				local value, note, row = makeGain(e.id, e.short)
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d%s", name(e.id), e.held, e.target, e.short, (value or note ~= "") and note or "; scan to price it"),
@@ -347,9 +347,9 @@ function Next.List(now)
 	end
 
 	-- 3. the week's chores
-	if CH.Planner then
+	if AuctionIQ.Planner then
 		local left = 0
-		for _, k in ipairs(CH.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
+		for _, k in ipairs(AuctionIQ.Planner.Knowledge(now)) do for _, t in ipairs(k.tasks) do if not t.done then left = left + 1 end end end
 		if left > 0 then add({ title = "Weekly knowledge", detail = left .. " sources not ticked yet", tier = 3,
 			go = { "operations", "professions", { title = "Weekly knowledge" } } }) end
 	end

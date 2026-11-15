@@ -14,10 +14,10 @@
 --   numexpires    times it expired since it last sold (ledger)
 --   chvalue, chmat       AuctionIQ's sell value and buy price
 --   any custom source you define (imported from TSM's custom sources or added yourself)
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local F = {}
-CH.Formula = F
+AuctionIQ.Formula = F
 local unpack = unpack or table.unpack
 
 local MONEY = { g = 10000, s = 100, c = 1 }
@@ -177,8 +177,8 @@ local TSM_ONLY = { dbmarket = true, dbminbuyout = true, dbhistorical = true, dbr
 
 --- Your own price sources: { [name] = formula }, kept with AuctionIQ's settings.
 function F.Custom()
-	CH.db.formulas = CH.db.formulas or {}
-	return CH.db.formulas
+	AuctionIQ.db.formulas = AuctionIQ.db.formulas or {}
+	return AuctionIQ.db.formulas
 end
 
 local function source(name, ctx, ev)
@@ -194,22 +194,22 @@ local function source(name, ctx, ev)
 		ctx.depth = ctx.depth - 1
 		return v
 	end
-	if name == "crafting" then return CH.Groups and CH.Groups.CostEach and CH.Groups.CostEach(id) or CH.Prices.Raw("crafting", id, level) end
+	if name == "crafting" then return AuctionIQ.Groups and AuctionIQ.Groups.CostEach and AuctionIQ.Groups.CostEach(id) or AuctionIQ.Prices.Raw("crafting", id, level) end
 	if name == "vendorsell" then
 		local sell = C_Item and C_Item.GetItemInfo and select(11, C_Item.GetItemInfo(id))
 		return sell and sell > 0 and sell or nil
 	end
-	if name == "numexpires" then return CH.Ledger and CH.Ledger.Available() and CH.Ledger.NumExpires(id) or 0 end
+	if name == "numexpires" then return AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.NumExpires(id) or 0 end
 	if name == "avgbuy" then
-		local p = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Paid()[id]
+		local p = AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.Paid()[id]
 		return p and p.each
 	end
-	if name == "avgsell" then return CH.Ledger and CH.Ledger.Available() and CH.Ledger.AvgSell and CH.Ledger.AvgSell(id) or nil end
-	if name == "chvalue" or name == "chmat" then return CH.Prices.Get(name, item) end
+	if name == "avgsell" then return AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.AvgSell and AuctionIQ.Ledger.AvgSell(id) or nil end
+	if name == "chvalue" or name == "chmat" then return AuctionIQ.Prices.Get(name, item) end
 	if TSM_ONLY[name] then
-		return CH.Prices.Raw(name, id, level)
+		return AuctionIQ.Prices.Raw(name, id, level)
 	end
-	return CH.Prices.Raw(name, id, level)
+	return AuctionIQ.Prices.Raw(name, id, level)
 end
 
 local function ev(node, ctx)

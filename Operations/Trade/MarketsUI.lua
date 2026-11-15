@@ -1,44 +1,44 @@
 -- Operations > Trade: Market trends (each item in your groups) and Market by group (the same,
 -- rolled up). Trend, volatility and liquidity come from Data/Market.lua; selecting an item charts
 -- its daily price over the last 30 days beside the table.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local MUI = {}
-CH.MarketsUI = MUI
+AuctionIQ.MarketsUI = MUI
 
-local LUI = CH.LedgerUI
+local LUI = AuctionIQ.LedgerUI
 local function money(c) return LUI.Money(c) end
 local HUGE = math.huge
 
 local function rate(x)
-	if not x then return CH.Theme.Color("muted", "-") end
-	return CH.Demand and CH.Demand.Rate and CH.Demand.Rate(x) or string.format("%.1f", x)
+	if not x then return AuctionIQ.Theme.Color("muted", "-") end
+	return AuctionIQ.Demand and AuctionIQ.Demand.Rate and AuctionIQ.Demand.Rate(x) or string.format("%.1f", x)
 end
 
 -- the market list, worked out in the background (Market.Cached) so opening a view never stalls the
 -- game; nil while the first one is being worked out
 local function items(ctx)
-	local Mk = CH.Market
+	local Mk = AuctionIQ.Market
 	if Mk.background == false then return Mk.Items(ctx.now) end
 	return (Mk.Cached(ctx.now))
 end
 local function working()
-	return CH.Theme.Color("accent", "Working out the market for the items in your groups ...")
-		.. CH.Theme.Color("muted", "  A few milliseconds a frame, so the game keeps running; this fills in when it's done.")
+	return AuctionIQ.Theme.Color("accent", "Working out the market for the items in your groups ...")
+		.. AuctionIQ.Theme.Color("muted", "  A few milliseconds a frame, so the game keeps running; this fills in when it's done.")
 end
 
-local function pct(x) if not x then return CH.Theme.Color("muted", "-") end return string.format("%d%%", math.floor(x * 100 + 0.5)) end
+local function pct(x) if not x then return AuctionIQ.Theme.Color("muted", "-") end return string.format("%d%%", math.floor(x * 100 + 0.5)) end
 
 local function footer(n, rising, falling, choppy, thin, gold)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	return string.format("%d items, selling %s a day.", n, money(gold))
 		.. T.Color("ok", string.format("   %d rising", rising)) .. T.Color("bad", string.format("   %d falling   %d choppy", falling, choppy))
 		.. T.Color("muted", string.format("   %d thin", thin))
-		.. T.Color("muted", string.format("   Trend is a line through %d+ days of your AH scans, per week; until then TSM's market against its 60-day price.", CH.Market.MIN_DAYS))
+		.. T.Color("muted", string.format("   Trend is a line through %d+ days of your AH scans, per week; until then TSM's market against its 60-day price.", AuctionIQ.Market.MIN_DAYS))
 end
 
 local function itemRows(ctx)
-	local Mk = CH.Market
+	local Mk = AuctionIQ.Market
 	local out = {}
 	local count = { rising = 0, falling = 0, choppy = 0, thin = 0 }
 	local gold = 0
@@ -55,14 +55,14 @@ local function itemRows(ctx)
 		end
 	end
 	if not out[1] then
-		return out, CH.Theme.Color("muted", "No priced items in your groups. Put items in groups (Manage rules), and scan the AH or keep TSM's prices for them.")
+		return out, AuctionIQ.Theme.Color("muted", "No priced items in your groups. Put items in groups (Manage rules), and scan the AH or keep TSM's prices for them.")
 	end
 	return out, footer(#out, count.rising, count.falling, count.choppy, count.thin, gold)
 end
 
 local function groupRows(ctx)
-	local Mk = CH.Market
-	local T = CH.Theme
+	local Mk = AuctionIQ.Market
+	local T = AuctionIQ.Theme
 	local out = {}
 	local list = items(ctx)
 	if not list then return out, working() end
@@ -94,12 +94,12 @@ end
 function MUI.ItemDetail(d)
 	local x = d and d.x
 	if not x then return nil end
-	local T, Mk = CH.Theme, CH.Market
+	local T, Mk = AuctionIQ.Theme, AuctionIQ.Market
 	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(x.id) or ("item " .. x.id)
 	local rows = {
 		{ "Group", x.path or "-" },
-		{ "Sold a day", rate(x.units) .. T.Color("muted", "  " .. ((CH.Demand and CH.Demand.SOURCE[x.demand and x.demand.source or "none"]) or "")),
-			tip = { { "Sales rate" }, { T.Color("muted", CH.Demand and CH.Demand.Text(x.demand) or "-") } } },
+		{ "Sold a day", rate(x.units) .. T.Color("muted", "  " .. ((AuctionIQ.Demand and AuctionIQ.Demand.SOURCE[x.demand and x.demand.source or "none"]) or "")),
+			tip = { { "Sales rate" }, { T.Color("muted", AuctionIQ.Demand and AuctionIQ.Demand.Text(x.demand) or "-") } } },
 		{ "Region sale rate", pct(x.saleRate), tip = { { "Region sale rate" }, { T.Color("muted", "TSM's share of the region's listings of it that sell.") } } },
 		{ "Gold a day", money(x.goldDay) },
 		{ "Held / up, days to sell", string.format("%d / %d", x.held, x.up) .. T.Color("muted", ", ") .. Mk.DaysText(x.daysToSell) },
@@ -127,7 +127,7 @@ end
 function MUI.GroupDetail(d)
 	local g = d and d.g
 	if not g then return nil end
-	local T, Mk = CH.Theme, CH.Market
+	local T, Mk = AuctionIQ.Theme, AuctionIQ.Market
 	local top = { head = "BIGGEST SELLERS", rows = {} }
 	for i, x in ipairs(g.items) do
 		if i > 6 then break end
@@ -151,7 +151,7 @@ MUI.VIEWS = {
 
 -- Capital allocation: where your gold earns the most a day (Data/Capital.lua) ------------------
 local function capitalRows(ctx)
-	local T, Cp = CH.Theme, CH.Capital
+	local T, Cp = AuctionIQ.Theme, AuctionIQ.Capital
 	local plan = Cp.Plan(ctx)
 	local out = {}
 	for _, o in ipairs(plan.list) do
@@ -182,12 +182,12 @@ end
 MUI.VIEWS.capitalplan = { label = "Capital allocation", sort = 6, noTime = true, rows = capitalRows,
 	cols = { { "Opportunity", 0, 190 }, { "Kind", 194, 130 }, { "Gold in", 328, 88 }, { "Profit", 420, 84 }, { "Days", 508, 40 },
 		{ "Per gold/day", 552, 74 }, { "Fund", 630, 94 } },
-	controls = { { label = function() return string.format("Keep back %d%%", math.floor(CH.Capital.Reserve() * 100 + 0.5)) end,
-		tip = "How much of your gold stays out of the plan.", click = function(dir) CH.Capital.StepReserve(dir) end } } }
+	controls = { { label = function() return string.format("Keep back %d%%", math.floor(AuctionIQ.Capital.Reserve() * 100 + 0.5)) end,
+		tip = "How much of your gold stays out of the plan.", click = function(dir) AuctionIQ.Capital.StepReserve(dir) end } } }
 
 -- Risk: what you hold and have up, and how far its price could fall while it sells -------------
 local function riskRows(ctx)
-	local T, Mk = CH.Theme, CH.Market
+	local T, Mk = AuctionIQ.Theme, AuctionIQ.Market
 	local list = items(ctx)
 	if not list then return {}, working() end
 	local typical = Mk.TypicalVol(list)

@@ -4,10 +4,10 @@
 --     is the cheapest, a new post matches it
 --   * every character's live auctions count toward an item's cap
 -- Searches run on their own; every AH search answered is saved as a scan.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local A = {}
-CH.Auction = A
+AuctionIQ.Auction = A
 
 local DAY = 86400
 
@@ -17,8 +17,8 @@ local function realm() return GetRealmName and GetRealmName() or "?" end
 local function me() return (UnitName and UnitName("player") or "?") .. "-" .. realm() end
 
 local function store()
-	CH.db.auctions = CH.db.auctions or {}
-	return CH.db.auctions
+	AuctionIQ.db.auctions = AuctionIQ.db.auctions or {}
+	return AuctionIQ.db.auctions
 end
 
 --- Your live auctions of an item across the Warband: this account's own record for each character
@@ -34,8 +34,8 @@ function A.Listed(id)
 		end
 	end
 	local db = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB
-	if db and CH.Ledger then
-		for _, c in ipairs(CH.Ledger.Characters()) do
+	if db and AuctionIQ.Ledger then
+		for _, c in ipairs(AuctionIQ.Ledger.Characters()) do
 			if not counted[c.name .. "-" .. here] then
 				local t = db["s@" .. c.key .. "@internalData@auctionQuantity"]
 				if type(t) == "table" then
@@ -61,8 +61,8 @@ function A.ListedAll()
 		end
 	end
 	local db = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB
-	if db and CH.Ledger then
-		for _, c in ipairs(CH.Ledger.Characters()) do
+	if db and AuctionIQ.Ledger then
+		for _, c in ipairs(AuctionIQ.Ledger.Characters()) do
 			if not counted[c.name .. "-" .. here] then
 				local t = db["s@" .. c.key .. "@internalData@auctionQuantity"]
 				if type(t) == "table" then
@@ -83,7 +83,7 @@ function A.RecordOwned(list)
 	for _, a in ipairs(list) do items[a.id] = (items[a.id] or 0) + (a.qty or 1) end
 	store()[me()] = { at = time(), items = items, realm = realm() }
 	-- what's up today counts as a listed day for the demand estimate
-	if CH.Demand then CH.Demand.MarkAll(items) end
+	if AuctionIQ.Demand then AuctionIQ.Demand.MarkAll(items) end
 end
 
 -- Results: { { price (each), qty, mine } }, mine = yours or any character on your account.
@@ -104,12 +104,12 @@ A.Lowest = lowest
 --- results: the AH's listings for it; held: how many you have to post.
 -- Remember whether someone outside the account was cheaper than your normal price, and who.
 local function note(id, results, normal)
-	if not (CH.Ledger and CH.Ledger.NoteCompetition) then return end
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.NoteCompetition) then return end
 	local other, owners
 	for _, r in ipairs(results or {}) do
 		if not r.mine and (not other or r.price < other) then other, owners = r.price, r.owners end
 	end
-	CH.Ledger.NoteCompetition(id, other ~= nil and normal ~= nil and other < normal, owners)
+	AuctionIQ.Ledger.NoteCompetition(id, other ~= nil and normal ~= nil and other < normal, owners)
 end
 
 -- The cheapest listing outside the account, and yours. With "ignore auctions below min" (TSM's
@@ -138,7 +138,7 @@ function A.PostPrice(p, results)
 			if reset == "minPrice" or reset == "normalPrice" or reset == "maxPrice" then
 				price, why = p[({ minPrice = "min", normalPrice = "normal", maxPrice = "max" })[reset]], "cheapest is under min: posting at " .. reset:gsub("Price", "")
 			else
-				return { action = "skip", why = string.format("cheapest is under your min (%s, %s)", CH.FormatMoney(p.min), p.why or "") }
+				return { action = "skip", why = string.format("cheapest is under your min (%s, %s)", AuctionIQ.FormatMoney(p.min), p.why or "") }
 			end
 		end
 	end
@@ -168,12 +168,12 @@ end
 function A.Evaluate(id, o)
 	o = o or {}
 	local results, held, level = o.results or {}, o.held, o.level
-	local p = CH.Groups.Prices(id, nil, level)
+	local p = AuctionIQ.Groups.Prices(id, nil, level)
 	if o.note then note(id, results, p.normal) end
 	if not p.post then return { action = "skip", kind = "off", why = (p.op or "its operation") .. " doesn't post it" } end
 	if not p.normal then return { action = "skip", kind = "noprice", why = "no price" } end
-	if p.maxExpires and p.maxExpires > 0 and CH.Ledger and CH.Ledger.Available() then
-		local n = CH.Ledger.NumExpires(id)
+	if p.maxExpires and p.maxExpires > 0 and AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+		local n = AuctionIQ.Ledger.NumExpires(id)
 		if n >= p.maxExpires then
 			return { action = "skip", kind = "expired", why = string.format("expired %d times since it last sold (max %d)", n, p.maxExpires) }
 		end
@@ -205,13 +205,13 @@ end
 --- last AH scan, else none. Returns results ({ { price, qty } }), source ("ah"|"scan"|nil), age.
 function A.Listings(id)
 	local rows, src, a
-	if CH.Depth then rows, src, a = CH.Depth.Book(id) end
+	if AuctionIQ.Depth then rows, src, a = AuctionIQ.Depth.Book(id) end
 	if rows and src == "ah" then
 		local results = {}
 		for _, r in ipairs(rows) do results[#results + 1] = { price = r[1], qty = r[2] } end
 		return results, "ah", a
 	end
-	local sc = CH.Scans and CH.Scans.Get(id)
+	local sc = AuctionIQ.Scans and AuctionIQ.Scans.Get(id)
 	if sc and sc.min then return { { price = sc.min, qty = 1 } }, "scan", sc.age end
 	return nil
 end
@@ -223,7 +223,7 @@ end
 --- { op, min, normal, max, action = "post"|"skip", price, why, source = "ah"|"scan"|nil, age, cheapest }
 function A.PostCheck(id, level)
 	if not id then return nil end
-	local p = CH.Groups.Prices(id, nil, level)
+	local p = AuctionIQ.Groups.Prices(id, nil, level)
 	local out = { op = p.op or "Default", min = p.min, normal = p.normal, max = p.max }
 	local results, source, age = A.Listings(id)
 	out.source, out.age = source, age
@@ -272,7 +272,7 @@ function A.Postable()
 		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
 			local info = C_Container.GetContainerItemInfo(bag, slot)
 			local level = info and info.itemID and A.Level(info.itemID, info.hyperlink)
-			if info and info.itemID and not info.isBound and CH.Groups.Path(info.itemID, level) then
+			if info and info.itemID and not info.isBound and AuctionIQ.Groups.Path(info.itemID, level) then
 				local id, n = info.itemID, info.stackCount or 1
 				out[id] = (out[id] or 0) + n
 				local key = id .. ":" .. (level or 0)
@@ -340,18 +340,18 @@ local function answered(id, level)
 end
 -- Every search answered in the AH window (AuctionIQ's, yours or TSM's) is saved as a scan
 -- (Scans.lua) and kept for pricing big buys (Depth.lua), then handed to a waiting A.Search.
-CH.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(_, id)
+AuctionIQ.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(_, id)
 	if not id then return end
 	local res = A.Results(id, nil, true)
-	CH.Depth.Remember(id, res)
-	CH.Scans.Record(id, res, true)
+	AuctionIQ.Depth.Remember(id, res)
+	AuctionIQ.Scans.Record(id, res, true)
 	answered(id)
 end)
-CH.On("ITEM_SEARCH_RESULTS_UPDATED", function(_, key)
+AuctionIQ.On("ITEM_SEARCH_RESULTS_UPDATED", function(_, key)
 	local id = key and key.itemID
 	if not id then return end
 	-- a search at one item level is that rank's price: don't save it as the item's scan
-	if not (key.itemLevel and key.itemLevel > 0) then CH.Scans.Record(id, A.Results(id, key, false), false) end
+	if not (key.itemLevel and key.itemLevel > 0) then AuctionIQ.Scans.Record(id, A.Results(id, key, false), false) end
 	answered(id, key.itemLevel and key.itemLevel > 0 and key.itemLevel or nil)
 end)
 
@@ -368,7 +368,7 @@ function A.QueryOwned(done)
 	ownedDone = done
 	AH.QueryOwnedAuctions({})
 end
-CH.On("OWNED_AUCTIONS_UPDATED", function()
+AuctionIQ.On("OWNED_AUCTIONS_UPDATED", function()
 	local list = {}
 	for i = 1, AH.GetNumOwnedAuctions() or 0 do
 		local a = AH.GetOwnedAuctionInfo(i)

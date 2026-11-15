@@ -1,12 +1,12 @@
 -- AuctionIQ: core, saved data and slash commands. Accounting is its ledger (the books).
-local addonName, CH = ...
-_G.AuctionIQ = CH
-CH.ICON = "Interface\\AddOns\\" .. addonName .. "\\Media\\Icon"
+local addonName, AuctionIQ = ...
+_G.AuctionIQ = AuctionIQ
+AuctionIQ.ICON = "Interface\\AddOns\\" .. addonName .. "\\Media\\Icon"
 
-CH.version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
-CH.AH_CUT = 0.95
+AuctionIQ.version = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(addonName, "Version") or "dev"
+AuctionIQ.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
-CH.CONC_PER_HOUR = 1000 / (4 * 24)
+AuctionIQ.CONC_PER_HOUR = 1000 / (4 * 24)
 
 local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
 
@@ -26,7 +26,7 @@ end
 -- no dead stock or price alerts. Item bind types from GetItemInfo's 14th return.
 local NO_AH = { [1] = true, [4] = true, [7] = true, [8] = true, [9] = true }
 local unsellable = {}
-function CH.Unsellable(id)
+function AuctionIQ.Unsellable(id)
 	if not id then return false end
 	local known = unsellable[id]
 	if known ~= nil then return known end
@@ -37,8 +37,8 @@ function CH.Unsellable(id)
 	return unsellable[id]
 end
 
-function CH.Print(msg)
-	local T = CH.Theme
+function AuctionIQ.Print(msg)
+	local T = AuctionIQ.Theme
 	local brand = T and T.hex and T.hex.brand or "3fc7eb"
 	print("|cfff2f2f2Auction|r|cff" .. brand .. "IQ|r: " .. tostring(msg))
 end
@@ -51,9 +51,9 @@ local COIN = {
 
 -- "12,345g", "12g 50s", "75s", "9c": short enough for a tooltip line. Shown with the game's coin
 -- icons, like TSM, unless coins are turned off (/ch coins) or plain is asked for.
-function CH.FormatMoney(copper, plain)
+function AuctionIQ.FormatMoney(copper, plain)
 	if not copper then return "-" end
-	local icons = not plain and not (CH.db and CH.db.settings.coins == false)
+	local icons = not plain and not (AuctionIQ.db and AuctionIQ.db.settings.coins == false)
 	local function u(n, unit) return n .. (icons and COIN[unit] or unit) end
 	local neg = copper < 0
 	copper = math.floor(math.abs(copper) + 0.5)
@@ -76,14 +76,14 @@ function CH.FormatMoney(copper, plain)
 	return (neg and "-" or "") .. out
 end
 
-function CH.CharacterKey()
+function AuctionIQ.CharacterKey()
 	return UnitName("player") .. "-" .. GetRealmName()
 end
 
 -- This character's record, created on first use.
-function CH.Me()
-	local key = CH.CharacterKey()
-	local chars = CH.db.characters
+function AuctionIQ.Me()
+	local key = AuctionIQ.CharacterKey()
+	local chars = AuctionIQ.db.characters
 	if not chars[key] then
 		local _, class = UnitClass("player")
 		chars[key] = { name = UnitName("player"), realm = GetRealmName(), class = class, professions = {} }
@@ -92,17 +92,17 @@ function CH.Me()
 end
 
 local function updateGold()
-	local me = CH.Me()
+	local me = AuctionIQ.Me()
 	me.gold = GetMoney()
 	me.updated = time()
 end
 
 local frame = CreateFrame("Frame")
-CH.eventFrame = frame
+AuctionIQ.eventFrame = frame
 local handlers = {}
-CH.handlers = handlers
+AuctionIQ.handlers = handlers
 
-function CH.On(event, fn)
+function AuctionIQ.On(event, fn)
 	handlers[event] = handlers[event] or {}
 	table.insert(handlers[event], fn)
 	pcall(frame.RegisterEvent, frame, event) -- an event this game version doesn't have is skipped, not an error
@@ -111,9 +111,9 @@ end
 -- What AuctionIQ spends its time on, for /aiq perf: per event (and the tooltip hook), calls and
 -- milliseconds, since login or the last /aiq perf reset.
 local perf = { since = time and time() or 0, by = {} }
-CH.perf = perf
+AuctionIQ.perf = perf
 local clock = debugprofilestop
-function CH.Measure(name, fn, ...)
+function AuctionIQ.Measure(name, fn, ...)
 	if not clock then return fn(...) end
 	local t0 = clock()
 	local a, b, c = fn(...)
@@ -124,8 +124,8 @@ function CH.Measure(name, fn, ...)
 	return a, b, c
 end
 
---- Add a timing measured by hand (ms) under name, as CH.Measure does.
-function CH.MeasureAdd(name, dt)
+--- Add a timing measured by hand (ms) under name, as AuctionIQ.Measure does.
+function AuctionIQ.MeasureAdd(name, dt)
 	local p = perf.by[name]
 	if not p then p = { calls = 0, ms = 0, max = 0 }; perf.by[name] = p end
 	p.calls, p.ms, p.max = p.calls + 1, p.ms + dt, math.max(p.max, dt)
@@ -137,11 +137,11 @@ local function dispatch(event, ...)
 	end
 end
 frame:SetScript("OnEvent", function(_, event, ...)
-	CH.Measure(event, dispatch, event, ...)
+	AuctionIQ.Measure(event, dispatch, event, ...)
 end)
 
 --- The /aiq perf report lines: AuctionIQ's memory and its costliest events since login or reset.
-function CH.PerfLines()
+function AuctionIQ.PerfLines()
 	local out = {}
 	local name = addonName
 	if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
@@ -160,24 +160,24 @@ function CH.PerfLines()
 	return out
 end
 
-function CH.PerfReset() perf.by, perf.since = {}, time() end
+function AuctionIQ.PerfReset() perf.by, perf.since = {}, time() end
 
 -- Kept in the saved variables at logout or /reload (the costliest 20), so a lag report can be read
 -- after the session that had it.
-CH.On("PLAYER_LOGOUT", function()
-	if not CH.db then return end
+AuctionIQ.On("PLAYER_LOGOUT", function()
+	if not AuctionIQ.db then return end
 	local list = {}
 	for name, p in pairs(perf.by) do list[#list + 1] = { name = name, calls = p.calls, ms = math.floor(p.ms + 0.5), max = math.floor(p.max * 10 + 0.5) / 10 } end
 	table.sort(list, function(a, b) return a.max > b.max end)
 	for i = #list, 21, -1 do list[i] = nil end
-	CH.db.debug = CH.db.debug or {}
-	CH.db.debug.perf = { at = time(), since = perf.since, by = list }
+	AuctionIQ.db.debug = AuctionIQ.db.debug or {}
+	AuctionIQ.db.debug.perf = { at = time(), since = perf.since, by = list }
 end)
 
 -- SavedVariables versions. Each step brings data saved by an older build up to the next version;
--- CH.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
-CH.DB_VERSION = 2
-CH.MIGRATIONS = {
+-- AuctionIQ.Load also tidies what can go stale between sessions (every load, cheap and idempotent).
+AuctionIQ.DB_VERSION = 2
+AuctionIQ.MIGRATIONS = {
 	-- 1 -> 2: the mail feature was removed; craft records (batches) get a bounded history
 	[2] = function(db)
 		db.mail = nil
@@ -185,15 +185,15 @@ CH.MIGRATIONS = {
 }
 -- Craft records follow CraftSim's rule: no age limit (they go with the profession), only a cap on
 -- how many, oldest first, so SavedVariables stays a safe size.
-CH.BATCHES_MAX = 5000
+AuctionIQ.BATCHES_MAX = 5000
 
-function CH.Migrate(db)
+function AuctionIQ.Migrate(db)
 	local v = tonumber(db.version) or 1
-	for to = v + 1, CH.DB_VERSION do
-		local step = CH.MIGRATIONS[to]
+	for to = v + 1, AuctionIQ.DB_VERSION do
+		local step = AuctionIQ.MIGRATIONS[to]
 		if step then
 			local ok, err = pcall(step, db)
-			if not ok then CH.Print("couldn't update saved data to version " .. to .. ": " .. tostring(err)); return db end
+			if not ok then AuctionIQ.Print("couldn't update saved data to version " .. to .. ": " .. tostring(err)); return db end
 		end
 		db.version = to
 	end
@@ -203,7 +203,7 @@ end
 --- Every load: queue entries from older builds get the fields the queue relies on (an entry that
 --- names no recipe is dropped), steps waiting on the game from an earlier session are cleared
 --- (GetTime restarts with the client), and craft records over the cap are trimmed, oldest first.
-function CH.Tidy(db, now)
+function AuctionIQ.Tidy(db, now)
 	now = now or (time and time()) or 0
 	local keep = {}
 	for _, e in ipairs(db.queue or {}) do
@@ -219,7 +219,7 @@ function CH.Tidy(db, now)
 	db.queue = keep
 	local b = db.batches
 	if type(b) == "table" then
-		local extra = #b - CH.BATCHES_MAX
+		local extra = #b - AuctionIQ.BATCHES_MAX
 		if extra > 0 then
 			local out = {}
 			for i = extra + 1, #b do out[#out + 1] = b[i] end
@@ -229,26 +229,26 @@ function CH.Tidy(db, now)
 	return db
 end
 
-CH.On("ADDON_LOADED", function(_, name)
+AuctionIQ.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
 	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
-	CH.db = CH.Tidy(CH.Migrate(AuctionIQDB))
+	AuctionIQ.db = AuctionIQ.Tidy(AuctionIQ.Migrate(AuctionIQDB))
 end)
 
-CH.On("PLAYER_LOGIN", function()
+AuctionIQ.On("PLAYER_LOGIN", function()
 	updateGold()
-	if not CH.Prices.Available() then
-		CH.Print("TradeSkillMaster isn't loaded, so prices are off. Install TSM to see values and profits.")
+	if not AuctionIQ.Prices.Available() then
+		AuctionIQ.Print("TradeSkillMaster isn't loaded, so prices are off. Install TSM to see values and profits.")
 	end
 end)
-CH.On("PLAYER_MONEY", updateGold)
+AuctionIQ.On("PLAYER_MONEY", updateGold)
 
 SLASH_AUCTIONIQ1 = "/aiq"
 SLASH_AUCTIONIQ2 = "/auctioniq"
 SlashCmdList.AUCTIONIQ = function(msg)
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
 	if msg == "perf" then
-		for _, l in ipairs(CH.PerfLines()) do CH.Print(l) end
+		for _, l in ipairs(AuctionIQ.PerfLines()) do AuctionIQ.Print(l) end
 		return
 	elseif msg == "mem" then
 		-- what AuctionIQ holds once the garbage is cleared, and what it's made of
@@ -258,114 +258,114 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		collectgarbage("collect")
 		if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
 		local after = getMem and getMem(addonName) or 0
-		CH.Print(string.format("memory %.1f MB, %.1f MB after clearing garbage", before / 1024, after / 1024))
-		for _, l in ipairs(CH.MemLines and CH.MemLines() or {}) do CH.Print("  " .. l) end
+		AuctionIQ.Print(string.format("memory %.1f MB, %.1f MB after clearing garbage", before / 1024, after / 1024))
+		for _, l in ipairs(AuctionIQ.MemLines and AuctionIQ.MemLines() or {}) do AuctionIQ.Print("  " .. l) end
 		return
 	elseif msg == "perf reset" then
-		CH.PerfReset(); CH.Print("perf counters reset.")
+		AuctionIQ.PerfReset(); AuctionIQ.Print("perf counters reset.")
 		return
 	elseif msg == "tooltip" then
-		CH.db.settings.tooltip = not CH.db.settings.tooltip
-		CH.Print("tooltip lines " .. (CH.db.settings.tooltip and "on" or "off"))
+		AuctionIQ.db.settings.tooltip = not AuctionIQ.db.settings.tooltip
+		AuctionIQ.Print("tooltip lines " .. (AuctionIQ.db.settings.tooltip and "on" or "off"))
 	elseif msg == "coins" then
-		CH.db.settings.coins = not CH.db.settings.coins
-		CH.Print("coin icons " .. (CH.db.settings.coins and "on" or "off"))
-		if CH.UI.IsShown() then CH.UI.Refresh() end
+		AuctionIQ.db.settings.coins = not AuctionIQ.db.settings.coins
+		AuctionIQ.Print("coin icons " .. (AuctionIQ.db.settings.coins and "on" or "off"))
+		if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end
 	elseif msg:match("^event ") then
 		local day, name = msg:match("^event (%d+%-%d+%-%d+) (.+)$")
-		if day then CH.Planner.AddEvent(day, name); CH.Print("added " .. day .. " " .. name) else CH.Print("/aiq event 2026-12-01 Season 2 starts") end
+		if day then AuctionIQ.Planner.AddEvent(day, name); AuctionIQ.Print("added " .. day .. " " .. name) else AuctionIQ.Print("/aiq event 2026-12-01 Season 2 starts") end
 	elseif msg:match("^task ") then
 		local name = msg:match("^task (.+)$")
-		table.insert(CH.Planner.Store().tasks, name)
-		CH.Print("weekly task added: " .. name)
+		table.insert(AuctionIQ.Planner.Store().tasks, name)
+		AuctionIQ.Print("weekly task added: " .. name)
 	elseif msg == "theme" then
-		CH.db.settings.theme = CH.db.settings.theme ~= "elvui" and "elvui" or "aiq"
-		CH.Print(CH.db.settings.theme == "elvui" and "using ElvUI's colours. /reload to apply everywhere." or "using the AuctionIQ and Accounting colours. /reload to apply everywhere.")
-		CH.Theme.Use(CH.Theme.palette)
-		if CH.UI.IsShown() then CH.UI.Refresh() end
+		AuctionIQ.db.settings.theme = AuctionIQ.db.settings.theme ~= "elvui" and "elvui" or "aiq"
+		AuctionIQ.Print(AuctionIQ.db.settings.theme == "elvui" and "using ElvUI's colours. /reload to apply everywhere." or "using the AuctionIQ and Accounting colours. /reload to apply everywhere.")
+		AuctionIQ.Theme.Use(AuctionIQ.Theme.palette)
+		if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end
 	elseif msg == "basis" or msg:match("^basis ") then
 		local want = msg:match("^basis (%a+)$")
-		local P = CH.Prices
+		local P = AuctionIQ.Prices
 		if not want then
 			-- no name: the next one
 			local cur, i = P.CostBasis(), 1
 			for k, b in ipairs(P.BASES) do if b == cur then i = k end end
 			want = P.BASES[i % #P.BASES + 1]
 		end
-		if not P.BASIS_NAMES[want] then CH.Print("/aiq basis held | replacement | tsm | paid")
-		else P.CostBasis(want); CH.Print("reagents costed at: " .. P.BASIS_NAMES[want]); if CH.UI.IsShown() then CH.UI.Refresh() end end
+		if not P.BASIS_NAMES[want] then AuctionIQ.Print("/aiq basis held | replacement | tsm | paid")
+		else P.CostBasis(want); AuctionIQ.Print("reagents costed at: " .. P.BASIS_NAMES[want]); if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end end
 	elseif msg == "alerts" then
-		CH.Alerts.Toggle()
+		AuctionIQ.Alerts.Toggle()
 	elseif msg == "minimap" then
-		CH.db.settings.minimap.hide = not CH.db.settings.minimap.hide
-		CH.UpdateMinimapButton()
-		CH.Print("minimap button " .. (CH.db.settings.minimap.hide and "hidden" or "shown"))
+		AuctionIQ.db.settings.minimap.hide = not AuctionIQ.db.settings.minimap.hide
+		AuctionIQ.UpdateMinimapButton()
+		AuctionIQ.Print("minimap button " .. (AuctionIQ.db.settings.minimap.hide and "hidden" or "shown"))
 	elseif msg == "orders" then
-		CH.Orders.Debug()
+		AuctionIQ.Orders.Debug()
 	elseif msg == "deals" then
-		CH.Deals.Print()
+		AuctionIQ.Deals.Print()
 	elseif msg == "shatter" then
 		-- what Shatter could take, and how many of each you hold in bags / everywhere
-		local ids = CH.Queue.ShatterCandidates()
-		CH.Print(#ids .. " items Shatter can take" .. (#ids == 0 and " (open your enchanting window first)" or ":"))
+		local ids = AuctionIQ.Queue.ShatterCandidates()
+		AuctionIQ.Print(#ids .. " items Shatter can take" .. (#ids == 0 and " (open your enchanting window first)" or ":"))
 		for _, id in ipairs(ids) do
 			local bags = C_Item.GetItemCount(id) or 0
 			local all = C_Item.GetItemCount(id, true, false, true, true) or 0
-			CH.Print(string.format("  %s (%d): %d in bags, %d in all", CH.Advisor.ItemName(id), id, bags, all))
+			AuctionIQ.Print(string.format("  %s (%d): %d in bags, %d in all", AuctionIQ.Advisor.ItemName(id), id, bags, all))
 		end
-		local id, bag, slot = CH.Queue.ShatterItem()
-		CH.Print("would use: " .. (id and (CH.Advisor.ItemName(id) .. (bag and (" in bag " .. bag .. " slot " .. slot) or " (not in your bags)")) or "nothing"))
+		local id, bag, slot = AuctionIQ.Queue.ShatterItem()
+		AuctionIQ.Print("would use: " .. (id and (AuctionIQ.Advisor.ItemName(id) .. (bag and (" in bag " .. bag .. " slot " .. slot) or " (not in your bags)")) or "nothing"))
 	elseif msg == "queue" then
-		CH.QueueUI.Toggle()
+		AuctionIQ.QueueUI.Toggle()
 	elseif msg == "scan" then
-		CH.ScanUI.Toggle()
+		AuctionIQ.ScanUI.Toggle()
 	elseif msg == "paths" or msg:match("^plan") or msg:match("^path ") then
 		local goal = msg:match("^plan%s+(.+)") or msg:match("^path%s+(.+)")
-		if CH.Paths.Load() then
-			if not CH.PathsUI.IsShown() then CH.PathsUI.Open() end
-			if goal then CH.PathsUI.Run(goal) end
+		if AuctionIQ.Paths.Load() then
+			if not AuctionIQ.PathsUI.IsShown() then AuctionIQ.PathsUI.Open() end
+			if goal then AuctionIQ.PathsUI.Run(goal) end
 		end
 	elseif msg == "results clear" then
-		CH.Log.Clear(); CH.Print("this character's craft results log is empty again.")
+		AuctionIQ.Log.Clear(); AuctionIQ.Print("this character's craft results log is empty again.")
 	elseif msg == "results" or msg == "log" then
-		CH.LogUI.Open()
+		AuctionIQ.LogUI.Open()
 	elseif msg:match("^cap") then
 		local n = tonumber(msg:match("(%d+)"))
-		if n then CH.db.settings.scan.dailyCap = n end
-		CH.Print("the region's sold a day counts at most " .. CH.db.settings.scan.dailyCap .. " a day per item until your own sales take over. /aiq cap 20 to change.")
+		if n then AuctionIQ.db.settings.scan.dailyCap = n end
+		AuctionIQ.Print("the region's sold a day counts at most " .. AuctionIQ.db.settings.scan.dailyCap .. " a day per item until your own sales take over. /aiq cap 20 to change.")
 	elseif msg == "de" or msg:match("^de ") or msg:match("^disenchant") then
 		local a, b, c = msg:match("(%d+)%s+(%d+)%s+(%d+)")
-		if a then CH.Paths.SetDailyYield(2909, { dust = tonumber(a), shard = tonumber(b), crystal = tonumber(c) })
-		elseif msg:match("auto") then CH.Paths.SetDailyYield(2909, nil) end
-		local d, from, days = CH.Paths.DailyYield(2909)
+		if a then AuctionIQ.Paths.SetDailyYield(2909, { dust = tonumber(a), shard = tonumber(b), crystal = tonumber(c) })
+		elseif msg:match("auto") then AuctionIQ.Paths.SetDailyYield(2909, nil) end
+		local d, from, days = AuctionIQ.Paths.DailyYield(2909)
 		local src = from == "set" and "as you set them (/aiq de auto to use what you really disenchant)"
 			or from == "seen" and string.format("from what you disenchanted over the last %d days", days)
 			or "as a starting guess until you disenchant something"
-		CH.Print(string.format("disenchanting plans count %.0f Eversinging Dust, %.0f Radiant Shards and %.0f Dawn Crystals a day, %s.",
+		AuctionIQ.Print(string.format("disenchanting plans count %.0f Eversinging Dust, %.0f Radiant Shards and %.0f Dawn Crystals a day, %s.",
 			d.dust, d.shard, d.crystal, src))
-	elseif msg == "dashboard" then CH.UI.Page("today")
-	elseif msg == "operations" or msg == "craft" then CH.UI.Page("operations", "scenarios")
-	elseif msg == "trade" then CH.UI.Page("operations", "post")
-	elseif msg == "shopping" then CH.UI.Page("operations", "shopping")
+	elseif msg == "dashboard" then AuctionIQ.UI.Page("today")
+	elseif msg == "operations" or msg == "craft" then AuctionIQ.UI.Page("operations", "scenarios")
+	elseif msg == "trade" then AuctionIQ.UI.Page("operations", "post")
+	elseif msg == "shopping" then AuctionIQ.UI.Page("operations", "shopping")
 	elseif msg:match("^scenario") then
 		local r, p = msg:match("^scenarios?%s+(%d+)%s+(%d+)")
-		if r and CH.AnalyticsViews then CH.AnalyticsViews.SetScenario(tonumber(r) / 100, tonumber(p) / 100) end
-		CH.UI.Page("operations", "scenarios")
-	elseif msg == "accounting" then CH.UI.Page("ledger")
-	elseif msg == "settings" then CH.UI.Page("settings")
+		if r and AuctionIQ.AnalyticsViews then AuctionIQ.AnalyticsViews.SetScenario(tonumber(r) / 100, tonumber(p) / 100) end
+		AuctionIQ.UI.Page("operations", "scenarios")
+	elseif msg == "accounting" then AuctionIQ.UI.Page("ledger")
+	elseif msg == "settings" then AuctionIQ.UI.Page("settings")
 	elseif msg == "advisor" then
-		CH.AdvisorUI.ToggleSetting()
+		AuctionIQ.AdvisorUI.ToggleSetting()
 	elseif msg == "cleanup" then
-		CH.Cleanup.Report()
+		AuctionIQ.Cleanup.Report()
 	elseif msg:match("^prune") then
-		CH.Cleanup.AskPrune(tonumber(msg:match("^prune%s+(%d+)")))
+		AuctionIQ.Cleanup.AskPrune(tonumber(msg:match("^prune%s+(%d+)")))
 	elseif msg == "help" then
-		CH.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup lets go of what AuctionIQ keeps only for speed and drops saved data nothing uses (the saved part also runs at logout). /aiq prune 365 removes history older than 365 days, after asking. /aiq deals lists listings well under what they resell for.")
+		AuctionIQ.Print("/aiq opens the window (/ch works too). /aiq settings opens Settings, where all of these can be changed without commands. /aiq tooltip turns the tooltip lines on or off. /aiq coins switches between coin icons and g/s/c. /aiq minimap hides or shows the minimap button. /aiq advisor turns the crafting advisor on or off. /aiq queue opens the craft queue and shopping list. /aiq scan ranks every recipe of the open profession. /aiq plan potions plans knowledge points for what you want to sell. /aiq results shows what your crafts really gave. /aiq cap 20 sets the most of the region's sold a day counted for one item, until your own sales take over. Disenchanting plans count what you really disenchant; /aiq de 40 8 2 sets it by hand, /aiq de auto goes back. /aiq alerts turns alerts on or off. /aiq dashboard, operations (or craft, trade, shopping) or accounting opens that tab. /aiq scenario 15 10 sets the Scenarios to reagents +15%, prices -10%. /aiq theme switches between the AuctionIQ colours and ElvUI's. /aiq cleanup lets go of what AuctionIQ keeps only for speed and drops saved data nothing uses (the saved part also runs at logout). /aiq prune 365 removes history older than 365 days, after asking. /aiq deals lists listings well under what they resell for.")
 	else
-		CH.UI.Toggle()
+		AuctionIQ.UI.Toggle()
 	end
 end
 
 function AuctionIQ_OnAddonCompartmentClick()
-	CH.UI.Toggle()
+	AuctionIQ.UI.Toggle()
 end

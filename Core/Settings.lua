@@ -1,34 +1,34 @@
 -- Settings: every option the slash commands change, plus posting operations and your own price
 -- sources, as plain functions the Settings page (SettingsUI.lua) calls. Nothing here touches TSM.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local S = {}
-CH.Settings = S
+AuctionIQ.Settings = S
 
 -- General options -------------------------------------------------------------------------------
 -- { key, label, get, set } in the order the page shows them.
 S.GENERAL = {
-	{ "tooltip", "Tooltip lines", function() return CH.db.settings.tooltip ~= false end,
-		function(v) CH.db.settings.tooltip = v end },
-	{ "coins", "Coin icons (off = g s c)", function() return CH.db.settings.coins ~= false end,
-		function(v) CH.db.settings.coins = v end },
-	{ "minimap", "Minimap button", function() return not CH.db.settings.minimap.hide end,
-		function(v) CH.db.settings.minimap.hide = not v; if CH.UpdateMinimapButton then CH.UpdateMinimapButton() end end },
-	{ "elvui", "ElvUI colours", function() return CH.db.settings.theme == "elvui" end,
-		function(v) CH.db.settings.theme = v and "elvui" or "aiq"; if CH.Theme.Use then CH.Theme.Use(CH.Theme.palette) end end },
-	{ "alerts", "Alerts", function() return not CH.db.alerts or CH.db.alerts.on ~= false end,
-		function(v) CH.db.alerts = CH.db.alerts or { last = {}, prices = {} }; CH.db.alerts.on = v end },
-	{ "advisor", "Crafting advisor", function() return not CH.db.settings.advisor.hide end,
+	{ "tooltip", "Tooltip lines", function() return AuctionIQ.db.settings.tooltip ~= false end,
+		function(v) AuctionIQ.db.settings.tooltip = v end },
+	{ "coins", "Coin icons (off = g s c)", function() return AuctionIQ.db.settings.coins ~= false end,
+		function(v) AuctionIQ.db.settings.coins = v end },
+	{ "minimap", "Minimap button", function() return not AuctionIQ.db.settings.minimap.hide end,
+		function(v) AuctionIQ.db.settings.minimap.hide = not v; if AuctionIQ.UpdateMinimapButton then AuctionIQ.UpdateMinimapButton() end end },
+	{ "elvui", "ElvUI colours", function() return AuctionIQ.db.settings.theme == "elvui" end,
+		function(v) AuctionIQ.db.settings.theme = v and "elvui" or "aiq"; if AuctionIQ.Theme.Use then AuctionIQ.Theme.Use(AuctionIQ.Theme.palette) end end },
+	{ "alerts", "Alerts", function() return not AuctionIQ.db.alerts or AuctionIQ.db.alerts.on ~= false end,
+		function(v) AuctionIQ.db.alerts = AuctionIQ.db.alerts or { last = {}, prices = {} }; AuctionIQ.db.alerts.on = v end },
+	{ "advisor", "Crafting advisor", function() return not AuctionIQ.db.settings.advisor.hide end,
 		function(v)
-			CH.db.settings.advisor.hide = not v
-			if CH.AdvisorUI then
-				if not v then CH.AdvisorUI.Hide() elseif ProfessionsFrame and ProfessionsFrame:IsShown() then CH.AdvisorUI.Show() end
+			AuctionIQ.db.settings.advisor.hide = not v
+			if AuctionIQ.AdvisorUI then
+				if not v then AuctionIQ.AdvisorUI.Hide() elseif ProfessionsFrame and ProfessionsFrame:IsShown() then AuctionIQ.AdvisorUI.Show() end
 			end
 		end },
-	{ "subrecipes", "Reagents you craft at cost", function() return CH.db.settings.subrecipes ~= false end,
-		function(v) CH.db.settings.subrecipes = v end },
-	{ "popQueue", "Queue in its own window", function() return CH.db.settings.window.popQueue == true end,
-		function(v) if (CH.db.settings.window.popQueue == true) ~= v then CH.Window.ToggleQueuePop() end end },
+	{ "subrecipes", "Reagents you craft at cost", function() return AuctionIQ.db.settings.subrecipes ~= false end,
+		function(v) AuctionIQ.db.settings.subrecipes = v end },
+	{ "popQueue", "Queue in its own window", function() return AuctionIQ.db.settings.window.popQueue == true end,
+		function(v) if (AuctionIQ.db.settings.window.popQueue == true) ~= v then AuctionIQ.Window.ToggleQueuePop() end end },
 }
 
 function S.Get(key)
@@ -43,8 +43,8 @@ function S.Flip(key) return S.Set(key, not S.Get(key)) end
 
 --- How many a day the scan counts as sellable for gold a day (/aiq cap).
 function S.DailyCap(n)
-	if n then CH.db.settings.scan.dailyCap = math.max(1, math.floor(n)) end
-	return CH.db.settings.scan.dailyCap or 10
+	if n then AuctionIQ.db.settings.scan.dailyCap = math.max(1, math.floor(n)) end
+	return AuctionIQ.db.settings.scan.dailyCap or 10
 end
 
 -- Math model ------------------------------------------------------------------------------------
@@ -60,12 +60,12 @@ S.MODEL = {
 function S.Model(key, delta)
 	for _, m in ipairs(S.MODEL) do
 		if m[1] == key then
-			local v = CH.Expect.Setting(key)
+			local v = AuctionIQ.Expect.Setting(key)
 			if delta then
 				v = math.max(m[4], math.min(m[5], v + delta * m[3]))
 				v = math.floor(v / m[3] + 0.5) * m[3]
-				CH.Expect.Set(key, v)
-				if CH.Par then CH.Par.Refresh() end
+				AuctionIQ.Expect.Set(key, v)
+				if AuctionIQ.Par then AuctionIQ.Par.Refresh() end
 			end
 			return v, m[6](v)
 		end
@@ -91,7 +91,7 @@ S.OP_FIELDS = {
 }
 S.FORMULAS = { { "minPrice", "Min" }, { "normalPrice", "Normal" }, { "maxPrice", "Max" } }
 
-local function ops() return CH.Groups.Store().ops end
+local function ops() return AuctionIQ.Groups.Store().ops end
 
 --- Operation names, Default first, then A to Z.
 function S.OpNames()
@@ -141,7 +141,7 @@ function S.OpStep(name, key, dir)
 		end
 	else
 		local v = op[key]
-		if type(v) == "string" then v = CH.Formula.Value(v, 0) or 0 end
+		if type(v) == "string" then v = AuctionIQ.Formula.Value(v, 0) or 0 end
 		v = math.max(0, (v or 0) + (dir or 1) * f[4])
 		if f[4] < 1 then v = math.floor(v * 100 + 0.5) / 100 end
 		op[key] = v
@@ -155,14 +155,14 @@ function S.SetOpFormula(name, key, text)
 	if not op then return false, "no such operation" end
 	text = tostring(text or ""):match("^%s*(.-)%s*$")
 	if text == "" then op[key] = nil; return true end
-	local ok, err = CH.Formula.Valid(text)
+	local ok, err = AuctionIQ.Formula.Valid(text)
 	if not ok then return false, err end
 	op[key] = text
 	return true
 end
 
 local PROTECTED = { Default = true }
-for k in pairs(CH.Groups and CH.Groups.DEFAULT_OPS or {}) do PROTECTED[k] = true end
+for k in pairs(AuctionIQ.Groups and AuctionIQ.Groups.DEFAULT_OPS or {}) do PROTECTED[k] = true end
 
 local function cleanName(name)
 	name = tostring(name or ""):match("^%s*(.-)%s*$")
@@ -186,7 +186,7 @@ end
 --- Rename an operation and every group that uses it. The built-in ones keep their names.
 function S.RenameOp(old, new)
 	new = cleanName(new)
-	local s = CH.Groups.Store()
+	local s = AuctionIQ.Groups.Store()
 	if not s.ops[old] then return nil, "no such operation" end
 	if PROTECTED[old] then return nil, old .. " is built in: copy it instead" end
 	if not new then return nil, "give it a name" end
@@ -201,7 +201,7 @@ end
 
 --- Delete an operation; groups that used it go back to inheriting. Built-in ones stay.
 function S.DeleteOp(name)
-	local s = CH.Groups.Store()
+	local s = AuctionIQ.Groups.Store()
 	if PROTECTED[name] then return nil, name .. " is built in" end
 	if not s.ops[name] then return nil, "no such operation" end
 	s.ops[name] = nil
@@ -220,20 +220,20 @@ end
 --- Groups that use an operation directly.
 function S.OpGroups(name)
 	local out = {}
-	for path, op in pairs(CH.Groups.Store().assign) do if op == name then table.insert(out, path) end end
+	for path, op in pairs(AuctionIQ.Groups.Store().assign) do if op == name then table.insert(out, path) end end
 	table.sort(out)
 	return out
 end
 
 -- Group sources -----------------------------------------------------------------------------------
 function S.UseTSM(v)
-	local s = CH.Groups.Store()
-	if v ~= nil then s.useTSM = v; if CH.Groups.ResetTSM then CH.Groups.ResetTSM() end end
+	local s = AuctionIQ.Groups.Store()
+	if v ~= nil then s.useTSM = v; if AuctionIQ.Groups.ResetTSM then AuctionIQ.Groups.ResetTSM() end end
 	return s.useTSM ~= false
 end
 
 function S.PreferTSM(v)
-	local s = CH.Groups.Store()
+	local s = AuctionIQ.Groups.Store()
 	if v ~= nil then s.preferTSM = v end
 	return s.preferTSM == true
 end
@@ -249,7 +249,7 @@ local BUILT_IN = { crafting = true, vendorsell = true, numexpires = true, avgbuy
 --- Your price sources as { { name, formula } }, A to Z.
 function S.Sources()
 	local out = {}
-	for name, f in pairs(CH.Formula.Custom()) do table.insert(out, { name = name, formula = f }) end
+	for name, f in pairs(AuctionIQ.Formula.Custom()) do table.insert(out, { name = name, formula = f }) end
 	table.sort(out, function(a, b) return a.name < b.name end)
 	return out
 end
@@ -259,9 +259,9 @@ function S.SetSource(name, formula)
 	name = tostring(name or ""):lower():match("^%s*(.-)%s*$")
 	if not name:match("^[a-z][a-z0-9_]*$") then return false, "names are letters, digits and _, starting with a letter" end
 	if BUILT_IN[name] then return false, name .. " is already a built-in source" end
-	local ok, err = CH.Formula.Valid(formula)
+	local ok, err = AuctionIQ.Formula.Valid(formula)
 	if not ok then return false, err end
-	CH.Formula.Custom()[name] = tostring(formula):match("^%s*(.-)%s*$")
+	AuctionIQ.Formula.Custom()[name] = tostring(formula):match("^%s*(.-)%s*$")
 	return true
 end
 
@@ -273,10 +273,10 @@ function S.UsedBy(name)
 		f = " " .. f:lower() .. " "
 		return f:find("[^%w_]" .. name:gsub("%p", "%%%0") .. "[^%w_]") ~= nil
 	end
-	for other, f in pairs(CH.Formula.Custom()) do
+	for other, f in pairs(AuctionIQ.Formula.Custom()) do
 		if other ~= name and uses(f) then out[#out + 1] = "source " .. other end
 	end
-	local store = CH.Groups and CH.Groups.Store and CH.Groups.Store()
+	local store = AuctionIQ.Groups and AuctionIQ.Groups.Store and AuctionIQ.Groups.Store()
 	for op, def in pairs(store and store.ops or {}) do
 		local hit = false
 		if type(def) == "table" then for _, v in pairs(def) do if uses(v) then hit = true end end end
@@ -289,7 +289,7 @@ end
 --- Delete a custom source. Refused while another source or an operation still uses it, since
 --- their prices would quietly go blank: returns false and what uses it.
 function S.DeleteSource(name)
-	local c = CH.Formula.Custom()
+	local c = AuctionIQ.Formula.Custom()
 	if c[name] == nil then return false, "no such source" end
 	local used = S.UsedBy(name)
 	if #used > 0 then return false, name .. " is still used by " .. table.concat(used, ", ") .. ": change those first" end
@@ -299,6 +299,6 @@ end
 
 --- What a formula gives for an item, for trying one out: copper or nil.
 function S.Try(formula, id)
-	if not CH.Formula.Valid(formula) then return nil end
-	return CH.Formula.Value(formula, id)
+	if not AuctionIQ.Formula.Valid(formula) then return nil end
+	return AuctionIQ.Formula.Value(formula, id)
 end

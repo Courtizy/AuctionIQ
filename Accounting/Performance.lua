@@ -9,12 +9,12 @@
 --
 -- The detail views (Profit drivers, Performance by line, Batch results, Forecast accuracy and the
 -- rest) have no sub-tab of their own: the charts and the links under them open them.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local P = {}
-CH.Performance = P
-local St = CH.Statements
-local LUI = CH.LedgerUI
+AuctionIQ.Performance = P
+local St = AuctionIQ.Statements
+local LUI = AuctionIQ.LedgerUI
 
 local DAY, WEEK = 86400, 7 * 86400
 
@@ -53,7 +53,7 @@ local function income(from, to, char) return St.Income(from, to - 1, char) end
 local function items(from, to, char) return St.Items(from, to - 1, char) end
 
 local function lineOf(id, crafted)
-	local AV = CH.AnalyticsViews
+	local AV = AuctionIQ.AnalyticsViews
 	return AV and AV.Category and AV.Category(id, crafted) or "Other"
 end
 
@@ -62,7 +62,7 @@ end
 function P.Weekly(char, l, now, n)
 	now, n = now or time(), n or 8
 	local wk = St.WeekStart(now)
-	local crafted = l and CH.Ledger.Crafted()
+	local crafted = l and AuctionIQ.Ledger.Crafted()
 	local out = {}
 	for i = n - 1, 0, -1 do
 		local from = wk - i * WEEK
@@ -82,7 +82,7 @@ end
 --- The product lines that sold anything in the last eight weeks, biggest profit first.
 function P.Lines(char, now)
 	now = now or time()
-	local crafted = CH.Ledger.Crafted()
+	local crafted = AuctionIQ.Ledger.Crafted()
 	local by = {}
 	for id, x in pairs(items(St.WeekStart(now) - 7 * WEEK, now, char)) do
 		local l = lineOf(id, crafted)
@@ -156,7 +156,7 @@ local function money(c)
 	c = math.abs(c or 0)
 	if c == 0 then return "0g" end
 	if c >= 100000 then c = math.floor(c / 10000 + 0.5) * 10000 end
-	return CH.FormatMoney(c)
+	return AuctionIQ.FormatMoney(c)
 end
 local function signed(c) return (c >= 0 and "+" or "-") .. money(c) end
 --- Gold in a few characters for chart labels: "12.3k", "1.2M", "450", with its sign.
@@ -192,7 +192,7 @@ end
 
 --- The headline: profit, the change, and the sentence about the biggest driver.
 function P.Headline(r)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local first = string.format("%s: %s", r.w.label .. (period == "week" and " so far" or ""), T.Color(r.profit >= 0 and "ok" or "bad", (r.profit < 0 and "-" or "") .. money(r.profit)))
 	local second = string.format("%s against %s (%s)", T.Color(r.change >= 0 and "ok" or "bad", signed(r.change)), r.w.prior, money(r.prior))
 	local third
@@ -212,7 +212,7 @@ P.BAND = 0.2            -- in range: actual within 20% of the forecast (at least
 --- be told apart by batch, and actual is item sales during the forecast window.
 function P.Forecasts(now, char)
 	now = now or time()
-	local F, out = CH.Forecast, {}
+	local F, out = AuctionIQ.Forecast, {}
 	if not (F and F.Decisions and F.Explain) then return out end
 	for _, d in ipairs(F.Decisions()) do
 		if (not char or d.char == char) and (d.crafts or 0) > 0 then
@@ -234,7 +234,7 @@ end
 
 --- The forecast line: how many could be checked and how many landed in range.
 function P.ForecastText(list)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	if #list == 0 then
 		return "Forecasts: " .. T.Color("muted", "none to check yet (a batch is checked a week after its first craft).")
 	end
@@ -259,7 +259,7 @@ P.SLOW = 30 -- stock that takes longer than this many days to sell, at the last 
 --- share, material, top = { id, name, value } }. Material when it's a quarter of stock and 1,000g+.
 function P.Capital(char, now)
 	now = now or time()
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local sold = {}
 	for _, s in ipairs(L.Records("Sales")) do
 		if s.id and s.time >= now - 30 * DAY then sold[s.id] = (sold[s.id] or 0) + (s.quantity or 0) end
@@ -284,9 +284,9 @@ end
 
 --- Open Inventory, slowest stock first.
 function P.OpenCapital()
-	CH.UI.Go("ledger", "inventory")
+	AuctionIQ.UI.Go("ledger", "inventory")
 	LUI.Set({ sort = 8, desc = true })
-	CH.UI.Refresh()
+	AuctionIQ.UI.Refresh()
 end
 
 -- Page ------------------------------------------------------------------------------------------
@@ -308,7 +308,7 @@ end
 local function untip() if GameTooltip then GameTooltip:Hide() end end
 
 local function button(parent, w, label, click)
-	local b = CH.Theme.Button(parent, label, w, 20)
+	local b = AuctionIQ.Theme.Button(parent, label, w, 20)
 	b:SetScript("OnClick", click)
 	return b
 end
@@ -324,9 +324,9 @@ function P.Open(x, r)
 	local char = LUI.Char and LUI.Char()
 	if x.kind == "item" then
 		local name = P.Name(x)
-		CH.UI.Go("ledger", "drivers", { id = x.id, name = name, ids = { [x.id] = true }, title = "Performance: " .. name, range = r.w })
+		AuctionIQ.UI.Go("ledger", "drivers", { id = x.id, name = name, ids = { [x.id] = true }, title = "Performance: " .. name, range = r.w })
 	else
-		CH.UI.Go("ledger", x.view or "statement")
+		AuctionIQ.UI.Go("ledger", x.view or "statement")
 	end
 	if char then LUI.Set({ char = char }) end
 end
@@ -334,11 +334,11 @@ end
 --- Open one week of the chart as an Income Statement.
 function P.OpenWeek(e)
 	St.SetRange(e.from, e.to - 1, (date and date("Week of %b %d", e.from) or "Week") .. (e.partial and " (so far)" or ""))
-	CH.UI.Go("ledger", "statement")
+	AuctionIQ.UI.Go("ledger", "statement")
 end
 
 function P.Build(p, fs)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	page = p
 	local RW = 2 * CW + 16
 	-- headline
@@ -346,15 +346,15 @@ function P.Build(p, fs)
 	p.head = fs(p, 12, -14, RW - 240, "LEFT", "GameFontHighlightLarge")
 	p.change = fs(p, 12, -36, RW - 24, "LEFT", "GameFontHighlight")
 	p.why = fs(p, 12, -54, RW - 24, "LEFT", "GameFontHighlightSmall")
-	p.period = button(p, 110, "This week", function() P.Step(1); CH.UI.Refresh() end)
+	p.period = button(p, 110, "This week", function() P.Step(1); AuctionIQ.UI.Refresh() end)
 	p.period:SetPoint("TOPRIGHT", p, "TOPLEFT", RW - 8, -10)
 	p.char = button(p, 110, "All characters", function()
 		local list = { false }
-		for _, c in ipairs(CH.Ledger.Characters()) do table.insert(list, c.name) end
+		for _, c in ipairs(AuctionIQ.Ledger.Characters()) do table.insert(list, c.name) end
 		local cur, i = LUI.Char and LUI.Char() or false, 1
 		for k, c in ipairs(list) do if c == cur then i = k end end
 		LUI.Set({ char = list[i % #list + 1] })
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	p.char:SetPoint("TOPRIGHT", p.period, "TOPLEFT", -4, 0)
 
@@ -369,7 +369,7 @@ function P.Build(p, fs)
 	p.capHit:SetScript("OnClick", function() P.OpenCapital() end)
 	p.capHit:SetScript("OnEnter", function(self) if self.tip then tip(self, self.tip) end end)
 	p.capHit:SetScript("OnLeave", untip)
-	p.fcButton = button(p, 120, "Forecast chart", function() P.ToggleScatter(); CH.UI.Refresh() end)
+	p.fcButton = button(p, 120, "Forecast chart", function() P.ToggleScatter(); AuctionIQ.UI.Refresh() end)
 	p.fcButton:SetPoint("TOPRIGHT", p, "TOPLEFT", RW - 8, -90)
 
 	local y = Y0
@@ -382,7 +382,7 @@ function P.Build(p, fs)
 		local i = 1
 		for k, l in ipairs(list) do if l == (line or false) then i = k end end
 		line = list[i % #list + 1] or nil
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	p.line:SetPoint("TOPRIGHT", p, "TOPLEFT", CW - 6, y - 6)
 	p.zero = p:CreateTexture(nil, "ARTWORK")
@@ -449,7 +449,7 @@ function P.Build(p, fs)
 		d:SetScript("OnEnter", function(self) if self.tip then tip(self, self.tip) end end)
 		d:SetScript("OnLeave", untip)
 		d:SetScript("OnClick", function(self)
-			if self.f then CH.UI.Go("ledger", "batches", { id = self.f.d.item, name = self.f.d.name, ids = { [self.f.d.item] = true }, title = "Forecast vs actual" }) end
+			if self.f then AuctionIQ.UI.Go("ledger", "batches", { id = self.f.d.item, name = self.f.d.name, ids = { [self.f.d.item] = true }, title = "Forecast vs actual" }) end
 		end)
 		d:Hide()
 		p.dots[i] = d
@@ -463,7 +463,7 @@ function P.Build(p, fs)
 	local lx = 50
 	for _, v in ipairs({ { "drivers", "Drivers" }, { "performance", "By line" }, { "batches", "Batches" }, { "perf", "Forecasts" },
 		{ "capital", "Capital" }, { "byprofession", "Profession" }, { "crafting", "Crafting" }, { "results", "Craft log" } }) do
-		local b = button(p, 82, v[2], function() CH.UI.Go("ledger", v[1]) end)
+		local b = button(p, 82, v[2], function() AuctionIQ.UI.Go("ledger", v[1]) end)
 		b:SetPoint("TOPLEFT", p, "TOPLEFT", lx, ly)
 		b.view = v[1]
 		lx = lx + 84
@@ -481,9 +481,9 @@ end
 function P.Refresh(now)
 	local p = page
 	if not p then return nil end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	now = now or time()
-	if not (CH.Ledger and CH.Ledger.Available()) then
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available()) then
 		p.head:SetText(T.Color("muted", "Needs TradeSkillMaster: Performance reads your sales."))
 		p.change:SetText(""); p.why:SetText("")
 		return nil

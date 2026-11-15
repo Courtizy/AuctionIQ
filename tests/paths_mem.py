@@ -31,9 +31,9 @@ def load():
 
 L = load()
 L.execute("""
-  local CH = AuctionIQ
-  CH.Prices.background = false
-  CH.OpenProfessionID = function() return 2906 end
+  local AuctionIQ = AuctionIQ
+  AuctionIQ.Prices.background = false
+  AuctionIQ.OpenProfessionID = function() return 2906 end
   -- recipes: clones of the stub's 10 and 11 under new ids
   local ui = C_TradeSkillUI
   local info0, sch0, op0 = ui.GetRecipeInfo, ui.GetRecipeSchematic, ui.GetCraftingOperationInfo
@@ -87,7 +87,7 @@ L.execute("""
     end
     recipes[id] = list
   end
-  CH.SpecData[2906] = { name = "Alchemy", recipes = recipes, nodes = nodes }
+  AuctionIQ.SpecData[2906] = { name = "Alchemy", recipes = recipes, nodes = nodes }
   C_ProfSpecs.GetSpecTabIDsForSkillLine = function() return { 1, 2, 3 } end
   C_ProfSpecs.GetRootPathForTab = function(tab) return roots[tab] end
   C_ProfSpecs.GetChildrenForPath = function(id) return kids[id] or {} end
@@ -95,14 +95,14 @@ L.execute("""
   C_ProfSpecs.GetCurrencyInfoForSkillLine = function() return { numAvailable = 40, currencyName = "Knowledge" } end
   STUB.Fire("TRAIT_NODE_CHANGED")
   -- prices for the clones: every recipe sells
-  CH.Scan.DailyUnits = function() return 5 end
+  AuctionIQ.Scan.DailyUnits = function() return 5 end
   for i = 1, 3 do STUB.RunTimers() end
-  CH.db.presets = {}
-  CH.db.settings.presetsAuto = true
+  AuctionIQ.db.presets = {}
+  AuctionIQ.db.settings.presetsAuto = true
   MEM = { evals = 0 }
-  local ev = CH.Advisor.Evaluate
+  local ev = AuctionIQ.Advisor.Evaluate
   MEM.evalKB = 0
-  CH.Advisor.Evaluate = function(...)
+  AuctionIQ.Advisor.Evaluate = function(...)
     MEM.evals = MEM.evals + 1
     local a = collectgarbage("count")
     local r = ev(...)
