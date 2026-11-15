@@ -896,7 +896,7 @@ end
 --- its sales, less what you hold). { { label, entries } }.
 D.LEAN_DAYS = 3
 function D.Plans(queue)
-	queue = queue or CH.db.queue
+	queue = queue or (CH.Queue and CH.Queue.Active and CH.Queue.Active()) or CH.db.queue
 	local lean, made = {}, {}
 	for _, e in ipairs(queue) do
 		local m = D.EntryModel(e)

@@ -428,3 +428,113 @@ check("failure 9 (requests): a refused second click on the same recipe doesn't c
 check("failure 9 (requests): a result that lands before its cast's success still goes to that batch",
       af9.late.crafts == 2 and abs(af9.late.expected - af9.late.want) < 1e-6 and af9.late.left == 0)
 check("failure 9 (requests): one cast reported twice takes one craft off the queue", af9.dup == 2)
+
+# Queue lifecycle: a /reload in the middle of a batch, and work orders that time out, get released or
+# disappear while you're away. The queue is saved; what was on its way to the game isn't.
+af10 = L.eval("""(function()
+  local A, Q, Lg, O = AuctionIQ.Advisor, AuctionIQ.Queue, AuctionIQ.Log, AuctionIQ.Orders
+  local out = {}
+  local oldCount, oldCO, oldLive = C_Item.GetItemCount, C_CraftingOrders, O.Live
+  C_Item.GetItemCount = function() return 999 end
+  local function reload()
+    -- what a /reload keeps is the saved queue: requests in flight and the log's pending craft go
+    wipe(Q.inflight); Lg.Forget(Lg.Pending())
+    AuctionIQ.db = AuctionIQ.Tidy(AuctionIQ.db)
+  end
+  -- 1. a batch of 5, reloaded after 2: 3 stay queued, the next click sends those 3, the log keeps all 5
+  Q.Clear(); wipe(Q.inflight); Lg.Clear()
+  local res = A.Analyze(11, { professionID = AuctionIQ.OpenProfessionID() })
+  local e = Q.Add(res, res.best, 5)
+  local sent = {}
+  local oldCR = C_TradeSkillUI.CraftRecipe
+  C_TradeSkillUI.CraftRecipe = function(id, n, ...) sent[#sent + 1] = n; return oldCR(id, n, ...) end
+  Q.Craft(e, 5)
+  for _ = 1, 2 do
+    STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+    STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { recipeID = 11, itemID = res.best.item, quantity = 1 })
+  end
+  reload()
+  e = AuctionIQ.db.queue[1]
+  out.batch = { left = e and e.qty, open = Q.OpenRequests() }
+  local ok = Q.Craft(e, e.qty)
+  for _ = 1, 3 do
+    STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 11)
+    STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { recipeID = 11, itemID = res.best.item, quantity = 1 })
+  end
+  out.batch.resent, out.batch.sent2, out.batch.after, out.batch.crafts = ok, sent[2], Q.Count(), AuctionIQ.Me().log[11].crafts
+  C_TradeSkillUI.CraftRecipe = oldCR
+  -- orders: entries as the queue saves them
+  Q.Clear(); wipe(Q.inflight); Lg.Clear()
+  local listed, claimed = {}, nil
+  C_CraftingOrders = { GetCrafterOrders = function() return listed end, GetClaimedOrder = function() return claimed end,
+    ClaimOrder = function() end, FulfillOrder = function() end }
+  O.Live = function(id) for _, o in ipairs(listed) do if tostring(o.orderID) == tostring(id) then return o end end end
+  local me = AuctionIQ.CharacterKey()
+  local function order(id, extra)
+    local x = { recipeID = 11, name = "Order " .. id, char = me, qty = 1, reagents = {}, shop = { { itemID = 201, n = 2 } }, profit = 1000, orderID = tostring(id), profession = 3 }
+    for k, v in pairs(extra or {}) do x[k] = v end
+    return Q.AddEntry(x, 1)
+  end
+  -- 2. reloaded while crafting into a claimed order: the game says it's done, so Turn in
+  local a = order(601, { stage = "claimed", pending = "craft", pendingAt = Q.Now() })
+  claimed = { orderID = 601, isFulfillable = true }
+  reload()
+  out.midCraft = Q.OrderStep(a)
+  -- 3. claimed, then the claim timed out while you were away: a fetch lists it again, so Claim
+  claimed = nil
+  local b = order(602, { stage = "claimed" })
+  -- 4. gone from the board and not claimed: marked, never bought for, skipped by Next, removed on click
+  local c = order(603)
+  -- 5. another profession's order: a fetch of this one doesn't touch it
+  local d = order(604, { profession = 9 })
+  listed = { { orderID = 602, expirationTime = time() + 3600 } }
+  local fetched = { ["602"] = listed[1] }
+  out.before = { b = Q.OrderStep(b), c = Q.OrderStep(c) }
+  out.changed = Q.Reconcile(fetched, 3)
+  out.after = { a = Q.OrderStep(a), b = Q.OrderStep(b), c = Q.OrderStep(c), d = Q.OrderStep(d), bExpires = b.expires == listed[1].expirationTime }
+  local need = 0
+  for _, s in ipairs(Q.ShoppingList()) do if s.itemID == 201 then need = s.need end end
+  out.need201 = need -- 602 and 604 still need theirs (2 each); 601 and 603 need none
+  local nx = Q.NextStep()
+  out.nextNotGone = nx ~= c
+  out.active = #Q.Active()
+  -- 6. past its expiry time with no fetch since: Remove too
+  local f = order(605, { expires = time() - 1 })
+  out.expired = { step = Q.OrderStep(f), why = Q.Lapsed(f) }
+  local rmOk = Q.Craft(c)
+  Q.Craft(f)
+  out.removed = Q.ForOrder(603) == nil and Q.ForOrder(605) == nil and Q.ForOrder(602) ~= nil
+  out.rmOk = rmOk
+  -- 7. a full fetch reconciles; one that doesn't hear back from every kind of order leaves the queue alone
+  local g = order(606, { stage = "claimed" })
+  local fail = false
+  C_CraftingOrders.RequestCrafterOrders = function(t)
+    STUB.Fire("CRAFTINGORDERS_CAN_REQUEST")
+    t.callback(fail and t.orderType == 0 and 5 or 0)
+  end
+  listed = {}
+  fail = true
+  O.Fetch(); STUB.RunTimers(); STUB.RunTimers()
+  out.partial = Q.OrderStep(g)
+  fail = false
+  O.Fetch(); STUB.RunTimers(); STUB.RunTimers()
+  out.full = Q.OrderStep(g)
+  C_Item.GetItemCount, C_CraftingOrders, O.Live = oldCount, oldCO, oldLive
+  Q.Clear(); wipe(Q.inflight); Lg.Clear()
+  return out
+end)()""")
+check("lifecycle 10 (reload): a batch of 5 reloaded after 2 keeps 3 queued with nothing left in flight",
+      af10.batch.left == 3 and af10.batch.open == 0)
+check("lifecycle 10 (reload): the next click sends the 3 left; the queue empties and the log has all 5 crafts",
+      af10.batch.resent and af10.batch.sent2 == 3 and af10.batch.after == 0 and af10.batch.crafts == 5)
+check("lifecycle 10 (reload): reloaded mid-craft into an order, the step follows the game: Turn in", af10.midCraft == "Turn in")
+check("lifecycle 10 (orders): a claim that timed out while away goes back to Claim once a fetch lists it again",
+      af10.before.b == "Craft" and af10.after.b == "Claim" and af10.after.bExpires)
+check("lifecycle 10 (orders): an order neither listed nor claimed is marked gone (as is a crafted one whose turn-in answer a reload lost); another profession's is untouched",
+      af10.before.c == "Claim" and af10.after.c == "Remove" and af10.after.a == "Remove" and af10.after.d == "Claim" and af10.changed == 3)
+check("lifecycle 10 (orders): a gone order needs no reagents, isn't the next step and drops out of the totals",
+      af10.need201 == 4 and af10.nextNotGone and af10.active == 2)
+check("lifecycle 10 (orders): past its expiry time an order is Expired; clicking a gone or expired order removes only it",
+      af10.expired.step == "Remove" and af10.expired.why == "expired" and af10.removed and af10.rmOk)
+check("lifecycle 10 (orders): a fetch that misses a kind of order changes nothing; a full one reconciles",
+      af10.partial == "Craft" and af10.full == "Remove")

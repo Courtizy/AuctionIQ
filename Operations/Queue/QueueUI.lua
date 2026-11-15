@@ -282,6 +282,12 @@ function QUI.RowState(e, rd, can, why, step, shop)
 	local lines = { { e.name or "?" } }
 	local function count() return string.format("Craft %d now · %d blocked", rd.now, rd.blocked) end
 	if step == "Turn in" then return T.Color("ok", "Ready"), { { "Ready to turn in" } } end
+	if step == "Remove" then
+		local why = CH.Queue.Lapsed(e)
+		table.insert(lines, { T.Color("muted", why == "expired" and "The order expired: the game took it back." or
+			"The board doesn't list this order any more and you haven't claimed it: someone else took it, it was cancelled, or it was turned in.") })
+		return T.Color("bad", CH.Queue.LAPSED_LABEL[why] or "Gone"), lines
+	end
 	if rd.why == "switch" then
 		table.insert(lines, { T.Color("muted", "Queued for " .. (e.charName or "another character") .. ": log in as them to craft it.") })
 		return T.Color("accent", "Switch character"), lines
@@ -338,7 +344,7 @@ function QUI.Refresh()
 	local b = CH.Queue.Budget()
 	-- the status line: how many crafts, how many you can make now, and what they should earn
 	local n, sum = CH.Queue.Count(), 0
-	for _, e in ipairs(q) do sum = sum + (e.profit or 0) * (e.qty or 0) end
+	for _, e in ipairs(CH.Queue.Active()) do sum = sum + (e.profit or 0) * (e.qty or 0) end
 	panel.status:SetText(n == 0 and T.Color("muted", "Nothing queued.")
 		or (T.Color("muted", string.format("%d %s queued · ", n, n == 1 and "craft" or "crafts"))
 		.. T.Color(tot.now > 0 and "ok" or "muted", tot.now .. " ready now") .. T.Color("muted", " · Estimated profit ")
@@ -371,8 +377,8 @@ function QUI.Refresh()
 			r.state:SetText(state)
 			r.stateHit.lines = tip
 			-- a craft waits for its reagents and Concentration; claiming and turning in don't
-			local gated = step ~= "Claim" and step ~= "Turn in"
-			r.craft:SetEnabled(can and (not gated or rd.now > 0))
+			local gated = step ~= "Claim" and step ~= "Turn in" and step ~= "Remove"
+			r.craft:SetEnabled(step == "Remove" or can and (not gated or rd.now > 0))
 			local label = gated and step == "Craft" and rd.now > 0 and rd.now < e.qty and ("Craft " .. rd.now) or step
 			if r.craft.text then r.craft.text:SetText(label) elseif r.craft.SetText then r.craft:SetText(label) end
 			r.craft:SetScript("OnClick", function()
@@ -388,7 +394,8 @@ function QUI.Refresh()
 			end)
 			r.craft:SetScript("OnEnter", function(self)
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
-				GameTooltip:AddLine(not can and ("Craft " .. why)
+				GameTooltip:AddLine(step == "Remove" and "Take this order off the queue: it's gone from the game"
+					or not can and ("Craft " .. why)
 					or step == "Claim" and ("Claim " .. (e.customer or "the") .. "'s order")
 					or step == "Turn in" and "Turn in the order"
 					or step == "Shatter" and "Cast Shatter first (Shattering Essence: more Resourcefulness, Multicraft and Ingenuity)"

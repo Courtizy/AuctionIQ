@@ -37,7 +37,15 @@ function Q.Add(result, r, qty, extra)
 	local e = Q.FromRow(result, r)
 	for k, v in pairs(extra or {}) do e[k] = v end
 	-- order IDs are kept as text: they can be numbers too big to save and compare reliably
-	if e.orderID then e.orderID = tostring(e.orderID) end
+	if e.orderID then
+		e.orderID = tostring(e.orderID)
+		-- what the queue needs to tell, after a /reload or a day away, whether the order is still there:
+		-- when the game takes it back, and which profession's list it's in
+		local o = CH.Orders and CH.Orders.Live and CH.Orders.Live(e.orderID)
+		e.expires = e.expires or (o and tonumber(o.expirationTime)) or nil
+		local info = C_TradeSkillUI and C_TradeSkillUI.GetChildProfessionInfo and C_TradeSkillUI.GetChildProfessionInfo()
+		e.profession = e.profession or (info and info.profession) or nil
+	end
 	return Q.AddEntry(e, qty)
 end
 
@@ -113,6 +121,13 @@ end
 function Q.Clear()
 	wipe(list())
 	Q.Changed()
+end
+
+--- The entries still to do: the queue without orders that are gone from the game (Q.Lapsed).
+function Q.Active()
+	local out = {}
+	for _, e in ipairs(list()) do if not Q.Lapsed(e) then out[#out + 1] = e end end
+	return out
 end
 
 function Q.Count()
@@ -217,12 +232,55 @@ local function profession()
 	return info and info.profession
 end
 
---- What the queue row's button does next for an order: "Claim", "Craft" or "Turn in". The game's
---- own claimed order wins over what we remember: crafted when it says the order can be turned in.
+--- Whether an order entry's order is gone from the game: "expired" (past the time the game takes it
+--- back) or "gone" (a full fetch of its profession's orders didn't list it, and it isn't claimed: taken
+--- by someone else, cancelled, or turned in when the game's answer was lost to a /reload). nil while
+--- it's still there, or when it's the order you have claimed.
+function Q.Lapsed(e, now)
+	if not (e and e.orderID) then return nil end
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then e.gone = nil; return nil end
+	if e.gone then return e.gone end
+	if e.expires and (now or time()) >= e.expires then return "expired" end
+	return nil
+end
+Q.LAPSED_LABEL = { expired = "Expired", gone = "No longer listed" }
+
+--- After a full fetch of one profession's orders (fetched: [id as text] = order), reconcile what
+--- the queue remembers with what the game lists: an order back on the board isn't yours any more
+--- (released or timed out while you were away), and one not listed and not claimed is gone. Only
+--- this character's entries for that profession are touched. Returns how many changed.
+function Q.Reconcile(fetched, prof)
+	local co = C_CraftingOrders
+	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
+	local me = CH.CharacterKey and CH.CharacterKey()
+	local changed = 0
+	for _, e in ipairs(list()) do
+		if e.orderID and e.profession and e.profession == prof and e.char == me
+			and not (claimed and CH.Orders.Same(claimed.orderID, e.orderID)) and not Q.Pending(e) then
+			local o = fetched[tostring(e.orderID)]
+			if o then
+				if e.stage or e.gone then e.stage, e.confirmed, e.gone = nil, nil, nil; changed = changed + 1 end
+				e.expires = tonumber(o.expirationTime) or e.expires
+			elseif not e.gone then
+				e.gone, e.stage, e.confirmed = "gone", nil, nil
+				changed = changed + 1
+			end
+		end
+	end
+	if changed > 0 then Q.Changed() end
+	return changed
+end
+
+--- What the queue row's button does next for an order: "Claim", "Craft", "Turn in", or "Remove"
+--- once the order is gone (Q.Lapsed). The game's own claimed order wins over what we remember:
+--- crafted when it says the order can be turned in.
 function Q.OrderStep(e)
 	if not e.orderID then return Q.NeedsShatter(e.recipeID) and "Shatter" or "Craft" end
 	local waiting = Q.Pending(e)
 	if waiting then return Q.PENDING_LABEL[waiting] end
+	if Q.Lapsed(e) then return "Remove" end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
@@ -392,7 +450,8 @@ end
 function Q.NextStep()
 	local first, firstOrder
 	for _, e in ipairs(list()) do
-		if Q.CanCraftHere(e) then
+		-- an order that's gone waits in the queue, marked, for you to take off: it's never the next step
+		if Q.CanCraftHere(e) and not Q.Lapsed(e) then
 			if e.orderID then
 				if e.stage == "claimed" or e.stage == "crafted" then return e, Q.OrderStep(e) end
 				firstOrder = firstOrder or e
@@ -518,7 +577,8 @@ end
 function Q.ShoppingList(entries)
 	local need, rank, tiers = {}, {}, {}
 	for _, e in ipairs(entries or list()) do
-		for _, s in ipairs(e.shop or {}) do
+		-- an order that's gone needs nothing bought for it
+		for _, s in ipairs(not Q.Lapsed(e) and e.shop or {}) do
 			need[s.itemID] = (need[s.itemID] or 0) + s.n * (e.qty or 1)
 			rank[s.itemID] = s.rank
 			tiers[s.itemID] = s.tiers
@@ -610,7 +670,7 @@ function Q.Budget()
 		if not out[kind].stop then out[kind].stop = { entry = e, n = n, why = kind, extra = extra } end
 		if not out.stop and kind ~= "reagents" then out.stop = out[kind].stop end
 	end
-	for _, e in ipairs(list()) do
+	for _, e in ipairs(Q.Active()) do
 		local p, pid
 		if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
 		local pk = p and (e.char .. ":" .. tostring(pid))
@@ -675,7 +735,9 @@ function Q.Readiness()
 	for _, e in ipairs(list()) do
 		local r = { now = 0, blocked = 0, short = {}, shortN = 0 }
 		out[e] = r
-		if e.char ~= here then
+		if Q.Lapsed(e) then
+			r.why, r.blocked = "gone", e.qty
+		elseif e.char ~= here then
 			r.why, r.blocked = "switch", e.qty
 		else
 			local p, pid
@@ -971,6 +1033,13 @@ end
 --- checks that exact set; if it differs from the plan (a reagent left out, Concentration needed), it
 --- says how and the next press crafts it.
 function Q.Craft(e, amount)
+	-- an order that's gone only needs taking off the queue, from anywhere
+	local lapsed = Q.Lapsed(e)
+	if lapsed and not Q.Pending(e) then
+		Q.Remove(e)
+		CH.Print(string.format("removed %s from the queue: the order is %s", e.name or "the order", Q.LAPSED_LABEL[lapsed]:lower()))
+		return true
+	end
 	local ok, why = Q.CanCraftHere(e)
 	if not ok then return false, why end
 	local waiting = Q.Pending(e)
