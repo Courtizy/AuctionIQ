@@ -308,7 +308,16 @@ end
 
 -- A statement's lines in order: { label, gold, kind = "head" | "line" | "sub" | "total" | "memo" |
 -- "gap", go = { tab, view }, tip }. Headings and totals stand out; lines that open something say so.
-local function lines(list)
+-- The ledger window a statement line hands its transaction list: the statement's own period, open
+-- at the end when the period runs to now (so later records still show), else through `to` itself
+-- (the statements count a record at `to`).
+local function windowOf(from, to, now)
+	local _, _, label = St.Range()
+	return { from = from, to = to < (now or time()) - 300 and to + 1 or nil, label = label }
+end
+St.WindowOf = windowOf
+
+local function lines(list, win)
 	local out = {}
 	for i, l in ipairs(list) do
 		local label = l[1]
@@ -323,7 +332,7 @@ local function lines(list)
 			tip = tip or { { l[1] } }
 			table.insert(tip, { T.Color("accent", "Click for the transactions behind it.") })
 		end
-		table.insert(out, { key = "st" .. i, cells = { label, val }, sort = { i, i }, go = l.go, tip = tip })
+		table.insert(out, { key = "st" .. i, cells = { label, val }, sort = { i, i }, go = l.go, window = l.go and win or nil, tip = tip })
 	end
 	return out
 end
@@ -361,7 +370,7 @@ local function incomeRows(ctx)
 	if not s.expenses[1] then table.insert(list, { "Other expenses", 0, kind = "line", go = { "ledger", "expense" } }) end
 	table.insert(list, { "Other income", s.income, kind = "line", go = { "ledger", "income" }, tip = "Quest gold and other gold TSM logged as income, not from your own characters." })
 	table.insert(list, { "Net income", s.netIncome, kind = "total", tip = "Gross profit, less expenses, plus other income. Buying stock isn't an expense here: it costs you when it sells." })
-	return lines(list), periodNote(from, to) .. T.Color("muted", "   Purchases are on the Balance Sheet until they sell. Click a line for its transactions.")
+	return lines(list, windowOf(from, to, ctx.now)), periodNote(from, to) .. T.Color("muted", "   Purchases are on the Balance Sheet until they sell. Click a line for its transactions.")
 end
 
 local function balanceRows(ctx)
@@ -437,9 +446,10 @@ local function cashRows(ctx)
 		{ "Net classified", c.classified, kind = "total", tip = "Gold in less gold out, from the ledger." },
 		{ "Unclassified gold movement", c.unclassified, kind = "line",
 			tip = "What the gold log moved that the ledger doesn't explain: bank and guild transfers, deposits, mail TSM didn't log, gold from characters it doesn't track. Gold sent between your own characters isn't counted either way." },
+		{ "Change in gold", c.change, kind = "memo", tip = "Closing less opening gold: net classified plus unclassified, so the two always reconcile." },
 		{ "Closing gold", c.closing, kind = "total" },
 	}
-	return lines(list), periodNote(from, to) .. T.Color("muted", "   The change in gold is from TSM's gold log; the ledger classifies what it can.")
+	return lines(list, windowOf(from, to, ctx.now)), periodNote(from, to) .. T.Color("muted", "   The change in gold is from TSM's gold log; the ledger classifies what it can.")
 end
 
 local function periodControl()

@@ -665,7 +665,14 @@ function LUI.Build(p, fs, panel)
 		end)
 		hit:SetScript("OnClick", function(self)
 			-- a statement line opens the transactions behind it
-			if self.go then return AuctionIQ.UI.Go(self.go[1], self.go[2]) end
+			if self.go then
+				-- (read before opening: the redraw reuses this row for the list)
+				local win = type(self.goWindow) == "table" and self.goWindow or nil
+				local opened = AuctionIQ.UI.Go(self.go[1], self.go[2])
+				-- on the statement's own period, not the list's last time frame
+				if win then LUI.Set({ window = win }); AuctionIQ.UI.Refresh() end
+				return opened
+			end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
 		end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
@@ -791,6 +798,7 @@ function LUI.Refresh()
 		r.hit.cellTip = d and d.cellTip
 		r.hit.key = d and keyOf(d)
 		r.hit.go = d and d.go
+		r.hit.goWindow = d and d.window
 		if r.bg then r.bg:SetColorTexture(1, 1, 1, (sel and d == sel) and 0.14 or r.zebra) end
 		for j, cell in ipairs(r.cells) do
 			local c = v.cols[j]

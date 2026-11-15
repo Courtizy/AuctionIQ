@@ -4309,6 +4309,38 @@ check("Balance Sheet: the net worth bridge adds up, opening to closing",
 crows = [plain(r.cells[1]) for r in LUI.Rows("cashflow", L.eval("{}"))[0].values()]
 check("statements: the biggest item is named when it carries a quarter or more of inventory", (bal.top is None) or (bal.top.worth / max(bal.inventory, 1) < 0.25) or any("Largest:" in x for x in brows))
 check("statements: Cash Flow runs opening gold to closing gold, with unclassified movement", crows[0] == "Opening gold" and crows[-1] == "Closing gold" and any("Unclassified gold movement" in x for x in crows))
+# reconcile: opening, the classified lines and the unclassified rest add up to closing; each line
+# opens its transactions on the statement's own period
+rc = L.eval("""(function()
+  local St, now = AuctionIQ.Statements, STUB.now
+  St.SetPeriod("lastweek")
+  local from, to = St.Range(nil, now)
+  local c = St.Cash(from, to)
+  local rows = AuctionIQ.LedgerUI.Rows("cashflow", { now = now })
+  local buy
+  for _, r in ipairs(rows) do if r.go and r.go[2] == "purchases" then buy = r end end
+  local out = { ok = c.opening and c.closing and math.abs(c.opening + c.classified + c.unclassified - c.closing) < 1,
+    change = c.change, from = from, to = to, win = buy and buy.window }
+  St.SetPeriod("week")
+  return out
+end)()""")
+check("Cash Flow: opening gold plus classified plus unclassified is closing gold, and the change is shown",
+      rc.ok and any("Change in gold" in x for x in crows))
+check("Cash Flow: a closed period's line opens its transactions on that period, through its last second",
+      rc.win is not None and rc.win["from"] == rc["from"] and rc.win.to == rc.to + 1)
+ck = L.eval("""(function()
+  AuctionIQ.Statements.SetPeriod("lastweek")
+  AuctionIQ.UI.Page("ledger", "cashflow")
+  for _, r in ipairs(AuctionIQ.UI.Pages().ledger.rows) do
+    local g = rawget(r.hit, "go")
+    if type(g) == "table" and g[2] == "purchases" then r.hit.scripts.OnClick(r.hit); break end
+  end
+  local w = AuctionIQ.LedgerUI.Window()
+  local out = { view = AuctionIQ.LedgerUI.View(), label = w and w.label }
+  AuctionIQ.Statements.SetPeriod("week"); AuctionIQ.LedgerUI.Set({ window = false })
+  return out
+end)()""")
+check("Cash Flow: clicking Purchases opens the purchases of that period", ck.view == "purchases" and ck.label == "Last week")
 
 run("AuctionIQ.UI.Page('ledger', 'statement')")
 check("Statements: the three statements, Product P&L, Inventory and Performance", [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown] == ["Income Statement", "Balance Sheet", "Cash Flow", "Product P&L", "Inventory", "Performance"])
