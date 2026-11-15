@@ -97,11 +97,11 @@ check("/ch minimap hides it", not btn.shown)
 # icons: white line icons tinted in the label, theme colour when active and grey otherwise
 run('if not AuctionIQ.UI.IsShown() then AuctionIQ.UI.Toggle() end; AuctionIQ.UI.Go("today")')
 tabs = AuctionIQ.UI.Buttons()
-check("tab icons: Dashboard uses the trend panel icon, tinted blue when active", "Media\\Tab-Dashboard:14:14:0:0:64:64:0:64:0:64:63:199:235|t Dashboard" in tabs.today.label)
-check("tab icons: inactive tabs are grey", ":163:163:171|t Operations" in tabs.operations.label and ":163:163:171|t Accounting" in tabs.ledger.label)
+check("tab icons: Overview uses the trend panel icon, tinted blue when active", "Media\\Tab-Dashboard:14:14:0:0:64:64:0:64:0:64:63:199:235|t Overview" in tabs.today.label)
+check("tab icons: inactive tabs are grey", ":163:163:171|t Crafting" in tabs.operations.label and ":163:163:171|t Accounting" in tabs.ledger.label)
 check("tab icons: Settings is the gear alone", "Tab-Settings" in tabs.settings.label and "Settings" not in tabs.settings.label.split("|t")[-1])
 run('AuctionIQ.UI.Go("operations")')
-check("tab icons: the active tab follows the page", ":63:199:235|t Operations" in tabs.operations.label and ":163:163:171|t Dashboard" in tabs.today.label)
+check("tab icons: the active tab follows the page", "Media\\Tab-Operations:14:14:0:0:64:64:0:64:0:64:63:199:235|t Crafting" in tabs.operations.label and ":163:163:171|t Overview" in tabs.today.label)
 glyph = btn.glyph
 check("minimap: AIQ monogram, A in white and IQ in the theme colour, no bar on top",
       glyph.t.endswith("A|r|cff3fc7ebIQ|r") and L.eval("rawget(AuctionIQMinimapButton, 'rule')") is None)
@@ -1372,7 +1372,7 @@ check("dashboard: the card hands Craft the recipe and character, and names its b
       nx[0].go[3].name == "Cheap Flask" and nx[0].go[3].char == "Be" and nx[0].risk is not None)
 allnx = list(L.eval("AuctionIQ.Next.List()").values())
 check("dashboard: every card that opens a view hands over what it's about", all(x.go[3] is not None for x in allnx if x.go))
-check("dashboard: where a card opens, in words", AuctionIQ.UI.PlaceName(nx[0].go) == "Operations > Craft")
+check("dashboard: where a card opens, in words", AuctionIQ.UI.PlaceName(nx[0].go) == "Crafting > Craft")
 cb = [x for x in L.eval("AuctionIQ.UI.ConcentrationBars()").values() if x.char == "Be"]
 check("dashboard: Concentration by character, with time to full and the best extra per point",
       len(cb) == 1 and cb[0].cur == 500 and cb[0].hours == 48 and abs(cb[0].best.gain - 890 / 30) < 1e-9)
@@ -2343,7 +2343,15 @@ check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().d
 run("AuctionIQ.UI.Pages().dashboard.d.figures.queued.hit.scripts.OnClick()")
 check("dashboard: clicking it opens Operations, Work queue", AuctionIQ.LedgerUI.View() == "queue" and AuctionIQ.LedgerUI.Section() == "operations")
 run("AuctionIQ.db.queue = STUB.oldQueue; AuctionIQ.UI.Page('operations', 'post')")
-check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionIQ.UI.TABS").values()] == ["Dashboard", "Operations", "Accounting"])
+check("tabs: Overview, Crafting, Accounting", [t[2] for t in L.eval("AuctionIQ.UI.TABS").values()] == ["Overview", "Crafting", "Accounting"])
+check("tabs: every tab's icon is a file in Media", all((ROOT / "Media" / ("Tab-%s.tga" % t[3])).exists() for t in L.eval("AuctionIQ.UI.TABS").values()))
+for cmd in ("overview", "dashboard"):
+    run("AuctionIQ.UI.Page('ledger'); SlashCmdList.AUCTIONIQ('%s')" % cmd)
+    check("/aiq %s opens the Overview (dashboard: the old name)" % cmd, ":63:199:235|t Overview" in AuctionIQ.UI.Buttons().today.label)
+for cmd in ("crafting", "operations", "craft"):
+    run("AuctionIQ.UI.Page('today'); SlashCmdList.AUCTIONIQ('%s')" % cmd)
+    check("/aiq %s opens Crafting on Compare crafts (operations: the old name)" % cmd,
+          AuctionIQ.LedgerUI.Section() == "operations" and AuctionIQ.LedgerUI.View() == "scenarios")
 run("AuctionIQ.UI.Page('operations', 'post')")
 check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
@@ -2375,7 +2383,7 @@ check("Compare crafts shows a Scan button in Export's place", L.eval("AuctionIQ.
 check("hand-off: Craft opens on the recommended recipe, filtered to it, saying what was handed over",
       LUI.View() == "scenarios" and LUI.Group() == "Craft" and LUI.Focus().name == "Test Flask"
       and plain(L.eval("AuctionIQ.UI.Pages().ledger.search:GetText()")) == "Test Flask"
-      and foot.startswith("From Dashboard: Restock, 20 x Test Flask on Alt"))
+      and foot.startswith("From Overview: Restock, 20 x Test Flask on Alt"))
 # Craft detail pane: the handed-over recipe is selected, sized to the Dashboard's quantity, and queues
 det = L.eval("AuctionIQ.LedgerUI.lastDetail")
 check("Craft pane: the selected recipe, live while the profession window has it, sized to the hand-off",
@@ -4742,7 +4750,7 @@ exec(open(ROOT / "tests" / "professions.py").read())
 # Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an
 # old one left in an install folder is ignored), and every TOC line names a file that exists.
 _listed = set(files)
-_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Dashboard", "Data", "Operations") for p in (ROOT / d).rglob("*.lua")}
+_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Crafting", "Dashboard", "Data", "Operations") for p in (ROOT / d).rglob("*.lua")}
 check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc", _on_disk <= _listed)
 check("toc: every file AuctionIQ.toc lists exists", all((ROOT / f).is_file() for f in files))
 for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")) + [ROOT / "Companion" / "AuctionIQ_History"]:

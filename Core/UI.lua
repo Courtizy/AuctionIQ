@@ -515,7 +515,7 @@ end
 -- I craft, buy or post (Craft, Trade, Queue)? Accounting: what happened, and what should
 -- I learn from it (Overview, Revenue, Expenses, Profit, Performance)? The AH, profession and mailbox
 -- windows carry out what Operations plans.
-local TABS = { { "today", "Dashboard" }, { "operations", "Operations" }, { "ledger", "Accounting" } }
+local TABS = { { "today", "Overview", "Dashboard" }, { "operations", "Crafting", "Operations" }, { "ledger", "Accounting", "Accounting" } } -- key, label, icon (Media\Tab-<icon>)
 -- which page frame each tab shows; Operations and Accounting share the table page
 local FRAME = { today = "dashboard", operations = "ledger", ledger = "ledger", settings = "settings" }
 -- Settings has a second view, Groups and items (the group tree, items and routes)
@@ -526,13 +526,13 @@ local function frameOf(pg)
 end
 UI.TABS = TABS
 
---- Where a { tab, view } opens, in words: "Operations > Craft".
+--- Where a { tab, view } opens, in words: "Crafting > Craft".
 function UI.PlaceName(go)
 	local tabName
 	for _, t in ipairs(TABS) do if t[1] == go[1] then tabName = t[2] end end
 	local def = go[2] and AuctionIQ.LedgerUI and AuctionIQ.LedgerUI.ViewDef(go[2])
 	local sec = go[2] and AuctionIQ.LedgerUI and AuctionIQ.LedgerUI.SectionOf(go[2])
-	if sec == "operations" then tabName = "Operations" elseif sec == "ledger" then tabName = "Accounting" end
+	if sec == "operations" then tabName = "Crafting" elseif sec == "ledger" then tabName = "Accounting" end
 	local group = def and def.parent
 	return (tabName or "AuctionIQ") .. (group and (" > " .. group) or "")
 end
@@ -692,8 +692,8 @@ function build()
 	-- AuctionIQ's pages first, then its Accounting ledger last
 	for _, pg in ipairs(TABS) do
 		-- a small symbol before each name, the same size and style on every tab
-		local b = T.Button(frame.bar, iconText(pg[2], T.muted, pg[2]), 84, 20)
-		b.aiqIcon, b.aiqLabel = pg[2], pg[2]
+		local b = T.Button(frame.bar, iconText(pg[3], T.muted, pg[2]), 84, 20)
+		b.aiqIcon, b.aiqLabel = pg[3], pg[2]
 		b:SetScript("OnClick", function() UI.Go(pg[1]) end)
 		pageButtons[pg[1]] = b
 	end
@@ -1093,7 +1093,7 @@ local function refreshFigures(d)
 	F.queued.sub:SetText(f.queued > 0 and (f.short > 0 and T.Color("bad", f.short .. " short") or T.Color("ok", f.ready .. " ready")) or "")
 	F.queued.hit.tip = { { "Crafts in the queue on every character." },
 		{ string.format("%d ready here, %d missing reagents, %d on other characters", f.ready, f.short, f.elsewhere) },
-		{ T.Color("muted", "Click for the work queue in Operations.") } }
+		{ T.Color("muted", "Click for the work queue in Crafting.") } }
 	F.conc.value:SetText(f.conc > 0 and T.Color("accent", f.conc) or "0")
 	F.conc.sub:SetText(f.conc > 0 and T.Color("muted", "wasting") or T.Color("muted", "none full"))
 	local tip = { { "Concentration by character, fullest first: who to log into first." } }
@@ -1115,7 +1115,7 @@ local function refreshDashboard()
 	refreshFigures(d)
 	for k, b in pairs(d.rangeButtons) do colorButton(b, k == range) end
 	if not AuctionIQ.Ledger.Available() then
-		d.title:SetText("Dashboard")
+		d.title:SetText("Overview")
 		d.sub:SetText(T.Color("muted", "Needs TradeSkillMaster: the dashboard reads its gold log and accounting."))
 		return nil
 	end

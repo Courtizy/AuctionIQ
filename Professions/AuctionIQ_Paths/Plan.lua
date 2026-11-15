@@ -11,7 +11,7 @@
 -- the game's own "available" flag is used for nodes it already reports).
 --
 -- Part of AuctionIQ_Paths, loaded on demand (AuctionIQ.Paths.Load): it adds the planner to AuctionIQ.Paths, which
--- AuctionIQ itself defines (Operations/Craft/Paths.lua: groups, yields, the current plan).
+-- AuctionIQ itself defines (Crafting/Craft/Paths.lua: groups, yields, the current plan).
 local AuctionIQ = AuctionIQ
 
 local P = AuctionIQ.Paths

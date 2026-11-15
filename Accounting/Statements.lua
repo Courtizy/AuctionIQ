@@ -417,7 +417,7 @@ local function balanceRows(ctx)
 		end
 	end
 	table.insert(list, { "", nil, kind = "gap" })
-	table.insert(list, { "Memo: inventory at market value", b.market, kind = "memo", tip = "Every item at its AuctionIQ market price, before the AH cut. The Dashboard's figure." })
+	table.insert(list, { "Memo: inventory at market value", b.market, kind = "memo", tip = "Every item at its AuctionIQ market price, before the AH cut. The Overview's figure." })
 	table.insert(list, { "Memo: profit not yet made", b.unrealized, kind = "memo", tip = "Market value less book value: what selling everything at market would add, before the cut. Not counted until it sells." })
 	return lines(list), T.Color("muted", "As of now (TSM keeps no history of what you held). Inventory: lower of cost or net realizable value.")
 end
