@@ -35,6 +35,7 @@ run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
 CH = L.globals().AuctionIQ
 CH.ScanUI.ROW_AGE = -1
+CH.ScanUI.background = False # every row worked out in the redraw itself (its own tests turn this on)
 CH.AdvisorUI.KNOWN_AGE = -1 # tests change the stubs between clicks: work each recipe out again
 CH.Prices.background = False # sales added up at once, not over the next frames
 CH.AdvisorUI.GEAR_AGE = -1
@@ -892,6 +893,35 @@ plan0 = CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
 check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and plan0.points == 0)
 run('AuctionIQ.Queue.Clear()')
 scan_cols = list(CH.ScanUI.Refresh().values())
+# Crafting window: a bag change re-prices every row. The redraw works out rows for ROW_BUDGET_MS,
+# shows the last numbers for the rest, and finishes them over the next frames, then draws once.
+bgr = L.eval("""(function()
+  local SUI = AuctionIQ.ScanUI
+  local dps = debugprofilestop
+  debugprofilestop = dps or function() return os.clock() * 1000 end
+  SUI.Open()
+  local sync = SUI.Refresh()
+  SUI.background, SUI.ROW_BUDGET_MS, SUI.ROW_AGE = true, -1, 60
+  SUI.InvalidateRows()
+  local out = { during = SUI.Refresh(), waiting = SUI.waiting, steps = 0 }
+  while SUI.waiting > 0 and out.steps < 50 do STUB.RunTimers(); out.steps = out.steps + 1 end
+  out.after = SUI.Refresh()
+  out.same = #out.after == #sync
+  for i = 1, #sync do if out.after[i] ~= sync[i] or out.during[i] ~= sync[i] then out.same = false end end
+  -- closing the window stops the job: nothing is left scheduled
+  SUI.InvalidateRows(); SUI.Refresh()
+  out.waiting2 = SUI.waiting
+  SUI.Toggle() -- hide
+  STUB.RunTimers()
+  out.stopped = AuctionIQ.ScanUI.IsShown() == false
+  SUI.Open()
+  SUI.background, SUI.ROW_BUDGET_MS, SUI.ROW_AGE = false, 4, -1
+  SUI.InvalidateRows(); SUI.Refresh()
+  debugprofilestop = dps
+  return out
+end)()""")
+check("crafting window: a bag change shows the last numbers at once and finishes re-pricing over the next frames, same result",
+      bgr.waiting > 0 and bgr.steps >= 1 and bgr.same and bgr.waiting2 > 0 and bgr.stopped)
 check("scan shows profit with Concentration", any(r.concProfit for r in sr.rows.values()))
 check("scan: each recipe tagged with the expansion the window has open", sr.currentLine == 2906
       and all(r.line == 2906 for r in sr.rows.values()))
@@ -4626,5 +4656,16 @@ check("prune: the archive doesn't bring pruned days back from TSM's records, and
 run("AuctionIQ.db.ledger, AuctionIQ.db.competition = STUB.oldLedger, STUB.oldComp")
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
+# Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an
+# old one left in an install folder is ignored), and every TOC line names a file that exists.
+_listed = set(files)
+_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Dashboard", "Data", "Operations") for p in (ROOT / d).rglob("*.lua")}
+check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc", _on_disk <= _listed)
+check("toc: every file AuctionIQ.toc lists exists", all((ROOT / f).is_file() for f in files))
+for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")) + [ROOT / "Companion" / "AuctionIQ_History"]:
+    _toc = [l.strip() for l in (_d / (_d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua")]
+    _disk = {p.name for p in _d.glob("*.lua")}
+    check(f"toc: {_d.name} lists exactly its Lua files", set(_toc) == _disk)
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

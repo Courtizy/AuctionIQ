@@ -1405,6 +1405,91 @@ for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "CURRENCY_DISPLAY_UPDATE", "SKILL_LI
 	CH.On(ev, SUI.InvalidateRows)
 end
 
+-- One saved row worked out for the list: today's prices, what you can make, what you hold.
+-- This is the expensive part of a redraw (pricing every reagent of every recipe).
+local function bestPick(r)
+	-- the best pick: the Concentration craft when it earns more a craft than the plain one
+	local useConc = r.concProfit ~= nil and (r.profit == nil or r.concProfit > r.profit)
+	r.bestConc = useConc
+	r.bestQ = useConc and r.concQuality or r.quality
+	r.bestProfit = useConc and r.concProfit or r.profit
+	r.bestCost = useConc and (r.concCost or r.cost) or r.cost
+	r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
+	r.bestCan = useConc and r.canMakeConc or r.canMake
+	return useConc
+end
+
+local function workRow(saved, current, concNow)
+	if not saved.line then saved.line, saved.expansion = CH.Scan.Expansion(saved.recipeID) end
+	-- today's prices, the same the hovers use; the saved row keeps the scan's
+	local r = CH.Scan.Live(saved)
+	r.current = not r.line or not current or r.line == current
+	r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
+	r.bc = CH.Scan.BuyOrCraft(r)
+	r.buySave = r.bc and r.bc.save
+	r.buyPrice, r.resell, r.flip = r.bc and r.bc.buy, r.bc and r.bc.resell, r.bc and r.bc.flip
+	r.gainPerPoint = CH.Scan.GainPerPoint(r)
+	local useConc = bestPick(r)
+	-- which reagents of the best pick you hold enough of for one craft, any rank counting
+	local needs = CH.Scan.Needs(useConc and r.concAccounts or r.accounts, r.recipeID)
+	if needs and #needs > 0 then
+		local got = 0
+		for _, g in ipairs(needs) do if g.have >= g.need then got = got + 1 end end
+		r.haveN, r.needN, r.haveFrac = got, #needs, got / #needs
+	end
+	-- the Concentration craft with your own reagents, when the best mix needs a rank you don't hold
+	-- (this expansion's recipes: each is worked out once until your bags or Concentration change)
+	if r.concProfit and r.current and (r.canMakeConc or 0) == 0 then
+		local held = SUI.HeldMax(r.recipeID, concNow)
+		if held and held > 0 then
+			r.canMakeConc = held
+			if useConc then r.bestCan = held end
+		end
+	end
+	return r
+end
+
+-- A row not worked out yet, shown while the rest are worked out over the next frames: the
+-- numbers from the last time it was worked out, or else the scan's own, until today's arrive.
+local function standIn(saved, current)
+	if not saved.line then saved.line, saved.expansion = CH.Scan.Expansion(saved.recipeID) end
+	local r = setmetatable({ pendingLive = true }, { __index = saved })
+	r.current = not r.line or not current or r.line == current
+	bestPick(r)
+	return r
+end
+
+SUI.ROW_BUDGET_MS = 4 -- a redraw works out rows for this long, then the rest over the next frames
+SUI.background = true
+
+-- Work out the rows a redraw left for later, a few milliseconds a frame, then draw once with all
+-- of them. One job at a time; a newer invalidation just gives it more rows to do. It stops when
+-- the window closes or leaves the recipe list.
+local finishing
+local function clock() return debugprofilestop and debugprofilestop() or 0 end
+function SUI.FinishRows()
+	if finishing or not C_Timer then return end
+	finishing = true
+	local function step()
+		if not (frame and frame:IsShown() and mode == "recipes") then finishing = false; return end
+		local t0 = clock()
+		local cache, left, worked = rowCache, false, 0
+		for _, saved in ipairs(cache.s and cache.s.rows or {}) do
+			if not cache.rows[saved] then
+				-- at least one row a frame, however small the budget
+				if clock() - t0 > SUI.ROW_BUDGET_MS and worked > 0 then left = true; break end
+				cache.rows[saved] = workRow(saved, cache.cur, cache.conc)
+				worked = worked + 1
+			end
+		end
+		CH.MeasureAdd("craft redraw: rows (background)", clock() - t0)
+		if left then C_Timer.After(0, step); return end
+		finishing = false
+		if cache == rowCache then SUI.Refresh() end
+	end
+	C_Timer.After(0, step)
+end
+
 function SUI.Refresh()
 	return (CH.Measure("craft window redraw", SUI.Draw))
 end
@@ -1429,44 +1514,28 @@ function SUI.Draw()
 	local now = time()
 	local fresh = rowCache.gen == rowGen and rowCache.s == s and rowCache.conc == concNow and rowCache.cur == current
 		and now - (rowCache.at or 0) < SUI.ROW_AGE
-	if not fresh then rowCache = { gen = rowGen, s = s, conc = concNow, cur = current, at = now, rows = {} } end
+	if not fresh then
+		-- keep the last numbers to show while the new ones are worked out (same scan only)
+		local prev
+		if rowCache.s == s then
+			prev = {}
+			for k, v in pairs(rowCache.prev or {}) do prev[k] = v end
+			for k, v in pairs(rowCache.rows) do prev[k] = v end
+		end
+		rowCache = { gen = rowGen, s = s, conc = concNow, cur = current, at = now, rows = {}, prev = prev }
+	end
+	local stop = SUI.background and C_Timer and debugprofilestop and (debugprofilestop() + SUI.ROW_BUDGET_MS)
+	local waiting = 0
 	for _, saved in ipairs(s and s.rows or {}) do
 		local r = rowCache.rows[saved]
 		if not r then
-		if not saved.line then saved.line, saved.expansion = CH.Scan.Expansion(saved.recipeID) end
-		-- today's prices, the same the hovers use; the saved row keeps the scan's
-		r = CH.Scan.Live(saved)
-		r.current = not r.line or not current or r.line == current
-		r.canMake, r.canMakeConc, r.shortItem, r.shortConc = CH.Scan.Craftable(r, concNow)
-		r.bc = CH.Scan.BuyOrCraft(r)
-		r.buySave = r.bc and r.bc.save
-		r.buyPrice, r.resell, r.flip = r.bc and r.bc.buy, r.bc and r.bc.resell, r.bc and r.bc.flip
-		r.gainPerPoint = CH.Scan.GainPerPoint(r)
-		-- the best pick: the Concentration craft when it earns more a craft than the plain one
-		local useConc = r.concProfit ~= nil and (r.profit == nil or r.concProfit > r.profit)
-		r.bestConc = useConc
-		r.bestQ = useConc and r.concQuality or r.quality
-		r.bestProfit = useConc and r.concProfit or r.profit
-		r.bestCost = useConc and (r.concCost or r.cost) or r.cost
-		r.bestPct = r.bestProfit and r.bestCost and r.bestCost > 0 and r.bestProfit / r.bestCost or nil
-		r.bestCan = useConc and r.canMakeConc or r.canMake
-		-- which reagents of the best pick you hold enough of for one craft, any rank counting
-		local needs = CH.Scan.Needs(useConc and r.concAccounts or r.accounts, r.recipeID)
-		if needs and #needs > 0 then
-			local got = 0
-			for _, g in ipairs(needs) do if g.have >= g.need then got = got + 1 end end
-			r.haveN, r.needN, r.haveFrac = got, #needs, got / #needs
-		end
-		-- the Concentration craft with your own reagents, when the best mix needs a rank you don't hold
-		-- (this expansion's recipes: each is worked out once until your bags or Concentration change)
-		if r.concProfit and r.current and (r.canMakeConc or 0) == 0 then
-			local held = SUI.HeldMax(r.recipeID, concNow)
-			if held and held > 0 then
-				r.canMakeConc = held
-				if useConc then r.bestCan = held end
+			if stop and debugprofilestop() > stop then
+				r = rowCache.prev and rowCache.prev[saved] or standIn(saved, current)
+				waiting = waiting + 1
+			else
+				r = workRow(saved, current, concNow)
+				rowCache.rows[saved] = r
 			end
-		end
-		rowCache.rows[saved] = r
 		end
 		if not INVIEW[view](r) then
 			-- not part of this view
@@ -1478,6 +1547,8 @@ function SUI.Draw()
 	end
 	for _, r in ipairs(sortRows(groups, SORT[view].key, SORT[view].asc)) do table.insert(data, r) end
 	if t0 then CH.MeasureAdd("craft redraw: rows" .. (fresh and "" or " (worked out)"), debugprofilestop() - t0) end
+	SUI.waiting = waiting
+	if waiting > 0 then SUI.FinishRows() end
 	offset = math.max(0, math.min(offset, #data - N))
 	scrollBar:Set(offset, N, #data)
 	if not CH.Scan.IsRunning() then
@@ -1486,7 +1557,7 @@ function SUI.Draw()
 			or age < 86400 and string.format("%dh ago", math.floor(age / 3600)) or string.format("%d days ago, scan again", math.floor(age / 86400)))
 		local what = view == "conc" and "recipes can use Concentration" or view == "buy" and "recipes have a listing" or "recipes"
 		status:SetText(s and T.Color(age and age >= 86400 and "bad" or "muted", string.format("%d %s, scanned %s.%s", count, what,
-			ago or "", ""))
+			ago or "", waiting > 0 and T.Color("muted", " Updating prices...") or ""))
 			or T.Color("muted", "Open a profession and press Scan."))
 	end
 	local function n(k) return k and T.Color(k > 0 and "fg" or "muted", tostring(k)) or T.Color("muted", "-") end

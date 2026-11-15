@@ -34,6 +34,7 @@ def load():
       math.randomseed(42)
       debugprofilestop = function() return os.clock() * 1000 end
       AuctionIQ.Prices.background = false
+      AuctionIQ.ScanUI.background = false
       function BENCH_MEM() collectgarbage("collect"); return collectgarbage("count") / 1024 end
       -- clone a stub recipe under new IDs: id >= 10000 behaves like base (10 or 11)
       local ui = C_TradeSkillUI
@@ -95,6 +96,41 @@ for name, n in scan_sizes:
         rec("scan", name, size, f"{label} worst frame", max(frames))
         rec("scan", name, size, f"{label} p95 frame", pct(frames, 0.95))
         rec("scan", name, size, f"{label} Lua memory after", p.m1, "MB")
+
+# 1b. Crafting window redraw after a bag change (every craft fires one): every row re-priced in the
+# redraw itself (before) against ROW_BUDGET_MS in the redraw and the rest over the next frames.
+for name, n in scan_sizes[1:]:
+    r = L.eval(f"""(function()
+      STUB.recipeIDs = {{ {",".join(str(10000 + i) for i in range(n))} }}
+      AuctionIQ.Scan.models = {{}}
+      AuctionIQ.Scan.Run(); local g = 0
+      while AuctionIQ.Scan.IsRunning() and g < 200000 do STUB.RunTimers(); g = g + 1 end
+      local SUI = AuctionIQ.ScanUI
+      SUI.Open(); SUI.ROW_AGE = 60
+      local out = {{}}
+      for _, bg in ipairs({{ false, true }}) do
+        SUI.background = bg
+        SUI.Refresh()
+        local frames = {{}}
+        for rep = 1, 3 do
+          SUI.InvalidateRows()
+          local t0 = os.clock(); SUI.Refresh(); frames[#frames + 1] = (os.clock() - t0) * 1000
+          local g2 = 0
+          while SUI.waiting > 0 and g2 < 10000 do local f0 = os.clock(); STUB.RunTimers(); frames[#frames + 1] = (os.clock() - f0) * 1000; g2 = g2 + 1 end
+        end
+        local worst, total = 0, 0
+        for _, f in ipairs(frames) do worst = math.max(worst, f); total = total + f end
+        out[#out + 1] = {{ worst = worst, total = total / 3, frames = #frames / 3 }}
+      end
+      SUI.background = false
+      STUB.recipeIDs = nil
+      return out
+    end)()""")
+    size = f"{n} rows, redraw after a bag change"
+    for i, label in ((1, "before (all in one frame)"), (2, "after (sliced)")):
+        rec("crafting window", name, size, f"{label} worst frame", r[i].worst)
+        rec("crafting window", name, size, f"{label} frames", r[i].frames, "frames")
+        rec("crafting window", name, size, f"{label} total", r[i].total)
 
 # 2. Heavy reagent combinations: one recipe, 3 quality slots x 3 ranks, 2 finishing slots x 3 options
 for name, qty in (("normal", (4, 5)), ("large", (10, 8)), ("upper", (20, 16))):
