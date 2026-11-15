@@ -160,7 +160,7 @@ function Next.List(now)
 	now = now or time()
 	rowIndex = nil
 	local out = {}
-	local function add(e) table.insert(out, e) end
+	local function add(e) e.kind = e.kind or e.title; table.insert(out, e) end
 
 	-- 1. value that leaks while it waits
 	for key, c in pairs(AuctionIQ.db.characters or {}) do
@@ -196,7 +196,7 @@ function Next.List(now)
 				add({ title = "Spend Concentration", detail = (c.name or "?") .. "'s " .. (p.name or "?") .. " is full"
 					.. (pick and (": " .. (pick.name or "?") .. (conc and (" x" .. n) or "")) or "")
 					.. (conc and gpp and string.format(", +%s a point over plain", AuctionIQ.FormatMoney(gpp)) or ""),
-					value = value, tier = 1,
+					value = value, tier = 1, dataAt = p.scan and p.scan.at,
 					risk = pick and "the top-quality price holding while you sell " .. (conc and n or 1) or "which craft pays: scan the profession first",
 					go = pick and { "operations", "scenarios", { name = pick.name, id = pick.item, char = c.name, qty = conc and n or 1, unit = "crafts", conc = conc and true or nil, title = "Spend Concentration" } }
 						or { "operations", "professions", { char = c.name, title = "Spend Concentration" } },
@@ -211,20 +211,22 @@ function Next.List(now)
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
 				local now = r.breakEven and r.item and r.profit and r.profit > 0 and AuctionIQ.Prices.Get("aiqvalue", "i:" .. r.item)
 				if now and now < r.breakEven then
-					table.insert(below, { name = r.name, now = now, be = r.breakEven, char = c.name })
+					table.insert(below, { name = r.name, now = now, be = r.breakEven, char = c.name, at = p.scan and p.scan.at })
 				end
 			end
 		end
 	end
 	if #below > 0 then
 		table.sort(below, function(a, b) return a.now / a.be < b.now / b.be end)
+		local oldest
+		for _, x in ipairs(below) do if x.at and (not oldest or x.at < oldest) then oldest = x.at end end
 		local names = {}
 		for i, x in ipairs(below) do
 			if i > 2 then break end
 			names[#names + 1] = string.format("%s %s < %s", x.name or "?", AuctionIQ.FormatMoney(x.now), AuctionIQ.FormatMoney(x.be))
 		end
 		add({ title = "Below break-even", detail = string.format("%d %s now sell under break-even: %s%s", #below, #below == 1 and "craft" or "crafts",
-			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, rows = below,
+			table.concat(names, ", "), #below > 2 and ", ..." or ""), tier = 2, rows = below, dataAt = oldest,
 			risk = "today's price: one low listing can drag it under for a day",
 			go = { "operations", "scenarios", { name = below[1].name, char = below[1].char, title = "Below break-even" } } })
 	end
@@ -277,7 +279,7 @@ function Next.List(now)
 				add({ title = "Post now", detail = string.format("%s: %d%% of sales from %02d:00", name(e.id), math.floor(e.share * 100 + 0.5), e.bestHour),
 					value = each and Next.Value("gain", each * a.qty, string.format("%d posted, each after the cut and expected deposits", a.qty)) or nil,
 					evidence = Next.Value("pastSales", e.gold, string.format("%d sold in 30 days, before the cut", e.sold)),
-					tier = 1,
+					tier = 1, source = "ledger",
 					risk = string.format("the selling hour comes from your last %d sales of it", e.sold),
 					go = { "ledger", "post", (function()
 						local a = postCall(e.id)
@@ -295,18 +297,18 @@ function Next.List(now)
 				add({ title = "Restock", detail = string.format("%s: %d sold this week, none left%s", name(e.id), e.sold, (value or note ~= "") and note or "; scan to price it"),
 					scanRow = row,
 					value = value, evidence = Next.Value("pastSales", e.gold, string.format("%d sold this week, after the cut", e.sold)), tier = 2,
-					risk = "whether this week's demand repeats", act = makeAct(e.id, e.sold),
+					risk = "whether this week's demand repeats", source = "ledger", act = makeAct(e.id, e.sold),
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.sold, unit = "items", title = "Restock" } } })
 			end
 			for _, e in ipairs(r.expired or {}) do
 				local each = postedEach(e.id)
 				add({ title = "Repost", detail = string.format("%s x%d came back unsold", name(e.id), e.n),
-					value = each and Next.Value("gain", each * e.n, string.format("%d reposted, each after the cut and expected deposits", e.n)) or nil, tier = 2,
+					value = each and Next.Value("gain", each * e.n, string.format("%d reposted, each after the cut and expected deposits", e.n)) or nil, tier = 2, source = "ledger",
 					risk = "it already expired once at this price",
 					go = { "ledger", "post", { name = name(e.id), id = e.id, qty = e.n, title = "Repost" } } })
 			end
 			for _, e in ipairs(r.stale or {}) do
-				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3,
+				add({ title = "Rethink", detail = string.format("%s: %d expiries in 2 weeks, cut the price or stop", name(e.id), e.times), tier = 3, source = "ledger",
 					risk = "a cut may not sell it either: check who's undercutting",
 					go = { "ledger", "post", { name = name(e.id), id = e.id, title = "Rethink" } } })
 			end
@@ -316,7 +318,7 @@ function Next.List(now)
 				local value, note, row = makeGain(e.id, e.short)
 				add({ title = "Below stock target", detail = string.format("%s: %d of %d, make or buy %d%s", name(e.id), e.held, e.target, e.short, (value or note ~= "") and note or "; scan to price it"),
 					scanRow = row,
-					value = value, evidence = Next.Value("stock", e.value, "the shortfall at market, after the cut"), tier = 2, act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
+					value = value, evidence = Next.Value("stock", e.value, "the shortfall at market, after the cut"), tier = 2, source = "ledger", act = makeAct(e.id, e.short), risk = "the stock target itself: it follows last weeks' sales",
 					go = { "operations", "scenarios", { name = name(e.id), id = e.id, qty = e.short, unit = "items", title = "Below stock target" } } })
 			end
 		end
@@ -386,7 +388,12 @@ function Next.Ranked(now, max)
 			table.insert(out, { title = string.format("%s %d items", first.title, #g),
 				detail = (#names > 0 and table.concat(names, ", ") .. more or (#g .. " items")) .. ". Biggest: " .. first.detail,
 				value = priced > 0 and Next.Value("gain", gold, priced < #g and string.format("%d of the %d items priced", priced, #g) or (first.value and first.value.basis)) or nil,
-				tier = first.tier, risk = first.risk, rows = g, found = first.found,
+				tier = first.tier, risk = first.risk, rows = g, found = first.found, kind = first.kind or first.title,
+				source = first.source, dataAt = first.dataAt, scanAt = (function()
+					local t
+					for _, e in ipairs(g) do local a = e.scanRow and e.scanRow.at or e.dataAt; if a and (not t or a < t) then t = a end end
+					return t
+				end)(),
 				-- one item's button can't do them all: the card opens its view on the whole list
 				-- the exact items behind the card, so the view opens on that shortlist and nothing else
 				go = first.go and { first.go[1], first.go[2], { title = first.title .. ", " .. #g .. " items", ids = next(ids) and ids or nil } } })
@@ -396,9 +403,71 @@ function Next.Ranked(now, max)
 	Next.Order(out)
 	local all = #out
 	for i = #out, (max or 4) + 1, -1 do out[i] = nil end
-	-- the cards shown say when another option beats making the item
+	-- the cards shown say when another option beats making the item, and what each move rests on
 	for _, e in ipairs(out) do
 		if e.rows then Next.AddGroupAlternatives(e, now) else Next.AddAlternatives(e, now) end
+		Next.AddMeta(e, now)
 	end
 	return out, all
+end
+
+-- What else you could do instead of each move, by kind: { short (on the card), long (its hover) }.
+-- A card whose options were checked (Decide.Alternatives) names the better one instead.
+Next.ALTERNATIVE = {
+	["Spend Concentration"] = { "let it cap", "Let it sit. Concentration past full is lost." },
+	["Below break-even"] = { "pause them", "Stop making them until the price is back over break-even." },
+	["Cooldown ready"] = { "leave it", "Leave it. A ready cooldown doesn't stack, so a day waited is a day lost." },
+	["Buy reagents"] = { "drop the crafts", "Take the crafts that need them out of the queue." },
+	["Post now"] = { "post off-peak", "Post later, outside the hours it usually sells." },
+	["Restock"] = { "buy it in", "Buy it in, or let it run out." },
+	["Repost"] = { "hold it", "Hold it, or sell it to a vendor." },
+	["Rethink"] = { "keep the price", "Keep posting at this price and accept the deposits." },
+	["Below stock target"] = { "lower the target", "Buy it in, or lower the stock target." },
+	["Weekly knowledge"] = { "skip the week", "Skip it this week. Weekly knowledge doesn't carry over." },
+}
+local VERDICT = {
+	sell = { "sell the reagents", "Sell the reagents instead: at today's prices it earns more than crafting." },
+	flip = { "buy out, relist", "Buy it out and relist: that pays more than crafting it." },
+	keep = { "hold off", "Hold off: at today's prices crafting it loses gold." },
+}
+
+-- the newest record TSM has logged, for how old a sales-based move's evidence is
+local function ledgerNewest()
+	local L = AuctionIQ.Ledger
+	if not (L and L.ByTime) then return nil end
+	local t
+	for _, kind in ipairs({ "Sales", "Expired" }) do
+		local ok, list = pcall(L.ByTime, kind)
+		local last = ok and list and list[#list]
+		if last and last.time and (not t or last.time > t) then t = last.time end
+	end
+	return t
+end
+
+--- What a move rests on, said on its card: horizon (over what time its gain counts), alternative
+--- (what you could do instead) and age (how old the data behind it is). Sets e.horizon,
+--- e.alternative ({ short, long }), e.age and e.meta (the three on one line).
+function Next.AddMeta(e, now)
+	if not e then return e end
+	now = now or time()
+	e.horizon = e.value and string.format("%d-day gain", Next.HORIZON_DAYS) or (e.tier == 1 and "act now" or "this week")
+	local v = e.alternatives and VERDICT[e.alternatives.verdict]
+	if not v and e.groupAlternatives then
+		for _, k in ipairs({ "sell", "flip", "keep" }) do if e.groupAlternatives.counts[k] then v = VERDICT[k]; break end end
+	end
+	e.alternative = v or Next.ALTERNATIVE[e.kind or e.title] or { "wait", "Wait and see." }
+	local at = e.scanAt or (e.scanRow and e.scanRow.at) or e.dataAt
+	local function age(s) return AuctionIQ.Scans and AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(s) or (math.floor(s / 3600) .. " hr") end
+	if at then
+		local a = age(now - at)
+		e.age = a == "just now" and "scanned just now" or ("scan " .. a .. " old")
+	elseif e.source == "ledger" then
+		local t = ledgerNewest()
+		local a = t and age(now - t)
+		e.age = not a and "your sales log" or a == "just now" and "sales log up to date" or ("sales log " .. a .. " old")
+	else
+		e.age = "live"
+	end
+	e.meta = e.horizon .. "; or " .. e.alternative[1] .. "; " .. e.age
+	return e
 end

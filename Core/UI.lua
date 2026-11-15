@@ -448,7 +448,7 @@ local function buildDashboard(p)
 		c.hit:SetScript("OnClick", function(self) if self.go then UI.Go(self.go[1], self.go[2], self.go[3]) end end)
 		c.hit:SetScript("OnEnter", function(self)
 			local lines = {}
-			for _, f in ipairs({ c.who, c.l1, c.l2 }) do
+			for _, f in ipairs({ c.who, c.l1 }) do
 				local s = f:GetText()
 				if type(s) == "string" and s ~= "" then table.insert(lines, { s }) end
 			end
@@ -467,6 +467,9 @@ local function buildDashboard(p)
 				table.insert(lines, { kind, AuctionIQ.FormatMoney(ev.amount) })
 				if ev.basis then table.insert(lines, { AuctionIQ.Theme.Color("muted", "  " .. ev.basis) }) end
 			end
+			if e and e.horizon then table.insert(lines, { "Horizon", e.horizon }) end
+			if e and e.alternative then table.insert(lines, { "Instead: " .. e.alternative[2] }) end
+			if e and e.age then table.insert(lines, { "Data", e.age }) end
 			if e and e.risk then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Biggest uncertainty: " .. e.risk) }) end
 			if self.go then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to open it in " .. UI.PlaceName(self.go) .. ".") }) end
 			if #lines > 0 then AuctionIQ.Window.Tooltip(self, lines) end
@@ -1159,8 +1162,9 @@ local function refreshDashboard()
 				c.l1:SetText(e.detail)
 				-- after its button: one line of detail, then what happened (or why not)
 				if c.l1.SetMaxLines then c.l1:SetMaxLines(2) end
+				-- what the move rests on: its horizon, the alternative and how old its data is
 				c.l2:SetText(did and T.Color(did.ok and "ok" or "bad", (did.ok and "Done: " or "Not yet: ") .. did.msg)
-					or (e.risk and T.Color("muted", "Risk: " .. e.risk)) or "")
+					or (e.meta and T.Color("muted", e.meta)) or "")
 				c.l3:SetText((not e.act and e.go) and T.Color("accent", "Review") or "")
 			else
 				c.who:SetText(i == 1 and T.Color("muted", "Nothing urgent. Nice.") or "")
