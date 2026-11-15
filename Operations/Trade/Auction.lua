@@ -263,28 +263,6 @@ function A.BagSlots(id, level)
 	return out
 end
 
--- Items in your bags that belong to a group: { [id] = count }, and the same split by item level
--- for gear: { { id, level (nil if not gear), count } }, by item then level.
-function A.Postable()
-	local out, byKey, list = {}, {}, {}
-	if not C_Container then return out, list end
-	for bag = 0, (NUM_BAG_SLOTS or 4) + 1 do
-		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
-			local info = C_Container.GetContainerItemInfo(bag, slot)
-			local level = info and info.itemID and A.Level(info.itemID, info.hyperlink)
-			if info and info.itemID and not info.isBound and AuctionIQ.Groups.Path(info.itemID, level) then
-				local id, n = info.itemID, info.stackCount or 1
-				out[id] = (out[id] or 0) + n
-				local key = id .. ":" .. (level or 0)
-				if not byKey[key] then byKey[key] = { id = id, level = level, count = 0 }; table.insert(list, byKey[key]) end
-				byKey[key].count = byKey[key].count + n
-			end
-		end
-	end
-	table.sort(list, function(a, b) if a.id ~= b.id then return a.id < b.id end return (a.level or 0) > (b.level or 0) end)
-	return out, list
-end
-
 local function isCommodity(id, level)
 	local slots = A.BagSlots(id, level)
 	if not slots[1] or not ItemLocation then
@@ -355,19 +333,7 @@ AuctionIQ.On("ITEM_SEARCH_RESULTS_UPDATED", function(_, key)
 	answered(id, key.itemLevel and key.itemLevel > 0 and key.itemLevel or nil)
 end)
 
---- How many of an item are in your bags (unbound), at one item level if given.
-function A.InBags(id, level)
-	local n = 0
-	for _, s in ipairs(A.BagSlots(id, level)) do n = n + (s.count or 1) end
-	return n
-end
-
---- Ask the AH for your auctions; calls back with { { auctionID, id, qty, price } }.
-local ownedDone
-function A.QueryOwned(done)
-	ownedDone = done
-	AH.QueryOwnedAuctions({})
-end
+-- Whenever the AH lists your auctions, remember them.
 AuctionIQ.On("OWNED_AUCTIONS_UPDATED", function()
 	local list = {}
 	for i = 1, AH.GetNumOwnedAuctions() or 0 do
@@ -379,5 +345,4 @@ AuctionIQ.On("OWNED_AUCTIONS_UPDATED", function()
 		end
 	end
 	A.RecordOwned(list)
-	if ownedDone then local f = ownedDone; ownedDone = nil; f(list) end
 end)

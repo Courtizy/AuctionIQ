@@ -17,10 +17,10 @@ ElvUI's value colour, ToxiUI's font for text and Montserrat Black for titles.
   AuctionIQ blue `#3fc7eb`. If the colour changes while you play, the windows follow it.
 - The active tab has the accent text and a 2px accent line.
 - Icons are white line drawings (2px round strokes on a 24 grid) in `Media/Tab-*.tga`, tinted in game:
-  the active tab's icon in the theme colour, the rest grey. Dashboard is a trend panel, Operations a
+  the active tab's icon in the theme colour, the rest grey. Overview is a trend panel, Crafting a
   crate, Accounting a ledger with a coin, and Settings is the gear alone (named in its tooltip).
-- The minimap button is the IQ monogram (`Media/Icon-IQ.tga`, white, tinted with the theme colour) on
-  a dark square with an accent rule for ElvUI's square minimap, or a dark circle for the default one.
+- The minimap button is the IQ monogram, as text in the title font tinted with the theme colour, on
+  a skinned square for ElvUI's square minimap, or on a dark circle (`Media/Icon-Round.tga`) for the default one.
   `Media/Icon.tga` is the fixed blue version for the AddOns list.
 - Progress bars (the advisor's recovery chance, the footer's Concentration bars) use ToxiUI's class
   gradient from its own settings, a shade of ElvUI's value colour into it, or AuctionIQ blue's

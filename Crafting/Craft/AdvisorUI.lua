@@ -802,7 +802,6 @@ function AUI.SetPane(p)
 	return pane
 end
 
-function AUI.Pane() return pane end
 --- The panel frame, for the tests.
 function AUI.Frame() return panel end
 --- The pane's title as shown, for the tests.

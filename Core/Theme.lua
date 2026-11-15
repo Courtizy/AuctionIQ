@@ -2,7 +2,7 @@
 -- shadow, the player's class colour as the accent, ToxiUI's class gradients on progress bars and
 -- Montserrat titles. Every tab uses the AuctionIQ palette (the old plum Accounting palette is kept but unused). With ElvUI (and ToxiUI on
 -- top of it) the frames keep ElvUI's templates, borders, fonts, shadows and noise, tinted with the
--- palette; /aiq theme switches to ElvUI's own colours instead. See THEME.md.
+-- palette; /aiq theme switches to ElvUI's own colours instead. See docs/theme.md.
 local _, AuctionIQ = ...
 
 local function hex(h)
@@ -43,16 +43,6 @@ local function playerClass()
 	if not UnitClass then return nil end
 	local _, class = UnitClass("player")
 	return class
-end
-
--- The player's class colour as a hex string, or nil before the game knows the class.
-function T.ClassHex(class)
-	class = class or playerClass()
-	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-	if not c then return nil end
-	if not c.r then return c.colorStr and c.colorStr:sub(3):lower() or nil end
-	local function b(v) return math.floor(v * 255 + 0.5) end
-	return string.format("%02x%02x%02x", b(c.r), b(c.g), b(c.b))
 end
 
 local function toHex(c)

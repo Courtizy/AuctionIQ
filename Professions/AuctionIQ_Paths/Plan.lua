@@ -49,22 +49,6 @@ local function categoryNames(catID)
 	return names
 end
 
---- Recipe categories in the open profession, as goals to pick from: { name, recipes = {id...} }.
-function P.Goals()
-	local byName, out = {}, {}
-	for _, id in ipairs(AuctionIQ.Scan.Recipes()) do
-		local info = C_TradeSkillUI.GetRecipeInfo(id)
-		local names = categoryNames(info and info.categoryID)
-		local name = names[1]
-		if name and name ~= "" then
-			if not byName[name] then byName[name] = { name = name, recipes = {} }; table.insert(out, byName[name]) end
-			table.insert(byName[name].recipes, id)
-		end
-	end
-	table.sort(out, function(a, b) return #a.recipes > #b.recipes end)
-	return out
-end
-
 --- The open profession's recipes in main groups, each with the spec nodes that split it (Light
 --- and Void potions, say): { { name, recipes, subs = { { name, node, recipes } } } }.
 function P.GoalGroups(prof)

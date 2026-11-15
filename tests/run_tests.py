@@ -1741,10 +1741,6 @@ C_Container = { GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end
 C_Item.GetItemInfoInstant = function(id) return id, nil, nil, nil, nil, id == 302 and 2 or 7 end
 C_Item.GetDetailedItemLevelInfo = function(link) return tonumber(link:match("item:%d+:(%d+)")) end
 STUB.prices['i:302::i645'] = { formula_value = 4000000 }""")
-_, pl = L.eval("AuctionIQ.Auction.Postable()"), L.eval("select(2, AuctionIQ.Auction.Postable())")
-pl = list(pl.values())
-check("post scan: gear split by item level, others not", [(e.id, e.level, e.count) for e in pl] == [(201, None, 20), (302, 645, 5), (302, 642, 10)])
-check("post scan: bag counts per item level", L.eval("AuctionIQ.Auction.InBags(302, 642)") == 10 and L.eval("AuctionIQ.Auction.InBags(302)") == 15)
 check("post scan: each item level priced on its own", AuctionIQ.Groups.Prices(302, None, 645).normal == 4000000 and AuctionIQ.Groups.Prices(302).normal != 4000000)
 run("C_Container, C_Item.GetItemInfoInstant, C_Item.GetDetailedItemLevelInfo = STUB.oldC, STUB.oldII, nil")
 d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
