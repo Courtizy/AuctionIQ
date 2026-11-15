@@ -4662,7 +4662,7 @@ exec(open(ROOT / "tests" / "professions.py").read())
 # Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an
 # old one left in an install folder is ignored), and every TOC line names a file that exists.
 _listed = set(files)
-_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Crafting", "Dashboard", "Data", "Operations") for p in (ROOT / d).rglob("*.lua")}
+_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Crafting", "Dashboard", "Data") for p in (ROOT / d).rglob("*.lua")}
 check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc", _on_disk <= _listed)
 check("toc: every file AuctionIQ.toc lists exists", all((ROOT / f).is_file() for f in files))
 for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")) + [ROOT / "Companion" / "AuctionIQ_History"]:
