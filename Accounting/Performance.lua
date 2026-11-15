@@ -325,6 +325,9 @@ function P.Open(x, r)
 		AuctionIQ.UI.Go("ledger", "drivers", { id = x.id, name = name, ids = { [x.id] = true }, title = "Performance: " .. name, range = r.w })
 	else
 		AuctionIQ.UI.Go("ledger", x.view or "statement")
+		-- the transaction list opens on the same period, not its own time frame
+		-- (a period running to now stays open, so sales made since still show)
+		if r and r.w then LUI.Set({ window = { from = r.w.from, to = r.w.to < time() - 300 and r.w.to or nil, label = r.w.label } }) end
 	end
 	if char then LUI.Set({ char = char }) end
 end

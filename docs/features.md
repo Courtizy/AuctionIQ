@@ -24,6 +24,7 @@
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
+- **Performance**: eight weeks of profit and what drove the change, item by item, each opening the sales or Profit drivers behind it on the same period and character (Accounting > Statements > Performance)
 - **By profession**: each profession's sales, profit, margin and the crafted stock it has made, with days to turn it, and your inventory turnover (Accounting > Statements > Performance > Profession)
 - **Companion app**: a Python script on your PC that keeps a year of your daily scanned prices, from every WoW account, and loads the last 180 days back into the game for Market trends and Risk
 - **Forecast against actual**: what each craft was expected to make and what it really sold for, so items that keep falling short drop down the rankings
