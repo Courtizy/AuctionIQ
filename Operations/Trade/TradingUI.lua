@@ -334,7 +334,7 @@ local function shoppingRows(ctx)
 	end
 	if not out[1] then return out, T.Color("muted", "Nothing to buy: the queue is empty or you hold every reagent.") end
 	return out, string.format("%d reagents to buy, about %s (planned purchase budget).", buys, money(total))
-		.. T.Color("muted", "   At the AH, the buying panel's Shop queue buys them.")
+		.. T.Color("muted", "   Buy them with TSM's Shopping at the AH.")
 end
 
 --- Restock plans: the queue as it is against a lean plan of a few days' sales, each run through the

@@ -132,7 +132,7 @@ function Next.AddGroupAlternatives(e, now)
 	return e
 end
 
--- Card buttons: each does the job itself where it can (queue the craft, search the deals).
+-- Card buttons: each does the job itself where it can (queue the craft).
 local function queueAct(label, charKey, char, row, conc, qty)
 	local e = AuctionIQ.Queue and AuctionIQ.Queue.FromScan(charKey, char, row, conc)
 	if not e then return nil end
@@ -140,18 +140,6 @@ local function queueAct(label, charKey, char, row, conc, qty)
 		AuctionIQ.Queue.AddEntry(e, qty)
 		if AuctionIQ.QueueUI and AuctionIQ.QueueUI.Show then pcall(AuctionIQ.QueueUI.Show) end
 		return true, string.format("Queued %d x %s%s for %s", qty, row.name or "?", conc and " with Concentration" or "", char.name or charKey)
-	end }
-end
-
--- Search the deals on the AH and line up the buys (the buying panel's Deals button).
-local function dealAct()
-	return { label = "Deals", run = function()
-		if AuctionHouseFrame and AuctionHouseFrame:IsShown() and AuctionIQ.AuctionUI then
-			AuctionIQ.AuctionUI.Build():Show()
-			AuctionIQ.AuctionUI.DealScan()
-			return true, "Deal search running beside the AH"
-		end
-		return false, "Open the Auction House first, then press this again"
 	end }
 end
 
@@ -261,22 +249,10 @@ function Next.List(now)
 				add({ title = "Buy reagents", detail = string.format("%d reagent%s for your queue, about %s: %s%s", #buys, #buys == 1 and "" or "s",
 					AuctionIQ.FormatMoney(total or 0), table.concat(names, ", "), #buys > 3 and ", ..." or ""), cost = total, tier = 2,
 					evidence = Next.Value("cost", total, "the queue's shopping list at the listings you've seen"),
-					risk = "listings move: the AH's Shop queue buys at what's up when you get there",
+					risk = "listings move: buy them with TSM's Shopping at what's up when you get there",
 					go = { "operations", "shopping", { title = "Buy reagents", ids = ids } } })
 			end
 		end
-	end
-
-	-- listings well under what they resell for (Deals.lua), worked out in the background after scans
-	for _, d in ipairs(AuctionIQ.Deals and AuctionIQ.Deals.Cached(now) or {}) do
-		local fresh = not d.stale
-		add({ title = "Buy and relist", detail = string.format("%s: %d at %s, each brings %s back%s", name(d.id), d.buy, AuctionIQ.FormatMoney(d.unit),
-				AuctionIQ.FormatMoney(d.each), fresh and "" or string.format("; refresh first: scanned %s ago, search it again", AuctionIQ.Scans.Age(d.age))),
-			value = fresh and Next.Value("gain", d.gain, string.format("%d bought and relisted, each after the cut and expected deposits, less what they cost", d.buy)) or nil,
-			evidence = Next.Value("cost", d.cost, "what buying them costs at the listings scanned"),
-			tier = 2, act = dealAct(),
-			risk = string.format("the listing still being there (scanned %s ago) and a week's sales: %s", AuctionIQ.Scans.Age(d.age), AuctionIQ.Demand and AuctionIQ.Demand.Text(d.demand) or "?"),
-			go = { "operations", "scenarios", { name = name(d.id), id = d.id, qty = d.buy, unit = "items", title = "Buy and relist" } } })
 	end
 
 	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then

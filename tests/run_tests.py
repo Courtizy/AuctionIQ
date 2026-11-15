@@ -1896,10 +1896,6 @@ row205 = [r for r in AuctionIQ.Queue.ShoppingList()[0].values() if r.itemID == 2
 if row205 and row205[0].buy > 0:
     tip = [plain(l) for l in AuctionIQ.QueueUI.CostLines(row205[0]).values()]
     check("shopping: over the operation's max price is flagged", row205[0].overMax and row205[0].underMax == 0 and any("Max price" in t for t in tip))
-    db = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 205, need = 5, have = 0, buy = 5 }, { { price = 90, qty = 2 }, { price = 15000, qty = 50 } })")
-    check("shopping: buys only what's under the operation's max price", db.action == "buy" and db.qty == 2 and db.short == 3)
-    db = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 205, need = 5, have = 0, buy = 5 }, { { price = 15000, qty = 50 } })")
-    check("shopping: skips when every listing is over the max price", db.action == "skip" and "max price" in db.why)
 else:
     check("shopping: the queue needs item 205 to test the max price", False)
 run("AuctionIQ.Depth.Forget(205); AuctionIQ.Queue.Clear()")
@@ -2197,21 +2193,6 @@ if prow:
     labels = [plain(x[1]) for x in det.rows.values()]
     check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
           "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels)
-check("auction panel builds", AuctionIQ.AuctionUI.Build() is not None)
-# A long buy list scrolls, and every row (not only the first) explains itself on hover
-run("""
-local plan = AuctionIQ.AuctionUI.Plan()
-for k in pairs(plan) do plan[k] = nil end
-for i = 1, 25 do table.insert(plan, { id = 302, d = { action = "skip", qty = 2, unit = 90000, why = "row " .. i } }) end
-AuctionIQ.AuctionUI.Refresh()
-""")
-h1 = [plain(l[1]) for l in L.eval("AuctionIQ.AuctionUI.HoverLines(1)").values()]
-check("buying hover: the why in full, what it buys and the usual price",
-      "Skip: row 1" in h1 and "Buys" in h1 and "Usual price (aiqbuy)" in h1)
-check("auction hover: the last row has its own story too", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(18)")[2][1]) == "Skip: row 18")
-run("AuctionIQ.AuctionUI.Build().scripts.OnMouseWheel(nil, -1)")
-check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(1)")[2][1]) == "Skip: row 4")
-run("local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; AuctionIQ.AuctionUI.Refresh()")
 tl = [plain(l[1]) for l in AuctionIQ.TooltipLines("i:302").values()]
 check("tooltip: shows how AuctionIQ will post it", "Posting" in tl and "  Min / normal / max" in tl)
 bef = L.eval("(function() local be, row = AuctionIQ.BreakEvenFor(302); return { be = be, has = row ~= nil } end)()")
@@ -3483,35 +3464,6 @@ if AuctionIQ.db.ledger then AuctionIQ.db.ledger.days = STUB.daysKeep or {} end
 AuctionIQ.Ledger.ClearStats(); AuctionIQ.UI.SetRange("1M")
 debugprofilestop = STUB.clockKeep""")
 
-# Shopping: buy the queue's reagents at the AH, quoted first, confirmed on a second click
-run("""STUB.buys = {}
-C_AuctionHouse.StartCommoditiesPurchase = function(id, n) table.insert(STUB.buys, { 'start', id, n }) end
-C_AuctionHouse.ConfirmCommoditiesPurchase = function(id, n) table.insert(STUB.buys, { 'confirm', id, n }) end
-STUB.prices['i:981'] = { mat = 10000 }; STUB.prices['i:982'] = { mat = 10000 }; AuctionIQ.Prices.ClearCache()
-AuctionIQ.AuctionUI.Build()""")
-d1 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 981, need = 5, have = 1, buy = 4 }, { { price = 10500, qty = 10 } })")
-d2 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 982, need = 5, have = 0, buy = 5 }, { { price = 20000, qty = 10 } })")
-check("shopping: buys at the live price, skips one far over the usual price", d1.action == "buy" and d1.qty == 4 and d1.unit == 10500
-      and d2.action == "skip" and "100%" in d2.why)
-d3 = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 981, need = 10, have = 0, buy = 10 }, { { price = 10500, qty = 4 } })")
-check("shopping: only the listed units are priced, the rest shown as short", d3.action == "buy" and d3.qty == 4 and d3.cost == 42000 and d3.short == 6)
-run("""STUB.oldSL = AuctionIQ.Queue.ShoppingList; STUB.oldSearch = AuctionIQ.Auction.Search
-AuctionIQ.Queue.ShoppingList = function() return { { itemID = 981, need = 5, have = 1, buy = 4 }, { itemID = 982, need = 5, have = 0, buy = 5 } } end
-AuctionIQ.Auction.Search = function(id, done) done(id == 981 and { { price = 10500, qty = 10 } } or { { price = 20000, qty = 10 } }) end
-AuctionIQ.AuctionUI.ShopScan(); for i = 1, 5 do STUB.RunTimers() end""")
-plan = L.eval("AuctionIQ.AuctionUI.Plan()")[0]
-check("shopping: Shop queue lists the queue's buys first", plan[1].id == 981 and plan[1].d.action == "buy" and plan[2].d.action == "skip")
-run("AuctionIQ.AuctionUI.BuyNext()")
-check("shopping: the first click asks for a quote, nothing bought yet", L.eval("#STUB.buys") == 1 and L.eval("STUB.buys[1][1]") == "start" and L.eval("STUB.buys[1][3]") == 4)
-run("STUB.Fire('COMMODITY_PRICE_UPDATED', 10500, 42000)")
-run("AuctionIQ.AuctionUI.BuyNext()")
-check("shopping: the second click confirms the quoted buy", L.eval("STUB.buys[2][1]") == "confirm" and not plan[1].done)
-run("STUB.Fire('COMMODITY_PURCHASE_SUCCEEDED')")
-check("shopping: done only once the AH says it went through", plan[1].done and not plan[1].failed and "bought" in plan[1].d.why)
-run("""AuctionIQ.Queue.ShoppingList = STUB.oldSL; AuctionIQ.Auction.Search = STUB.oldSearch
-local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end
-C_AuctionHouse.StartCommoditiesPurchase = nil; C_AuctionHouse.ConfirmCommoditiesPurchase = nil; AuctionIQ.Depth.Forget()""")
-
 # UI pass: visible scroll position
 run("""STUB.sb = AuctionIQ.Window.ScrollBar(UIParent, 100, -10, 100)
 STUB.sb:Set(17, 17, 83)""")
@@ -3795,68 +3747,6 @@ n1 = L.eval("STUB.refreshes")
 run("AuctionIQ.UI.Refresh = STUB.oldRefresh")
 check("ui: opening a page refreshes it once", n1 == 1)
 
-
-# Deals: listings well under what they resell for ---------------------------------------------
-dl = L.eval("""(function()
-  local S, Dl, out = AuctionIQ.Scans, AuctionIQ.Deals, {}
-  local G = 10000
-  -- resells for 100g (TSM market and the post price), 5 sold a day in the region
-  STUB.prices["i:800"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
-  STUB.prices["i:801"] = { formula_value = 100 * G, mat = 100 * G, sold = 5 }
-  AuctionIQ.Prices.ClearCache(); Dl.Clear()
-  S.Record(800, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
-  local d = Dl.Evaluate(800)
-  out.buy, out.unit, out.each, out.gain, out.stale, out.commodity = d and d.buy, d and d.unit, d and d.each, d and d.gain, d and d.stale, d and d.commodity
-  -- one listing at 80g: 95g back is under a 30% return
-  S.Record(801, { { price = 80 * G, qty = 1 } }, false)
-  local n, why = Dl.Evaluate(801); out.fair, out.fairWhy = n == nil, why
-  S.Record(801, { { price = 40 * G, qty = 1 } }, false)
-  local g = Dl.Evaluate(801); out.gearBuy, out.gearCommodity = g and g.buy, g and g.commodity
-  -- holding a week of sales already: nothing to buy
-  local oldHeld = AuctionIQ.Par.Held
-  AuctionIQ.Par.Held = function(id) return id == 800 and 40 or oldHeld(id) end
-  local h, hwhy = Dl.Evaluate(800); out.heldNone, out.heldWhy = h == nil, hwhy
-  AuctionIQ.Par.Held = oldHeld
-  -- the list: biggest gain first, kept until a scan is added
-  local list = Dl.List()
-  out.n, out.first = #list, list[1] and list[1].id
-  out.kept = Dl.List() == list
-  S.Record(801, { { price = 41 * G, qty = 1 } }, false)
-  out.redone = Dl.List() ~= list
-  -- an old scan says to search again; a much older one is no deal
-  STUB.now = STUB.now + 2 * 3600; out.oldStale = Dl.Evaluate(800).stale
-  STUB.now = STUB.now + 5 * 3600; out.gone = Dl.Evaluate(800) == nil
-  STUB.now = STUB.now - 7 * 3600
-  -- the AH now: the units still under the deal's most per unit, up to the deal's quantity
-  local live = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 50 * G, qty = 3 }, { price = 60 * G, qty = 2 }, { price = 95 * G, qty = 10 } }, true)
-  out.liveAction, out.liveQty, out.liveCost = live.action, live.qty, live.cost
-  local moved = AuctionIQ.AuctionUI.DecideDeal({ id = 800, buy = 5, each = 95 * G }, { { price = 90 * G, qty = 3 } }, true)
-  out.movedAction, out.movedWhy = moved.action, moved.why
-  local item = AuctionIQ.AuctionUI.DecideDeal({ id = 801, buy = 1, each = 95 * G }, { { price = 40 * G, qty = 1 } }, false)
-  out.itemAction, out.itemWhy = item.action, item.why
-  -- the Dashboard: worked out in the background, then a card with the gain
-  Dl.Clear(); AuctionIQ.Next.List()
-  for i = 1, 20 do STUB.RunTimers() end
-  for _, e in ipairs(AuctionIQ.Next.List()) do
-    if e.title == "Buy and relist" and e.go[3].id == 800 then out.card, out.cardGold = e.detail, e.gold end
-  end
-  return out
-end)()""")
-check("deals: a commodity under value buys the ladder's units that stay under a 30% return on what one brings back (95g after the cut)",
-      dl.buy == 1 and dl.unit == 500000 and dl.each == 950000 and dl.gain == 450000 and dl.commodity and not dl.stale)
-check("deals: a listing that doesn't return 30% is no deal", dl.fair and "not under value" in dl.fairWhy)
-check("deals: an item that isn't a commodity is one listing, the cheapest", dl.gearBuy == 1 and not dl.gearCommodity)
-check("deals: with a week of sales already held, there's nothing to buy", dl.heldNone and "week" in dl.heldWhy)
-check("deals: the list puts the biggest gain first and is kept until a scan is added", dl.n == 2 and dl.first == 801 and dl.kept and dl.redone)
-check("deals: a scan over 30 minutes old says to search again; over 6 hours it's no deal", dl.oldStale and dl.gone)
-check("deals at the AH: buys the units still under the deal's price (3 at 50g, 2 at 60g)", dl.liveAction == "buy" and dl.liveQty == 5 and dl.liveCost == 2700000)
-check("deals at the AH: a listing that moved over the price is skipped, saying so", dl.movedAction == "skip" and "gone" in dl.movedWhy)
-check("deals at the AH: an item that isn't a commodity is left to the AH's own list", dl.itemAction == "skip" and "not a commodity" in dl.itemWhy)
-run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; AuctionIQ.Deals.Clear(); SlashCmdList.AUCTIONIQ('deals'); for i = 1, 20 do STUB.RunTimers() end; AuctionIQ.Print = STUB.oldPrint")
-pd = [str(t) for t in L.globals().STUB.printed.values()]
-check("/aiq deals prints the deals, biggest first, once worked out in the background", any("deals, biggest first" in t for t in pd) and any("each brings" in t for t in pd))
-check("deals on the Dashboard: a card with the gain from buying and relisting", dl.card is not None and "each brings" in dl.card and dl.cardGold == 450000)
-run("STUB.prices['i:800'], STUB.prices['i:801'] = nil, nil; AuctionIQ.db.scans[800], AuctionIQ.db.scans[801] = nil, nil; AuctionIQ.Deals.Clear(); AuctionIQ.Prices.ClearCache()")
 
 # Market: trend, volatility and liquidity per item and group --------------------------------------
 import math as _m
@@ -4162,36 +4052,34 @@ check("history: without the companion's file, just the scans", hs.gone)
 # Capital allocation: where gold earns the most a day for the gold tied up ------------------------
 cp = L.eval("""(function()
   local Cp, out, G = AuctionIQ.Capital, {}, 10000
-  local AV, Dl, Sc = AuctionIQ.AnalyticsViews, AuctionIQ.Deals, AuctionIQ.Scan
-  local oldS, oldC, oldD, oldM = AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney
+  local AV, Sc = AuctionIQ.AnalyticsViews, AuctionIQ.Scan
+  local oldS, oldD, oldM = AV.Scenarios, Sc.DailyUnits, GetMoney
   -- a craft: 10 crafts at 10g of reagents each, 5g profit a craft, 2 sell a day (5 days)
   AV.Scenarios = function() return { { id = 870, name = "Flask", char = "Ann", profit = 5 * G,
     suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10 } } } },
     -- a craft with no sales rate isn't counted: there's no telling when the gold comes back
     { id = 871, name = "Odd", char = "Ann", profit = 5 * G, suggest = { n = 2, scenarios = { expected = { cost = 20 * G, items = 2 } } } } } end
   Sc.DailyUnits = function(id) return id == 870 and 2 or 0 end
-  -- a deal: 4 units for 40g, 12g gain, 4 sell a day (1 day)
-  Dl.Cached = function() return { { id = 872, buy = 4, cost = 40 * G, gain = 12 * G, demand = { units = 4 } } } end
   local list = Cp.Opportunities()
-  out.n, out.first, out.second = #list, list[1].kind, list[2] and list[2].kind
-  out.dealRate, out.craftRate, out.craftDays = list[1].rate, list[2].rate, list[2].days
-  -- 100g: the deal first (40g), then 6 of the 10 crafts (60g)
-  local plan = Cp.Allocate(list, 100 * G)
-  out.dealTake, out.craftTake, out.spent, out.idle, out.gain = list[1].take, list[2].take, plan.spent, plan.idle, plan.gain
+  out.n, out.first = #list, list[1] and list[1].kind
+  out.craftRate, out.craftDays = list[1].rate, list[1].days
+  -- 80g: 8 of the 10 crafts (10g each), 0 idle
+  local plan = Cp.Allocate(list, 80 * G)
+  out.craftTake, out.spent, out.idle, out.gain = list[1].take, plan.spent, plan.idle, plan.gain
   out.perDay = plan.perDay
   -- the view: your gold less 10% back, by default
   GetMoney = function() return 200 * G end
   local rows, foot = AuctionIQ.MarketsUI.VIEWS.capitalplan.rows({ now = STUB.now, keepName = function() return true end })
   out.rows, out.foot = #rows, foot
   Cp.StepReserve(1); out.reserve = Cp.Reserve(); Cp.StepReserve(-1); out.back = Cp.Reserve()
-  AV.Scenarios, Dl.Cached, Sc.DailyUnits, GetMoney = oldS, oldC, oldD, oldM
+  AV.Scenarios, Sc.DailyUnits, GetMoney = oldS, oldD, oldM
   return out
 end)()""")
-check("capital: crafts with a sales rate and deals, best gold a day per gold in first",
-      cp.n == 2 and cp.first == "deal" and cp.second == "craft" and abs(cp.dealRate - 0.3) < 1e-9 and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
-check("capital: the gold goes to the best return first, whole crafts at a time", cp.dealTake == 4 and cp.craftTake == 6 and cp.spent == 100 * 10000 and cp.idle == 0
-      and cp.gain == 42 * 10000 and abs(cp.perDay - (12 + 30 / 5) * 10000) < 1e-6)
-check("Capital allocation: a row each, and a footer with the gold in, the profit and what's idle", cp.rows == 2 and "keeping 10% back" in plain(cp.foot) and "idle" in plain(cp.foot))
+check("capital: only crafts with a sales rate count, at gold a day per gold in",
+      cp.n == 1 and cp.first == "craft" and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
+check("capital: the gold goes in whole crafts at a time", cp.craftTake == 8 and cp.spent == 80 * 10000 and cp.idle == 0
+      and cp.gain == 40 * 10000 and abs(cp.perDay - 40 / 5 * 10000) < 1e-6)
+check("Capital allocation: a row each, and a footer with the gold in, the profit and what's idle", cp.rows == 1 and "keeping 10% back" in plain(cp.foot) and "idle" in plain(cp.foot))
 check("Capital allocation: the reserve steps 10% -> 25% and back", abs(cp.reserve - 0.25) < 1e-9 and abs(cp.back - 0.1) < 1e-9)
 
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
@@ -4360,8 +4248,6 @@ run("STUB.sellThrough = {}")
 
 # One theme across the addon: every window's main action is the filled button, and the main blocks
 # carry the accent line or a shaded card
-run('AuctionIQ.AuctionUI.Build()')
-check("theme: the Auction window builds with its main button filled", L.eval("AuctionIQ.AuctionUI.Build() ~= nil"))
 check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2, AuctionIQ.Theme.Card(CreateFrame('Frame'), 0, 0, 10, 10, true)) ~= nil"))
 check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
 

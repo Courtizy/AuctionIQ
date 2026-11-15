@@ -15,12 +15,10 @@
 
 **Trade**
 - **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules
-- **Buy beside the Auction House** what TSM doesn't know to buy: your craft queue's reagents, priced by walking the listings and skipped when they're 25% over the usual price, and the top deals, each one click for a quote and one to confirm. Post and cancel with TSM's Auctioning tab: Ready to post reads the same operations, so the prices match, and adds the whole Warband's live auctions to each cap
 - **A craft queue and shopping list** for every character, with stock targets that cover a week of sales
-- **Deals**: listings well under what the item resells for, from everything the AH has shown you (your searches, TSM's full scans), with the Deals button beside the AH to search them again and buy
 - **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted (Crafting > Trade)
 - **Risk**: for what you hold and have up, how far its price could fall while it sells (from its volatility) and the gold exposed and at risk (Crafting > Trade)
-- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts and deals, with your gold split best return first (Crafting > Trade)
+- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts, with your gold split best return first (Crafting > Trade)
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
@@ -58,7 +56,7 @@
 3. **Rank your recipes.** With a profession open, type `/aiq scan`. Every recipe is listed by gold a day, with and without Concentration.
 4. **Read the craft card.** Pick a recipe and the card beside the profession window shows the quality to aim for, the reagents to use, the profit and where that estimate could go wrong. Flip the Concentrate switch to compare.
 5. **Queue it.** Add the craft to the queue. The shopping list fills in with the reagents you're missing.
-6. **Buy and post at the AH.** The panel beside the Auction House buys the shopping list, one click each. Post what you've made with TSM's Post scan.
+6. **Buy and post at the AH.** Buy the shopping list with TSM's Shopping tab. Post what you've made with TSM's Post scan.
 7. **Check the Overview** (`/aiq`) whenever you log in: it lists what deserves your attention, ranked by what acting now is expected to add.
 
 ## Chat commands
@@ -77,7 +75,6 @@
 `/aiq minimap` - hide or show the minimap button<br>
 `/aiq cleanup` - let go of speed caches and run the saved data cleanup now (the saved part also runs at every logout)<br>
 `/aiq prune 365` - remove AuctionIQ history older than 365 days, after showing what goes and asking<br>
-`/aiq deals` - listings well under what they resell for, biggest gain first<br>
 `/aiq orders` - what the advisor makes of each crafting order, kept in the saved variables for a bug report<br>
 `/aiq perf` - memory and time per event, for reporting slowness
 
