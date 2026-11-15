@@ -1615,6 +1615,48 @@ pf = {e.id: e for e in AuctionIQ.Forecast.Performance().values()}[302]
 check("forecast: made, sold, sold-each against forecast, realized profit",
       pf.made == 4 and pf.sold == 2 and abs(pf.accuracy - 0.7125) < 1e-6 and abs(pf.realized - 3700000) < 1 and abs(pf.days - 1.4583) < 0.01)
 check("forecast: no shading before anything has sold", AuctionIQ.Forecast.Shade(999) is None)
+# Historical costing: cost booked at the craft, never revalued; sales matched once each; unsold kept apart
+hc = L.eval("""(function()
+  local Fc, out = AuctionIQ.Forecast, {}
+  local saved = AuctionIQ.db.batches
+  AuctionIQ.db.batches = {}
+  local oldCE = AuctionIQ.Groups.CostEach
+  AuctionIQ.Groups.CostEach = function(id) return id == 302 and 500000 or nil end
+  out.craft = Fc.Record(302, 1, { cost = 900000 }).costFrom
+  out.est = Fc.Record(302, 2, {}).costFrom
+  AuctionIQ.Groups.CostEach = function() return nil end
+  local m = Fc.Record(302, 1, {})
+  out.missing, out.missingCost = m.costFrom, m.cost
+  AuctionIQ.Groups.CostEach = oldCE
+  for _, b in ipairs(AuctionIQ.db.batches) do b.at = STUB.now - 3 * 86400 end
+  Fc.Clear()
+  local function perf() for _, e in ipairs(Fc.Performance()) do if e.id == 302 then return e end end end
+  local a = perf()
+  out.estimated, out.missingN, out.unsold, out.sold, out.made = a.estimated, a.missing, a.unsold, a.sold, a.made
+  out.realized1 = a.realized
+  -- today's prices change: what's booked stays as it was
+  local oldGet = AuctionIQ.Prices.Get
+  AuctionIQ.Prices.Get = function(k, s) return 99999999 end
+  Fc.Clear()
+  out.realized2 = perf().realized
+  AuctionIQ.Prices.Get = oldGet
+  -- matching again from TSM's records gives the same answer: no sale counted twice
+  Fc.Clear(); local s1 = perf().sold
+  Fc.Clear(); local s2 = perf().sold
+  out.same = s1 == s2
+  local total = 0
+  for _, r in ipairs(AuctionIQ.Ledger.Records("Sales")) do if r.id == 302 then total = total + r.quantity end end
+  out.atMostOnce = s1 + Fc.OtherSold(302) <= total
+  AuctionIQ.db.batches = saved
+  Fc.Clear()
+  return out
+end)()""")
+check("costing: a craft's cost is booked from its reagents, else marked an estimate, else missing",
+      hc.craft == "craft" and hc.est == "estimate" and hc.missing is None and hc.missingCost is None)
+check("costing: estimated and missing costs are counted, and unsold stock is kept out of realized",
+      hc.estimated == 1 and hc.missingN == 1 and hc.unsold == hc.made - hc.sold)
+check("costing: booked costs don't move when today's prices do", abs(hc.realized1 - hc.realized2) < 1)
+check("costing: matching sales again gives the same result, and no sale goes to more than one batch", hc.same and hc.atMostOnce)
 # Batch decisions: crafts link back to what was queued; the miss splits into price, sell-through, reagents, yield
 run("""AuctionIQ.db.decisions = { { key = 1, at = STUB.now - 3 * 86400, item = 302, name = 'Test Elixir', char = 'Seyko', n = 4,
   itemsEach = 2, costEach = 2000000, netEach = 4000000, priceEach = 4210527, daily = 1, crafts = 2, made = 4, paid = 4000000,
