@@ -45,7 +45,7 @@ function D.AccountParts(row, acc)
 		-- worked back from what an item kept after the cut
 		local price, from = a.price, "scan"
 		if not price then
-			price = row and row.item and AuctionIQ.Prices and AuctionIQ.Prices.Get and AuctionIQ.Prices.Get("chvalue", "i:" .. row.item)
+			price = row and row.item and AuctionIQ.Prices and AuctionIQ.Prices.Get and AuctionIQ.Prices.Get("aiqvalue", "i:" .. row.item)
 			from = price and "market" or nil
 			if not price and a.unit and a.unit > 0 then price, from = a.unit / (AuctionIQ.AH_CUT or 0.95), "kept" end
 		end
@@ -156,9 +156,9 @@ end
 
 local function raw(name, id) return AuctionIQ.Prices.Raw and AuctionIQ.Prices.Raw(name, id) end
 
---- Which TSM number chvalue mostly comes from, following its formula: min(listing now, post price).
+--- Which TSM number aiqvalue mostly comes from, following its formula: min(listing now, post price).
 --- "listing" (realm's lowest listing), "market" (realm market value, the 80% floor), "region" (a region
---- average), or nil without TSM. Only a label: a custom chvalue source may differ.
+--- average), or nil without TSM. Only a label: a custom aiqvalue source may differ.
 function D.PriceBasis(id)
 	if not id or not AuctionIQ.Prices.Available() then return nil end
 	local minb, mkt, rmkt, rsale = raw("dbminbuyout", id), raw("dbmarket", id), raw("dbregionmarketavg", id), raw("dbregionsaleavg", id)
@@ -841,7 +841,7 @@ function D.EntryModel(e)
 	if not (e and e.item and AuctionIQ.Queue and AuctionIQ.Queue.ScanRowFor) then return nil end
 	local _, _, row = AuctionIQ.Queue.ScanRowFor(e.item)
 	local acc = row and ((e.concentration and row.concAccounts) or row.accounts)
-	local price = acc and acc.price or AuctionIQ.Prices.Get("chvalue", "i:" .. e.item)
+	local price = acc and acc.price or AuctionIQ.Prices.Get("aiqvalue", "i:" .. e.item)
 	if not price then return nil end
 	local items = acc and ((acc.made or 1) + (acc.extraItems or 0)) or (row and row.made) or 1
 	return { item = e.item, items = items, price = price, deposit = acc and acc.deposit or 0,
@@ -1032,7 +1032,7 @@ function D.Alternatives(acc, opts)
 		stale[#stale + 1] = "the profession scan is " .. (AuctionIQ.Scans and AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(now - opts.at) or "old") .. " old: rescan it"
 	end
 	-- no sale value in the scan, and none now either (an older scan may not have kept it)
-	local priced = (acc.sales or 0) > 0 or (opts.item and AuctionIQ.Prices.Get("chvalue", "i:" .. opts.item))
+	local priced = (acc.sales or 0) > 0 or (opts.item and AuctionIQ.Prices.Get("aiqvalue", "i:" .. opts.item))
 	if not priced then stale[#stale + 1] = "there's no price for the item: scan the AH or check TSM" end
 	local verdict = #stale > 0 and "refresh" or best.key
 	return { options = options, best = best, runnerUp = second, verdict = verdict, even = even, stale = stale, cs = cs,

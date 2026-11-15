@@ -12,7 +12,7 @@
 --   vendorsell    what a vendor pays
 --   avgbuy, avgsell      your own average buy and sale price (ledger)
 --   numexpires    times it expired since it last sold (ledger)
---   chvalue, chmat       AuctionIQ's sell value and buy price
+--   aiqvalue, aiqbuy       AuctionIQ's sell value and buy price
 --   any custom source you define (imported from TSM's custom sources or added yourself)
 local _, AuctionIQ = ...
 
@@ -205,7 +205,7 @@ local function source(name, ctx, ev)
 		return p and p.each
 	end
 	if name == "avgsell" then return AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.AvgSell and AuctionIQ.Ledger.AvgSell(id) or nil end
-	if name == "chvalue" or name == "chmat" then return AuctionIQ.Prices.Get(name, item) end
+	if name == "aiqvalue" or name == "aiqbuy" or name == "aiqpost" or AuctionIQ.Prices.LEGACY[name] then return AuctionIQ.Prices.Get(name, item) end
 	if TSM_ONLY[name] then
 		return AuctionIQ.Prices.Raw(name, id, level)
 	end

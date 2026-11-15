@@ -50,9 +50,9 @@ COINS = {"Gold": "g", "Silver": "s", "Copper": "c"}
 def letters(t): return re.sub(r"\|TInterface\\MoneyFrame\\UI-(Gold|Silver|Copper)Icon[^|]*\|t", lambda m: COINS[m.group(1)], t)
 check("money format", (fm(123456789), fm(125000), fm(5000), fm(50), fm(-20000)) == ("12,345g", "12g 50s", "50s", "50c", "-2g"))
 
-check("chvalue falls back to the formula when the custom source is missing", AuctionIQ.Prices.Get("chvalue", "i:100") == 5000000)
+check("aiqvalue falls back to the formula when the custom source is missing", AuctionIQ.Prices.Get("aiqvalue", "i:100") == 5000000)
 check("craft profit = value after cut - crafting cost", AuctionIQ.Prices.CraftProfit("i:100") == 5000000 * 0.95 - 1000000)
-check("no price for unknown item", AuctionIQ.Prices.Get("chvalue", "i:7") is None)
+check("no price for unknown item", AuctionIQ.Prices.Get("aiqvalue", "i:7") is None)
 
 run('STUB.tooltipLink = "|cff|Hitem:100::|h[Potion]|h|r"; STUB.tooltipFn(GameTooltip)')
 lines = [letters(l) for l in L.globals().GameTooltip.lines.values()]
@@ -124,7 +124,7 @@ check("sell hover shows realm and region prices", ("   MV  Market Value, realm",
 pl = [(plain(l[1]).strip(), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, best, 5).values()]
 check("profit hover reads like a statement: revenue, costs, profit, return", ("Revenue", "average per craft") in pl and ("Reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on cost  profit / reagents", "34%") in pl)
 # Expected proceeds: the source in the notes, and rows posting would skip
-check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(AuctionIQ.AdvisorUI.SourceLine(res)))
+check("advisor: the proceeds column is called Expected proceeds", "TSM price (aiqvalue) after the 5% cut" in plain(AuctionIQ.AdvisorUI.SourceLine(res)))
 run("""STUB.oldGP = AuctionIQ.Groups.Prices
 AuctionIQ.Groups.Prices = function(id) return { min = 4000000, post = true, op = "Crafted", priceReset = "none" } end""")
 AuctionIQ.AdvisorUI.Render(res)
@@ -223,7 +223,7 @@ check("queue popup: More holds plan comparison and Clear, nothing that adds", [m
 # Order book: buying a quantity walks up the listings (Data/Depth.lua)
 D = AuctionIQ.Depth
 d = D.Cost(205, 3)
-check("order book: with no listings seen, cost is chmat x quantity", d.cost == 30000 and d.source == "chmat")
+check("order book: with no listings seen, cost is aiqbuy x quantity", d.cost == 30000 and d.source == "aiqbuy")
 run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 5 }, { price = 10000, qty = 2 }, { price = 5000, qty = 9, mine = true } })")
 d = D.Cost(205, 3)
 check("order book: walks the AH search, cheapest first, skipping your own", d.cost == 2 * 10000 + 15000 and d.source == "ah" and d.short == 0 and d.first == 10000)
@@ -238,7 +238,7 @@ check("one reagent price: with no listings seen it's your price source, as befor
 tip = [plain(l) for l in AuctionIQ.QueueUI.CostLines(row).values()]
 check("shopping cost hover says how far above the cheapest", tip[0] == "Buying 3 costs 3g 50s" and "17% above the cheapest listing" in tip and tip[-1] == "From your AH search")
 run("STUB.now = STUB.now + 16 * 60")
-check("order book: an old AH search is dropped", D.Cost(205, 3).source == "chmat")
+check("order book: an old AH search is dropped", D.Cost(205, 3).source == "aiqbuy")
 # a saved scan keeps a ladder after the live search expires
 run("AuctionIQ.db.scans = {}; AuctionIQ.db.scans[205] = { at = STUB.now - 600, ladder = { { 1, 9000 }, { 10, 12000 }, { 50, 20000 } } }")
 d = D.Cost(205, 30)
@@ -1570,7 +1570,7 @@ run("AuctionIQ.UI.SetRange('All')")
 check("dashboard: All reaches back past TSM's year", AuctionIQ.UI.DashboardData().summary.sales == 10450000)
 check("activity log: gone from the addon (the Dashboard shows Recommendations only)", L.eval("AuctionIQ.Ledger.Activity == nil and AuctionIQ.Ledger.ActivityRecent == nil and AuctionIQ.Ledger.ActivityNow == nil"))
 inv = {e.id: e for e in LG.Inventory().values()}
-v302 = AuctionIQ.Prices.Get("chvalue", "i:302")
+v302 = AuctionIQ.Prices.Get("aiqvalue", "i:302")
 check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4 and inv[302].bags == 3 and inv[302].mail == 1 and inv[301].warband == 2 and inv[302].value == v302 * 4)
 w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
 LG.Snapshot()
@@ -1928,7 +1928,7 @@ ht = [plain(x[1]).strip() for x in AuctionIQ.Advisor.HeldText(hl).values()]
 check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
       and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
 check("held basis: a held reagent is worth its sale price less the cut, deposits and waiting (Expect.Value)",
-      L.eval("(function() local v = AuctionIQ.Prices.SellValue(201); local c = AuctionIQ.Prices.Get('chvalue', 'i:201'); return v and c and v <= c * AuctionIQ.AH_CUT + 0.5 end)()") is not False)
+      L.eval("(function() local v = AuctionIQ.Prices.SellValue(201); local c = AuctionIQ.Prices.Get('aiqvalue', 'i:201'); return v and c and v <= c * AuctionIQ.AH_CUT + 0.5 end)()") is not False)
 run("STUB.oldHeld = AuctionIQ.Prices.Held; AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end")
 cres = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
 cs = AuctionIQ.Advisor.CraftOrSell(cres, cres.best)
@@ -1955,7 +1955,7 @@ rb = L.eval("""(function()
   AuctionIQ.Prices.Held = old
   return { lines = lines, total = total, short = short, book = book, profit = profit } end)()""")
 rbl = [plain(l[1]).strip() for l in rb.lines.values()]
-v205 = AuctionIQ.Prices.Get("chvalue", "i:205")
+v205 = AuctionIQ.Prices.Get("aiqvalue", "i:205")
 check("reagent breakdown: yours at what they'd sell for after the cut, the rest at the buy price, under one total",
       rbl[0] == "Reagents" and rbl[-1] == "Total reagents" and "Opportunity cost (2 yours)" in rbl and "Stock" in rbl
       and abs(rb.total - (2 * (v205 * AuctionIQ.AH_CUT if v205 else 10000) + 30000)) < 1)
@@ -1999,7 +1999,7 @@ lv = L.eval("""(function()
   local saved = { name = 'x', profit = 20000, cost = 30000, perDay = 40000,
     accounts = { sales = 50000, mcGold = 0, resGold = 0, profit = 20000, cost = 30000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }
   local old = AuctionIQ.Prices.Get
-  AuctionIQ.Prices.Get = function(k, l, ...) if l == "i:201" and (k == "chvalue") then return 20000 end return old(k, l, ...) end
+  AuctionIQ.Prices.Get = function(k, l, ...) if l == "i:201" and (k == "aiqvalue") then return 20000 end return old(k, l, ...) end
   local oldH = AuctionIQ.Prices.Held
   AuctionIQ.Prices.Held = function(id) if id == 201 then return 3 end return 0 end
   local v = AuctionIQ.Scan.Live(saved)
@@ -2207,7 +2207,7 @@ AuctionIQ.AuctionUI.Refresh()
 """)
 h1 = [plain(l[1]) for l in L.eval("AuctionIQ.AuctionUI.HoverLines(1)").values()]
 check("buying hover: the why in full, what it buys and the usual price",
-      "Skip: row 1" in h1 and "Buys" in h1 and "Usual price (chmat)" in h1)
+      "Skip: row 1" in h1 and "Buys" in h1 and "Usual price (aiqbuy)" in h1)
 check("auction hover: the last row has its own story too", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(18)")[2][1]) == "Skip: row 18")
 run("AuctionIQ.AuctionUI.Build().scripts.OnMouseWheel(nil, -1)")
 check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(1)")[2][1]) == "Skip: row 4")
@@ -2626,7 +2626,7 @@ AuctionIQ.Ledger.Available = function() return true end
 AuctionIQ.Ledger.SaleTimes = function() return { { id = 100, sold = 9, gold = 20000000, share = 0.9, bestHour = tonumber(date('%H', STUB.now)) } } end
 AuctionIQ.TradingUI.Advice = function() return { [100] = { action = 'post', qty = 6, reason = 'test' } } end""")
 pn = [e for e in AuctionIQ.Next.List().values() if e.title == "Post now"]
-ev100 = L.eval("(AuctionIQ.Expect.Value(100, AuctionIQ.Prices.Get('chvalue', 'i:100')))")
+ev100 = L.eval("(AuctionIQ.Expect.Value(100, AuctionIQ.Prices.Get('aiqvalue', 'i:100')))")
 check("do next: Post now's gain is what Trade would post, each after the cut and expected deposits; 30-day sales are evidence",
       len(pn) == 1 and abs(pn[0].gold - 6 * ev100) < 1 and pn[0].evidence.kind == "pastSales" and pn[0].evidence.amount == 20000000
       and pn[0].go[3].qty == 6)
@@ -2848,7 +2848,7 @@ ol = list(AuctionIQ.Orders.List().values())
 by = {o.orderID: o for o in ol}
 check("order list: every order, the ones you can fill first", len(ol) == 3 and ol[-1].orderID == 79 and not by[79].ok)
 check("order list: a knowledge reward marks it 1KP and sorts ahead of plain profit", by[78].kp and ol[0].orderID == 78 and not by[77].kp)
-check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * AuctionIQ.Prices.Get("chvalue", "i:902") * AuctionIQ.AH_CUT) < 1
+check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * AuctionIQ.Prices.Get("aiqvalue", "i:902") * AuctionIQ.AH_CUT) < 1
       and [r.value for r in by[78].rewards.values()][0] is None)
 check("order list: profit and reagent cost come from the advisor's best craft", by[77].profit == by[77].row.profit and by[77].cost == by[77].row.cost and by[77].profit > 0)
 pb = L.eval("""AuctionIQ.Advisor.PickBest({ { quality = 1, profit = -100, short = true },
@@ -3159,7 +3159,7 @@ fl = AuctionIQ.Groups.Store().ops.Flasks
 check("settings: picks cycle and numbers step", fl.priceReset == "minPrice" and fl.duration == 3 and fl.undercut == 101)
 ok, err = S.SetOpFormula("Flasks", "minPrice", "max(")
 check("settings: a bad formula is refused with the reason", ok is False and err and fl.minPrice is None)
-check("settings: a good formula saves", S.SetOpFormula("Flasks", "minPrice", "80% chvalue") is True and fl.minPrice == "80% chvalue")
+check("settings: a good formula saves", S.SetOpFormula("Flasks", "minPrice", "80% aiqvalue") is True and fl.minPrice == "80% aiqvalue")
 run("AuctionIQ.Groups.Assign('Crafted', 'Flasks')")
 check("settings: renaming keeps the groups that use it", S.RenameOp("Flasks", "Flask rules") == "Flask rules" and AuctionIQ.Groups.Store().assign.Crafted == "Flask rules")
 check("settings: built-in operations can't be deleted", S.DeleteOp("Default")[0] is None and S.DeleteOp("Crafted")[0] is None)
@@ -3713,7 +3713,7 @@ check("craft log: the order's pay is counted once, not the item at market", oe.v
 run("""C_CraftingOrders = { GetClaimedOrder = function() return { orderID = 89, spellID = 10, tipAmount = 0, reagents = {
   { reagentInfo = { reagent = { itemID = 202 }, quantity = 1, dataSlotIndex = 1 } } } } end }
 AuctionIQ.Log.Started(10, 1, false, { { itemID = 202, quantity = 1, dataSlotIndex = 1 } }, 89)""")
-check("craft log: customer-provided reagents aren't your cost", L.eval("AuctionIQ.Log.Pending().cost") < L.eval("(function() local x = AuctionIQ.Prices.Get('chmat', 'i:202'); return x end)()") or L.eval("AuctionIQ.Log.Pending().cost") == 0)
+check("craft log: customer-provided reagents aren't your cost", L.eval("AuctionIQ.Log.Pending().cost") < L.eval("(function() local x = AuctionIQ.Prices.Get('aiqbuy', 'i:202'); return x end)()") or L.eval("AuctionIQ.Log.Pending().cost") == 0)
 run("C_CraftingOrders = STUB.oldCO; AuctionIQ.Log.Clear()")
 
 # batch results credit only crafted units: stock held before a craft and stock bought after it sell first
@@ -4745,6 +4745,32 @@ check("prune: once confirmed, history older than 365 days goes and the last 365 
 check("prune: the archive doesn't bring pruned days back from TSM's records, and newer days still update",
       L.eval("STUB.back5") is None and L.eval("STUB.kept399") == 7 and L.eval("STUB.again.days") == 0)
 run("AuctionIQ.db.ledger, AuctionIQ.db.competition = STUB.oldLedger, STUB.oldComp")
+# Price sources renamed (chmat, chvalue, chpost to aiqbuy, aiqvalue, aiqpost): your TSM source under the
+# new name wins, one under the old name still works, else AuctionIQ's own formula; old names still read.
+ps = L.eval("""(function()
+  local P, api = AuctionIQ.Prices, TSM_API
+  local oldValid, oldGet = api.IsCustomPriceValid, api.GetCustomPriceValue
+  local defined = {}
+  api.IsCustomPriceValid = function(s) if defined[s] then return true end return oldValid(s) end
+  api.GetCustomPriceValue = function(s, item) if defined[s] then return defined[s] end return oldGet(s, item) end
+  local function get(kind) P.ClearCache(); return P.Get(kind, "i:201") end
+  local out = {}
+  out.formula = get("aiqbuy")
+  defined.chmat = 111
+  out.old = get("aiqbuy")
+  defined.aiqbuy = 222
+  out.new = get("aiqbuy")
+  out.alias = get("chmat")
+  out.formulaName = AuctionIQ.Formula.Value("chmat", 201)
+  api.IsCustomPriceValid, api.GetCustomPriceValue = oldValid, oldGet
+  P.ClearCache()
+  return out
+end)()""")
+check("price sources: with no TSM source of yours, aiqbuy is AuctionIQ's own formula", ps.formula == 100000)
+check("price sources: a TSM source under the old name (chmat) still counts", ps.old == 111)
+check("price sources: one under the new name (aiqbuy) wins over the old one", ps.new == 222)
+check("price sources: the old name still reads as the new one, in code and in your formulas",
+      ps.alias == 222 and ps.formulaName == 222)
 exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
 # Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an

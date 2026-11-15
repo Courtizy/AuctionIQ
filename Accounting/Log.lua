@@ -16,7 +16,7 @@ end
 
 local function price(kind, id) return id and AuctionIQ.Prices.Get(kind, "i:" .. id) end
 
--- The reagents a craft really used ({ itemID, quantity } infos from CraftRecipe), priced at chmat,
+-- The reagents a craft really used ({ itemID, quantity } infos from CraftRecipe), priced at aiqbuy,
 -- plus the fixed reagents the advisor knows about. On a crafting order the slots the customer
 -- filled (provided) cost you nothing and are left out. nil when a reagent has no price.
 local function usedCost(r, reagents, provided)
@@ -32,7 +32,7 @@ local function usedCost(r, reagents, provided)
 		local off = slot and math.min(n, left[slot] or 0) or 0
 		if off > 0 then left[slot] = left[slot] - off end
 		if n - off > 0 then
-			local p = price("chmat", id)
+			local p = price("aiqbuy", id)
 			if id and not p then return nil end
 			total = total + (p or 0) * (n - off)
 		end
@@ -43,7 +43,7 @@ local function usedCost(r, reagents, provided)
 		local g = not r.order and (provided or {})[slot.index]
 		if g then n = g == true and 0 or math.max(0, n - g) end
 		if n > 0 then
-			local p = price("chmat", slot.items and slot.items[1])
+			local p = price("aiqbuy", slot.items and slot.items[1])
 			if not p then return nil end
 			total = total + p * n
 		end
@@ -91,7 +91,7 @@ function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, pro
 
 -- Each stage of a craft's results is priced on one basis, and says which:
 --   forecast  your cost basis setting when you crafted (held, replacement, tsm or paid)
---   actual    the market when made: reagents used and saved at today's price (chmat), items at chvalue
+--   actual    the market when made: reagents used and saved at today's price (aiqbuy), items at aiqvalue
 --   realized  what sold, less the same reagents at that same price as actual
 -- so the move from the forecast's basis to market prices is its own step, not part of "market".
 local function basisNow() return AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() or "replacement" end
@@ -193,13 +193,13 @@ function Lg.Result(data)
 		e.orderCrafts = (e.orderCrafts or 0) + 1
 		e.orderIncome = (e.orderIncome or 0) + income
 	else
-		local unit = price("chvalue", data.itemID)
+		local unit = price("aiqvalue", data.itemID)
 		income = unit and unit * AuctionIQ.AH_CUT * qty
 	end
 	if income then e.value = e.value + income end
 	local saved = 0
 	for _, r in ipairs(data.resourcesReturned or {}) do
-		local p = price("chmat", r.itemID)
+		local p = price("aiqbuy", r.itemID)
 		if p then saved = saved + p * (r.quantity or 0) end
 	end
 	if #(data.resourcesReturned or {}) > 0 then e.resProcs = e.resProcs + 1 end
@@ -348,7 +348,7 @@ function Lg.Stages(char, recipeID, e)
 			if b.recipe == recipeID and (not b.char or not char or b.char == char) then byItem[b.id] = true end
 		end
 		for id in pairs(byItem) do
-			local value = AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+			local value = AuctionIQ.Prices.Get("aiqvalue", "i:" .. id)
 			for _, b in ipairs(AuctionIQ.Forecast.Batches(id)) do
 				if b.recipe == recipeID and (not b.char or not char or b.char == char) then
 					made = made + b.qty

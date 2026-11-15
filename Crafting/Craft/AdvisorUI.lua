@@ -913,7 +913,7 @@ function AUI.BuyNowLines(c)
 	local out = {}
 	if not (c and c.id and not c.finishing and AuctionIQ.Depth) then return out end
 	local d = AuctionIQ.Depth.Cost(c.id, c.n)
-	if not d or d.source == "chmat" then return out end
+	if not d or d.source == "aiqbuy" then return out end
 	local from = d.source == "ah" and ("AH search " .. AuctionIQ.Scans.Age(d.age) .. (d.age and d.age >= 60 and " ago" or ""))
 		or ("AH scan " .. AuctionIQ.Scans.Age(d.age) .. " old")
 	local mut = function(t) return AuctionIQ.Theme.Color("muted", t) end
@@ -947,7 +947,7 @@ function AUI.BasisLines(result, r)
 				-- what you hold at what you paid (today's price if you never bought it), the rest at today's
 				local buy = P.ReagentCost(c.id, "replacement")
 				local own = math.min(c.n, P.Held and P.Held(c.id) or 0)
-				local v = own > 0 and P.Get("chvalue", "i:" .. c.id) or nil
+				local v = own > 0 and P.Get("aiqvalue", "i:" .. c.id) or nil
 				local sell = v and v * AuctionIQ.AH_CUT
 				if buy or (own == c.n and sell) then
 					each, from = (own * (sell or buy or 0) + (c.n - own) * (buy or 0)) / c.n, (own > 0 and not sell) and "replacement" or b
@@ -1052,7 +1052,7 @@ function AUI.BreakdownLines(result, r, col)
 		end
 		local vals = AuctionIQ.Prices.Values(r.item)
 		if vals.realized then add(string.format("   RZ  Realized, your %d sales", vals.n), AuctionIQ.FormatMoney(vals.realized)) end
-		add("Market estimate (chvalue)", AuctionIQ.FormatMoney(r.price and r.price / (r.shade or 1)))
+		add("Market estimate (aiqvalue)", AuctionIQ.FormatMoney(r.price and r.price / (r.shade or 1)))
 		if r.shade then
 			add(string.format("Your record: x%.2f", r.shade) .. AuctionIQ.Theme.Color("muted", "  " .. (r.shadeWhy or "")), AuctionIQ.FormatMoney(r.price))
 		end
@@ -1876,7 +1876,7 @@ function AUI.SourceLine(result)
 		if r.shade then table.insert(shaded, string.format("Q%d x%.2f", r.quality, r.shade)) end
 		if r.ev and r.ev.p then modeled = true end
 	end
-	local text = "Expected proceeds: TSM price (chvalue) after the 5% cut" .. (modeled and ", expected deposits and carrying" or "")
+	local text = "Expected proceeds: TSM price (aiqvalue) after the 5% cut" .. (modeled and ", expected deposits and carrying" or "")
 	if #shaded > 0 then text = text .. ". Your sales: " .. table.concat(shaded, ", ") end
 	text = text .. ". Hover for each step."
 	-- the evidence behind the recommended craft's estimate: source, age, and how much is yours

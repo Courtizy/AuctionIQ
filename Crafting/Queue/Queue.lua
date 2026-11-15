@@ -416,7 +416,7 @@ function Q.ShatterItem()
 	local owned = {}
 	for _, id in ipairs(Q.ShatterCandidates()) do
 		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
-		if n > 0 then owned[#owned + 1] = { id = id, p = AuctionIQ.Prices.Get("chmat", "i:" .. id) or math.huge } end
+		if n > 0 then owned[#owned + 1] = { id = id, p = AuctionIQ.Prices.Get("aiqbuy", "i:" .. id) or math.huge } end
 	end
 	if not owned[1] then return nil end
 	table.sort(owned, function(a, b) return a.p < b.p end)
@@ -588,9 +588,9 @@ function Q.ShoppingList(entries)
 	for id, n in pairs(need) do
 		local h = have(id)
 		local buy = math.max(0, n - h)
-		-- walk the order book for the quantity bought, not chmat x quantity (see Depth.lua)
+		-- walk the order book for the quantity bought, not aiqbuy x quantity (see Depth.lua)
 		local d = buy > 0 and AuctionIQ.Depth.Cost(id, buy)
-		local unit = d and d.unit or AuctionIQ.Prices.Get("chmat", "i:" .. id)
+		local unit = d and d.unit or AuctionIQ.Prices.Get("aiqbuy", "i:" .. id)
 		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
 		-- someone on the warband makes it for less than buying it: say who, and what it would cost them

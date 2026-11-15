@@ -95,14 +95,14 @@ function AUI.SkipNext()
 end
 
 -- Shopping: the crafting queue's reagents ---------------------------------------------------
-AUI.SHOP_OVER = 1.25 -- skip a buy whose live price is this much over the usual (chmat) price
+AUI.SHOP_OVER = 1.25 -- skip a buy whose live price is this much over the usual (aiqbuy) price
 
 --- Decide one shopping row from the AH's listings: buy (with the live average unit price for the
 --- quantity) or skip, and why.
 function AUI.DecideBuy(s, results)
 	if results then AuctionIQ.Depth.Remember(s.itemID, results) end
 	local d = AuctionIQ.Depth.Cost(s.itemID, s.buy)
-	local usual = AuctionIQ.Prices.Get("chmat", "i:" .. s.itemID)
+	local usual = AuctionIQ.Prices.Get("aiqbuy", "i:" .. s.itemID)
 	local why = string.format("need %d, have %d", s.need, s.have)
 	if not d or d.source ~= "ah" then return { action = "skip", qty = s.buy, why = "no listings on the AH" } end
 	-- only what's listed can be bought: price that, and keep the shortage apart
@@ -280,7 +280,7 @@ function AUI.HoverLines(i)
 	if d.qty then table.insert(lines, { "Buys", string.format("%d x %s", d.qty, m(d.unit)) }) end
 	if d.cost then table.insert(lines, { "Total, walking the listings", m(d.cost) }) end
 	if d.gain then table.insert(lines, { "Brings back over its cost", m(d.gain) }) end
-	table.insert(lines, { "Usual price (chmat)", m(AuctionIQ.Prices.Get("chmat", "i:" .. e.id)) })
+	table.insert(lines, { "Usual price (aiqbuy)", m(AuctionIQ.Prices.Get("aiqbuy", "i:" .. e.id)) })
 	return lines
 end
 

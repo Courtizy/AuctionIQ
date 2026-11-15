@@ -2,7 +2,7 @@
 -- covers its own stack, so a big buy walks up the book:
 --   cost(q) = sum over listings i of min(q_i, q - Q_(i-1)) * p_i      (Q_i = units in listings 1..i)
 -- Listings come from the AH when you've searched the item there in the last 15 minutes, else
--- from the last full AH search AuctionIQ saved for it (Scans.lua), else the cost is chmat x quantity.
+-- from the last full AH search AuctionIQ saved for it (Scans.lua), else the cost is aiqbuy x quantity.
 local _, AuctionIQ = ...
 
 local D = { LIVE_SECONDS = 15 * 60, SCAN_CAP = 25000 }
@@ -56,17 +56,17 @@ function D.Book(id)
 end
 
 --- What buying q of an item costs, in copper, and how it was worked out:
---- { cost, unit (average), source = "ah" | "scan" | "chmat", short = units the book can't fill,
+--- { cost, unit (average), source = "ah" | "scan" | "aiqbuy", short = units the book can't fill,
 ---   first = cheapest unit price, age }. Units past the book are priced at its last price.
 --- nil when there is nothing to price it with.
 function D.Cost(id, q)
 	q = math.floor(q or 0)
 	if not id or q <= 0 then return nil end
 	local rows, source, age = D.Book(id)
-	local chmat = AuctionIQ.Prices.Get("chmat", "i:" .. id)
+	local aiqbuy = AuctionIQ.Prices.Get("aiqbuy", "i:" .. id)
 	if not rows then
-		if not chmat then return nil end
-		return { cost = chmat * q, unit = chmat, source = "chmat", short = 0, first = chmat }
+		if not aiqbuy then return nil end
+		return { cost = aiqbuy * q, unit = aiqbuy, source = "aiqbuy", short = 0, first = aiqbuy }
 	end
 	local spent, got, first, last
 	if source == "ah" then
@@ -80,7 +80,7 @@ function D.Cost(id, q)
 		last = (rows[n][1] * rows[n][2] - pc) / (rows[n][1] - pq)
 	end
 	local short = q - got
-	if short > 0 then spent = spent + short * math.max(last, chmat or 0) end
+	if short > 0 then spent = spent + short * math.max(last, aiqbuy or 0) end
 	-- a saved scan keeps the book only up to its last point; past that it's a guess, not a shortage
 	if source == "scan" and rows[#rows][1] >= D.SCAN_CAP then short = 0 end
 	spent = math.ceil(spent)

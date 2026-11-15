@@ -221,7 +221,7 @@ function G.ImportTSM()
 				if type(op.craftPriceMethod) == "string" and op.craftPriceMethod ~= "" then
 					local k = "Crafting " .. name
 					n.unsupported[k] = n.unsupported[k] or {}
-					table.insert(n.unsupported[k], "its own crafted value (AuctionIQ values by chvalue)")
+					table.insert(n.unsupported[k], "its own crafted value (AuctionIQ values by aiqvalue)")
 				end
 				n.craftOps = n.craftOps + 1
 			end
@@ -499,7 +499,7 @@ function G.Prices(id, opName, level)
 	op = op or store().ops.Default
 	local F = AuctionIQ.Formula
 	local item = level and ("i:" .. id .. "::i" .. level) or ("i:" .. id)
-	local normal = op.normalPrice and F.Value(op.normalPrice, id, nil, level) or AuctionIQ.Prices.Get("chvalue", item)
+	local normal = op.normalPrice and F.Value(op.normalPrice, id, nil, level) or AuctionIQ.Prices.Get("aiqvalue", item)
 	local learned
 	if op.learn and normal then
 		local f, why = G.Learn(id)
@@ -517,7 +517,7 @@ function G.Prices(id, opName, level)
 			local p = AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.Paid()[id]
 			floor, why = p and p.each / AuctionIQ.AH_CUT, "what you paid"
 		end
-		if not floor then floor, why = AuctionIQ.Prices.Get("chmat", item), "buy price" end
+		if not floor then floor, why = AuctionIQ.Prices.Get("aiqbuy", item), "buy price" end
 		min = floor and floor * (op.floorPct or 1)
 	end
 	local max

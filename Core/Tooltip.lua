@@ -215,8 +215,8 @@ function AuctionIQ.TooltipLines(link)
 	if AuctionIQ.Unsellable(itemID(link)) then
 		return { { "AuctionIQ", AuctionIQ.Theme.Color("muted", "bound: can't go on the AH"), nil, "accent" } }
 	end
-	local value = AuctionIQ.Prices.Get("chvalue", link)
-	local now, post = AuctionIQ.Prices.Get("chmat", link), AuctionIQ.Prices.Get("chpost", link)
+	local value = AuctionIQ.Prices.Get("aiqvalue", link)
+	local now, post = AuctionIQ.Prices.Get("aiqbuy", link), AuctionIQ.Prices.Get("aiqpost", link)
 	if value then
 		-- sale price, the cut, what you keep
 		table.insert(lines, { "AuctionIQ value", "" })

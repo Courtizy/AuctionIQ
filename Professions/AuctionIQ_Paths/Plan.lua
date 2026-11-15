@@ -163,7 +163,7 @@ function P.Match(text)
 end
 
 local function sellValue(id)
-	local p = id and AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+	local p = id and AuctionIQ.Prices.Get("aiqvalue", "i:" .. id)
 	return p and p * AuctionIQ.AH_CUT
 end
 

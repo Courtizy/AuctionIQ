@@ -96,10 +96,10 @@ function Sc.Crafted(itemID) return itemID and crafted()[itemID] or nil end
 --- Whether reagents you can craft are priced at what making them costs (Settings, on by default).
 function Sc.SubrecipesOn() return not (AuctionIQ.db and AuctionIQ.db.settings.subrecipes == false) end
 
---- A reagent's price for a craft: buying it (chmat), or making it when that's cheaper. Returns the
+--- A reagent's price for a craft: buying it (aiqbuy), or making it when that's cheaper. Returns the
 --- price and the craft it came from (nil when buying wins). notRecipe skips the recipe being priced.
 function Sc.ReagentPrice(itemID, notRecipe)
-	-- buying it, on the costing basis in Settings (replacement by default: chmat)
+	-- buying it, on the costing basis in Settings (replacement by default: aiqbuy)
 	local buy = itemID and AuctionIQ.Prices.ReagentCost(itemID)
 	if not Sc.SubrecipesOn() then return buy end
 	local c = Sc.Crafted(itemID)
@@ -113,8 +113,8 @@ function Sc.BuyOrCraft(r)
 	local item = r and (r.item or r.concItem)
 	local craft = r and r.craftEach
 	if not item then return nil end
-	local buy = AuctionIQ.Prices.Get("chmat", "i:" .. item)
-	local value = AuctionIQ.Prices.Get("chvalue", "i:" .. item)
+	local buy = AuctionIQ.Prices.Get("aiqbuy", "i:" .. item)
+	local value = AuctionIQ.Prices.Get("aiqvalue", "i:" .. item)
 	local resell = value and AuctionIQ.Expect.Value(item, value)
 	return { buy = buy, craft = craft, resell = resell, flip = buy and resell and resell - buy,
 		save = buy and craft and craft - buy }
