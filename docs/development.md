@@ -26,3 +26,5 @@ each item's best scan row from one index per refresh. Background work aims for 4
 the 6 ms a frame it may take; the parse reuses one table for each line's fields to leave less garbage.
 
 **Releases:** tagging `v*` builds a release with the BigWigs packager.
+
+**Look:** the colours, fonts, icons and layout rules every page follows are in [theme.md](theme.md).

@@ -1,8 +1,6 @@
 __pycache__/
 *.pyc
 .release/
-__pycache__/
 .pytest_cache/
 tools/db2/
-__pycache__/
 tests/bench-results.json

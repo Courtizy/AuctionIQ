@@ -19,6 +19,7 @@ ignore:
   - tests
   - tools
   - README.md
+  - docs
   - .github
   - Media/Logo-512.png
   - Media/readme
