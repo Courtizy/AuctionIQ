@@ -1,6 +1,6 @@
 -- Alerts: a line in chat (and on screen) when Concentration is full on any character, an item you
 -- keep at par runs out, or something you hold jumps in price. Each alert repeats at most every 6
--- hours. Also tracks the WoW Token price so gold can be read as tokens. /ch alerts turns them off.
+-- hours. Also tracks the WoW Token price so gold can be read as tokens. /aiq alerts turns them off.
 local _, AuctionIQ = ...
 
 local Al = {}

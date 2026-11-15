@@ -92,7 +92,7 @@ check("dragging moves it round the minimap", abs(AuctionIQ.db.settings.minimap.a
 run('SlashCmdList.AUCTIONIQ("minimap")')
 run("STUB.shown = AuctionIQ.UI.IsShown and AuctionIQ.UI.IsShown(); STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('shatter'); AuctionIQ.Print = STUB.oldPrint")
 check("/aiq shatter lists what Shatter can take, without opening the main window", any("Shatter can take" in str(t) for t in L.globals().STUB.printed.values()))
-check("/ch minimap hides it", not btn.shown)
+check("/aiq minimap hides it", not btn.shown)
 
 # icons: white line icons tinted in the label, theme colour when active and grey otherwise
 run('if not AuctionIQ.UI.IsShown() then AuctionIQ.UI.Toggle() end; AuctionIQ.UI.Go("today")')
