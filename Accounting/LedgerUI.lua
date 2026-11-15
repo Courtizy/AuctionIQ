@@ -25,6 +25,9 @@ local MAX_ROWS = 60
 
 local view = "inventory"
 local filter, char, days = "", nil, 30
+-- a window handed over from Performance ({ from, to, label }): it stands in for days until another
+-- time frame is picked
+local window
 -- what a Dashboard recommendation handed over: { name, id, char, qty, title, why }; cleared when you
 -- change view or clear the name filter
 local focus
@@ -188,7 +191,8 @@ end
 
 -- Data ----------------------------------------------------------------------------------------
 --- Rows for a view: { cells = { text... }, sort = { value... }, id = itemID }, then the footer
---- text. opts: filter (name keyword), char (character name), days (nil = all time), now.
+--- text. opts: filter (name keyword), char (character name), days (nil = all time), window
+--- ({ from, to }: records from `from` up to, not including, `to`; it wins over days), now.
 --- The Character picker for a view with its own rows: keep the rows whose Character column is that
 --- character (by name, with or without the realm). Views that filter their own records pass through.
 function LUI.KeepChar(def, rows, char)
@@ -214,13 +218,14 @@ function LUI.Rows(v, opts)
 	opts = opts or {}
 	local L = AuctionIQ.Ledger
 	local now = opts.now or time()
-	local since = opts.days and (now - opts.days * 86400) or -math.huge
+	local since = opts.window and opts.window.from or opts.days and (now - opts.days * 86400) or -math.huge
+	local upto = opts.window and opts.window.to or math.huge -- an open window runs to now
 	local key = opts.filter and opts.filter ~= "" and string.lower(opts.filter) or nil
 	local mine = {}
 	for _, c in ipairs(L.Characters()) do mine[c.name] = true end
 	local out = {}
 	local function keepName(name) return not key or string.lower(name or ""):find(key, 1, true) end
-	local function keepRec(r) return r.time >= since and (not opts.char or r.player == opts.char) end
+	local function keepRec(r) return r.time >= since and r.time < upto and (not opts.char or r.player == opts.char) end
 	local def = VIEWS[v]
 	if def and def.rows then
 		local rows, footer = def.rows({ now = now, since = since, opts = opts, keepName = keepName, keepRec = keepRec, mine = mine })
@@ -573,7 +578,7 @@ function LUI.Build(p, fs, panel)
 	p.timeButton:SetScript("OnClick", function(self)
 		local list = {}
 		for _, t in ipairs(TIMES) do table.insert(list, { t[1], t[2] or false, selected = days == t[2] }) end
-		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; AuctionIQ.UI.Refresh() end)
+		pick(self, "Time frame", list, function(v) days = v or nil; window = nil; offset = 0; AuctionIQ.UI.Refresh() end)
 	end)
 
 	-- a view's own settings (Scenarios: how far reagents rise, prices fall): left-click up, right-click down
@@ -597,7 +602,7 @@ function LUI.Build(p, fs, panel)
 
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
-	p.exportButton:SetScript("OnClick", function() AuctionIQ.Export.Export(view, { filter = filter, char = char, days = days }) end)
+	p.exportButton:SetScript("OnClick", function() AuctionIQ.Export.Export(view, { filter = filter, char = char, days = days, window = window }) end)
 	-- a view's own action in Export's place (Compare crafts: scan your professions)
 	p.actionButton = T.Button(body, "", 70, 20)
 	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
@@ -721,6 +726,7 @@ function LUI.Refresh()
 	local charLabel = char and (v.charLabel and v.charLabel(char) or char:match("^[^#]+")) or "All characters"
 	if p.charButton.text then p.charButton.text:SetText(charLabel) end
 	for _, t in ipairs(TIMES) do if t[2] == days and p.timeButton.text then p.timeButton.text:SetText(t[1]) end end
+	if window and p.timeButton.text then p.timeButton.text:SetText(window.label or "Custom") end
 	p.timeButton:SetShown(view ~= "inventory" and not (VIEWS[view] and VIEWS[view].noTime))
 
 	local act = v.action
@@ -759,7 +765,8 @@ function LUI.Refresh()
 
 	local rows, footer = {}, ""
 	if AuctionIQ.Ledger.Available() then
-		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil, focus = focus })
+		local inv = view == "inventory"
+		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = not inv and days or nil, window = not inv and window or nil, focus = focus })
 		if not v.fixed then sortRows(rows, sortCol or 1, sortDesc) end -- a statement keeps its own order
 	end
 	local SHOWN = ROWS
@@ -908,6 +915,8 @@ function LUI.Section() return section end
 function LUI.View() return view end
 --- The Character picker's choice (nil for all characters).
 function LUI.Char() return char end
+--- The window handed over from Performance, if one is in force: { from, to, label }.
+function LUI.Window() return window end
 --- The tab a view lives in.
 function LUI.SectionOf(v)
 	for sec, list in pairs(SECTIONS) do for _, n in ipairs(list) do if n[1] == v then return sec end end end
@@ -942,7 +951,9 @@ function LUI.Set(opts)
 	end
 	if opts.filter ~= nil then filter = opts.filter end
 	if opts.char ~= nil then char = opts.char or nil end
-	if opts.days ~= nil then days = opts.days or nil end
+	if opts.days ~= nil then days = opts.days or nil; window = nil end
+	-- window: { from, to, label } (Performance's period), or false to drop it
+	if opts.window ~= nil then window = opts.window or nil end
 	if opts.sort then sortCol, sortDesc = opts.sort, opts.desc end
 	offset = 0
 end

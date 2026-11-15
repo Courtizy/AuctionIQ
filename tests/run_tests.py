@@ -4351,6 +4351,31 @@ if big is not None:
           and len(dr) == 1 and dr[0].id == big.id and abs(dr[0].sort[4] - big.change) < 1)
 else:
     check("Performance: the stub sold something in the last 60 days", False)
+# a contributor that isn't an item opens its transaction list on the same period and character
+lw = PF.Compare(None, "lastweek", L.eval("STUB.now"))
+run("AuctionIQ.LedgerUI.Set({ char = 'Me' })")
+PF.Open(L.eval("{ kind = 'expense', view = 'expense' }"), lw)
+win = L.eval("AuctionIQ.LedgerUI.Window()")
+inside = L.eval("""(function()
+  local w, n, out = AuctionIQ.LedgerUI.Window(), 0, 0
+  for _, r in ipairs(AuctionIQ.Ledger.ByTime('Sales')) do
+    n = n + 1
+    if r.time < w.from or r.time >= w.to then out = out + 1 end
+  end
+  local rows = AuctionIQ.LedgerUI.Rows('sales', { window = w })
+  local all = AuctionIQ.LedgerUI.Rows('sales', {})
+  return { n = n, out = out, kept = #rows, all = #all }
+end)()""")
+check("Performance: a contributor's transaction list opens on the same period and keeps the character",
+      LUI.View() == "expense" and win is not None and win["from"] == lw.w["from"] and win.to == lw.w.to and plain(win.label) == plain(lw.w.label)
+      and LUI.Char() == "Me")
+check("Performance: a handed-over period keeps only the records inside it", inside.out > 0 and inside.kept < inside.all and inside.kept <= inside.n - inside.out)
+run("AuctionIQ.UI.Refresh()")
+pb = L.eval("AuctionIQ.UI.Pages().ledger.timeButton.text:GetText()")
+check("Performance: the time frame button names the handed-over period", plain(pb) == plain(lw.w.label))
+run("AuctionIQ.LedgerUI.Set({ days = 30 })")
+check("Performance: picking a time frame drops the handed-over period", L.eval("AuctionIQ.LedgerUI.Window()") is None)
+run("AuctionIQ.LedgerUI.Set({ char = false })")
 cap = PF.Capital(None, L.eval("STUB.now"))
 check("Performance: capital tied up is the slow stock's share of all stock", cap.total > 0 and 0 <= cap.slow <= cap.total and abs(cap.share - cap.slow / cap.total) < 1e-9)
 fl = list(PF.Forecasts(L.eval("STUB.now")).values())
