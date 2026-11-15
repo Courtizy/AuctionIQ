@@ -2519,12 +2519,28 @@ check("Do next: nine reposts become one card with their gold summed, four cards 
 run("AuctionIQ.UI.Page('today')")
 c2who = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].who:GetText()")
 c2risk = L.eval("AuctionIQ.UI.Pages().dashboard.d.cards[2].l2:GetText()")
-check("Do next: the cards show the reason and the biggest uncertainty, with no list to scroll",
-      plain(c2who) == "Repost 9 items" and plain(c2risk) == "Risk: it expired once"
+check("Next moves: each card shows its reason, then its horizon, its alternative and how old its data is",
+      plain(c2who) == "Repost 9 items" and plain(c2risk) == "7-day gain; or hold it; live"
       and "matter most" in plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")))
 check("Overview: the block is called Next moves, with no Do next or Activity buttons beside it",
       plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.heading:GetText()")).startswith("Next moves")
       and L.eval("AuctionIQ.UI.Pages().dashboard.d.modeButtons") is None and L.eval("AuctionIQ.UI.DashboardData(STUB.now).activity") is None)
+run("AuctionIQ.UI.Pages().dashboard.d.cards[2].hit.scripts.OnEnter(AuctionIQ.UI.Pages().dashboard.d.cards[2].hit)")
+tip2 = " ".join(plain(str(l)) for l in L.eval("GameTooltip.lines").values())
+check("Next moves: a card's hover spells out the horizon, what to do instead and the data's age",
+      "Horizon=7-day gain" in tip2 and "Instead: Hold it, or sell it to a vendor." in tip2 and "Data=live" in tip2)
+meta = L.eval("""(function()
+  local N, now = AuctionIQ.Next, STUB.now
+  local a = N.AddMeta({ title = "Restock", kind = "Restock", tier = 2, value = N.Value("gain", 5), scanRow = { at = now - 7200 } }, now)
+  local b = N.AddMeta({ title = "Restock", kind = "Restock", tier = 2, scanRow = { at = now - 60 }, alternatives = { verdict = "sell" } }, now)
+  local c = N.AddMeta({ title = "Cooldown ready", kind = "Cooldown ready", tier = 1 }, now)
+  return { a = a.meta, b = b.meta, blong = b.alternative[2], c = c.meta }
+end)()""")
+check("Next moves: a scanned craft says its 7-day horizon, the usual alternative and the scan's age",
+      meta.a == "7-day gain; or buy it in; scan 2 hr old")
+check("Next moves: when selling the reagents beats crafting, that's the alternative it names",
+      meta.b == "this week; or sell the reagents; scan 1 min old" and "earns more" in meta.blong)
+check("Next moves: a move with no estimate says act now, and live data", meta.c == "act now; or leave it; live")
 run("AuctionIQ.Next.List = STUB.oldNextList")
 ov = L.eval("""(function()
   local d = AuctionIQ.UI.Pages().dashboard.d
