@@ -21,6 +21,8 @@ Evidence: **verified** = reproduced in the harness or seen in the live client's 
 | CQ-09 | The Crafting window's side card and details add about 100 ms on top of the rows (438 total, 338 rows) | live `/aiq perf` | verified (live) | open: next perf PR |
 | CQ-10 | `TRADE_SKILL_SHOW` takes up to 113 ms; the profession craft card up to 105 ms | live `/aiq perf` | verified (live) | open |
 | CQ-11 | Claiming an order (`CRAFTINGORDERS_CLAIM_ORDER_RESPONSE`) takes up to 95 ms | live `/aiq perf` | verified (live) | open |
+| CQ-12 | A work order that expired, was taken by someone else or was cancelled stayed in the queue for good: it kept a Claim button, its reagents stayed on the shopping list and its profit in the totals | acceptance lifecycle 10 | verified (harness) | fixed: marked Expired or No longer listed, left out of shopping and totals, removed on click |
+| CQ-13 | A claim that timed out while you were offline (no release event fires then) left the entry at Craft after a `/reload` | acceptance lifecycle 10 | verified (harness) | fixed: a full fetch of the board puts it back to Claim |
 
 ## Accounting and Overview
 

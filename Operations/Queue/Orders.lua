@@ -226,7 +226,7 @@ function O.Fetch(onDone)
 	local types = { T.Npc or 3, T.Personal or 2, T.Public or 0, T.Guild or 1 }
 	-- the list on screen keeps the orders it has while the new ones come in, and swaps to the new
 	-- set once every kind is in (as CraftSim's does), rather than emptying and filling again
-	local fresh, got, i = {}, false, 0
+	local fresh, got, all, i = {}, false, true, 0
 	O.incoming = fresh
 	local function step()
 		i = i + 1
@@ -238,12 +238,14 @@ function O.Fetch(onDone)
 				local claimed = co2 and co2.GetClaimedOrder and co2.GetClaimedOrder()
 				if claimed then remember({ claimed }, fresh) end
 				O.cache = fresh
+				-- every kind came back: what isn't listed now is gone, so the queue can catch up
+				if all and CH.Queue and CH.Queue.Reconcile then CH.Queue.Reconcile(fresh, prof) end
 			end
 			local n = #O.All()
 			if onDone then onDone(n, not got and "the game didn't answer; open the Crafting Orders tab and try again" or nil) end
 			return
 		end
-		request(types[i], prof, function(ok) got = got or ok; step() end)
+		request(types[i], prof, function(ok) got = got or ok; all = all and ok; step() end)
 	end
 	step()
 	return true
@@ -410,9 +412,9 @@ function O.Debug()
 		-- how the recipe names its qualities: an enchant's scrolls, its quality IDs and its top rank
 		local scrolls = info and CH.Advisor.ScrollOutputs and CH.Advisor.ScrollOutputs(order.spellID, info) or {}
 		local qids = info and type(info.qualityIDs) == "table" and table.concat(info.qualityIDs, ",") or "none"
-		say(string.format("  enchant %s, maxQuality %s, qualityIDs %s, scrolls %d, orderType %s, item %s",
+		say(string.format("  enchant %s, maxQuality %s, qualityIDs %s, scrolls %d, orderType %s, item %s, expires %s",
 			tostring(info and info.isEnchantingRecipe), tostring(info and info.maxQuality), qids, #scrolls,
-			tostring(order.orderType), tostring(order.itemID)))
+			tostring(order.orderType), tostring(order.itemID), tostring(order.expirationTime)))
 		-- what the order lists, and who brings it (source 1 customer, 2 crafter)
 		local given = {}
 		for _, r in ipairs(order.reagents or {}) do

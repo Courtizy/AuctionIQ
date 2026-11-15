@@ -19,7 +19,7 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 | Show material changes before executing a revised plan | ✓ | second-press confirm in `Q.Craft` |
 | Preflight the exact batch: how many can be made, what blocks the rest | ✓ | `Q.Preflight` |
 | Track each in-flight request and reconcile confirmed results | ✓ | this PR: one request per click (CQ-02 to CQ-04) |
-| Repeat clicks, partial batches, delayed and duplicate events, failed claim and turn-in, interruption, reload, expired orders | ◐ | All but reload and expired orders are in `acceptance.py`. Duplicate results: 🎮 L-03 |
+| Repeat clicks, partial batches, delayed and duplicate events, failed claim and turn-in, interruption, reload, expired orders | ✓ | `acceptance.py`, failure 3 to 9 and lifecycle 10. Duplicate results: 🎮 L-03. Order expiry and the board check: 🎮 L-07 |
 | Proofs: commodity, Concentration enchant, partly supplied order | 🎮 | L-04, L-05, L-06 |
 
 ## 2. Overview and Accounting
