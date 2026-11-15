@@ -1189,6 +1189,39 @@ end
 local HELD_NOTE = "* you hold some: they cost what they'd sell for, since selling them is what crafting gives up."
 
 --- Craft view: craft it, or sell the reagents you hold?
+--- The batch rows of a craft's panel (Plan.Batch): size against the suggestion, cash needed now,
+--- break-even, the expected net and stock left after the horizon. "-" where a number is missing.
+function SUI.BatchRows(b, r)
+	local T, M = CH.Theme, CH.FormatMoney
+	local dash = T.Color("muted", "-")
+	if not b then
+		return { { "This batch", T.Color("muted", "no sale price in the scan: scan again") },
+			{ "Sold a day, region", r and r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or dash } }
+	end
+	local size = string.format("%d %s", b.n, b.n == 1 and "craft" or "crafts")
+	if b.suggested and b.suggested ~= b.n then size = size .. T.Color("muted", string.format(" (suggested %d)", b.suggested)) end
+	local days = b.horizon or 7
+	return {
+		{ "This batch", size, tip = { { "How many" }, { T.Color("muted", b.text or "") } } },
+		{ "Cash needed now", b.cashNow and M(b.cashNow) or dash,
+			tip = { { "Cash needed now" }, { T.Color("muted", "What buying the reagents you don't hold costs, walking the listings you've seen. All reagents at what buying them costs: " .. M(b.material or 0) .. ".") } } },
+		{ "Break-even, each", b.breakEven and M(b.breakEven) or dash,
+			tip = { { "Break-even" }, { T.Color("muted", "The sale price, before the cut, at which this craft pays for itself.") } } },
+		{ string.format("Expected net, %d days", days), b.net and T.Color(b.net >= 0 and "ok" or "bad", M(b.net)) or dash,
+			tip = { { "Expected net proceeds" }, { T.Color("muted", string.format("Sales after the cut and deposits less what the reagents cost, if it sells at the usual pace. If it sells half as fast and %d%% cheaper: %s.",
+				math.floor((CH.Decide.Scenario().price or 0) * 100 + 0.5), M(b.netSlow or 0))) } } },
+		{ string.format("Stock left after %d days", days), b.stockLeft and string.format("%.0f of %.0f", b.stockLeft, b.items or 0) or dash },
+	}
+end
+
+--- The panel's note: where its numbers come from (who, how old, which prices), then the rest.
+function SUI.SourceNote(b, rest)
+	local T = CH.Theme
+	local src = b and b.source and T.Color(b.stale and "bad" or "muted", b.source .. ".") or nil
+	if not src then return T.Color("muted", rest) end
+	return src .. " " .. T.Color("muted", rest)
+end
+
 function SUI.RecipePanel(r, n, v)
 	if not r or r.header then return nil end
 	v = v or view
@@ -1221,10 +1254,11 @@ function SUI.RecipePanel(r, n, v)
 		-- craft or sell is the sentence above: its numbers are on that sentence's hover
 		{ "MARGIN", r.pct and T.Color(r.pct >= 0 and "ok" or "bad", string.format("%d%%", math.floor(r.pct * 100 + 0.5))) or T.Color("muted", "-"),
 			tip = { { "Margin" }, { T.Color("muted", "Profit over what the reagents cost: what each gold spent on a craft brings back on top.") } } } }
-	local rows = {
-		{ "Sold a day, region", r.soldPerDay and string.format(r.soldPerDay >= 100 and "%.0f" or "%.1f", r.soldPerDay) or T.Color("muted", "-") },
-		{ "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-"), tip = r.perDay and CH.AdvisorUI and CH.AdvisorUI.PerDayTip and CH.AdvisorUI.PerDayTip(r) or nil } }
-	if cs and cs.paid then table.insert(rows, 1, { "You paid for yours", M(cs.paid) }) end
+	-- this batch: how many, the cash it needs now, break-even, what it should bring back, what's left
+	local b = CH.Plan.Batch(r, false, n, { gold = GetMoney and GetMoney() or nil })
+	local rows = SUI.BatchRows(b, r)
+	rows[#rows + 1] = { "Gold a day", r.perDay and money(r.perDay) or T.Color("muted", "-"), tip = r.perDay and CH.AdvisorUI and CH.AdvisorUI.PerDayTip and CH.AdvisorUI.PerDayTip(r) or nil }
+	if cs and cs.paid and #rows < 6 then table.insert(rows, 1, { "You paid for yours", M(cs.paid) }) end
 	local srows = reagentRows(acc)
 	local function act(conc)
 		local ok, why = SUI.ScanEntry(r, conc)
@@ -1247,7 +1281,20 @@ function SUI.RecipePanel(r, n, v)
 	return { kicker = "CRAFT OR SELL?", title = r.name or "?", item = r.item or false, sub = verdict, subTip = csTip,
 		figures = figures, bar = cs and math.max(0, math.min(1, cs.craft / math.max(1, cs.craft + cs.sell))) or nil,
 		rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = srows },
-		note = T.Color("muted", HELD_NOTE), actions = { act(false) }, act = act }
+		note = SUI.SourceNote(b, HELD_NOTE), actions = { act(false) }, act = act, batch = b }
+end
+
+--- The Concentration panel's EXTRA/PT figure: what a point adds over the plain craft you could
+--- make now (or over not crafting, when you can't), from Plan.Batch.
+function SUI.GainFigure(r, n)
+	local T, M = CH.Theme, CH.FormatMoney
+	local b = CH.Plan.Batch(r, true, n, { gold = GetMoney and GetMoney() or nil })
+	local g = b and b.gain
+	local v = g and g.perPoint or r.gainPerPoint
+	return { "EXTRA/PT", v and T.Color(v >= 0 and "ok" or "bad", M(v)) or T.Color("muted", "-"),
+		tip = { { "Gold a Concentration point adds" },
+			{ T.Color("muted", g and (g.versus == "plain" and "Over the plain craft, which you can make now."
+				or "Over not crafting: you can't make the plain craft now, or it doesn't pay.") or "From the scan.") } } }
 end
 
 --- Concentration view: is the Concentration worth spending on this craft?
@@ -1275,7 +1322,7 @@ function SUI.ConcPanel(r, n)
 	return { kicker = "WORTH THE CONCENTRATION?", title = r.name or "?", item = r.concItem or r.item or false, sub = verdict,
 		figures = { figure("PLAIN", r.profit, plainBook, (r.profit or 0) >= 0 and "ok" or "bad"),
 			figure("WITH CONC.", r.concProfit, concBook, (r.concProfit or 0) >= 0 and "ok" or "bad"),
-			figure("EXTRA/PT", r.gainPerPoint, nil, (r.gainPerPoint or 0) >= 0 and "ok" or "bad") },
+			SUI.GainFigure(r, n) },
 		bar = have and need > 0 and math.min(1, have / (need * math.max(1, n))) or nil,
 		rows = rows, section = { head = "REAGENTS, AT WHAT THEY COST YOU", rows = (reagentRows(acc or r.accounts)) },
 		note = T.Color("muted", "The bar: your Concentration against what " .. n .. (n == 1 and " craft needs." or " crafts need.")),

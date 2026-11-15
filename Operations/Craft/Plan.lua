@@ -117,3 +117,56 @@ function P.Provenance(e, now)
 	if b then parts[#parts + 1] = b end
 	return table.concat(parts, ", "), age == nil or age > P.STALE
 end
+
+-- The batch decision for a planned craft ------------------------------------------------------
+-- One summary the Crafting tab shows for a saved scan row, whatever the view: how many, the cash
+-- it needs now, break-even, the expected net and stock left after the horizon, what Concentration
+-- adds per point over a plain craft you could actually make, and the choices worth comparing
+-- (craft, sell the reagents, wait), with where the numbers come from.
+
+--- row: a saved scan row (as the Crafting list shows it, with canMake/canMakeConc when known).
+--- conc: the Concentration craft. n: crafts (nil: the suggestion, else 1). opts: gold (copper you
+--- have; nil leaves affordability out), held (items of the product you hold), now.
+--- Returns nil when the scan row lacks the numbers, else { n, suggested, action, text, binding,
+--- cashNow, material, breakEven, net, netSlow, stockLeft, items, horizon, gain = { perPoint, gain,
+--- versus = "plain" | "nothing" } (Concentration crafts), choices = { { key, label, gold, note } },
+--- source (label), stale }.
+function P.Batch(row, conc, n, opts)
+	opts = opts or {}
+	local D = CH.Decide
+	local inp = D and D.ScanInputs(row, conc)
+	if not inp then return nil end
+	local q = D.Quantity(inp, { gold = opts.gold, held = opts.held, noExplore = true,
+		canMake = conc and row.canMakeConc or row.canMake })
+	local size = n or (q.n and q.n > 0 and q.n) or 1
+	local material, cash = D.BatchCost(inp, size)
+	local sc = D.Scenarios(inp, size, { held = q.held })
+	local out = { n = size, suggested = q.suggested, action = q.action, text = q.text, binding = q.binding,
+		cashNow = cash, material = material, breakEven = conc and row.concBreakEven or row.breakEven,
+		net = sc.expected.net, netSlow = sc.slow.net, stockLeft = sc.expected.left, items = sc.expected.items,
+		horizon = D.HORIZON }
+	if conc and row.concProfit then
+		-- against the plain craft only when you could make it now: else against not crafting
+		local plainOk = row.profit and row.profit > 0 and (row.canMake == nil or row.canMake >= 1)
+		local g = D.ConcGain({ profit = row.concProfit, avgConcentration = row.avgConcentration, concentration = row.concentration },
+			plainOk and row.profit or 0)
+		if g then out.gain = { perPoint = g.perPoint, gain = g.gain, versus = plainOk and "plain" or "nothing" } end
+	end
+	-- the choices worth comparing, for this batch
+	local choices = { { key = "craft", label = string.format("Craft %d", size), gold = out.net,
+		note = string.format("expected net over %d days, %s if it sells slowly", out.horizon, CH.FormatMoney and CH.FormatMoney(out.netSlow) or tostring(out.netSlow)) } }
+	local acc = conc and row.concAccounts or row.accounts
+	local cs = acc and CH.CraftOrSell and CH.CraftOrSell(acc)
+	if cs and cs.sell and cs.sell > 0 then
+		choices[#choices + 1] = { key = "sell", label = "Sell the reagents you hold", gold = cs.sell, note = "gold now, after the cut, instead of crafting with them" }
+	end
+	local label, stale = P.Provenance(P.FromScan(opts.charKey or (CH.CharacterKey and CH.CharacterKey()), opts.char or (CH.Me and CH.Me()) or {}, row, conc)
+		or { source = "scan", at = row.at, charName = opts.char and opts.char.name, basis = CH.Prices and CH.Prices.CostBasis and CH.Prices.CostBasis() }, opts.now)
+	out.source, out.stale = label, stale
+	if q.action == "hold" or stale then
+		choices[#choices + 1] = { key = "wait", label = stale and "Rescan, then decide" or "Wait",
+			note = stale and "these numbers are over a day old" or q.text }
+	end
+	out.choices = choices
+	return out
+end
