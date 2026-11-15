@@ -18,9 +18,9 @@
 - **Buy beside the Auction House** what TSM doesn't know to buy: your craft queue's reagents, priced by walking the listings and skipped when they're 25% over the usual price, and the top deals, each one click for a quote and one to confirm. Post and cancel with TSM's Auctioning tab: Ready to post reads the same operations, so the prices match, and adds the whole Warband's live auctions to each cap
 - **A craft queue and shopping list** for every character, with stock targets that cover a week of sales
 - **Deals**: listings well under what the item resells for, from everything the AH has shown you (your searches, TSM's full scans), with the Deals button beside the AH to search them again and buy
-- **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted (Operations > Trade)
-- **Risk**: for what you hold and have up, how far its price could fall while it sells (from its volatility) and the gold exposed and at risk (Operations > Trade)
-- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts and deals, with your gold split best return first (Operations > Trade)
+- **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted (Crafting > Trade)
+- **Risk**: for what you hold and have up, how far its price could fall while it sells (from its volatility) and the gold exposed and at risk (Crafting > Trade)
+- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts and deals, with your gold split best return first (Crafting > Trade)
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
@@ -31,7 +31,7 @@
 | | The question it answers | Inside |
 |---|---|---|
 | <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Dashboard** | What should I do next? | Next Move, Concentration, stock and work that needs you |
-| <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Operations** | What should I craft, buy or post? | Craft (Compare crafts, Specialization), Trade (Ready to post, rules), Queue (queue, shopping, restock) |
+| <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Crafting** | What should I craft, buy or post? | Craft (Compare crafts, Specialization), Trade (Ready to post, rules), Queue (queue, shopping, restock) |
 | <img src="../Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger |
 
 ## Requirements
@@ -64,7 +64,7 @@
 ## Chat commands
 
 `/aiq` - open or close the window<br>
-`/aiq dashboard`, `operations` (or `craft`, `trade`, `shopping`), `accounting` - open a tab<br>
+`/aiq dashboard`, `crafting` (or `craft`, `operations`, `trade`, `shopping`), `accounting` - open a tab<br>
 `/aiq settings` - open Settings<br>
 `/aiq scan` - rank every recipe of the open profession<br>
 `/aiq advisor` - crafting advisor on or off<br>

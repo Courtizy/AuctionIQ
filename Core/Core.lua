@@ -344,7 +344,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		AuctionIQ.Print(string.format("disenchanting plans count %.0f Eversinging Dust, %.0f Radiant Shards and %.0f Dawn Crystals a day, %s.",
 			d.dust, d.shard, d.crystal, src))
 	elseif msg == "dashboard" then AuctionIQ.UI.Page("today")
-	elseif msg == "operations" or msg == "craft" then AuctionIQ.UI.Page("operations", "scenarios")
+	elseif msg == "crafting" or msg == "operations" or msg == "craft" then AuctionIQ.UI.Page("operations", "scenarios") -- operations: the old name
 	elseif msg == "trade" then AuctionIQ.UI.Page("operations", "post")
 	elseif msg == "shopping" then AuctionIQ.UI.Page("operations", "shopping")
 	elseif msg:match("^scenario") then

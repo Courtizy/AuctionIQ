@@ -28,7 +28,7 @@ local function keyOf(e)
 	return table.concat({ tostring(e.char), tostring(e.recipeID), tostring(e.quality or ""), e.concentration and tostring(e.concentration) or "", e.orderID and tostring(e.orderID) or "", mixOf(e) }, ":")
 end
 
---- Turn an advisor row into a queue entry for this character: a craft plan (Operations/Craft/Plan.lua).
+--- Turn an advisor row into a queue entry for this character: a craft plan (Crafting/Craft/Plan.lua).
 function Q.FromRow(result, r) return AuctionIQ.Plan.FromAdvisor(result, r) end
 
 --- Add qty crafts of an advisor row; the same recipe, quality and Concentration choice stack.
