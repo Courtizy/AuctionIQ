@@ -4,10 +4,10 @@
 --   * Resourcefulness: chance x 30% of the required reagents back on average, plus perk bonus
 --   * Ingenuity: chance x (50% + perk bonus) of the Concentration back
 --   * Concentration cost at any skill, from the game's cost curves (used when simulating)
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local St = {}
-CH.Stats = St
+AuctionIQ.Stats = St
 
 -- Rating per 100% chance (CraftSim CONST.PERCENT_DIVISION_FACTORS, Midnight)
 St.DIVISOR = { multicraft = 1100, resourcefulness = 900, ingenuity = 1000, craftingspeed = 2650 }
@@ -129,7 +129,7 @@ end
 --- Concentration to lift a craft to the next quality at this skill, from the game's curve for the
 --- recipe (CraftSim's GetConcentrationCostForSkill). nil when the recipe has no known curve.
 function St.ConcentrationCost(craftingDataID, difficulty, skill, reduce)
-	local curve = CH.ConcCurves and craftingDataID and CH.ConcCurves[craftingDataID]
+	local curve = AuctionIQ.ConcCurves and craftingDataID and AuctionIQ.ConcCurves[craftingDataID]
 	if not curve or not difficulty or difficulty <= 0 then return nil end
 	skill = math.min(skill, difficulty)
 	local factor = skill / difficulty

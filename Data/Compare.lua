@@ -3,10 +3,10 @@
 --   TSM       TSM's realm market value (dbmarket) and region average (dbregionmarketavg)
 --   Oribos    Oribos Exchange's realm and region prices, read directly or through TSM
 -- Realm prices are compared with each other; region prices are shown for reference.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local C = { CHEAP = 0.85, PRICEY = 1.15, DISAGREE = 0.25, FRESH = 24 * 3600 }
-CH.Compare = C
+AuctionIQ.Compare = C
 
 local function median(t)
 	local s = {}
@@ -24,7 +24,7 @@ C.Median = median
 --- against TSM and Oribos (0.2 = 20% above). verdict: "cheap now", "pricey now", "disagree",
 --- "agree", "one source" or "no prices".
 function C.Row(id)
-	local P = CH.Prices
+	local P = AuctionIQ.Prices
 	local scan = P.Market(id)
 	local key = "i:" .. id
 	local oe = P.Oribos(id)
@@ -67,18 +67,18 @@ end
 function C.Items(char, now)
 	now = now or time()
 	local ids = {}
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	if L and L.Available and L.Available() then
 		for _, e in ipairs(L.Inventory(nil, char)) do
 			if e.id and not e.bound then ids[e.id] = (ids[e.id] or 0) + (e.total or 0) end
 		end
 		for _, r in ipairs(L.Records("Sales")) do if r.id and r.time >= now - 30 * 86400 then ids[r.id] = ids[r.id] or 0 end end
 	end
-	if CH.Queue and CH.Queue.ShoppingList then
-		for _, s in ipairs((CH.Queue.ShoppingList())) do ids[s.itemID] = ids[s.itemID] or 0 end
+	if AuctionIQ.Queue and AuctionIQ.Queue.ShoppingList then
+		for _, s in ipairs((AuctionIQ.Queue.ShoppingList())) do ids[s.itemID] = ids[s.itemID] or 0 end
 	end
-	for _, id in ipairs(CH.Scans.Items()) do
-		local s = CH.Scans.Get(id)
+	for _, id in ipairs(AuctionIQ.Scans.Items()) do
+		local s = AuctionIQ.Scans.Get(id)
 		if s and s.full and s.age <= C.FRESH then ids[id] = ids[id] or 0 end
 	end
 	return ids

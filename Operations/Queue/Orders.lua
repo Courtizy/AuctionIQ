@@ -2,12 +2,12 @@
 -- your own reagents cost, which qualities meet the customer's minimum, and the cheapest way to get
 -- there (with or without Concentration). For a recraft: what lifting the item's quality costs
 -- against what the better item sells for.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local O = {}
-CH.Orders = O
+AuctionIQ.Orders = O
 
-local function price(id) return id and CH.Prices.Get("chvalue", "i:" .. id) end
+local function price(id) return id and AuctionIQ.Prices.Get("chvalue", "i:" .. id) end
 
 --- Advisor options for a crafting order (as the game hands it to the order view).
 function O.FromOrder(order)
@@ -31,7 +31,7 @@ function O.FromOrder(order)
 	for _, rw in ipairs(order.npcOrderRewards or {}) do
 		local id = rw.itemLink and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(rw.itemLink)
 		local p = id and price(id)
-		if p then rewards = rewards + p * CH.AH_CUT * (rw.count or 1) end
+		if p then rewards = rewards + p * AuctionIQ.AH_CUT * (rw.count or 1) end
 	end
 	return {
 		orderID = order.orderID, recipeID = order.spellID, minQuality = order.minQuality,
@@ -44,7 +44,7 @@ end
 function O.Analyze(order)
 	local o = O.FromOrder(order)
 	if not o or not o.recipeID then return nil, "No order selected." end
-	return CH.Advisor.Analyze(o.recipeID, { order = o, professionID = CH.OpenProfessionID() })
+	return AuctionIQ.Advisor.Analyze(o.recipeID, { order = o, professionID = AuctionIQ.OpenProfessionID() })
 end
 
 --- The recraft the profession window is set up for: { guid, quality } or nil.
@@ -65,12 +65,12 @@ function O.Hook()
 	if hooked then return end
 	local view = ProfessionsFrame and ProfessionsFrame.OrdersPage and ProfessionsFrame.OrdersPage.OrderView
 	if not view or not hooksecurefunc then return end
-	hooksecurefunc(view, "SetOrder", function(_, order) O.current = order; CH.AdvisorUI.ShowOrder(order) end)
-	if view.HookScript then view:HookScript("OnHide", function() O.current = nil; CH.AdvisorUI.Show() end) end
+	hooksecurefunc(view, "SetOrder", function(_, order) O.current = order; AuctionIQ.AdvisorUI.ShowOrder(order) end)
+	if view.HookScript then view:HookScript("OnHide", function() O.current = nil; AuctionIQ.AdvisorUI.Show() end) end
 	hooked = true
 end
 
-CH.On("TRADE_SKILL_SHOW", function() O.Hook() end)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() O.Hook() end)
 
 --- Open an order the way the game does: the profession's Crafting Orders tab, showing that order.
 --- Falls back to the recipe when the order view isn't there. Returns true when the order opened.
@@ -130,7 +130,7 @@ function O.Same(a, b) return a ~= nil and b ~= nil and tostring(a) == tostring(b
 O.cache = {}      -- [id as text] = order, from the last fetch
 O.fetching = false
 local canRequest = true
-CH.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
+AuctionIQ.On("CRAFTINGORDERS_CAN_REQUEST", function() canRequest = true end)
 
 O.seen = {}       -- [id as text] = when the game last listed it
 O.STALE = 10 * 60 -- an order not seen in the game's list for this long isn't treated as available
@@ -239,7 +239,7 @@ function O.Fetch(onDone)
 				if claimed then remember({ claimed }, fresh) end
 				O.cache = fresh
 				-- every kind came back: what isn't listed now is gone, so the queue can catch up
-				if all and CH.Queue and CH.Queue.Reconcile then CH.Queue.Reconcile(fresh, prof) end
+				if all and AuctionIQ.Queue and AuctionIQ.Queue.Reconcile then AuctionIQ.Queue.Reconcile(fresh, prof) end
 			end
 			local n = #O.All()
 			if onDone then onDone(n, not got and "the game didn't answer; open the Crafting Orders tab and try again" or nil) end
@@ -278,11 +278,11 @@ function O.Rewards(order)
 		local id = rw.itemLink and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(rw.itemLink)
 		if id then
 			local n = rw.count or 1
-			local p = not CH.Unsellable(id) and price(id)
+			local p = not AuctionIQ.Unsellable(id) and price(id)
 			local k = O.IsKnowledge(id)
 			kp = kp or k
-			table.insert(out, { id = id, count = n, value = p and p * CH.AH_CUT * n or nil, knowledge = k })
-			total = total + (p and p * CH.AH_CUT * n or 0)
+			table.insert(out, { id = id, count = n, value = p and p * AuctionIQ.AH_CUT * n or nil, knowledge = k })
+			total = total + (p and p * AuctionIQ.AH_CUT * n or 0)
 		end
 	end
 	return out, total, kp
@@ -290,7 +290,7 @@ end
 
 --- The reagents you supply for an order's craft, with how many you hold, most expensive first.
 function O.CostLines(result, r)
-	local out = CH.Advisor.CostLines(result, r.picks, r.finishing)
+	local out = AuctionIQ.Advisor.CostLines(result, r.picks, r.finishing)
 	for _, l in ipairs(out) do
 		l.have = (C_Item and C_Item.GetItemCount and l.id and C_Item.GetItemCount(l.id, true, false, true, true)) or 0
 	end
@@ -311,7 +311,7 @@ local rows, gen = {}, 0
 O.MAX_AGE = 60
 function O.Invalidate() gen = gen + 1 end
 for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "CURRENCY_DISPLAY_UPDATE", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED", "PLAYERBANKSLOTS_CHANGED", "NEW_RECIPE_LEARNED" }) do
-	CH.On(ev, O.Invalidate)
+	AuctionIQ.On(ev, O.Invalidate)
 end
 
 local function signature(order)
@@ -346,7 +346,7 @@ end
 --- One order worked out for the list (uncached; O.List keeps these).
 function O.Row(order)
 	local out = {}
-	local current = CH.Scan and CH.Scan.CurrentLine and CH.Scan.CurrentLine()
+	local current = AuctionIQ.Scan and AuctionIQ.Scan.CurrentLine and AuctionIQ.Scan.CurrentLine()
 	local ui = C_TradeSkillUI
 	local child = ui and ui.GetChildProfessionInfo and ui.GetChildProfessionInfo()
 	local cid = child and ui.GetConcentrationCurrencyID and ui.GetConcentrationCurrencyID(child.professionID)
@@ -354,7 +354,7 @@ function O.Row(order)
 	local concNow = cinfo and cinfo.quantity
 	do
 		local line, expansion
-		if CH.Scan and CH.Scan.Expansion then line, expansion = CH.Scan.Expansion(order.spellID) end
+		if AuctionIQ.Scan and AuctionIQ.Scan.Expansion then line, expansion = AuctionIQ.Scan.Expansion(order.spellID) end
 		local ok, result = pcall(O.Analyze, order)
 		result = ok and result or nil
 		local r = result and (result.best or result.bestConc)
@@ -362,7 +362,7 @@ function O.Row(order)
 		-- whether your bags, banks and warband bank hold the reagents (and Concentration) for one craft
 		local have, missing, reagentsHave, reagentsNeed, lowName
 		if r then
-			local n, lines = CH.Advisor.MaxCraftable(result, r, concNow)
+			local n, lines = AuctionIQ.Advisor.MaxCraftable(result, r, concNow)
 			have = n >= 1
 			missing = {}
 			local low
@@ -403,14 +403,14 @@ end
 function O.Debug()
 	local orders = O.All()
 	local lines = {}
-	local function say(text) lines[#lines + 1] = text; CH.Print(text) end
+	local function say(text) lines[#lines + 1] = text; AuctionIQ.Print(text) end
 	say(string.format("%d orders known (%s)", #orders, O.fetching and "fetching" or "not fetching"))
 	for _, order in ipairs(orders) do
 		local ok, result, why = pcall(O.Analyze, order)
 		local info = C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(order.spellID)
 		local head = string.format("%s (recipe %s) needs rank %s:", info and info.name or "?", tostring(order.spellID), tostring(order.minQuality))
 		-- how the recipe names its qualities: an enchant's scrolls, its quality IDs and its top rank
-		local scrolls = info and CH.Advisor.ScrollOutputs and CH.Advisor.ScrollOutputs(order.spellID, info) or {}
+		local scrolls = info and AuctionIQ.Advisor.ScrollOutputs and AuctionIQ.Advisor.ScrollOutputs(order.spellID, info) or {}
 		local qids = info and type(info.qualityIDs) == "table" and table.concat(info.qualityIDs, ",") or "none"
 		say(string.format("  enchant %s, maxQuality %s, qualityIDs %s, scrolls %d, orderType %s, item %s, expires %s",
 			tostring(info and info.isEnchantingRecipe), tostring(info and info.maxQuality), qids, #scrolls,
@@ -439,16 +439,16 @@ function O.Debug()
 			local parts = {}
 			for _, r in ipairs(result.rows or {}) do
 				parts[#parts + 1] = string.format("r%s%s %s%s", tostring(r.quality), r.concentration and ("c" .. math.floor(r.concentration)) or "",
-					r.profit and CH.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
+					r.profit and AuctionIQ.FormatMoney(math.floor(r.profit)) or "nil", r.short and " short" or "")
 			end
 			say(string.format("%s skill %s/%s, ranks %s, %d rows: %s%s", head, tostring(m.skill0), tostring(m.difficulty), tostring(m.maxQ),
 				#(result.rows or {}), table.concat(parts, "; "), m.unpriced and ("; no price for item " .. tostring(m.unpriced)) or ""))
 		end
 	end
-	if CH.db then
-		CH.db.debug = CH.db.debug or {}
-		CH.db.debug.orders = { at = time(), profession = CH.OpenProfessionID and CH.OpenProfessionID() or nil, lines = lines }
-		CH.Print("saved: a /reload writes it to the saved variables, for a bug report")
+	if AuctionIQ.db then
+		AuctionIQ.db.debug = AuctionIQ.db.debug or {}
+		AuctionIQ.db.debug.orders = { at = time(), profession = AuctionIQ.OpenProfessionID and AuctionIQ.OpenProfessionID() or nil, lines = lines }
+		AuctionIQ.Print("saved: a /reload writes it to the saved variables, for a bug report")
 	end
 end
 
@@ -464,7 +464,7 @@ function O.FirstCrafts()
 		local info = ui.GetRecipeInfo(id)
 		if info and info.learned and info.firstCraft and not info.isRecraft and not info.isSalvageRecipe
 			and not info.isGatheringRecipe and not info.isDummyRecipe then
-			local ok, result = pcall(CH.Advisor.Analyze, id, { professionID = CH.OpenProfessionID() })
+			local ok, result = pcall(AuctionIQ.Advisor.Analyze, id, { professionID = AuctionIQ.OpenProfessionID() })
 			local best
 			for _, r in ipairs(ok and result and result.rows or {}) do
 				if r.cost and not r.short and not r.concentration and (not best or r.cost < best.cost) then best = r end

@@ -1,16 +1,16 @@
 -- Planning: knowledge points per character and profession each week (from the spec trees), a weekly
 -- checklist of knowledge sources you tick off (it clears at the weekly reset), coming events (the
 -- game calendar's holidays plus dates you add), and time spent goldmaking for gold per hour.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Pl = {}
-CH.Planner = Pl
+AuctionIQ.Planner = Pl
 
 local WEEK = 7 * 86400
 
 local function store()
-	CH.db.planner = CH.db.planner or {}
-	local s = CH.db.planner
+	AuctionIQ.db.planner = AuctionIQ.db.planner or {}
+	local s = AuctionIQ.db.planner
 	s.kp = s.kp or {}            -- [charKey][profName] = { [weekStart] = total }
 	s.tasks = s.tasks or { "Treatise", "Weekly quest", "Weekly drops", "Gathering / disenchant drops" }
 	s.done = s.done or {}        -- [weekStart][charKey .. "|" .. prof .. "|" .. task] = true
@@ -39,7 +39,7 @@ end
 
 --- Record this week's total for every profession of this character (from its last tree read).
 function Pl.RecordKP(now)
-	local me, key = CH.Me(), CH.CharacterKey()
+	local me, key = AuctionIQ.Me(), AuctionIQ.CharacterKey()
 	local s = store()
 	local wk = Pl.WeekStart(now)
 	s.kp[key] = s.kp[key] or {}
@@ -60,7 +60,7 @@ function Pl.Knowledge(now)
 	local s, wk = store(), Pl.WeekStart(now)
 	local out = {}
 	for key, profs in pairs(s.kp) do
-		local c = CH.db.characters[key]
+		local c = AuctionIQ.db.characters[key]
 		for prof, t in pairs(profs) do
 			local start = t.first and t.first[wk]
 			local tasks = {}
@@ -161,17 +161,17 @@ function Pl.Time(since)
 		upTo = upTo and math.max(upTo, sp[2]) or sp[2]
 	end
 	local profit
-	if CH.Ledger and CH.Ledger.Available() then
-		local o = CH.Ledger.Overhead(since)
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+		local o = AuctionIQ.Ledger.Overhead(since)
 		profit = o.afterOverhead
 	end
 	return { kinds = kinds, hours = total, profit = profit, perHour = profit and total > 0 and profit / total or nil }
 end
 
-CH.On("AUCTION_HOUSE_SHOW", function() start("Auction House") end)
-CH.On("AUCTION_HOUSE_CLOSED", function() stop("Auction House") end)
-CH.On("MAIL_SHOW", function() start("Mailbox") end)
-CH.On("MAIL_CLOSED", function() stop("Mailbox") end)
-CH.On("TRADE_SKILL_SHOW", function() start("Crafting") end)
-CH.On("TRADE_SKILL_CLOSE", function() stop("Crafting"); pcall(Pl.RecordKP) end)
-CH.On("PLAYER_LOGOUT", function() for k in pairs(open) do stop(k) end end)
+AuctionIQ.On("AUCTION_HOUSE_SHOW", function() start("Auction House") end)
+AuctionIQ.On("AUCTION_HOUSE_CLOSED", function() stop("Auction House") end)
+AuctionIQ.On("MAIL_SHOW", function() start("Mailbox") end)
+AuctionIQ.On("MAIL_CLOSED", function() stop("Mailbox") end)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() start("Crafting") end)
+AuctionIQ.On("TRADE_SKILL_CLOSE", function() stop("Crafting"); pcall(Pl.RecordKP) end)
+AuctionIQ.On("PLAYER_LOGOUT", function() for k in pairs(open) do stop(k) end end)

@@ -33,32 +33,32 @@ def check(name, cond):
 
 run = L.execute
 run('STUB.Fire("ADDON_LOADED", "AuctionIQ"); STUB.Fire("PLAYER_LOGIN")')
-CH = L.globals().AuctionIQ
-CH.ScanUI.ROW_AGE = -1
-CH.ScanUI.background = False # every row worked out in the redraw itself (its own tests turn this on)
-CH.AdvisorUI.KNOWN_AGE = -1 # tests change the stubs between clicks: work each recipe out again
-CH.Prices.background = False # sales added up at once, not over the next frames
-CH.AdvisorUI.GEAR_AGE = -1
-CH.db.settings.presetsAuto = False # presets are worked out on purpose in their tests, not in the background
-CH.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
-CH.Market.background = False # the market views work their list out at once, not over the next frames
-me = CH.db.characters["Seyko-Emerald Dream"]
+AuctionIQ = L.globals().AuctionIQ
+AuctionIQ.ScanUI.ROW_AGE = -1
+AuctionIQ.ScanUI.background = False # every row worked out in the redraw itself (its own tests turn this on)
+AuctionIQ.AdvisorUI.KNOWN_AGE = -1 # tests change the stubs between clicks: work each recipe out again
+AuctionIQ.Prices.background = False # sales added up at once, not over the next frames
+AuctionIQ.AdvisorUI.GEAR_AGE = -1
+AuctionIQ.db.settings.presetsAuto = False # presets are worked out on purpose in their tests, not in the background
+AuctionIQ.Orders.MAX_AGE = -1 # tests change the stubs without the game's events: work every order out each time
+AuctionIQ.Market.background = False # the market views work their list out at once, not over the next frames
+me = AuctionIQ.db.characters["Seyko-Emerald Dream"]
 check("gold recorded at login", me.gold == 1234567)
 
-fm = lambda c: CH.FormatMoney(c, True)
+fm = lambda c: AuctionIQ.FormatMoney(c, True)
 COINS = {"Gold": "g", "Silver": "s", "Copper": "c"}
 def letters(t): return re.sub(r"\|TInterface\\MoneyFrame\\UI-(Gold|Silver|Copper)Icon[^|]*\|t", lambda m: COINS[m.group(1)], t)
 check("money format", (fm(123456789), fm(125000), fm(5000), fm(50), fm(-20000)) == ("12,345g", "12g 50s", "50s", "50c", "-2g"))
 
-check("chvalue falls back to the formula when the custom source is missing", CH.Prices.Get("chvalue", "i:100") == 5000000)
-check("craft profit = value after cut - crafting cost", CH.Prices.CraftProfit("i:100") == 5000000 * 0.95 - 1000000)
-check("no price for unknown item", CH.Prices.Get("chvalue", "i:7") is None)
+check("chvalue falls back to the formula when the custom source is missing", AuctionIQ.Prices.Get("chvalue", "i:100") == 5000000)
+check("craft profit = value after cut - crafting cost", AuctionIQ.Prices.CraftProfit("i:100") == 5000000 * 0.95 - 1000000)
+check("no price for unknown item", AuctionIQ.Prices.Get("chvalue", "i:7") is None)
 
 run('STUB.tooltipLink = "|cff|Hitem:100::|h[Potion]|h|r"; STUB.tooltipFn(GameTooltip)')
 lines = [letters(l) for l in L.globals().GameTooltip.lines.values()]
-check("money shows coin icons by default", "UI-GoldIcon" in CH.FormatMoney(125000) and "UI-SilverIcon" in CH.FormatMoney(125000))
+check("money shows coin icons by default", "UI-GoldIcon" in AuctionIQ.FormatMoney(125000) and "UI-SilverIcon" in AuctionIQ.FormatMoney(125000))
 run('AuctionIQ.db.settings.coins = false')
-check("/ch coins setting gives g/s/c text", CH.FormatMoney(125000) == "12g 50s")
+check("/ch coins setting gives g/s/c text", AuctionIQ.FormatMoney(125000) == "12g 50s")
 run('AuctionIQ.db.settings.coins = true')
 check("tooltip shows value, buy now / post and profit",
       lines == ["AuctionIQ value=", "    Buy now (lowest listing)=450g", "    Post price=450g", "  Sale price=500g",
@@ -74,21 +74,21 @@ crafts = list(p.crafts.values())
 check("best crafts: learned, priced, top quality only", len(crafts) == 1 and crafts[0].name == "Phoenix Oil" and crafts[0].itemID == 100)
 
 run('STUB.now = STUB.now + 24 * 3600')  # a day later
-check("Concentration refills about 250 a day", CH.ConcentrationNow(p)[0] == 650)
+check("Concentration refills about 250 a day", AuctionIQ.ConcentrationNow(p)[0] == 650)
 run('STUB.now = STUB.now + 48 * 3600')  # two more days
-check("Concentration stops at its cap", CH.ConcentrationNow(p)[0] == 1000)
+check("Concentration stops at its cap", AuctionIQ.ConcentrationNow(p)[0] == 1000)
 
 run('SlashCmdList.AUCTIONIQ("")')
-check("/ch opens the window", CH.UI.IsShown())
+check("/ch opens the window", AuctionIQ.UI.IsShown())
 run('SlashCmdList.AUCTIONIQ("")')
-check("/ch again closes it", not CH.UI.IsShown())
+check("/ch again closes it", not AuctionIQ.UI.IsShown())
 
-btn = CH.CreateMinimapButton()
+btn = AuctionIQ.CreateMinimapButton()
 check("minimap button made at login", btn is not None and btn.shown)
 run('AuctionIQ.CreateMinimapButton().scripts.OnClick()')
-check("minimap button opens the window", CH.UI.IsShown())
+check("minimap button opens the window", AuctionIQ.UI.IsShown())
 run('local b = AuctionIQ.CreateMinimapButton(); b.scripts.OnDragStart(b); b.scripts.OnUpdate(b)')
-check("dragging moves it round the minimap", abs(CH.db.settings.minimap.angle) < 0.001 and btn.point[4] == 75)
+check("dragging moves it round the minimap", abs(AuctionIQ.db.settings.minimap.angle) < 0.001 and btn.point[4] == 75)
 run('SlashCmdList.AUCTIONIQ("minimap")')
 run("STUB.shown = AuctionIQ.UI.IsShown and AuctionIQ.UI.IsShown(); STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('shatter'); AuctionIQ.Print = STUB.oldPrint")
 check("/aiq shatter lists what Shatter can take, without opening the main window", any("Shatter can take" in str(t) for t in L.globals().STUB.printed.values()))
@@ -96,7 +96,7 @@ check("/ch minimap hides it", not btn.shown)
 
 # icons: white line icons tinted in the label, theme colour when active and grey otherwise
 run('if not AuctionIQ.UI.IsShown() then AuctionIQ.UI.Toggle() end; AuctionIQ.UI.Go("today")')
-tabs = CH.UI.Buttons()
+tabs = AuctionIQ.UI.Buttons()
 check("tab icons: Dashboard uses the trend panel icon, tinted blue when active", "Media\\Tab-Dashboard:14:14:0:0:64:64:0:64:0:64:63:199:235|t Dashboard" in tabs.today.label)
 check("tab icons: inactive tabs are grey", ":163:163:171|t Operations" in tabs.operations.label and ":163:163:171|t Accounting" in tabs.ledger.label)
 check("tab icons: Settings is the gear alone", "Tab-Settings" in tabs.settings.label and "Settings" not in tabs.settings.label.split("|t")[-1])
@@ -106,66 +106,66 @@ glyph = btn.glyph
 check("minimap: AIQ monogram, A in white and IQ in the theme colour, no bar on top",
       glyph.t.endswith("A|r|cff3fc7ebIQ|r") and L.eval("rawget(AuctionIQMinimapButton, 'rule')") is None)
 
-res = CH.Advisor.Analyze(10)
-rows = list(CH.AdvisorUI.Render(res).values())
+res = AuctionIQ.Advisor.Analyze(10)
+rows = list(AuctionIQ.AdvisorUI.Render(res).values())
 check("advisor: cheapest reagents for each quality", rows[0].startswith("Q1 plain cost=670000 profit=280000") and rows[2].startswith("Q2 plain cost=2120000 profit=730000"))
 check("advisor: best profit without Concentration is Q2", "BEST" in rows[2] and "BEST" not in rows[0].replace("BESTCONC", ""))
 check("advisor: Concentration value = profit / Concentration cost", "Q2 conc80" in rows[1] and "pp=27250" in rows[1] and rows[1].endswith("BESTCONC"))
 check("advisor: no Concentration row when the quality is already top", len(rows) == 3)
-check("advisor: picks the cheaper skill first", CH.Advisor.PicksText(res, res.best.picks).count("Q2") == 2)
+check("advisor: picks the cheaper skill first", AuctionIQ.Advisor.PicksText(res, res.best.picks).count("Q2") == 2)
 def plain(t): return re.sub(r"\|c\w{8}|\|r", "", letters(str(t)))
 best = res.best
-rl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 3).values()]
+rl = [(plain(l[1]).strip(), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, best, 3).values()]
 check("reagent hover reads like a statement: each reagent at its price, as gold out, then the total",
       ("4x item 202 Q2 @ 15g", "-60g") in rl and ("2x item 205 @ 1g", "-2g") in rl and ("Total", "-212g") in rl
       and any("estimate" in l[1] for l in rl))
-sl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 4).values()]
+sl = [(plain(l[1]), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, best, 4).values()]
 check("sell hover shows realm and region prices", ("   MV  Market Value, realm", "300g") in sl and ("   Lowest listing, realm", "none") in sl and ("After 5% auction cut", "285g") in sl)
-pl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 5).values()]
+pl = [(plain(l[1]).strip(), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, best, 5).values()]
 check("profit hover reads like a statement: revenue, costs, profit, return", ("Revenue", "average per craft") in pl and ("Reagents", "-212g") in pl and ("Profit", "73g") in pl and ("Return on cost  profit / reagents", "34%") in pl)
 # Expected proceeds: the source in the notes, and rows posting would skip
-check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(CH.AdvisorUI.SourceLine(res)))
+check("advisor: the proceeds column is called Expected proceeds", "TSM price (chvalue) after the 5% cut" in plain(AuctionIQ.AdvisorUI.SourceLine(res)))
 run("""STUB.oldGP = AuctionIQ.Groups.Prices
 AuctionIQ.Groups.Prices = function(id) return { min = 4000000, post = true, op = "Crafted", priceReset = "none" } end""")
-CH.AdvisorUI.Render(res)
-pls = [plain(x) for x in CH.AdvisorUI.PostLines(res).values()]
+AuctionIQ.AdvisorUI.Render(res)
+pls = [plain(x) for x in AuctionIQ.AdvisorUI.PostLines(res).values()]
 check("advisor: a row below its operation's min says posting would skip it",
       any("Below posting minimum (Crafted min 400g): posting would skip it" in x for x in pls) and len(pls) == len(set(r.quality for r in res.rows.values())))
 run("AuctionIQ.Groups.Prices = function() return { min = 1, post = true, op = 'Crafted', priceReset = 'none' } end")
-CH.AdvisorUI.Render(res)
-check("advisor: nothing flagged when every row clears the min", len(list(CH.AdvisorUI.PostLines(res).values())) == 0)
+AuctionIQ.AdvisorUI.Render(res)
+check("advisor: nothing flagged when every row clears the min", len(list(AuctionIQ.AdvisorUI.PostLines(res).values())) == 0)
 run("AuctionIQ.Groups.Prices = STUB.oldGP")
-mx = CH.Advisor.MaxCraftable(res, best)
+mx = AuctionIQ.Advisor.MaxCraftable(res, best)
 check("max craftable is limited by the scarcest reagent", mx[0] == 1)  # 3 of item 205 at 2 each
-mq = CH.Advisor.MaxCraftable(res, res.rows[2], 50)
+mq = AuctionIQ.Advisor.MaxCraftable(res, res.rows[2], 50)
 check("with Concentration it is limited by points too", res.rows[2].concentration == 80 and mq[0] == 0)
-ml = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, best, 7).values()]
+ml = [(plain(l[1]), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, best, 7).values()]
 check("max hover lists have and need", ("item 204 Q2", "12 have, 5 each") in ml)
 run('AuctionIQ.db.settings.advisor.hide = false; STUB.Fire("TRADE_SKILL_SHOW")')
-check("two windows: the profession window brings up the Craft window, not a separate advisor", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
+check("two windows: the profession window brings up the Craft window, not a separate advisor", AuctionIQ.ScanUI.IsShown() and not AuctionIQ.AdvisorUI.IsShown())
 col = L.eval('function(x) local f = { GetLeft = function() return 0 end, GetEffectiveScale = function() return 1 end }; local g = GetCursorPosition; GetCursorPosition = function() return x, 0 end; local c = AuctionIQ.AdvisorUI.ColumnAt(f); GetCursorPosition = g; return c end')
 check("row hover picks the column under the cursor", col(200) == 3 and col(250) == 4 and col(350) == 5 and col(500) == 7 and col(20) is None)
 run('STUB.Fire("TRADE_SKILL_CLOSE")')
-check("advisor panel hides with it", not CH.AdvisorUI.IsShown())
+check("advisor panel hides with it", not AuctionIQ.AdvisorUI.IsShown())
 
 # Craft queue and shopping list
 run('AuctionIQ.db.settings.advisor.hide = false; AuctionIQ.AdvisorUI.Show(10)')
 check("advisor: a new recipe selects the pick that earns the most a craft, as the Craft list's Best",
-      CH.AdvisorUI.SelectedRow() is not None and CH.AdvisorUI.SelectedRow().profit == max(r.profit for r in CH.AdvisorUI.Current().rows.values() if r.profit is not None))
+      AuctionIQ.AdvisorUI.SelectedRow() is not None and AuctionIQ.AdvisorUI.SelectedRow().profit == max(r.profit for r in AuctionIQ.AdvisorUI.Current().rows.values() if r.profit is not None))
 run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
 run('AuctionIQ.AdvisorUI.RowClick(1)')            # Q1 without Concentration: selects, queues nothing
-check("advisor: a row click selects it and queues nothing", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 1
-      and CH.AdvisorUI.SelectedRow().concentration is None)
+check("advisor: a row click selects it and queues nothing", AuctionIQ.Queue.Count() == 0 and AuctionIQ.AdvisorUI.SelectedRow().quality == 1
+      and AuctionIQ.AdvisorUI.SelectedRow().concentration is None)
 run('STUB.shift = true; AuctionIQ.AdvisorUI.RowClick(3); STUB.shift = false')
-check("advisor: shift-click selects too, it doesn't queue", CH.Queue.Count() == 0 and CH.AdvisorUI.SelectedRow().quality == 2)
-check("advisor: the queue button names how many crafts", CH.AdvisorUI.QueueAction()[0] == "Queue 1 craft")
-nm = CH.AdvisorUI.RenderNext()
+check("advisor: shift-click selects too, it doesn't queue", AuctionIQ.Queue.Count() == 0 and AuctionIQ.AdvisorUI.SelectedRow().quality == 2)
+check("advisor: the queue button names how many crafts", AuctionIQ.AdvisorUI.QueueAction()[0] == "Queue 1 craft")
+nm = AuctionIQ.AdvisorUI.RenderNext()
 check("advisor: Next Move names the craft and count, then profit, break-even and recovery",
-      nm is not None and nm.head.startswith("Craft 1 ") and nm.row.quality == 2 and nm.profit == CH.AdvisorUI.SelectedRow().profit
+      nm is not None and nm.head.startswith("Craft 1 ") and nm.row.quality == 2 and nm.profit == AuctionIQ.AdvisorUI.SelectedRow().profit
       and (nm.recover is None or 0 <= nm.recover <= 1))
 run("AuctionIQ.AdvisorUI.SetQty(20)")
-nm20 = CH.AdvisorUI.RenderNext()
-check("advisor: Next Move and the queue button follow the quantity", nm20.head.startswith("Craft 20 ") and CH.AdvisorUI.QueueAction()[0] == "Queue 20 crafts"
+nm20 = AuctionIQ.AdvisorUI.RenderNext()
+check("advisor: Next Move and the queue button follow the quantity", nm20.head.startswith("Craft 20 ") and AuctionIQ.AdvisorUI.QueueAction()[0] == "Queue 20 crafts"
       and abs(nm20["items"] - 20 * nm["items"]) < 1e-6)
 check("advisor: Multicraft output is shown apart from the crafts", (not nm20.mc) or ("Multicraft" in nm20.sub))
 for w, head in (("profit", "Profit"), ("breakEven", "Break-even"), ("recover", "Recover")):
@@ -176,8 +176,8 @@ check("decide: a reagent with no item id (an older scan's account) doesn't ask t
 run('AuctionIQ.Scan.ScanAll(nil, function(r) STUB.allDone = r end)')
 waits = 0
 for _ in range(400):
-    if CH.Scan.all is None: break
-    if CH.Scan.all.waiting is not None:
+    if AuctionIQ.Scan.all is None: break
+    if AuctionIQ.Scan.all.waiting is not None:
         # the game only lets a click open a profession: the button reads Open (the status line names it) and waits for one
         if L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()') == "Open" and "to scan" in (L.eval("AuctionIQ.Scan.AllStatus()") or ""): waits += 1
         run('AuctionIQ.LedgerUI.ViewDef("scenarios").action.click()')
@@ -188,12 +188,12 @@ check("scan all: rolls through each profession and reports each", ad is not None
 check("scan all: opens the ones that aren't showing", "333," in (L.eval('STUB.opened') or "") and "185," in (L.eval('STUB.opened') or ""))
 check("scan all: Compare crafts has a Scan button for it", L.eval('AuctionIQ.Research and 1 or 1') and L.eval('AuctionIQ.LedgerUI.ViewDef("scenarios").action.label()') == "Scan")
 run('STUB.base = 171')
-af = CH.AdvisorUI.Frame()
+af = AuctionIQ.AdvisorUI.Frame()
 check("advisor redesign: Next Move sits on a shaded card with the accent line", af.nextCard is not None and af.accentBar is not None and af.tableCard is not None and af.paneCard is not None)
 check("advisor redesign: the title bar keeps only Queue; the pane has its own tabs", af.notesBtn is not None and af.chartBtn is not None and af.batchBtn is not None
       and L.eval("function(b) return select(2, b:GetPoint()) end")(af.chartBtn) != L.eval("function(f) return f end")(af.queue))
 check("advisor redesign: the Queue button is the filled main action", af.act.queue.aiqFill is not None)
-check("advisor redesign: the Break-even tab opens the chart, Notes goes back", CH.AdvisorUI.SetPane("chart") == "chart" and CH.AdvisorUI.SetPane("notes") == "notes" and af.notesBtn.on)
+check("advisor redesign: the Break-even tab opens the chart, Notes goes back", AuctionIQ.AdvisorUI.SetPane("chart") == "chart" and AuctionIQ.AdvisorUI.SetPane("notes") == "notes" and af.notesBtn.on)
 check("advisor redesign: the sub line has the card's full width", af.next.sub.w is None or af.next.sub.w >= 400)
 run("AuctionIQ.AdvisorUI.SetQty(1)")
 g = L.eval("{ AuctionIQ.Theme.GradientColors('MAGE') }")
@@ -201,27 +201,27 @@ check("theme: ToxiUI's class gradient for bars", abs(g[1][1] - 0) < 1e-6 and abs
 run('AuctionIQ.AdvisorUI.QueueSelected()')        # Q2 without Concentration, one
 run('AuctionIQ.AdvisorUI.SetQty(1); AuctionIQ.AdvisorUI.QueueSelected()')
 run('AuctionIQ.AdvisorUI.RowClick(2)')            # Q1 reagents + Concentration
-check("advisor: selecting another row puts the quantity back to 1", CH.AdvisorUI.SetQty(0) == 1)
+check("advisor: selecting another row puts the quantity back to 1", AuctionIQ.AdvisorUI.SetQty(0) == 1)
 run('AuctionIQ.AdvisorUI.QueueSelected()')
-q = list(CH.db.queue.values())
+q = list(AuctionIQ.db.queue.values())
 check("queue: the button adds the selected craft, the same craft stacks", len(q) == 2 and q[0].qty == 2 and q[0].quality == 2 and q[1].concentration == 80)
-check("queue: Count adds up", CH.Queue.Count() == 3)
-check("queueing from the card keeps you on the Craft tab", CH.ScanUI.IsShown() and not CH.QueueUI.IsShown())
-lines = CH.QueueUI.Show()
-check("the Queue tab replaces Craft in the same spot", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown() and CH.Window.Active() == "queue")
+check("queue: Count adds up", AuctionIQ.Queue.Count() == 3)
+check("queueing from the card keeps you on the Craft tab", AuctionIQ.ScanUI.IsShown() and not AuctionIQ.QueueUI.IsShown())
+lines = AuctionIQ.QueueUI.Show()
+check("the Queue tab replaces Craft in the same spot", AuctionIQ.QueueUI.IsShown() and not AuctionIQ.ScanUI.IsShown() and AuctionIQ.Window.Active() == "queue")
 shop = list(lines.shopAll.values())
 # 2x Q2 craft (4x202, 5x204, 2x205) + 1x conc craft (4x201, 5x203, 2x205)
 check("shopping list: need across the queue, less what you have",
       "item 202 need=8 have=8 buy=0" in shop and "item 204 need=10 have=12 buy=0" in shop and "item 205 need=6 have=3 buy=3" in shop)
-srows_ = [r for r in CH.QueueUI.ShopRows()[0].values()]
+srows_ = [r for r in AuctionIQ.QueueUI.ShopRows()[0].values()]
 check("shopping list card: what to buy first, covered reagents folded into one row",
       srows_[0].itemID == 205 and srows_[-1].toggle and srows_[-1].n == len(shop) - 1)
-check("shopping list card: the covered row opens them", len(list(CH.QueueUI.SetShowCovered(True).shop.values())) >= 1
-      and len(list(CH.QueueUI.ShopRows()[0].values())) == len(shop) + 1)
+check("shopping list card: the covered row opens them", len(list(AuctionIQ.QueueUI.SetShowCovered(True).shop.values())) >= 1
+      and len(list(AuctionIQ.QueueUI.ShopRows()[0].values())) == len(shop) + 1)
 run("AuctionIQ.QueueUI.SetShowCovered(false)")
-check("queue popup: More holds plan comparison and Clear, nothing that adds", [m[1] for m in CH.QueueUI.MenuItems().values()] == ["Compare restock plans", "Clear queue"])
+check("queue popup: More holds plan comparison and Clear, nothing that adds", [m[1] for m in AuctionIQ.QueueUI.MenuItems().values()] == ["Compare restock plans", "Clear queue"])
 # Order book: buying a quantity walks up the listings (Data/Depth.lua)
-D = CH.Depth
+D = AuctionIQ.Depth
 d = D.Cost(205, 3)
 check("order book: with no listings seen, cost is chmat x quantity", d.cost == 30000 and d.source == "chmat")
 run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 5 }, { price = 10000, qty = 2 }, { price = 5000, qty = 9, mine = true } })")
@@ -229,13 +229,13 @@ d = D.Cost(205, 3)
 check("order book: walks the AH search, cheapest first, skipping your own", d.cost == 2 * 10000 + 15000 and d.source == "ah" and d.short == 0 and d.first == 10000)
 d = D.Cost(205, 10)
 check("order book: past the listings it's short and priced at the top one", d.short == 3 and d.cost == 20000 + 5 * 15000 + 3 * 15000)
-row = [r for r in CH.Queue.ShoppingList()[0].values() if r.itemID == 205][0]
+row = [r for r in AuctionIQ.Queue.ShoppingList()[0].values() if r.itemID == 205][0]
 check("shopping list prices the buy from the order book", row.buy == 3 and row.cost == 35000 and row.source == "ah")
 check("one reagent price: the Craft card costs the same 3 from the same listings as the shopping list",
       L.eval("AuctionIQ.Advisor.UnitsCost({ recipeID = 1 }, 205, 3)") == row.cost)
 check("one reagent price: with no listings seen it's your price source, as before",
       L.eval("AuctionIQ.Advisor.UnitsCost({ recipeID = 1 }, 201, 2)") == L.eval("2 * AuctionIQ.Scan.ReagentPrice(201)") and L.eval("AuctionIQ.Scan.ReagentPrice(201)") is not None)
-tip = [plain(l) for l in CH.QueueUI.CostLines(row).values()]
+tip = [plain(l) for l in AuctionIQ.QueueUI.CostLines(row).values()]
 check("shopping cost hover says how far above the cheapest", tip[0] == "Buying 3 costs 3g 50s" and "17% above the cheapest listing" in tip and tip[-1] == "From your AH search")
 run("STUB.now = STUB.now + 16 * 60")
 check("order book: an old AH search is dropped", D.Cost(205, 3).source == "chmat")
@@ -246,14 +246,14 @@ check("order book: between a saved scan's points the cost is a straight line", d
 d = D.Cost(205, 60)
 check("order book: past the saved book it's short at the last step's price", d.short == 10 and d.cost == 1000000 + 10 * 22000)
 check("order book: slippage is the average over the cheapest", abs(D.Slippage(205, 30) - (560000 / 30 / 9000 - 1)) < 1e-9)
-lad = [tuple(x.values()) for x in CH.Scans.Ladder(L.eval("{ { 100, 5 }, { 200, 8 }, { 300, 50 } }")).values()]
+lad = [tuple(x.values()) for x in AuctionIQ.Scans.Ladder(L.eval("{ { 100, 5 }, { 200, 8 }, { 300, 50 } }")).values()]
 check("scan ladder: average to buy 1, 10, 50 and all listed", lad == [(1, 100), (10, 150), (50, 264), (63, 272)])
 run("AuctionIQ.db.scans = {}; AuctionIQ.Depth.Forget()")
-ok = CH.Queue.Craft(q[1], 1)
+ok = AuctionIQ.Queue.Craft(q[1], 1)
 c = L.eval("STUB.crafted")
 check("craft uses the queued reagents and Concentration", ok and c.id == 10 and c.conc == True and c.reagents[1].reagent.itemID == 201 and c.reagents[1].quantity == 4)
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10)')
-check("a finished craft comes off the queue", CH.Queue.Count() == 2 and len(list(CH.db.queue.values())) == 1)
+check("a finished craft comes off the queue", AuctionIQ.Queue.Count() == 2 and len(list(AuctionIQ.db.queue.values())) == 1)
 # enchants: the scroll each quality makes, and the craft goes onto Enchanting Vellum
 en = L.eval("""(function()
   local ui = C_TradeSkillUI
@@ -416,7 +416,7 @@ check("enchant: each scroll's shopping list and cost include one Enchanting Vell
 check("enchant: the queue crafts it onto Enchanting Vellum (CraftEnchant), not CraftRecipe",
       en.enchant is not None and en.enchant.id == 10 and en.enchant.bag == 1 and en.enchant.slot == 3 and en.recipe is None)
 run('AuctionIQ.Queue.Clear()')
-check("clear empties it", CH.Queue.Count() == 0)
+check("clear empties it", AuctionIQ.Queue.Count() == 0)
 
 # ElvUI present: its colours, templates and skins are used
 run('''ElvUI = { { media = { rgbvaluecolor = { 0.2, 0.4, 0.6 }, bordercolor = { 0, 0, 0 }, backdropfadecolor = { 0.06, 0.06, 0.06 }, backdropcolor = { 0.1, 0.1, 0.1 } },
@@ -424,7 +424,7 @@ run('''ElvUI = { { media = { rgbvaluecolor = { 0.2, 0.4, 0.6 }, bordercolor = { 
 AuctionIQ.Theme.Sync()
 STUB.p = CreateFrame("Frame"); AuctionIQ.Theme.Panel(STUB.p, "bg")
 STUB.b = AuctionIQ.Theme.Button(STUB.p, "Dock"); STUB.x = AuctionIQ.Theme.Button(STUB.p, "x")''')
-T = CH.Theme
+T = AuctionIQ.Theme
 check("no ElvUI: the accent and brand are AuctionIQ blue", L.eval("AuctionIQ.Theme.hex.accent") == "3fc7eb" and T.hex.bg == "292929")
 run("AuctionIQ.Theme.Use('auctioniq')")
 check("ElvUI: the accent and the brand's IQ follow its theme (value) colour", T.hex.accent == "336699" and T.hex.brand == "336699"
@@ -443,14 +443,14 @@ check("no ElvUI again: back to AuctionIQ blue and its gradient", T.hex.accent ==
       and abs(L.eval("({ AuctionIQ.Theme.GradientColors() })[1][3]") - 0xd7 / 255) < 1e-6)
 
 # CraftSim parity: average profit with Multicraft and Resourcefulness, Ingenuity, finishing reagents
-St = CH.Stats
+St = AuctionIQ.Stats
 check("multicraft: average extra items from the base yield", abs(St.MulticraftExtra(2, 0) - 2.33) < 1e-9 and abs(St.MulticraftExtra(1, 0.25) - 1.8125) < 1e-9)
 check("concentration cost from the game's curve", St.ConcentrationCost(1, 100, 25, 0) == 100 and St.ConcentrationCost(1, 100, 25, 0.1) == 90)
 run("AuctionIQ.ConcCurves[9901] = { c = { [0] = 100, [200] = 300 }, v = { [0] = 1, [1] = 1 } }")
 # CraftSim: bracket by skill (50 is in 0..200), constant read at difficulty 150 -> 250
 check("concentration: curve constant as CraftSim reads it", St.ConcentrationCost(9901, 150, 50, 0) == 250)
 run("AuctionIQ.ConcCurves[9901] = nil")
-pr = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+pr = AuctionIQ.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
 prow = list(pr.rows.values())
 best = pr.best
 check("average profit adds Multicraft extras and Resourcefulness savings",
@@ -460,30 +460,30 @@ conc = pr.bestConc
 check("skill finishing reagent picked for the Concentration craft, less Concentration",
       [f.itemID for f in conc.finishing.values()] == [221] and conc.concentration == 60 and conc.cost == 90000)
 check("Ingenuity: average Concentration counts the refund", conc.avgConcentration == 51 and abs(conc.perPoint - conc.profit / 51) < 1e-6)
-pl = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(pr, best, 5).values()]
+pl = [(plain(l[1]).strip(), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(pr, best, 5).values()]
 check("profit hover shows the Multicraft and Resourcefulness parts",
       any(a.startswith("Multicraft  35% x 2.3 more") for a, _ in pl) and any(a.startswith("Resourcefulness  20% saves") for a, _ in pl))
-cl = [plain(l[1]) for l in CH.AdvisorUI.BreakdownLines(pr, best, 3).values()]
+cl = [plain(l[1]) for l in AuctionIQ.AdvisorUI.BreakdownLines(pr, best, 3).values()]
 check("reagent hover lists the finishing reagent", any("item 222" in c for c in cl))
-fa = {a.itemID: a for a in CH.Advisor.FinishingAdvice(pr).values()}
+fa = {a.itemID: a for a in AuctionIQ.Advisor.FinishingAdvice(pr).values()}
 check("finishing advice: every option with its gain, what you own and the verdict",
       set(fa) == {221, 222} and fa[221].own == 2 and fa[222].own == 0 and fa[222].picked and fa[222].verdict == "buy" and fa[222].gain > 0
       and "Multicraft" in fa[222].effect and "skill" in fa[221].effect)
 run("STUB.lockedSlot = 77")
-lk = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+lk = AuctionIQ.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
 check("a finishing slot the game has locked is never filled", len(list(lk.best.finishing.values())) == 0 and len(list(lk.bestConc.finishing.values())) == 0)
 run("STUB.lockedSlot = nil")
-fl = [plain(x) for x in CH.AdvisorUI.FinishingLines(pr).values()]
+fl = [plain(x) for x in AuctionIQ.AdvisorUI.FinishingLines(pr).values()]
 check("finishing advice in the advisor notes", any(x.startswith("Finishing: buy item 222") for x in fl) or any("Or buy: buy item 222" in x for x in fl))
 run("STUB.prices['i:221'].formula_value = 10000; AuctionIQ.Prices.ClearCache()")   # you could sell yours for only 1g
-pr2 = CH.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
+pr2 = AuctionIQ.Advisor.Analyze(11, L.eval('{ professionID = 2906 }'))
 o221 = [o for opts in pr2.model.finishing.values() for o in opts.values() if o.itemID == 221][0]
 check("finishing: one you own costs what you'd sell it for", o221.cost == 9500 and o221.buy == 30000)
 run("STUB.prices['i:221'].formula_value = nil; AuctionIQ.Prices.ClearCache()")
 
 # Gear with five qualities on one item ID (a rod): each quality priced at its item level
 run("STUB.oldGII = C_Item.GetItemInfo; C_Item.GetItemInfo = function(id) if id == 320 then return 'Test Rod', nil, 3, 200 end return STUB.oldGII and STUB.oldGII(id) end")
-rod = CH.Advisor.Analyze(12, L.eval('{ professionID = 2906 }'))
+rod = AuctionIQ.Advisor.Analyze(12, L.eval('{ professionID = 2906 }'))
 qs = sorted(set(r.quality for r in rod.rows.values() if not r.concentration))
 check("gear: five qualities read from item level bonuses", rod.model.maxQ == 5 and rod.model.supportsQualities)
 check("gear: better reagents reach a higher quality", qs[0] == 3 and qs[-1] == 5)
@@ -492,8 +492,8 @@ check("gear: Concentration lifts one quality", any(r.concentration and r.quality
 run("C_Item.GetItemInfo = STUB.oldGII")
 
 # Simulation: more skill
-m10 = CH.Advisor.Measure(10)
-sim = CH.Advisor.Evaluate(m10, L.eval('{ sim = { skill = 30 } }'))
+m10 = AuctionIQ.Advisor.Measure(10)
+sim = AuctionIQ.Advisor.Evaluate(m10, L.eval('{ sim = { skill = 30 } }'))
 check("simulating +30 skill reaches Q2 with the cheapest reagents", sim.best.quality == 2 and sim.best.cost == 670000 and sim.best.profit == 2180000)
 check("quality thresholds come from the game", m10.thresholds[2] == 130)
 
@@ -503,62 +503,62 @@ run("""AuctionIQ.SpecData[2906] = { name = "Alchemy", recipes = { [10] = { 900, 
             [9001] = { nodeID = 900, maxRank = 1, stats = { multicraft = 50, additionalitemscraftedwithmulticraft = 25 } },
             [901] = { nodeID = 901, maxRank = 10, base = true, stats = { resourcefulness = 10 } } } }""")
 run('STUB.Fire("TRAIT_NODE_CHANGED")')
-tree = CH.Spec.Read(2906)
+tree = AuctionIQ.Spec.Read(2906)
 check("spec: tree read with ranks, perks and parents", tree.nodes[900].rank == 0 and tree.nodes[901].rank == -1 and tree.nodes[901].parent == 900
       and tree.nodes[900].perks[9001] == 10 and tree.unspent == 10)
 ranks = L.eval("{ [900] = 12, [901] = 3 }")
-d = CH.Spec.Delta(2906, tree, ranks, 11)
+d = AuctionIQ.Spec.Delta(2906, tree, ranks, 11)
 check("spec: delta for a recipe at other ranks", d.skill == 12 and d.multicraft == 50 and abs(d.mcExtra - 0.25) < 1e-9 and d.resourcefulness == 30)
-cs = CH.Spec.CurrentStats(2906, tree, 11)
-rs = CH.Spec.RecipeStats(2906, tree, CH.Spec.Ranks(tree), 11)
+cs = AuctionIQ.Spec.CurrentStats(2906, tree, 11)
+rs = AuctionIQ.Spec.RecipeStats(2906, tree, AuctionIQ.Spec.Ranks(tree), 11)
 check("spec: current stats match RecipeStats at the tree's ranks, worked out once per tree",
       all((cs[k] or 0) == (rs[k] or 0) for k in ("skill", "multicraft", "resourcefulness", "ingenuity", "mcExtra", "resExtra", "refundExtra", "concReduce"))
       and L.eval("function(t) local S = AuctionIQ.Spec; local a = S.CurrentStats(2906, t, 11); return a == S.CurrentStats(2906, t, 11) and a ~= S.CurrentStats(2906, S.Read(2906), 11) end")(tree))
 # the planner, presets, tree view and Paths page are AuctionIQ_Paths, loaded the first time Paths opens
 check("paths: the planner isn't loaded until it's needed, but groups and yields are",
-      CH.PathsUI is None and CH.Paths.Plan is None and CH.Paths.MainGroup("Potions", 2906) == "Potions" and CH.Paths.DailyYield(2909) is not None
+      AuctionIQ.PathsUI is None and AuctionIQ.Paths.Plan is None and AuctionIQ.Paths.MainGroup("Potions", 2906) == "Potions" and AuctionIQ.Paths.DailyYield(2909) is not None
       and not (L.eval("STUB.addonsLoaded or {}")["AuctionIQ_Paths"]))
-check("paths: loading it adds the planner to CH.Paths", CH.Paths.Load() and CH.Paths.Plan is not None and CH.PathsUI is not None
-      and CH.Presets is not None and CH.TreeView.StepText(L.eval("{1,2,3,4}")) == "1,2,3,+")
-check("goal text matches recipes by category", list(CH.Paths.Match("I want to sell potions")[0].values()) == [11]
-      and list(CH.Paths.Match("flasks")[0].values()) == [10])
-plan = CH.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))
+check("paths: loading it adds the planner to AuctionIQ.Paths", AuctionIQ.Paths.Load() and AuctionIQ.Paths.Plan is not None and AuctionIQ.PathsUI is not None
+      and AuctionIQ.Presets is not None and AuctionIQ.TreeView.StepText(L.eval("{1,2,3,4}")) == "1,2,3,+")
+check("goal text matches recipes by category", list(AuctionIQ.Paths.Match("I want to sell potions")[0].values()) == [11]
+      and list(AuctionIQ.Paths.Match("flasks")[0].values()) == [10])
+plan = AuctionIQ.Paths.Plan(L.eval('{ goal = "flasks", points = 20, sync = true, prof = 2906 }'))
 check("plan: puts points where the flask gains", plan.steps[1].name == "Node 900" and plan.final > plan.start and plan.budget == 30)
 check("plan: describes itself in words", any("Node 900" in plain(l) for l in plan.text.values()) and "Goal:" in plain(plan.text[1]))
-CH.AdvisorUI.SetPlan(plan)
-CH.AdvisorUI.Show(10)
-check("advisor simulates the plan", CH.AdvisorUI.Current().sim is not None)
+AuctionIQ.AdvisorUI.SetPlan(plan)
+AuctionIQ.AdvisorUI.Show(10)
+check("advisor simulates the plan", AuctionIQ.AdvisorUI.Current().sim is not None)
 run('AuctionIQ.AdvisorUI.RowClick(1)')
-sa = CH.AdvisorUI.QueueAction()
+sa = AuctionIQ.AdvisorUI.QueueAction()
 check("advisor: a simulated row offers to queue the live craft instead", sa[0] == "Queue live craft"
-      and (sa[1] is not None or sa[2].quality == CH.AdvisorUI.SelectedRow().quality))
+      and (sa[1] is not None or sa[2].quality == AuctionIQ.AdvisorUI.SelectedRow().quality))
 run('AuctionIQ.AdvisorUI.SetPlan(nil); AuctionIQ.AdvisorUI.SetSimSkill(0)')
 check("spec: the trees' layout is read per tab, with links",
       tree.tabs[1].name == "Test Mastery" and list(tree.tabs[1].nodes.values()) == [900, 901]
       and tree.layout[901].parent == 900 and tree.layout[901].y == 600 and tree.layout[901].rank == -1)
-marks = CH.Paths.Marks(plan)
+marks = AuctionIQ.Paths.Marks(plan)
 check("plan marks: each node's planned rank and steps", marks[900].to == max(s.to for s in plan.steps.values() if s.node == 900) and marks[900].steps[1] == 1)
-CH.Paths.SetCurrent(plan)
+AuctionIQ.Paths.SetCurrent(plan)
 saved = [v for v in L.eval("AuctionIQ.db.plans").values() if v.prof == 2906]
 check("plan: a summary is saved for Research", len(saved) == 1 and saved[0].final == plan.final and len(list(saved[0].rows.values())) >= 1 and saved[0].steps[1].name == "Node 900")
 prow, pfoot = L.eval("AuctionIQ.LedgerUI.Rows('plans', {})")
 prow = list(prow.values())
 check("plan comparison: each recipe now against planned, and the plan's gold a day", len(prow) >= 1 and ">" in plain(prow[0].cells[3]) and "a day" in plain(pfoot))
 run('AuctionIQ.PathsUI.Open()')
-drawn = list(CH.PathsUI.DrawTree().values())
-check("paths: opens in the main window, Operations > Craft > Paths", CH.PathsUI.IsShown() and CH.UI.Pages().paths.shown and CH.LedgerUI.View() == "paths"
-      and CH.LedgerUI.Section() == "operations" and CH.LedgerUI.Group() == "Craft")
+drawn = list(AuctionIQ.PathsUI.DrawTree().values())
+check("paths: opens in the main window, Operations > Craft > Paths", AuctionIQ.PathsUI.IsShown() and AuctionIQ.UI.Pages().paths.shown and AuctionIQ.LedgerUI.View() == "paths"
+      and AuctionIQ.LedgerUI.Section() == "operations" and AuctionIQ.LedgerUI.Group() == "Craft")
 check("Craft: Specialization, the weekly checklist and plan payoff by recipe",
-      [CH.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Weekly knowledge", "Specialization", "Plan payoff by recipe"])
+      [AuctionIQ.LedgerUI.ViewDef(v).label for v in ["professions", "paths", "plans"]] == ["Weekly knowledge", "Specialization", "Plan payoff by recipe"])
 run('AuctionIQ.UI.Refresh()')
 kp = plain(L.eval("AuctionIQ.UI.Pages().paths.kpText:GetText()"))
 pay = plain(L.eval("AuctionIQ.UI.Pages().paths.payText:GetText()"))
 check("Specialization: Knowledge for the profession, then Plan payoff, above Paths",
       kp.startswith("Knowledge  ") and "unspent" in kp and pay.startswith("Plan payoff  ") and "a day" in pay and "points in" in pay)
-spent, total = L.eval("AuctionIQ.PathsUI.PlanProgress")(saved[0], CH.Spec.Tree(2906))
+spent, total = L.eval("AuctionIQ.PathsUI.PlanProgress")(saved[0], AuctionIQ.Spec.Tree(2906))
 check("Plan payoff: how many of the plan's points are in the tree now", total == sum(s.to - s["from"] for s in saved[0].steps.values()) and 0 <= spent < total)
 run("AuctionIQ.UI.Pages().paths.byRecipe.scripts.OnClick(AuctionIQ.UI.Pages().paths.byRecipe)")
-check("Specialization: By recipe opens plan payoff, still in Craft", CH.LedgerUI.View() == "plans" and CH.LedgerUI.Group() == "Craft" and CH.LedgerUI.Section() == "operations")
+check("Specialization: By recipe opens plan payoff, still in Craft", AuctionIQ.LedgerUI.View() == "plans" and AuctionIQ.LedgerUI.Group() == "Craft" and AuctionIQ.LedgerUI.Section() == "operations")
 pt = L.eval("AuctionIQ.AnalyticsViews.PlanText")
 check("a plan's effect on a recipe: Concentration saved, quality without it, else profit",
       plain(pt(L.eval("{ label = 'Flasks', saves = 12, from = 100, to = 100 }"))) == "Your plan (Flasks) saves 12 Concentration a craft."
@@ -571,20 +571,20 @@ check("paths tab draws the tree with the plan on it",
 run("""STUB.oldOpen = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return nil end
 function GetProfessions() return 1, 2 end
 function GetProfessionInfo(i) if i == 1 then return "Alchemy", 0, 1, 1, 0, 0, 171 end return "Herbalism", 0, 1, 1, 0, 0, 182 end""")
-profs = [(p.id, p.name) for p in CH.PathsUI.Professions().values()]
+profs = [(p.id, p.name) for p in AuctionIQ.PathsUI.Professions().values()]
 check("paths: reads your professions from the game, only ones with trees", profs == [(2906, "Alchemy")])
-check("paths: shows a profession without its window open", CH.PathsUI.Prof() == 2906 and len(list(CH.PathsUI.Refresh().values())) == 2)
+check("paths: shows a profession without its window open", AuctionIQ.PathsUI.Prof() == 2906 and len(list(AuctionIQ.PathsUI.Refresh().values())) == 2)
 run('AuctionIQ.PathsUI.Run("potions")')
-check("paths: planning asks for the profession window", "Open Alchemy" in plain(CH.PathsUI.Text()))
+check("paths: planning asks for the profession window", "Open Alchemy" in plain(AuctionIQ.PathsUI.Text()))
 run("AuctionIQ.OpenProfessionID = STUB.oldOpen; GetProfessions = nil; GetProfessionInfo = nil")
-groups = list(CH.Paths.GoalGroups(2906).values())
+groups = list(AuctionIQ.Paths.GoalGroups(2906).values())
 check("paths picker: recipes in main groups", [g.name for g in groups] == ["Potions", "Flasks & Phials", "Oils", "Other"])
 check("paths picker: each profession has its own groups", L.eval('AuctionIQ.Paths.MainGroup("Weapon Enchants", 2909)') == "Enchants"
       and L.eval('AuctionIQ.Paths.MainGroup("Armor Kits", 2915)') == "Armor Kits" and L.eval('AuctionIQ.Paths.MainGroup("Leather Armor", 2915)') == "Armor"
       and L.eval('AuctionIQ.Paths.MainGroup("Appendix II - Stats", 2913)') is None and L.eval('AuctionIQ.Paths.MainGroup("Powerful Peridots", 2914)') == "Gems")
 # Presets: a build per focus from your market, ranked by Monte Carlo
 run("STUB.oldOpenP = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return 2906 end")
-foc = [f.key for f in CH.Presets.Focuses(2906).values()]
+foc = [f.key for f in AuctionIQ.Presets.Focuses(2906).values()]
 check("presets: one per main group with recipes (Other left out)", foc == ["Potions", "Flasks & Phials", "Oils"] or foc == ["Potions", "Flasks & Phials"])
 ok = L.eval("AuctionIQ.Presets.Build(2906, nil, true)")
 pl, stale = L.eval("AuctionIQ.Presets.List(2906)")
@@ -614,10 +614,10 @@ end)()""")
 check("paths: a recipe at the same ranks is worked out once (a plan sharing the answers asks the advisor nothing new), same plan",
       memo_n[0] == 0 and memo_n[1] is True)
 bg = L.eval("""(function()
-  local CH = AuctionIQ
+  local AuctionIQ = AuctionIQ
   local function dump()
     local out = {}
-    for _, p in ipairs((CH.Presets.List(2906))) do
+    for _, p in ipairs((AuctionIQ.Presets.List(2906))) do
       local st = {}
       for _, s in ipairs(p.steps) do st[#st + 1] = s.node .. ":" .. s.from .. ">" .. s.to end
       out[#out + 1] = string.format("%s %.4f %.4f %.4f|%s", p.key, p.final, p.mean, p.wins, table.concat(st, ","))
@@ -625,30 +625,30 @@ bg = L.eval("""(function()
     return table.concat(out, ";")
   end
   local before = dump()
-  local saved = CH.db.presets
-  CH.db.presets = {}
+  local saved = AuctionIQ.db.presets
+  AuctionIQ.db.presets = {}
   -- a frame budget of 0: every advisor run ends the frame, the most a plan can be split
-  local budget = CH.Paths.BUDGET_MS
-  CH.Paths.BUDGET_MS = 0
-  CH.Presets.Build(2906)
+  local budget = AuctionIQ.Paths.BUDGET_MS
+  AuctionIQ.Paths.BUDGET_MS = 0
+  AuctionIQ.Presets.Build(2906)
   local frames = 0
-  while CH.Presets.Running() and frames < 100000 do STUB.RunTimers(); frames = frames + 1 end
-  CH.Paths.BUDGET_MS = budget
+  while AuctionIQ.Presets.Running() and frames < 100000 do STUB.RunTimers(); frames = frames + 1 end
+  AuctionIQ.Paths.BUDGET_MS = budget
   local after = dump()
-  CH.db.presets = saved
+  AuctionIQ.db.presets = saved
   return before == after, frames
 end)()""")
 check("presets: worked out in the background, split over frames, they come out the same as all at once", bg[0] is True and bg[1] > 5)
 check("presets: not worked out with the profession closed", L.eval("(AuctionIQ.Presets.Build(2909, nil, true))") is None)
 run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.PathsUI.Open(); AuctionIQ.PathsUI.Pick('Flasks & Phials', { 10 })")
-pt = [plain(l) for l in CH.PathsUI.Text().split("\n")]
+pt = [plain(l) for l in AuctionIQ.PathsUI.Text().split("\n")]
 check("specialization: picking a group with a preset shows it at once, with its simulations",
-      pt[0].startswith("Preset: Flasks & Phials") and any("market simulations" in l for l in pt) and CH.Paths.Current(2906).preset is not None)
+      pt[0].startswith("Preset: Flasks & Phials") and any("market simulations" in l for l in pt) and AuctionIQ.Paths.Current(2906).preset is not None)
 run("AuctionIQ.Paths.ClearCurrent(2906); AuctionIQ.UI.Pages().paths.presets.scripts.OnClick()")
-pt = plain(CH.PathsUI.Text())
+pt = plain(AuctionIQ.PathsUI.Text())
 check("specialization: the presets list, best on your market first", "Presets for your market" in pt and "1. " in pt and "best in" in pt)
 cp, spent = L.eval("AuctionIQ.PathsUI.NodeClick(900, 'LeftButton', true)")
-ct = plain(CH.PathsUI.Text())
+ct = plain(AuctionIQ.PathsUI.Text())
 check("tree calculator: shift-click adds 5 points, marked on the tree, with gold a day for the focus",
       spent == 5 and cp.steps[1].node == 900 and "Tree calculator: +5 points" in ct and "a day, now" in ct)
 cp, spent = L.eval("AuctionIQ.PathsUI.NodeClick(900, 'RightButton', false)")
@@ -675,13 +675,13 @@ STUB.prices['i:243599'] = { formula_value = 10000 }; STUB.prices['i:243600'] = {
 AuctionIQ.Prices.ClearCache()""")
 check("disenchanting: a goal for Enchanting", L.eval('(AuctionIQ.Paths.Yield(2909, "disenchanting"))') is not None
       and L.eval('(AuctionIQ.Paths.Yield(2906, "disenchanting"))') is None and L.eval('(AuctionIQ.Paths.Yield(2909, "potions"))') is None)
-check("disenchanting: in the Enchanting picker", any(g.name == "Disenchanting" and g["yield"] for g in CH.Paths.GoalGroups(2909).values()))
-dp = CH.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
+check("disenchanting: in the Enchanting picker", any(g.name == "Disenchanting" and g["yield"] for g in AuctionIQ.Paths.GoalGroups(2909).values()))
+dp = AuctionIQ.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
 check("disenchanting: plan puts points into dust when only dust sells", dp.steps[1].name in ("Disenchanting Delegate", "Dust Deliverer")
       and dp.final > dp.start and all(s.name not in ("Shard Supplier", "Crystal Collector") for s in dp.steps.values()))
 check("disenchanting: describes the rank 2 share and the perk", any("rank 2 share" in plain(l) for l in dp.text.values())
       and any("more Eversinging Dust" in plain(l) for l in dp.text.values()))
-check("disenchanting: default points finish its paths", CH.Paths.PathCost(2909, L.eval("{}"), "disenchanting") == 42)
+check("disenchanting: default points finish its paths", AuctionIQ.Paths.PathCost(2909, L.eval("{}"), "disenchanting") == 42)
 # Disenchanting: what you really loot from items is recorded and used instead of the guess
 check("disenchanting: a starting guess before anything is seen", L.eval("(select(2, AuctionIQ.Paths.DailyYield(2909)))") == "guess")
 run("""local loot = { { "item:243599", 3, "Item-1-2-3" }, { "item:243600", 1, "Item-1-2-3" }, { "item:243600", 5, "Creature-0-1" } }
@@ -694,30 +694,30 @@ ob = L.eval("(AuctionIQ.Paths.Observed(2909, 86400 * 100))")
 check("disenchanting: only loot out of items counts", ob.dust.n == 4 and abs(ob.dust.share - 0.25) < 1e-9 and ob.shard.n == 0)
 run("STUB.realTime = time; time = function() return 86400 * 100 end")
 check("disenchanting: plans use what was really disenchanted", L.eval("(select(2, AuctionIQ.Paths.DailyYield(2909)))") == "seen")
-dp2 = CH.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
+dp2 = AuctionIQ.Paths.Plan(L.eval('{ goal = "disenchanting", points = 0, sync = true, prof = 2909 }'))
 check("disenchanting: the plan starts from your real rank 2 share", any("you really got (Eversinging Dust 25%)" in plain(l) for l in dp2.text.values())
       and dp2.startPer.dust.share == 0.25)
 run("AuctionIQ.Paths.SetDailyYield(2909, { dust = 10, shard = 1, crystal = 0 })")
 check("disenchanting: /aiq de by hand wins", L.eval("(select(2, AuctionIQ.Paths.DailyYield(2909)))") == "set")
 run("AuctionIQ.Paths.SetDailyYield(2909, nil); time = STUB.realTime; GetNumLootItems = nil")
 run("AuctionIQ.Spec.Tree = STUB.oldTree")
-cost = CH.Paths.PathCost(2906, L.eval("{ 10 }"))
-check("paths: default points finish the path for the goal", cost > 0 and CH.Paths.PathCost(2906, L.eval("{ }")) == 0)
+cost = AuctionIQ.Paths.PathCost(2906, L.eval("{ 10 }"))
+check("paths: default points finish the path for the goal", cost > 0 and AuctionIQ.Paths.PathCost(2906, L.eval("{ }")) == 0)
 run('AuctionIQ.PathsUI.Pick("Flasks & Phials", { 10 })')
-check("picking a group plans it", CH.PathsUI.DefaultPoints(L.eval("{ 10 }")) == max(0, cost - CH.Spec.Tree(2906).unspent))
+check("picking a group plans it", AuctionIQ.PathsUI.DefaultPoints(L.eval("{ 10 }")) == max(0, cost - AuctionIQ.Spec.Tree(2906).unspent))
 run("""STUB.btn = CreateFrame("Button"); STUB.btn:Show()
 ProfessionsFrame = CreateFrame("Frame"); ProfessionsFrame.SpecPage = CreateFrame("Frame"); ProfessionsFrame.SpecPage:Show()
 function ProfessionsFrame.SpecPage:GetTalentButtonByNodeID(id) return id == 900 and STUB.btn or nil end""")
-check("game's spec tab gets a badge on each planned node", CH.SpecOverlay.Refresh() == 1)
+check("game's spec tab gets a badge on each planned node", AuctionIQ.SpecOverlay.Refresh() == 1)
 run('AuctionIQ.Paths.ClearCurrent(2906)')
-check("clearing the plan takes the badges off", CH.SpecOverlay.Refresh() == 0)
+check("clearing the plan takes the badges off", AuctionIQ.SpecOverlay.Refresh() == 0)
 run('ProfessionsFrame = nil; AuctionIQ.PathsUI.Toggle()')
 
 # Top gear
-c = CH.Gear.Candidates()
+c = AuctionIQ.Gear.Candidates()
 check("gear: worn and bag items found", len(list(c.tools.values())) == 2 and len(list(c.gear.values())) == 2)
-g = CH.Gear.Best(m10, None, c)
-check("gear: the better tool wins for the flask", g.set is not None and g.gain > 0 and "404" in CH.Gear.SwapText(g.set))
+g = AuctionIQ.Gear.Best(m10, None, c)
+check("gear: the better tool wins for the flask", g.set is not None and g.gain > 0 and "404" in AuctionIQ.Gear.SwapText(g.set))
 # a bag full of gear: the best few are paired, not every pair (900 sets froze the game)
 gb = L.eval("""(function(m, c)
   local big = { tools = {}, gear = {}, slots = c.slots }
@@ -732,34 +732,34 @@ gb = L.eval("""(function(m, c)
   return { n = n, text = g and g.set and AuctionIQ.Gear.SwapText(g.set) or "" }
 end)""")(m10, c)
 check("gear: a bag full of gear tries a short list, and the better tool still wins", gb.n <= 80 and "404" in gb.text)
-CH.Gear.Equip(g.set, c)
+AuctionIQ.Gear.Equip(g.set, c)
 check("gear: equip puts the bag tool in the tool slot", L.eval("STUB.equipped[20]") == "item:404")
 
 # Crafting orders
-o = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
+o = AuctionIQ.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
   reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 2 } } } }"""))
 orows = list(o.rows.values())
 check("order: the customer's reagents aren't charged, the commission is the value",
       o.best.quality == 2 and o.best.cost == 2100000 and o.best.value == 900000 and o.best.profit == 900000 - 2100000)
 check("order: qualities under the minimum are marked", orows[0].short == True and L.eval("STUB.orderCall") == 77)
-CH.AdvisorUI.Render(o)
-check("advisor: an order selects its best craft that reaches the quality", CH.AdvisorUI.SelectedRow().quality == 2)
+AuctionIQ.AdvisorUI.Render(o)
+check("advisor: an order selects its best craft that reaches the quality", AuctionIQ.AdvisorUI.SelectedRow().quality == 2)
 run('AuctionIQ.AdvisorUI.RowClick(1)')
-oa = CH.AdvisorUI.QueueAction()
+oa = AuctionIQ.AdvisorUI.QueueAction()
 check("advisor: a row under the order's quality can be selected but not queued", oa[1] is not None and "below the Q2" in oa[1]
-      and CH.AdvisorUI.QueueSelected()[0] is None and CH.Queue.Count() == 0)
-check("advisor: order proceeds say they're what the order pays", "what the order pays" in plain(CH.AdvisorUI.SourceLine(o)))
+      and AuctionIQ.AdvisorUI.QueueSelected()[0] is None and AuctionIQ.Queue.Count() == 0)
+check("advisor: order proceeds say they're what the order pays", "what the order pays" in plain(AuctionIQ.AdvisorUI.SourceLine(o)))
 # the customer gives part of a slot: we pay for the rest (slot 3 needs 2 of item 205 at 1g, they give 1)
-op = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
+op = AuctionIQ.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 2, tipAmount = 1000000, consortiumCut = 100000, customerName = "Bob",
   reagents = { { reagentInfo = { reagent = { itemID = 205 }, dataSlotIndex = 3, quantity = 1 } } } }"""))
 check("order: part of a slot from the customer, the rest is ours to pay", op.best.cost == o.best.cost + 10000)
 run("STUB.savedQueue = AuctionIQ.db.queue; AuctionIQ.db.queue = {}")
-CH.Queue.Add(op, op.best, 1)
-need205 = [x for x in CH.Queue.ShoppingList()[0].values() if x.itemID == 205]
+AuctionIQ.Queue.Add(op, op.best, 1)
+need205 = [x for x in AuctionIQ.Queue.ShoppingList()[0].values() if x.itemID == 205]
 check("order: the queue and shopping list ask for the same remaining units", len(need205) == 1 and need205[0].need == 1)
 run("AuctionIQ.db.queue = STUB.savedQueue")
 # 3 of the 4 in the quality slot from the customer: only 1 left to pick
-oq = CH.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 1, tipAmount = 1000000, consortiumCut = 0,
+oq = AuctionIQ.Orders.Analyze(L.eval("""{ orderID = 77, spellID = 10, minQuality = 1, tipAmount = 1000000, consortiumCut = 0,
   reagents = { { reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 3 } } } }"""))
 q1 = [sl for sl in oq.model.qual.values() if sl.index == 1]
 check("order: a quality slot the customer part-fills keeps the rest to pick", len(q1) == 1 and q1[0].qty == 1)
@@ -767,31 +767,31 @@ check("order: a quality slot the customer part-fills keeps the rest to pick", le
 # Concentration on the mix with the most gold per point, not just the cheapest mix for the quality:
 # with this curve each point of skill makes Concentration much cheaper
 run("AuctionIQ.ConcCurves[9902] = { c = { [0] = 1000 }, v = { [0] = 1, [1] = 0 } }; STUB.craftingDataID = 9902")
-cm = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+cm = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
 plain1 = [r for r in cm.rows.values() if r.quality == 1 and not r.concentration][0]
 conc1 = [r for r in cm.rows.values() if r.concentration and r["from"] == 1][0]
 check("concentration: picks a mix with more skill when it pays more per point", conc1.skill > plain1.skill and conc1.cost > plain1.cost)
 run("AuctionIQ.ConcCurves[9902] = nil; STUB.craftingDataID = nil")
 
 # Subrecipes: a reagent an alt crafts for less than buying it is priced at the craft
-base10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost
+base10 = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost
 run("""AuctionIQ.db.characters['Sub-Realm'] = { name = 'Sub', professions = { [77] = { name = 'Test Smithing', scan = { at = STUB.now, rows = {
   { recipeID = 50, name = 'Make 205', item = 205, craftEach = 4000 } } } } } }; AuctionIQ.Scan.ClearCrafted()""")
-sub10 = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+sub10 = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
 check("subrecipe: a reagent you craft for less is priced at the craft", sub10.best.cost == base10 - 2 * (10000 - 4000))
-cl = [x for x in CH.Advisor.CostLines(sub10, sub10.best.picks).values() if x.name == "item 205"]
+cl = [x for x in AuctionIQ.Advisor.CostLines(sub10, sub10.best.picks).values() if x.name == "item 205"]
 check("subrecipe: the reagent line says who crafts it", len(cl) == 1 and cl[0].crafted and cl[0].crafted.char == "Sub")
 run("AuctionIQ.db.settings.subrecipes = false")
-check("subrecipe: off in Settings, reagents are bought", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+check("subrecipe: off in Settings, reagents are bought", AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
 run("AuctionIQ.db.settings.subrecipes = nil")
 run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now - 30 * 86400; AuctionIQ.Scan.ClearCrafted()")
-check("subrecipe: a stale scan isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+check("subrecipe: a stale scan isn't used", AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
 run("AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.at = STUB.now; AuctionIQ.db.characters['Sub-Realm'].professions[77].scan.rows[1].viaCraft = true; AuctionIQ.Scan.ClearCrafted()")
-check("subrecipe: one level deep, a craft priced by crafted reagents isn't used", CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
+check("subrecipe: one level deep, a craft priced by crafted reagents isn't used", AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }')).best.cost == base10)
 run("AuctionIQ.db.characters['Sub-Realm'] = nil; AuctionIQ.Scan.ClearCrafted()")
 
 # Recraft
-rc = CH.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
+rc = AuctionIQ.Advisor.Analyze(10, L.eval('{ allocationGUID = "g1", recraftQuality = 1 }'))
 check("recraft: profit is the better item less the one you have", rc.best.quality == 2 and rc.best.profit == 2850000 - 2120000 - 950000)
 
 # The cheapest-reagent frontier is worked out once per recipe and price set, then reused
@@ -805,7 +805,7 @@ f2 = L.eval("""(function() local m = STUB.fm; local c1 = m.frontierCache; local 
 check("optimizer: a reagent price change rebuilds the frontier", f2)
 # Recipe scan
 run('AuctionIQ.ScanUI.Toggle(); for i = 1, 20 do STUB.RunTimers() end')
-sr = CH.Scan.Results(2906)
+sr = AuctionIQ.Scan.Results(2906)
 names = [r.name for r in sr.rows.values()]
 check("scan: every learned recipe with a result, saved", "Test Flask" in names and "Test Potion" in names)
 pot = [r for r in sr.rows.values() if r.name == "Test Potion"][0]
@@ -815,9 +815,9 @@ run("""STUB.tick = 0; STUB.scanSteps = 0; debugprofilestop = function() STUB.tic
 AuctionIQ.Scan.Run(function() STUB.scanSteps = STUB.scanSteps + 1 end)
 for i = 1, 400 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end
 debugprofilestop = nil""")
-after = sorted((r.name, r.profit) for r in CH.Scan.Results(2906).rows.values())
+after = sorted((r.name, r.profit) for r in AuctionIQ.Scan.Results(2906).rows.values())
 check("scan: a slow frame pauses part-way through a recipe and the results come out the same",
-      not CH.Scan.IsRunning() and after == before and L.eval("STUB.scanSteps") > len(before))
+      not AuctionIQ.Scan.IsRunning() and after == before and L.eval("STUB.scanSteps") > len(before))
 sf = L.eval("""(function()
   local A = AuctionIQ.Advisor
   local oldM, oldK = A.Measure, AuctionIQ.AdvisorUI.KNOWN_AGE
@@ -844,7 +844,7 @@ check("scan: when every recipe errors the last good scan is kept and the callbac
       sf.kept and sf.why2 is not None and "boom" in sf.why2)
 run("""AuctionIQ.Scan.Run(); for i = 1, 40 do if AuctionIQ.Scan.IsRunning() then STUB.RunTimers() end end""")
 run("""AuctionIQ.Scan.Run(); AuctionIQ.Scan.Stop(); for i = 1, 20 do STUB.RunTimers() end""")
-check("scan: Stop ends a running scan", not CH.Scan.IsRunning())
+check("scan: Stop ends a running scan", not AuctionIQ.Scan.IsRunning())
 # a craft makes its base 2 plus Multicraft's average extra, as the profit per craft counts them
 yb = 2 + (pot.accounts.extraItems or 0)
 yc = 2 + (pot.concAccounts.extraItems or 0)
@@ -861,8 +861,8 @@ sm = L.eval("""AuctionIQ.Scan.Summary({ recipeID = 1, name = 'x', made = 2,
 run("AuctionIQ.Advisor.SoldPerDay = STUB.oldSold")
 check("scan: a better item from Concentration adds its own sales to the plain crafts",
       abs(sm.perDay - (100 * 10 / 2.466 + 300 * 2 / 2)) < 1e-6)
-top = list(CH.Scan.Top(2906, 1).values())
-tl = [(plain(l[1]), plain(l[2])) for l in CH.TooltipLines("i:302").values()]
+top = list(AuctionIQ.Scan.Top(2906, 1).values())
+tl = [(plain(l[1]), plain(l[2])) for l in AuctionIQ.TooltipLines("i:302").values()]
 names = [t[0] for t in tl]
 acc = pot = [r for r in sr.rows.values() if r.item == 302 or r.concItem == 302][0]
 check("tooltip: a scanned craft's accounts, reagents to profit",
@@ -872,27 +872,27 @@ check("tooltip: a scanned craft's accounts, reagents to profit",
 flask = [r for r in sr.rows.values() if r.item == 302][0]
 check("scan: crafting cost per item, Resourcefulness and Multicraft counted", flask.craftEach and 0 < flask.craftEach <= flask.cost)
 run('STUB.prices["i:302"].mat = 10000; AuctionIQ.Prices.ClearCache()')
-bc = CH.Scan.BuyOrCraft(flask)
+bc = AuctionIQ.Scan.BuyOrCraft(flask)
 check("buy or craft: a listing under the crafting cost says buy", bc.buy == 10000 and bc.save > 0 and bc.flip == 3000000 * 0.95 - 10000)
 run('STUB.prices["i:302"].mat = nil; AuctionIQ.Prices.ClearCache()')
 check("scan: top recipe by profit", len(top) == 1 and top[0].profit == max(r.profit or 0 for r in sr.rows.values()))
 
 # Queue on a Concentration budget
 run('AuctionIQ.Queue.Clear()')
-dry = CH.Queue.FillPlan(2906, L.eval("{ budget = 100, dry = true }"))
+dry = AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 100, dry = true }"))
 check("fill: a dry run lists the plan (Craft window's Fill queue hover) and queues nothing",
-      CH.Queue.Count() == 0 and dry.conc == 1 and sum(x.n for x in dry.entries.values()) == dry.conc + dry.plain and list(dry.entries.values())[0].conc)
-plan = CH.Queue.FillPlan(2906, L.eval("{ budget = 100 }"))
-qs = list(CH.db.queue.values())
+      AuctionIQ.Queue.Count() == 0 and dry.conc == 1 and sum(x.n for x in dry.entries.values()) == dry.conc + dry.plain and list(dry.entries.values())[0].conc)
+plan = AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 100 }"))
+qs = list(AuctionIQ.db.queue.values())
 cq = [e for e in qs if e.concentration]
 check("fill: Concentration crafts stay within the budget", plan.conc == 1 and plan.points == 80 and plan.conc == sum(e.qty for e in cq))
 check("fill: profitable crafts without Concentration are added too", plan.plain > 0 and any(not e.concentration for e in qs))
 check("fill: crafts per recipe stop at what sells in a day", all(e.qty <= 10 for e in qs))
 run('AuctionIQ.Queue.Clear()')
-plan0 = CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+plan0 = AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
 check("fill: no Concentration, no Concentration crafts", plan0.conc == 0 and plan0.points == 0)
 run('AuctionIQ.Queue.Clear()')
-scan_cols = list(CH.ScanUI.Refresh().values())
+scan_cols = list(AuctionIQ.ScanUI.Refresh().values())
 # Crafting window: a bag change re-prices every row. The redraw works out rows for ROW_BUDGET_MS,
 # shows the last numbers for the rest, and finishes them over the next frames, then draws once.
 bgr = L.eval("""(function()
@@ -1034,44 +1034,44 @@ check("scan: only the expansion the profession window has open is scanned (Midni
       not ex.midHas11 and ex.midHas10 and ex.ka)
 check("scan: a saved row from another expansion stays out of the list", ex.hid)
 # Scan to queue: the selected recipe's plain and Concentration crafts, each queued as shown
-pot = [r for r in CH.Scan.Results(2906).rows.values() if r.name == "Test Potion"][0]
+pot = [r for r in AuctionIQ.Scan.Results(2906).rows.values() if r.name == "Test Potion"][0]
 run(f"AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.SetView('craft'); AuctionIQ.ScanUI.Select({pot.recipeID})")
-check("scan: a click selects the recipe, the strip shows it", CH.ScanUI.Selected() == pot.recipeID and CH.ScanUI.SelectedRow().name == "Test Potion")
-idx = [i for i, t in enumerate(list(CH.ScanUI.Refresh().values())) if t.startswith("Test Flask")][0]
+check("scan: a click selects the recipe, the strip shows it", AuctionIQ.ScanUI.Selected() == pot.recipeID and AuctionIQ.ScanUI.SelectedRow().name == "Test Potion")
+idx = [i for i, t in enumerate(list(AuctionIQ.ScanUI.Refresh().values())) if t.startswith("Test Flask")][0]
 run(f"STUB.shift = true; AuctionIQ.ScanUI.Click({idx + 1}); STUB.shift = false")
-check("scan: shift-clicking a recipe selects it and queues nothing", CH.Queue.Count() == 0 and CH.ScanUI.SelectedRow().name == "Test Flask")
+check("scan: shift-clicking a recipe selects it and queues nothing", AuctionIQ.Queue.Count() == 0 and AuctionIQ.ScanUI.SelectedRow().name == "Test Flask")
 run(f"AuctionIQ.ScanUI.Select({pot.recipeID}); AuctionIQ.ScanUI.SetQty(2); AuctionIQ.ScanUI.QueueSelected(true)")
-qc = list(CH.db.queue.values())
+qc = list(AuctionIQ.db.queue.values())
 check("scan: Queue with Concentration queues the Concentration craft the row shows",
       len(qc) == 1 and qc[0].concentration == pot.concentration and qc[0].quality == pot.concQuality and qc[0].qty == 2)
 run("AuctionIQ.ScanUI.QueueSelected(false, 1)")
-qp = [e for e in CH.db.queue.values() if not e.concentration]
+qp = [e for e in AuctionIQ.db.queue.values() if not e.concentration]
 check("scan: Queue plain queues the plain craft, apart from the Concentration one",
-      len(qp) == 1 and qp[0].quality == pot.quality and qp[0].qty == 1 and CH.Queue.Count() == 3)
-noconc = [r for r in CH.Scan.Results(2906).rows.values() if not r.concProfit]
+      len(qp) == 1 and qp[0].quality == pot.quality and qp[0].qty == 1 and AuctionIQ.Queue.Count() == 3)
+noconc = [r for r in AuctionIQ.Scan.Results(2906).rows.values() if not r.concProfit]
 if noconc:
-    e, why = CH.ScanUI.ScanEntry(noconc[0], True)
+    e, why = AuctionIQ.ScanUI.ScanEntry(noconc[0], True)
     check("scan: no Concentration craft, nothing to queue with it", e is None and "no Concentration craft" in why)
 run("AuctionIQ.Queue.Clear()")
-cv = list(CH.ScanUI.SetView("conc").values())
+cv = list(AuctionIQ.ScanUI.SetView("conc").values())
 check("scan: the Concentration view lists only recipes that can use it, by gold a point",
-      CH.ScanUI.View() == "conc" and all(" conc=" in x for x in cv if not x.startswith("== "))
-      and len([x for x in cv if not x.startswith("== ")]) == len([r for r in CH.Scan.Results(2906).rows.values() if r.concProfit]))
-bv = list(CH.ScanUI.SetView("buy").values())
+      AuctionIQ.ScanUI.View() == "conc" and all(" conc=" in x for x in cv if not x.startswith("== "))
+      and len([x for x in cv if not x.startswith("== ")]) == len([r for r in AuctionIQ.Scan.Results(2906).rows.values() if r.concProfit]))
+bv = list(AuctionIQ.ScanUI.SetView("buy").values())
 check("scan: the Buy vs craft view lists recipes with a listing", all(" save=" in x for x in bv if not x.startswith("== ")))
 run("AuctionIQ.ScanUI.SetView('craft')")
-check("scan: back to the Craft view", any(x.startswith("Test Potion profit=") for x in CH.ScanUI.Refresh().values()))
+check("scan: back to the Craft view", any(x.startswith("Test Potion profit=") for x in AuctionIQ.ScanUI.Refresh().values()))
 
 
 # Cooldowns
 run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
-cd = list(CH.Cooldowns.All().values())
+cd = list(AuctionIQ.Cooldowns.All().values())
 check("cooldowns recorded and listed", len(cd) == 1 and cd[0].name == "Phoenix Oil" and cd[0].ready == False)
 
 # The recipe walk: a profession's recipes over frames, and not again within a few minutes
 wk = L.eval("""(function()
-  local CH, P = AuctionIQ, AuctionIQ.Professions
-  local p = CH.Me().professions[2906]
+  local AuctionIQ, P = AuctionIQ, AuctionIQ.Professions
+  local p = AuctionIQ.Me().professions[2906]
   local frames, keepMs, keepIDs = 0, P.WALK_MS, STUB.recipeIDs
   local ids = {}
   for i = 1, 40 do ids[i] = ({ 1, 2, 3, 10, 11 })[(i - 1) % 5 + 1] end
@@ -1079,7 +1079,7 @@ wk = L.eval("""(function()
   P.WALK_MS = 0 -- a pause every 8 recipes
   local keepClock = debugprofilestop
   debugprofilestop = function() return os.clock() * 1000 end
-  local best = CH.BestCrafts()
+  local best = AuctionIQ.BestCrafts()
   p.walkAt = nil
   local started = P.Walk(2906, p, true)
   local doneAfter
@@ -1097,22 +1097,22 @@ perf = L.eval("(function() STUB.Fire('PLAYER_LOGOUT'); return AuctionIQ.db.debug
 check("perf: the costliest timings are kept in the saved variables at logout", perf is not None and len(list(perf.by.values())) >= 1)
 
 # Craft results log
-CH.AdvisorUI.Show(10)
+AuctionIQ.AdvisorUI.Show(10)
 run('C_TradeSkillUI.CraftRecipe(10, 1, {}, nil, nil, false)')
 run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 2, multicraft = 1, resourcesReturned = { { itemID = 204, quantity = 1 } } })')
-lr = list(CH.Log.Rows().values())[0]
+lr = list(AuctionIQ.Log.Rows().values())[0]
 check("results log: craft, Multicraft proc and saved reagents counted",
       lr.crafts == 1 and lr.e.mcProcs == 1 and lr.e.saved == 300000 and lr.e.value == 2 * 3000000 * 0.95 and lr.expected == 730000)
 
 # Decisions: break-even, Concentration over plain, evidence, Concentration forecast, batch outcomes
 check("craft log: the forecast's yield is kept with the craft", lr.e.fcCrafts == 1 and lr.e["fcItems"] == 2 and abs(lr.e.expItems - 1) < 1e-9)
-st = CH.Log.Stages("Seyko", 10, lr.e)
+st = AuctionIQ.Log.Stages("Seyko", 10, lr.e)
 check("craft log: forecast, actual and realized are kept apart", st.forecast == 730000 and st.actual == lr.actual
       and st.produced["items"] == 2 and abs(st.produced.gold - 2850000) < 1 and st.realized.made == 2 and st.realized.sold == 0 and st.realized.unsold == 2)
-sl3 = [plain(x[1]) for x in CH.Log.StageLines(L.eval("function(s) return { name = 'Test Flask', char = 'Seyko', stages = s } end")(st)).values()]
+sl3 = [plain(x[1]) for x in AuctionIQ.Log.StageLines(L.eval("function(s) return { name = 'Test Flask', char = 'Seyko', stages = s } end")(st)).values()]
 check("craft log: the hover says unsold items aren't realized and the matching is estimated",
       any("unsold, estimated value (not realized)" in x for x in sl3) and any("Estimated attribution" in x for x in sl3))
-wf = list(CH.Log.Waterfall(st).values())
+wf = list(AuctionIQ.Log.Waterfall(st).values())
 def wsum(a, b): return sum(x[2] for x in wf[a:b])
 ai = [i for i, x in enumerate(wf) if x[1] == "Actual at market"][0]
 check("waterfall: the steps add up from forecast to actual to realized",
@@ -1175,19 +1175,19 @@ check("break-even: Resourcefulness lowers it, deposits raise it", abs(bpe.factor
 g = res.bestConc.gain
 check("Concentration: extra profit over the best plain craft, and per expected point", g.gain == 1450000 and g.perPoint == 18125 and g.total == 27250)
 check("Concentration: when no plain craft pays, the gain is over not crafting", D.ConcGain(L.eval("{ profit = 100, avgConcentration = 10 }"), -50).gain == 100)
-sm = [plain(x) for x in CH.AdvisorUI.SummaryLines(res).values()]
+sm = [plain(x) for x in AuctionIQ.AdvisorUI.SummaryLines(res).values()]
 check("advisor summary: craft, break-even against the estimate, downside, then Concentration",
       sm[0].startswith("Craft Q2: 73g expected profit per craft") and "Break-even 223g per item, estimated sale price 300g per item" in sm[1]
       and sm[2].startswith("  Downside") and "price falls 10%" in sm[2] and any("more per craft than the plain craft" in x and "per expected point" in x for x in sm))
-pl5 = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.bestConc, 5).values()]
+pl5 = [(plain(l[1]), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, res.bestConc, 5).values()]
 check("profit hover keeps the whole profit per point for CraftSim, and the extra over plain",
       ("  Extra per expected point", "1g 81s") in pl5 and ("  Whole profit per point (as CraftSim)", "2g 72s") in pl5
       and ("  Over the best plain craft", "145g per craft") in pl5)
-pl6 = [(plain(l[1]).strip(), plain(l[2])) for l in CH.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
+pl6 = [(plain(l[1]).strip(), plain(l[2])) for l in AuctionIQ.AdvisorUI.BreakdownLines(res, res.best, 5).values()]
 check("profit hover: margin is profit over proceeds, and the break-even price", ("Margin  profit / proceeds", "26%") in pl6 and ("Break-even sale price", "223g per item") in pl6)
 ev = D.EvidenceText(D.Evidence(302))
 check("evidence: source and how much of the sell rate is yours", ev.price.startswith("Price: TSM, ") and "none known" in ev.rate and ev.volume.startswith("Sales: 5 a day: the region's 5 a day; you haven't listed it"))
-check("evidence: the advisor's source line names it", "Sell rate:" in plain(CH.AdvisorUI.SourceLine(res)) and "Sales: " in plain(CH.AdvisorUI.SourceLine(res)))
+check("evidence: the advisor's source line names it", "Sell rate:" in plain(AuctionIQ.AdvisorUI.SourceLine(res)) and "Sales: " in plain(AuctionIQ.AdvisorUI.SourceLine(res)))
 cf = D.ConcForecast(100, 30, 0.5, 15)
 check("Concentration forecast: 3 now, exact chance of a 4th (2 refunds in 3) and a 5th (4 in 4)",
       cf.now == 3 and abs(cf.chance[1] - 0.5) < 1e-12 and abs(cf.chance[2] - 0.0625) < 1e-12)
@@ -1207,18 +1207,18 @@ bp = L.eval("""{ made = 1, mc = 0.3, maxExtra = 3, res = 0.25, saved = 20, price
   reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }""")
 bq = list(D.Batch(bp, L.eval("{ sizes = { 100 }, runs = 600, price = 0 }")).values())[0]
 exp_items = 100 * (1 + 0.3 * (1 + (3 - 1) / 2))
-exp_net = exp_items * 100 * CH.AH_CUT - (5000 - 100 * 0.25 * 20)
+exp_net = exp_items * 100 * AuctionIQ.AH_CUT - (5000 - 100 * 0.25 * 20)
 check("batch: Multicraft's odds and extras give about the expected items (160 for 100 crafts)", abs(bq["items"] - exp_items) <= 6)
 check("batch: Resourcefulness and Multicraft move the median net to about its expectation, with a spread",
       abs(bq.net.p50 - exp_net) < 0.05 * exp_net and bq.net.p10 < bq.net.p50 < bq.net.p90)
 bz = list(D.Batch(L.eval("""{ made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 100, deposit = 0, unit = 95, daily = 1000, seed = 5,
   reagents = { { id = 1, n = 1, unit = 50, finishing = true } }, evidence = {} }"""), L.eval("{ sizes = { 100 }, runs = 200, price = 0 }")).values())[0]
 check("batch: without procs there's no spread when every item sells at a fixed price", bz.net.p10 == bz.net.p90)
-CH.AdvisorUI.Render(res)
+AuctionIQ.AdvisorUI.Render(res)
 run('for i, r in ipairs(AuctionIQ.AdvisorUI.Current().rows) do if r.recommended then AuctionIQ.AdvisorUI.RowClick(i) end end')
-check("advisor: the break-even chart pane", CH.AdvisorUI.SetPane("chart") == "chart"
-      and any("Plain Q2: breaks even at 223g per item, 26% under the estimate of 300g" in plain(x) for x in CH.AdvisorUI.RenderPane().values()))
-bl = [plain(x) for x in CH.AdvisorUI.SetPane("batch") and CH.AdvisorUI.RenderPane().values()]
+check("advisor: the break-even chart pane", AuctionIQ.AdvisorUI.SetPane("chart") == "chart"
+      and any("Plain Q2: breaks even at 223g per item, 26% under the estimate of 300g" in plain(x) for x in AuctionIQ.AdvisorUI.RenderPane().values()))
+bl = [plain(x) for x in AuctionIQ.AdvisorUI.SetPane("batch") and AuctionIQ.AdvisorUI.RenderPane().values()]
 check("advisor: Analyze batch leads with how many to make, then half, that and double", len(bl) == 7 and bl[0].startswith("Make 50: ")
       and "at risk if it sells slowly" in bl[0] and "Left after a week: " in bl[0] and bl[1].startswith("More than 50 ")
       and bl[2].startswith("25 crafts: ") and bl[3].startswith("50 crafts: ") and bl[4].startswith("100 crafts: ")
@@ -1297,29 +1297,29 @@ inv = L.eval("""(function()
   end
   return bad end)()""")
 check("quantity (200 seeded cases): the suggestion never exceeds what the sales support or your gold affords", inv == 0)
-check("advisor: back to the notes", CH.AdvisorUI.SetPane("notes") == "notes")
+check("advisor: back to the notes", AuctionIQ.AdvisorUI.SetPane("notes") == "notes")
 run('AuctionIQ.Queue.Clear(); AuctionIQ.AdvisorUI.Show(10); AuctionIQ.AdvisorUI.RowClick(2); AuctionIQ.AdvisorUI.SetQty(9); AuctionIQ.AdvisorUI.QueueSelected()')
-bg = CH.Queue.Budget()
+bg = AuctionIQ.Queue.Budget()
 check("queue budget: gold, reagents and Concentration, on hand against needed", bg.gold.need > bg.gold.have and bg.reagents.need > bg.reagents.have
       and bg.conc.need == 720)
 check("queue budget: the first craft that hits a limit", bg.stop.why == "gold" and bg.stop.n == 5)
-bll = [plain(x) for x in CH.QueueUI.BudgetLines(bg).values()]
+bll = [plain(x) for x in AuctionIQ.QueueUI.BudgetLines(bg).values()]
 check("queue budget: shopping cost against your gold, missing materials, Concentration by character and profession",
       bll[0] == "410g, you have 123g: 286g short" and bll[1] == "67 reagents short (3 kinds)" and bll[2].startswith("Seyko ") and bll[2].endswith("720 of 400"))
-rd, rt = CH.Queue.Readiness()
-e9 = CH.db.queue[1]
+rd, rt = AuctionIQ.Queue.Readiness()
+e9 = AuctionIQ.db.queue[1]
 check("readiness: each craft takes what's on hand in queue order; the rest is blocked with its shortfall",
       rt.now == 1 and rt.blocked == 8 and rd[e9].why == "reagents" and rd[e9].shortN == sum(rd[e9].short.values()))
-blk = plain(CH.QueueUI.BlockerLine(None, None, bg))
+blk = plain(AuctionIQ.QueueUI.BlockerLine(None, None, bg))
 check("next blocker: the batch, what's ready now, the exact shortfall and the gold", blk.startswith("Next blocker: Test Flask x9: craft 1 now · 8 blocked, short ")
       and blk.endswith("Buying it all costs 410g, you have 123g"))
-st, tipl = CH.QueueUI.RowState(e9, rd[e9], True, None, "Craft", CH.Queue.ShoppingList()[0])
+st, tipl = AuctionIQ.QueueUI.RowState(e9, rd[e9], True, None, "Craft", AuctionIQ.Queue.ShoppingList()[0])
 check("row status: part ready says how many now and how many blocked", plain(st) == "1 now · 8 blocked"
       and any(plain(l[1]).startswith("Short ") for l in tipl.values()))
-st2, _ = CH.QueueUI.RowState(L.eval("{ name = 'X', qty = 2, charName = 'Alt' }"), L.eval("{ now = 0, blocked = 2, why = 'switch', short = {} }"), False, "on Alt", "Craft", None)
+st2, _ = AuctionIQ.QueueUI.RowState(L.eval("{ name = 'X', qty = 2, charName = 'Alt' }"), L.eval("{ now = 0, blocked = 2, why = 'switch', short = {} }"), False, "on Alt", "Craft", None)
 check("row status: another character's craft says to switch", plain(st2) == "Switch character")
 run('STUB.money = 999999999')
-bg2 = CH.Queue.Budget()
+bg2 = AuctionIQ.Queue.Budget()
 run('STUB.money = 1234567')
 check("queue budget: with gold, Concentration is next to block", bg2.stop is None or bg2.stop.why == "conc")
 seq = list(D.ConcSequence(100, L.eval("{ { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 }, { cost = 30, ing = 0.5, refund = 15 } }")).values())
@@ -1372,7 +1372,7 @@ check("dashboard: the card hands Craft the recipe and character, and names its b
       nx[0].go[3].name == "Cheap Flask" and nx[0].go[3].char == "Be" and nx[0].risk is not None)
 allnx = list(L.eval("AuctionIQ.Next.List()").values())
 check("dashboard: every card that opens a view hands over what it's about", all(x.go[3] is not None for x in allnx if x.go))
-check("dashboard: where a card opens, in words", CH.UI.PlaceName(nx[0].go) == "Operations > Craft")
+check("dashboard: where a card opens, in words", AuctionIQ.UI.PlaceName(nx[0].go) == "Operations > Craft")
 cb = [x for x in L.eval("AuctionIQ.UI.ConcentrationBars()").values() if x.char == "Be"]
 check("dashboard: Concentration by character, with time to full and the best extra per point",
       len(cb) == 1 and cb[0].cur == 500 and cb[0].hours == 48 and abs(cb[0].best.gain - 890 / 30) < 1e-9)
@@ -1386,16 +1386,16 @@ check("escape: every AuctionIQ window is on the game's close-on-Escape list",
 fr = L.globals().AuctionIQFrame
 if fr.scripts and fr.scripts.OnKeyDown:
     run('AuctionIQFrame.scripts.OnKeyDown(AuctionIQFrame, "ESCAPE")')
-    check("escape: one press closes the window and the advisor", not CH.UI.IsShown() and not CH.AdvisorUI.IsShown())
+    check("escape: one press closes the window and the advisor", not AuctionIQ.UI.IsShown() and not AuctionIQ.AdvisorUI.IsShown())
 run("AuctionIQ.UI.Page('today'); AuctionIQ.UI.Toggle()")
 
 # Tabs: one window at a time, the queue can pop out
 run('AuctionIQ.ScanUI.Open()')
-check("tabs: opening Scan hides the others", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and not CH.QueueUI.IsShown() and CH.Window.Active() == "scan")
-labels = list(CH.Window.Arrange().values())
+check("tabs: opening Scan hides the others", AuctionIQ.ScanUI.IsShown() and not AuctionIQ.AdvisorUI.IsShown() and not AuctionIQ.QueueUI.IsShown() and AuctionIQ.Window.Active() == "scan")
+labels = list(AuctionIQ.Window.Arrange().values())
 check("tabs: two windows, Craft and Queue (Scan is a button)", labels == ["Craft", "Queue"])
 run('AuctionIQ.AdvisorUI.Show(10)')
-check("tabs: a recipe click selects it in the Craft window", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown() and CH.ScanUI.Selected() == 10)
+check("tabs: a recipe click selects it in the Craft window", AuctionIQ.ScanUI.IsShown() and not AuctionIQ.AdvisorUI.IsShown() and AuctionIQ.ScanUI.Selected() == 10)
 lc = L.eval("AuctionIQ.ScanUI.lastPanel")
 qr = list(lc.section.rows.values()) if lc and lc.section else []
 check("Craft card: the open recipe's live card: profit, reagents, margin, and which quality",
@@ -1431,7 +1431,7 @@ sw = L.eval("AuctionIQ.ScanUI.lastDetail").switch
 check("Craft card: Concentrate is an on/off switch, off now (knob left, says OFF)", L.eval("AuctionIQ.ScanUI.lastDetail.switch:IsShown()") and sw.isOn is False
       and L.eval("AuctionIQ.ScanUI.lastDetail.switch.knob.pt[1]") == "LEFT" and "CONCENTRATE  OFF" in plain(L.eval("AuctionIQ.ScanUI.lastDetail").toggle.t))
 check("Craft card: Concentrate off shows the plain crafts and picks the best of them",
-      lc2.section.toggle.on is False and not CH.AdvisorUI.SelectedRow().concentration and len(ons) == 1 and sum("Best" in l for l in ql2) == 1)
+      lc2.section.toggle.on is False and not AuctionIQ.AdvisorUI.SelectedRow().concentration and len(ons) == 1 and sum("Best" in l for l in ql2) == 1)
 qr2 = list(lc2.section.rows.values())
 qr2[-1].run()
 check("Craft card: clicking a rank picks it, and only that line is highlighted",
@@ -1442,7 +1442,7 @@ sw = L.eval("AuctionIQ.ScanUI.lastDetail").switch
 check("Craft card: the switch flips on (knob right, says ON)", sw.isOn is True and L.eval("AuctionIQ.ScanUI.lastDetail.switch.knob.pt[1]") == "RIGHT"
       and "CONCENTRATE  ON" in plain(L.eval("AuctionIQ.ScanUI.lastDetail").toggle.t))
 check("Craft card: Concentrate back on picks the best Concentration craft", L.eval("AuctionIQ.ScanUI.lastPanel").section.toggle.on is True
-      and CH.AdvisorUI.IsSelected(CH.AdvisorUI.Current().rows[2]))
+      and AuctionIQ.AdvisorUI.IsSelected(AuctionIQ.AdvisorUI.Current().rows[2]))
 run("AuctionIQ.ScanUI.SetQty(3)")
 lp3 = L.eval("AuctionIQ.ScanUI.lastPanel")
 check("Craft card: the stepper sets how many Craft and Queue use", plain(lp3.actions[2].label).startswith("Queue 3") and plain(lp3.actions[1].label).startswith("Craft "))
@@ -1468,28 +1468,28 @@ check("Craft card: a title that isn't an item keeps the theme colour", list(det_
 run("AuctionIQ.UI.Refresh()")
 run("AuctionIQ.ScanUI.SetQty(1); AuctionIQ.AdvisorUI.Show(10)")
 run('AuctionIQ.QueueUI.Show(); AuctionIQ.AdvisorUI.Show(10)')
-check("tabs: a recipe click while the Queue shows updates quietly", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown())
+check("tabs: a recipe click while the Queue shows updates quietly", AuctionIQ.QueueUI.IsShown() and not AuctionIQ.ScanUI.IsShown())
 run('AuctionIQ.AdvisorUI.Open()')
-check("tabs: the old Advisor command opens the Craft window", CH.ScanUI.IsShown() and not CH.AdvisorUI.IsShown())
+check("tabs: the old Advisor command opens the Craft window", AuctionIQ.ScanUI.IsShown() and not AuctionIQ.AdvisorUI.IsShown())
 run('AuctionIQ.Window.CloseTabs(); AuctionIQ.db.settings.advisor.hide = true; AuctionIQ.db.settings.advisor.twoWindows = nil; AuctionIQ.AdvisorUI.Show()')
-check("two windows: closing the old Advisor window before the update doesn't keep the Craft window shut", CH.ScanUI.IsShown())
+check("two windows: closing the old Advisor window before the update doesn't keep the Craft window shut", AuctionIQ.ScanUI.IsShown())
 run('AuctionIQ.db.settings.advisor.classic = true')
-check("tabs: the old Advisor window comes back as a tab when Settings turns it on", list(CH.Window.Arrange().values()) == ["Advisor", "Craft", "Queue"])
+check("tabs: the old Advisor window comes back as a tab when Settings turns it on", list(AuctionIQ.Window.Arrange().values()) == ["Advisor", "Craft", "Queue"])
 run('AuctionIQ.db.settings.advisor.classic = nil')
 run('AuctionIQ.QueueUI.Show(); AuctionIQ.Window.ToggleQueuePop()')
-labels = list(CH.Window.Arrange().values())
+labels = list(AuctionIQ.Window.Arrange().values())
 check("pop-out: the queue leaves the tabs and shows beside the Craft window",
-      CH.QueueUI.IsShown() and CH.ScanUI.IsShown() and "Queue" not in labels)
+      AuctionIQ.QueueUI.IsShown() and AuctionIQ.ScanUI.IsShown() and "Queue" not in labels)
 run('AuctionIQ.ScanUI.Open()')
-check("pop-out: switching tabs leaves the queue open", CH.ScanUI.IsShown() and CH.QueueUI.IsShown() and not CH.AdvisorUI.IsShown())
+check("pop-out: switching tabs leaves the queue open", AuctionIQ.ScanUI.IsShown() and AuctionIQ.QueueUI.IsShown() and not AuctionIQ.AdvisorUI.IsShown())
 run('AuctionIQ.Window.ToggleQueuePop()')
-check("back in the tabs: the queue takes the spot", CH.QueueUI.IsShown() and not CH.ScanUI.IsShown() and CH.Window.Active() == "queue")
+check("back in the tabs: the queue takes the spot", AuctionIQ.QueueUI.IsShown() and not AuctionIQ.ScanUI.IsShown() and AuctionIQ.Window.Active() == "queue")
 run('AuctionIQ.Window.CloseTabs()')
-check("closing the profession closes the tabs", not CH.QueueUI.IsShown() and CH.Window.Active() is None)
+check("closing the profession closes the tabs", not AuctionIQ.QueueUI.IsShown() and AuctionIQ.Window.Active() is None)
 
 # Midnight reports craftingQuality as a quality ID (13, 14), not 1, 2: quality comes from skill instead
 run('STUB.qualityOffset = 12')
-mq = CH.Advisor.Analyze(10)
+mq = AuctionIQ.Advisor.Analyze(10)
 check("quality from skill, not the game's quality ID", [r.quality for r in mq.rows.values()] == [1, 2, 2] and mq.best.item == 302 and mq.bestConc.perPoint == 27250)
 run('STUB.qualityOffset = nil')
 # the Concentration craft with what you hold: Concentrate ticked on the reagents the game fills in
@@ -1553,13 +1553,13 @@ TradeSkillMasterDB = {
   ["g@ @internalData@warbankQuantity"] = { ["i:301"] = 2 },
 }
 """)
-LG = CH.Ledger
+LG = AuctionIQ.Ledger
 names = sorted(c.name for c in LG.Characters().values())
 check("ledger: this realm's characters only", names == ["Courtizy", "Luxaren"] and LG.Gold() == 10000000)
 gs = list(LG.GoldSeries(L.eval("STUB.now") - 2 * 86400, L.eval("STUB.now"), 3).values())
 check("ledger: gold history adds up every character's log", gs[0].v == 6000000 and gs[2].v == 10000000)
 run("AuctionIQ.UI.SetRange('1M')")
-d = CH.UI.DashboardData()
+d = AuctionIQ.UI.DashboardData()
 s = d.summary
 check("dashboard: sales, buys and real expenses in range; own transfers left out",
       s.sales == 6650000 and s.buys == 1000000 and s.income == 0 and s.expense == 20000 and s.cash == 5630000 and s.topItem == 302)
@@ -1567,10 +1567,10 @@ check("ledger: auction sales count after the 5% cut, vendor and trade sales as t
       LG.Net(L.eval("{ amount = 1000, source = 'Auction' }")) == 950 and LG.Net(L.eval("{ amount = 1000, source = 'Vendor' }")) == 1000)
 check("dashboard: top sale, top purchase, 52 week high and low", d.topSale == 6000000 and d.topBuy == 1000000 and d.high == 10000000 and 0 < d.low <= d.high)
 run("AuctionIQ.UI.SetRange('All')")
-check("dashboard: All reaches back past TSM's year", CH.UI.DashboardData().summary.sales == 10450000)
+check("dashboard: All reaches back past TSM's year", AuctionIQ.UI.DashboardData().summary.sales == 10450000)
 check("activity log: gone from the addon (the Dashboard shows Recommendations only)", L.eval("AuctionIQ.Ledger.Activity == nil and AuctionIQ.Ledger.ActivityRecent == nil and AuctionIQ.Ledger.ActivityNow == nil"))
 inv = {e.id: e for e in LG.Inventory().values()}
-v302 = CH.Prices.Get("chvalue", "i:302")
+v302 = AuctionIQ.Prices.Get("chvalue", "i:302")
 check("inventory: bags, mail and warband, qualities merged", inv[302].total == 4 and inv[302].bags == 3 and inv[302].mail == 1 and inv[301].warband == 2 and inv[302].value == v302 * 4)
 w1 = LG.Snapshot(L.eval("STUB.now") - 5 * 86400)
 LG.Snapshot()
@@ -1600,7 +1600,7 @@ check("dead stock: held, not sold in the window", [e.id for e in dead] == [301] 
 o = LG.Overhead(-1e12)
 check("overhead: repairs, not your own transfers", o.total == 20000 and len(list(o.types.values())) == 1 and o.afterOverhead == o.profit - 20000)
 # Phase 2: forecast vs actual
-logged = [b for b in CH.Forecast.Store().values() if b.id == 302]
+logged = [b for b in AuctionIQ.Forecast.Store().values() if b.id == 302]
 check("forecast: a craft saves its forecast with the batch", len(logged) == 1 and logged[0].qty == 2 and logged[0].cost and logged[0].expectEach)
 run("""
 AuctionIQ.db.batches = {
@@ -1609,12 +1609,12 @@ AuctionIQ.db.batches = {
 }
 AuctionIQ.Forecast.Clear()
 """)
-bs = list(CH.Forecast.Batches(302).values())
+bs = list(AuctionIQ.Forecast.Batches(302).values())
 check("forecast: sales match crafts oldest first", bs[0].sold == 1 and bs[1].sold == 1)
-pf = {e.id: e for e in CH.Forecast.Performance().values()}[302]
+pf = {e.id: e for e in AuctionIQ.Forecast.Performance().values()}[302]
 check("forecast: made, sold, sold-each against forecast, realized profit",
       pf.made == 4 and pf.sold == 2 and abs(pf.accuracy - 0.7125) < 1e-6 and abs(pf.realized - 3700000) < 1 and abs(pf.days - 1.4583) < 0.01)
-check("forecast: no shading before anything has sold", CH.Forecast.Shade(999) is None)
+check("forecast: no shading before anything has sold", AuctionIQ.Forecast.Shade(999) is None)
 # Batch decisions: crafts link back to what was queued; the miss splits into price, sell-through, reagents, yield
 run("""AuctionIQ.db.decisions = { { key = 1, at = STUB.now - 3 * 86400, item = 302, name = 'Test Elixir', char = 'Seyko', n = 4,
   itemsEach = 2, costEach = 2000000, netEach = 4000000, priceEach = 4210527, daily = 1, crafts = 2, made = 4, paid = 4000000,
@@ -1640,10 +1640,10 @@ check("batch results view: a row per batch with its main cause, explained on hov
       and plain(brows[0].cells[3]) == "2/4" and "1 batches" in plain(bfoot)
       and any("Sale price" in plain(l[1]) for l in brows[0].tip().values()))
 run("AuctionIQ.db.decisions = nil")
-CH.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Linked', n = 2, itemsEach = 1, costEach = 10, netEach = 20, daily = 1 }"))
-b1 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
-b2 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
-b3 = CH.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+AuctionIQ.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Linked', n = 2, itemsEach = 1, costEach = 10, netEach = 20, daily = 1 }"))
+b1 = AuctionIQ.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+b2 = AuctionIQ.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
+b3 = AuctionIQ.Forecast.Record(777, 1, L.eval("{ cost = 12 }"))
 d777 = list(L.eval("AuctionIQ.Forecast.Decisions()").values())[0]
 check("batch decision: crafts fill it up to the crafts queued, then stop linking", b1.decision == d777.key and b2.decision == d777.key
       and b3.decision is None and d777.crafts == 2 and d777.made == 2 and d777.paid == 24)
@@ -1656,7 +1656,7 @@ check("plan record: nothing to keep without a suggestion", L.eval("AuctionIQ.Dec
 run("""AuctionIQ.db.decisions = nil
 for i = #AuctionIQ.db.batches, 1, -1 do if AuctionIQ.db.batches[i].id == 777 then table.remove(AuctionIQ.db.batches, i) end end
 AuctionIQ.Forecast.Clear()""")
-dd = CH.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Departed', n = 20, itemsEach = 1, costEach = 10, netEach = 20, daily = 100, plan = { suggested = 8, action = 'make', strength = 'some' } }"), L.eval("STUB.now") - 86400)
+dd = AuctionIQ.Forecast.SaveDecision(L.eval("{ item = 777, name = 'Departed', n = 20, itemsEach = 1, costEach = 10, netEach = 20, daily = 100, plan = { suggested = 8, action = 'make', strength = 'some' } }"), L.eval("STUB.now") - 86400)
 run("local d = AuctionIQ.Forecast.Decisions()[1]; d.crafts, d.made, d.paid, d.first = 20, 20, 200, STUB.now - 86400")
 dep = L.eval("AuctionIQ.Forecast.Departure(AuctionIQ.Forecast.Decisions()[1])")
 check("departure: queue 20 when 8 was suggested says so", dep.kind == "more" and dep.text == "You chose 20 (suggested 8)")
@@ -1690,10 +1690,10 @@ for b in bs:
         wn += w * b.sold; wexp += w * b.expectEach * b.sold; wrev += w * b.revenue
 r_ = wrev / wexp
 want = (wn * r_ + 5) / (wn + 5)
-sh = CH.Forecast.Shade(302)
+sh = AuctionIQ.Forecast.Shade(302)
 check("forecast: an item that sells under forecast is shaded down, shrunk toward 1",
       abs(sh[0] - want) < 1e-9 and 0.7125 < sh[0] < 1 and "2 sold at" in sh[1])
-prow, pfoot = CH.LedgerUI.Rows("perf", L.eval("{ }"))
+prow, pfoot = AuctionIQ.LedgerUI.Rows("perf", L.eval("{ }"))
 check("forecast: the Performance view", len(list(prow.values())) == 1 and "Sold -29% vs forecast" in plain(pfoot))
 pick = "(function() local r = AuctionIQ.Advisor.Analyze(10, {}); for _, x in ipairs(r.rows) do if x.item == 302 and not x.concentration then return x.unit, x.shade, r.best.item end end end)()"
 run("AuctionIQ.Forecast.PRIOR = 1e15"); u0 = L.eval(pick)
@@ -1703,33 +1703,33 @@ check("forecast: the advisor values the item at what it really fetches", abs(u5[
 check("forecast: a shaded item can lose its place as the best craft", u0[2] == 302 and u1[2] == 301)
 run("AuctionIQ.Forecast.PRIOR = 5")
 
-rows, foot = CH.LedgerUI.Rows("pl", L.eval("{ }"))
+rows, foot = AuctionIQ.LedgerUI.Rows("pl", L.eval("{ }"))
 check("CFO views draw rows", len(list(rows.values())) == 1 and "best line: Flasks" in plain(foot))
 run("AuctionIQ.Par.Refresh()")
 # 1 sold a week: Poisson(1) stays at or under 2 about 92% of the time, so 2 at 90%; half a week (301) needs 1
-check("stock target: a week's demand at a 90% service level, by default", CH.Par.Target(302)[0] == 2 and CH.Par.Target(301)[0] == 1 and CH.Par.Target(201) is None)
+check("stock target: a week's demand at a 90% service level, by default", AuctionIQ.Par.Target(302)[0] == 2 and AuctionIQ.Par.Target(301)[0] == 1 and AuctionIQ.Par.Target(201) is None)
 run("AuctionIQ.Settings.Model('service', 9); AuctionIQ.Par.Refresh()")
-check("stock target: the service level is a setting (99% needs 4)", CH.Par.Target(302)[0] == 4 and CH.Settings.Model("service")[1] == "99%")
+check("stock target: the service level is a setting (99% needs 4)", AuctionIQ.Par.Target(302)[0] == 4 and AuctionIQ.Settings.Model("service")[1] == "99%")
 run("AuctionIQ.Settings.Model('service', -9); AuctionIQ.Par.Refresh()")
 run("AuctionIQ.Par.Set(302, 6); AuctionIQ.Par.Refresh()")
-par = {e.id: e for e in CH.Par.List().values()}
+par = {e.id: e for e in AuctionIQ.Par.List().values()}
 check("par: set by hand, short counts stock on every character", par[302].manual and par[302].held == 4 and par[302].short == 2)
-check("par view: shift-click +1, alt-click back to automatic", CH.LedgerUI.ParClick(302, "shift")[0] == 7 and CH.LedgerUI.ParClick(302, "alt")[0] == 2)
+check("par view: shift-click +1, alt-click back to automatic", AuctionIQ.LedgerUI.ParClick(302, "shift")[0] == 7 and AuctionIQ.LedgerUI.ParClick(302, "alt")[0] == 2)
 run("AuctionIQ.Par.Set(302, 6); AuctionIQ.Par.Refresh()")
-pdet = CH.TradingUI.PostDetail(L.eval("{ x = { plan = { id = 302, post = 1, held = 4, up = 0, cap = 5 } } }"))
+pdet = AuctionIQ.TradingUI.PostDetail(L.eval("{ x = { plan = { id = 302, post = 1, held = 4, up = 0, cap = 5 } } }"))
 prow = {plain(r[1]): plain(r[2]) for r in pdet.section.rows.values()}
 check("Trade item panel: the stock target, set by you, with shift-click to change it", prow.get("Stock target", "").startswith("6 (you)"))
 run("AuctionIQ.Par.Set(302, nil); AuctionIQ.Par.Refresh()")
 # Groups and auctioning
-n = CH.Groups.Rebuild()
-check("groups: built from scans, reagents and resale", n > 0 and CH.Groups.Path(302).startswith("Crafted/") and CH.Groups.Path(201).startswith("Reagents/"))
-check("groups: crafted goods post, reagents don't", CH.Groups.Prices(302).post and not CH.Groups.Prices(201).post)
+n = AuctionIQ.Groups.Rebuild()
+check("groups: built from scans, reagents and resale", n > 0 and AuctionIQ.Groups.Path(302).startswith("Crafted/") and AuctionIQ.Groups.Path(201).startswith("Reagents/"))
+check("groups: crafted goods post, reagents don't", AuctionIQ.Groups.Prices(302).post and not AuctionIQ.Groups.Prices(201).post)
 run("AuctionIQ.Groups.Move(302, 'Mine/Flasks')")
-check("groups: moving an item sticks", CH.Groups.Path(302) == "Mine/Flasks" and any(g.path == "Mine/Flasks" for g in CH.Groups.Tree().values()))
+check("groups: moving an item sticks", AuctionIQ.Groups.Path(302) == "Mine/Flasks" and any(g.path == "Mine/Flasks" for g in AuctionIQ.Groups.Tree().values()))
 run("AuctionIQ.Groups.Move(302, nil)")
-p302 = CH.Groups.Prices(302)
+p302 = AuctionIQ.Groups.Prices(302)
 check("prices: min is the cost to make after the cut", p302.min and p302.why == "cost to make" and p302.normal == 3000000 and p302.max == 9000000)
-check("warband listed: TSM's counts per character", CH.Auction.Listed(302) == 0)
+check("warband listed: TSM's counts per character", AuctionIQ.Auction.Listed(302) == 0)
 run("AuctionIQ.Groups.Store().ops.Crafted.cap = 5")
 # Post scan: gear splits by item level (five rank 4 rods and ten rank 3 rods are two posts)
 run("""STUB.oldC, STUB.oldII = C_Container, C_Item.GetItemInfoInstant
@@ -1745,17 +1745,17 @@ _, pl = L.eval("AuctionIQ.Auction.Postable()"), L.eval("select(2, AuctionIQ.Auct
 pl = list(pl.values())
 check("post scan: gear split by item level, others not", [(e.id, e.level, e.count) for e in pl] == [(201, None, 20), (302, 645, 5), (302, 642, 10)])
 check("post scan: bag counts per item level", L.eval("AuctionIQ.Auction.InBags(302, 642)") == 10 and L.eval("AuctionIQ.Auction.InBags(302)") == 15)
-check("post scan: each item level priced on its own", CH.Groups.Prices(302, None, 645).normal == 4000000 and CH.Groups.Prices(302).normal != 4000000)
+check("post scan: each item level priced on its own", AuctionIQ.Groups.Prices(302, None, 645).normal == 4000000 and AuctionIQ.Groups.Prices(302).normal != 4000000)
 run("C_Container, C_Item.GetItemInfoInstant, C_Item.GetDetailedItemLevelInfo = STUB.oldC, STUB.oldII, nil")
-d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false }, { price = 2950000, qty = 1, mine = true } }"), 10)
 check("auction: undercut the cheapest seller outside the account", d.action == "post" and d.price == 2899900 and d.qty == 5)
-d = CH.Auction.Decide(302, L.eval("{ { price = 2800000, qty = 1, mine = true }, { price = 2900000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 2800000, qty = 1, mine = true }, { price = 2900000, qty = 3, mine = false } }"), 10)
 check("auction: never undercut your own Warband, match it", d.action == "post" and d.price == 2800000)
-d = CH.Auction.Decide(302, L.eval("{ { price = 10, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 10, qty = 3, mine = false } }"), 10)
 check("auction: skip when the cheapest is under your min", d.action == "skip" and "min" in d.why)
 run("AuctionIQ.Auction.RecordOwned({ { id = 302, qty = 3 } })")
-d = CH.Auction.Decide(302, L.eval("{ }"), 10)
-check("auction: the Warband's live auctions count toward the cap", CH.Auction.Listed(302) == 3 and d.qty == 2 and d.price == 3000000)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ }"), 10)
+check("auction: the Warband's live auctions count toward the cap", AuctionIQ.Auction.Listed(302) == 3 and d.qty == 2 and d.price == 3000000)
 # Formulas in TSM's syntax
 FV = lambda f, id=302: L.eval(f"AuctionIQ.Formula.Value({f!r}, {id})")
 check("formula: money, percent, functions", FV("1g50s") == 15000 and FV("150% 2g") == 30000 and FV("max(1g, 2g, 3s)") == 20000
@@ -1783,24 +1783,24 @@ AuctionIQ.Ledger.ClearStats()
 imp = L.eval("AuctionIQ.Groups.ImportTSM()")
 check("import: TSM operations, custom sources and group assignments copied", imp.ops == 2 and imp.sources == 1 and imp.groups >= 3)
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil; TradeSkillMasterDB['g@ @userData@customPriceSources'] = nil")
-tp = CH.Groups.Prices(302)
+tp = AuctionIQ.Groups.Prices(302)
 check("import: TSM's groups win and price by the copied formulas, with TSM gone",
-      CH.Groups.Path(302) == "TSM/Alch/Flasks" and tp.op == "Flask Op" and tp.min == 2950000 and tp.max == 4000000 and tp.cap == 2 and tp.undercut == 100)
+      AuctionIQ.Groups.Path(302) == "TSM/Alch/Flasks" and tp.op == "Flask Op" and tp.min == 2950000 and tp.max == 4000000 and tp.cap == 2 and tp.undercut == 100)
 check("import: a custom source steps the price down after an expiry", tp.normal == 3150000)
-d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
 check("rules: under min and set not to reset means no post", d.action == "skip" and "min" in d.why)
-d = CH.Auction.Decide(302, L.eval("{ { price = 3600000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 3600000, qty = 3, mine = false } }"), 10)
 check("rules: undercut and post cap", d.action == "post" and d.price == 3599900 and d.qty == 2)
-d = CH.Auction.Decide(302, L.eval("{ { price = 9000000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 9000000, qty = 3, mine = false } }"), 10)
 check("rules: above max posts at max", d.action == "post" and d.price == 4000000)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'normalPrice'")
-d = CH.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 2900000, qty = 3, mine = false } }"), 10)
 check("rules: below min resets to normal when set", d.action == "post" and d.price == 3150000)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].maxExpires = 1")
-d = CH.Auction.Decide(302, L.eval("{ }"), 5)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ }"), 5)
 check("rules: max expires stops posting after too many expiries without a sale", d.action == "skip" and "expired 1 times" in d.why)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].maxExpires = 0; AuctionIQ.Groups.Store().ops['Sell Loot'].maxExpires = 0")
-d = CH.Auction.Decide(301, L.eval("{ }"), 5)
+d = AuctionIQ.Auction.Decide(301, L.eval("{ }"), 5)
 check("rules: keep in bags holds some back", d.action == "post" and d.qty == 4)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].learn = true; STUB.ledgerLearn = true")
 lf, lwhy = L.eval("AuctionIQ.Groups.Learn(302)"), None
@@ -1811,15 +1811,15 @@ run("AuctionIQ.Groups.Store().ops['Flask Op'].learn = false")
 run("""TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302::i645"] = "Alch`Gear645", ["i:302::i642"] = "Alch`Gear642", ["i:301"] = "Loot`Pets" }
 AuctionIQ.Groups.ResetTSM()""")
 check("variants: each item level follows its own TSM group",
-      CH.Groups.Path(302, 645) == "TSM/Alch/Gear645" and CH.Groups.Path(302, 642) == "TSM/Alch/Gear642")
+      AuctionIQ.Groups.Path(302, 645) == "TSM/Alch/Gear645" and AuctionIQ.Groups.Path(302, 642) == "TSM/Alch/Gear642")
 check("variants: no base entry and the variants disagree, so no base-item fallback from TSM",
-      CH.Groups.TSMGroups()[302] is None and CH.Groups.TSMPath(302) is None)
-check("variants: a variant counts in its own group", 302 in list(CH.Groups.Items("TSM/Alch/Gear645").values()))
+      AuctionIQ.Groups.TSMGroups()[302] is None and AuctionIQ.Groups.TSMPath(302) is None)
+check("variants: a variant counts in its own group", 302 in list(AuctionIQ.Groups.Items("TSM/Alch/Gear645").values()))
 run("""TradeSkillMasterDB["p@Warband@userData@items"]["i:302"] = "Alch`Flasks"; AuctionIQ.Groups.ResetTSM()""")
 check("variants: the explicit base-item entry is the fallback, the variant still wins at its level",
-      CH.Groups.Path(302) == "TSM/Alch/Flasks" and CH.Groups.Path(302, 645) == "TSM/Alch/Gear645" and CH.Groups.Path(302, 700) == "TSM/Alch/Flasks")
+      AuctionIQ.Groups.Path(302) == "TSM/Alch/Flasks" and AuctionIQ.Groups.Path(302, 645) == "TSM/Alch/Gear645" and AuctionIQ.Groups.Path(302, 700) == "TSM/Alch/Flasks")
 run("""TradeSkillMasterDB["p@Warband@userData@items"] = { ["i:302::i645"] = "Alch`Flasks", ["i:302::i642"] = "Alch`Flasks" }; AuctionIQ.Groups.ResetTSM()""")
-check("variants: when every variant shares a group, that group is the fallback", CH.Groups.TSMPath(302) == "TSM/Alch/Flasks")
+check("variants: when every variant shares a group, that group is the fallback", AuctionIQ.Groups.TSMPath(302) == "TSM/Alch/Flasks")
 
 # Operation order, cancel rules and settings AuctionIQ can't follow
 run("""
@@ -1833,33 +1833,33 @@ TradeSkillMasterDB["g@ @userData@sharedOperations"] = { Auctioning = {
     bidPercent = 0.8, blacklist = "Goblin" } } }
 """)
 imp = L.eval("AuctionIQ.Groups.ImportTSM()")
-check("import: a group's operations kept in TSM's order", list(CH.Groups.Store().assignAll["TSM/Alch/Flasks"].values()) == ["Alt Only", "Flask Op"] and imp.multi >= 1)
+check("import: a group's operations kept in TSM's order", list(AuctionIQ.Groups.Store().assignAll["TSM/Alch/Flasks"].values()) == ["Alt Only", "Flask Op"] and imp.multi >= 1)
 check("import: settings AuctionIQ can't follow are reported", imp.unsupported["Flask Op"] is not None
       and any("bid" in x for x in imp.unsupported["Flask Op"].values()) and any("blacklist" in x for x in imp.unsupported["Flask Op"].values()))
 head, lines = L.eval("AuctionIQ.Groups.ImportSummary(AuctionIQ.Groups.ImportTSM())")
 check("import: the summary names each difference", "operations" in head and any("Flask Op differs" in l for l in lines.values()))
 check("operations: the first that applies to this character is used", L.eval("select(2, AuctionIQ.Groups.Operation(302))") == "Flask Op")
 run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'ignore'")
-d = CH.Auction.Decide(302, L.eval("{ { price = 100, qty = 1, mine = false }, { price = 3600000, qty = 3, mine = false } }"), 10)
+d = AuctionIQ.Auction.Decide(302, L.eval("{ { price = 100, qty = 1, mine = false }, { price = 3600000, qty = 3, mine = false } }"), 10)
 check("rules: ignore auctions below min undercuts the next seller", d.action == "post" and d.price == 3599900)
 run("AuctionIQ.Groups.Store().ops['Flask Op'].priceReset = 'none'")
-c = CH.Groups.Assign("TSM/Alch/Flasks", "Alt Only")
-check("operations: assigning one yourself replaces TSM's list", CH.Groups.Store().assignAll["TSM/Alch/Flasks"] is None
+c = AuctionIQ.Groups.Assign("TSM/Alch/Flasks", "Alt Only")
+check("operations: assigning one yourself replaces TSM's list", AuctionIQ.Groups.Store().assignAll["TSM/Alch/Flasks"] is None
       and L.eval("select(2, AuctionIQ.Groups.Operation(302))") == "Alt Only")
 run("AuctionIQ.Groups.Assign('TSM/Alch/Flasks', 'Flask Op')")
 
 # The advisor's market estimate and the posting decision are shown apart
 run("AuctionIQ.Depth.Remember(302, { { price = 2900000, qty = 2 } })")
-pc = CH.Auction.PostCheck(302)
+pc = AuctionIQ.Auction.PostCheck(302)
 check("post check: the operation skips when the fresh AH is under its min", pc.op == "Flask Op" and pc.action == "skip" and pc.source == "ah" and pc.cheapest == 2900000)
-pl = [plain(l[1]) for l in CH.AdvisorUI.PostingLines(302, None, 3150000).values()]
+pl = [plain(l[1]) for l in AuctionIQ.AdvisorUI.PostingLines(302, None, 3150000).values()]
 check("advisor: posting lines show min/normal/max and that it won't post", any("Min / normal / max" in l for l in pl) and any("Would not post" in l for l in pl))
 run("AuctionIQ.Depth.Remember(302, { { price = 3600000, qty = 2 } })")
-pc = CH.Auction.PostCheck(302)
+pc = AuctionIQ.Auction.PostCheck(302)
 check("post check: posts by the operation when the AH allows", pc.action == "post" and pc.price == 3599900)
 run("AuctionIQ.Depth.Forget(302)")
 run("AuctionIQ.Depth.Remember(205, { { price = 20000, qty = 1 }, { price = 40000, qty = 5 } })")
-bl = [(plain(l[0+1]), plain(l[1+1])) for l in CH.AdvisorUI.BuyNowLines(L.eval("{ id = 205, n = 2, unit = 10000, total = 20000 }")).values()]
+bl = [(plain(l[0+1]), plain(l[1+1])) for l in AuctionIQ.AdvisorUI.BuyNowLines(L.eval("{ id = 205, n = 2, unit = 10000, total = 20000 }")).values()]
 check("advisor: buy-now cost from listings seen, apart from the estimate", len(bl) == 1 and "buy now" in bl[0][0] and "3g ea" in bl[0][1] and "6g" in bl[0][1])
 run("AuctionIQ.Depth.Forget(205)")
 
@@ -1873,28 +1873,28 @@ ops.Crafting = { ["Restock Flasks"] = { minRestock = 1, maxRestock = 1000, minPr
 ops.Shopping = { ["Cheap Mats"] = { maxPrice = "1s", showAboveMaxPrice = true, restockQuantity = 50 } }
 """)
 imp = L.eval("AuctionIQ.Groups.ImportTSM()")
-cr = CH.Groups.CraftRule(302)
+cr = AuctionIQ.Groups.CraftRule(302)
 check("import: TSM Crafting operations become queue rules", imp.craftOps == 1 and imp.shopOps == 1 and cr.op == "Restock Flasks" and cr.maxRestock == 1000 and cr.minProfit == 1)
 check("import: a Shopping restock quantity is reported as not followed", imp.unsupported["Shopping Cheap Mats"] is not None)
 run("AuctionIQ.Queue.Clear()")
-CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
-q302 = sum(e.qty for e in CH.db.queue.values() if e.item == 302 and not e.concentration)
+AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+q302 = sum(e.qty for e in AuctionIQ.db.queue.values() if e.item == 302 and not e.concentration)
 check("restock: queues up to the operation's max, past a day's sales", q302 > 10)
 run("AuctionIQ.Queue.Clear(); AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minRestock = 100000")
-CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
-check("restock: nothing when what's missing is under the min restock", not any(e.item == 302 for e in CH.db.queue.values()))
+AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("restock: nothing when what's missing is under the min restock", not any(e.item == 302 for e in AuctionIQ.db.queue.values()))
 run("AuctionIQ.Queue.Clear(); AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minRestock = 1; AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minProfit = '100000g'")
-CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
-check("restock: nothing under the operation's minimum profit", not any(e.item == 302 for e in CH.db.queue.values()))
+AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+check("restock: nothing under the operation's minimum profit", not any(e.item == 302 for e in AuctionIQ.db.queue.values()))
 run("AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minProfit = '1c'")
-sr205 = CH.Groups.ShopRule(205)
+sr205 = AuctionIQ.Groups.ShopRule(205)
 check("shopping rule: the operation's max price", sr205.op == "Cheap Mats" and sr205.maxPrice == 100)
 run("AuctionIQ.Queue.Clear()")
-CH.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
+AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
 run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 50 } })")
-row205 = [r for r in CH.Queue.ShoppingList()[0].values() if r.itemID == 205]
+row205 = [r for r in AuctionIQ.Queue.ShoppingList()[0].values() if r.itemID == 205]
 if row205 and row205[0].buy > 0:
-    tip = [plain(l) for l in CH.QueueUI.CostLines(row205[0]).values()]
+    tip = [plain(l) for l in AuctionIQ.QueueUI.CostLines(row205[0]).values()]
     check("shopping: over the operation's max price is flagged", row205[0].overMax and row205[0].underMax == 0 and any("Max price" in t for t in tip))
     db = L.eval("AuctionIQ.AuctionUI.DecideBuy({ itemID = 205, need = 5, have = 0, buy = 5 }, { { price = 90, qty = 2 }, { price = 15000, qty = 50 } })")
     check("shopping: buys only what's under the operation's max price", db.action == "buy" and db.qty == 2 and db.short == 3)
@@ -1906,13 +1906,13 @@ run("AuctionIQ.Depth.Forget(205); AuctionIQ.Queue.Clear()")
 
 # Costing basis: replacement, TSM's material cost, what you paid
 run("STUB.prices['i:205'].matprice = 7000; AuctionIQ.Prices.ClearCache()")
-check("basis: what you hold at paid by default, buying at replacement", CH.Prices.CostBasis() == "held" and CH.Prices.ReagentCost(205)[0] == 10000)
+check("basis: what you hold at paid by default, buying at replacement", AuctionIQ.Prices.CostBasis() == "held" and AuctionIQ.Prices.ReagentCost(205)[0] == 10000)
 check("basis: TSM's material cost when chosen", L.eval("(AuctionIQ.Prices.ReagentCost(205, 'tsm'))") == 7000
       and L.eval("select(2, AuctionIQ.Prices.ReagentCost(201, 'tsm'))") == "replacement")
 run("AuctionIQ.Prices.CostBasis('tsm')")
-check("basis: the setting prices the advisor's reagents", CH.Scan.ReagentPrice(205) == 7000)
-bres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
-bl = [(plain(l[1]), plain(l[2])) for l in CH.AdvisorUI.BasisLines(bres, bres.best).values()]
+check("basis: the setting prices the advisor's reagents", AuctionIQ.Scan.ReagentPrice(205) == 7000)
+bres = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+bl = [(plain(l[1]), plain(l[2])) for l in AuctionIQ.AdvisorUI.BasisLines(bres, bres.best).values()]
 check("advisor: each costing basis totalled, the one in use marked", len(bl) == 5 and any("TSM material cost" in a and "in use" in a for a, _ in bl)
       and any("Replacement" in a for a, _ in bl) and any("paid" in a for a, _ in bl))
 run("AuctionIQ.Prices.CostBasis('held'); STUB.prices['i:205'].matprice = nil; AuctionIQ.Prices.ClearCache()")
@@ -1924,16 +1924,16 @@ run("AuctionIQ.Prices.CostBasis('replacement')")
 check("replacement basis: every unit at today's price", L.eval("AuctionIQ.Advisor.UnitsCost({ heldCache = { [205] = { n = 5, each = 4000 } } }, 205, 8)") == 80000)
 run("AuctionIQ.Prices.CostBasis('held')")
 hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { heldCache = { [205] = { n = 5, each = 4000 } } })")
-ht = [plain(x[1]).strip() for x in CH.Advisor.HeldText(hl).values()]
+ht = [plain(x[1]).strip() for x in AuctionIQ.Advisor.HeldText(hl).values()]
 check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
       and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
 check("held basis: a held reagent is worth its sale price less the cut, deposits and waiting (Expect.Value)",
       L.eval("(function() local v = AuctionIQ.Prices.SellValue(201); local c = AuctionIQ.Prices.Get('chvalue', 'i:201'); return v and c and v <= c * AuctionIQ.AH_CUT + 0.5 end)()") is not False)
 run("STUB.oldHeld = AuctionIQ.Prices.Held; AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end")
-cres = CH.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
-cs = CH.Advisor.CraftOrSell(cres, cres.best)
+cres = AuctionIQ.Advisor.Analyze(10, L.eval('{ professionID = 2906 }'))
+cs = AuctionIQ.Advisor.CraftOrSell(cres, cres.best)
 check("craft or sell: crafting's proceeds against selling the reagents you hold", cs is not None and abs(cs.craft - cs.sell - cres.best.profit) < 1 and cs.sell > 0)
-csl = [plain(l[1]).strip() for l in CH.Advisor.CraftOrSellLines(cres, cres.best).values()]
+csl = [plain(l[1]).strip() for l in AuctionIQ.Advisor.CraftOrSellLines(cres, cres.best).values()]
 check("craft or sell: the profit hover shows both and which earns more", csl[0] == "Craft or sell?" and "Sell your reagents instead" in csl
       and (csl[-1].startswith("Crafting earns more by") or csl[-1].startswith("Selling the reagents earns more by")))
 run("AuctionIQ.Prices.Held = STUB.oldHeld")
@@ -1955,22 +1955,22 @@ rb = L.eval("""(function()
   AuctionIQ.Prices.Held = old
   return { lines = lines, total = total, short = short, book = book, profit = profit } end)()""")
 rbl = [plain(l[1]).strip() for l in rb.lines.values()]
-v205 = CH.Prices.Get("chvalue", "i:205")
+v205 = AuctionIQ.Prices.Get("chvalue", "i:205")
 check("reagent breakdown: yours at what they'd sell for after the cut, the rest at the buy price, under one total",
       rbl[0] == "Reagents" and rbl[-1] == "Total reagents" and "Opportunity cost (2 yours)" in rbl and "Stock" in rbl
-      and abs(rb.total - (2 * (v205 * CH.AH_CUT if v205 else 10000) + 30000)) < 1)
+      and abs(rb.total - (2 * (v205 * AuctionIQ.AH_CUT if v205 else 10000) + 30000)) < 1)
 rbs = [plain(l[1]).strip() for l in rb.short.values()]
 check("reagent breakdown, short: one row for yours under the reagent", "2 yours, at sell price" in rbs and "Opportunity cost (2 yours)" not in rbs)
 cbl = [plain(l[1]).strip() for l in rb.book.values()]
 check("scan profit hover: revenue, costs, profit, then craft or sell", cbl[0] == "Revenue" and "Costs" in cbl and "Profit" in cbl
       and cbl.index("Profit") < cbl.index("Craft or sell?") and abs(rb.profit - (50000 - rb.total)) < 1)
 run("AuctionIQ.Prices.CostBasis('held')")
-rcl = CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
+rcl = AuctionIQ.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 4, "craft")
 bp2 = L.eval("""(function() local t = {}
   for _, c in ipairs(AuctionIQ.ScanUI.Columns and AuctionIQ.ScanUI.Columns('craft') or {}) do t[#t + 1] = c[1] end return t end)()""")
 check("scan list: Recipe, Best, Profit, Cost, Margin, Have, Max", list(bp2.values()) == ["Recipe", "Best", "Profit", "Cost", "Margin", "Have", "Max"])
 check("scan list: every column clears the scroll bar", all(L.eval("function(t) return t[2] + t[3] end")(c) <= 534
-      for k in ("craft", "conc", "buy", "orders", "first") for c in CH.ScanUI.Columns(k).values()))
+      for k in ("craft", "conc", "buy", "orders", "first") for c in AuctionIQ.ScanUI.Columns(k).values()))
 # have/need: the ranks of a reagent count together, and the one really short is named
 nd = L.eval("""(function()
   local count0 = C_Item.GetItemCount
@@ -1994,7 +1994,7 @@ check("have/need: the reagent really short is the one named", nd.can == 0 and nd
 check("have/need: the Have column hovers each reagent and rank", nd.nlines >= 7)
 check("have/need: holding the missing one, a mix of ranks makes the craft", nd.can2 == 1)
 check("scan: the Cost column hovers the reagent breakdown", rcl is not None and plain(rcl[2][1]) == "Reagents"
-      and CH.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 5, "craft") is None)
+      and AuctionIQ.ScanUI.RecipeCellLines(L.eval("{ name = 'x', accounts = { sales = 1 } }"), 5, "craft") is None)
 lv = L.eval("""(function()
   local saved = { name = 'x', profit = 20000, cost = 30000, perDay = 40000,
     accounts = { sales = 50000, mcGold = 0, resGold = 0, profit = 20000, cost = 30000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }
@@ -2009,9 +2009,9 @@ lv = L.eval("""(function()
   AuctionIQ.Prices.Get, AuctionIQ.Prices.Held = old, oldH
   return out end)()""")
 check("scan list at live prices: the columns match the hovers, the saved scan stays as scanned",
-      abs(lv.cost - 3 * 20000 * CH.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
+      abs(lv.cost - 3 * 20000 * AuctionIQ.AH_CUT) < 1 and abs(lv.profit - lv.hover) < 1 and lv.savedProfit == 20000 and lv.name == "x"
       and lv.profit < 0 and lv.sell and lv.perDay == 0)
-rp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
+rp = AuctionIQ.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, pct = 0.5, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 3)
 check("scan side panel: craft or sell with profit and reagents, the reagents each with a hover, and Queue n",
       rp is not None and plain(rp.kicker) == "CRAFT OR SELL?" and plain(rp.title) == "x" and plain(rp.figures[1][1]) == "PROFIT"
       and plain(rp.figures[2][1]) == "COST" and rp.figures[1].tip is not None and "3x item 201" in plain(rp.section.rows[1][1])
@@ -2065,7 +2065,7 @@ check("alternatives: the hover lists every option best first, with the basis the
       and plain(alt.lines).index("Sell your reagents") < plain(alt.lines).index("Craft and sell it"))
 check("alternatives: the scan's side card uses them (the options lead the sentence's hover)",
       plain(list(rp.subTip.values())[0][1]) == "Your options")
-rq = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
+rq = AuctionIQ.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, canMake = 8, shortItem = 201, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 20)
 check("scan side card: queueing more than your bags cover says how many you can make now, and what runs short",
       plain(rq.actions[1].label) == "Queue 20 · Max 8" and "8 of the 20" in rq.actions[1].tip and "runs short" in rq.actions[1].tip)
 # the review's queue findings: two mixes for the same recipe and quality stay two entries
@@ -2098,15 +2098,15 @@ oa = L.eval("""(function() local Q = AuctionIQ.Queue; local old = C_Item.GetItem
 check("work order: a required reagent you're short of stops the craft and names it", oa.a and "need 3" in str(oa.why) and "item 201" in str(oa.why))
 check("work order: a finishing reagent you're short of is left out, and listed as changed", oa.bmine == 1 and oa.bdrop == 1)
 check("work order: what the customer supplies comes off yours", oa.cmine == 0)
-cp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, concProfit = 50000, concentration = 40, gainPerPoint = 750, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 2, "conc")
+cp = AuctionIQ.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 20000, concProfit = 50000, concentration = 40, gainPerPoint = 750, accounts = { sales = 50000, reagents = { { itemID = 201, n = 3, cost = 30000 } } } }"), 2, "conc")
 check("scan side card, Concentration view: worth the Concentration, plain against with, extra a point",
       plain(cp.kicker) == "WORTH THE CONCENTRATION?" and plain(cp.figures[1][1]) == "PLAIN" and plain(cp.figures[2][1]) == "WITH CONC." and "Worth it" in plain(cp.sub))
-bp = CH.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 1, bc = { buy = 1000, craft = 1500, save = 500 }, accounts = { sales = 50000, reagents = {} } }"), 1, "buy")
+bp = AuctionIQ.ScanUI.RecipePanel(L.eval("{ name = 'x', recipeID = 1, profit = 1, bc = { buy = 1000, craft = 1500, save = 500 }, accounts = { sales = 50000, reagents = {} } }"), 1, "buy")
 check("scan side card, Buy vs craft: buy it or make it, and which saves", plain(bp.kicker) == "BUY IT OR MAKE IT?" and plain(bp.figures[3][1]) == "BUYING SAVES" and "Buy it" in plain(bp.sub))
-op = CH.ScanUI.OrderPanel(L.eval("{ name = 'o', orderID = 5, kind = 'Patron', from = 'Bob', ok = true, have = true, profit = 7000, cost = 3000, commission = 10000, rewardValue = 0, rewards = {}, costLines = {} }"))
+op = AuctionIQ.ScanUI.OrderPanel(L.eval("{ name = 'o', orderID = 5, kind = 'Patron', from = 'Bob', ok = true, have = true, profit = 7000, cost = 3000, commission = 10000, rewardValue = 0, rewards = {}, costLines = {} }"))
 check("scan side card, Work orders: take this order, pays less reagents is profit",
       plain(op.kicker) == "TAKE THIS ORDER?" and plain(op.figures[1][1]) == "PAYS" and plain(op.figures[3][1]) == "PROFIT" and "Take it" in plain(op.sub))
-fp = CH.ScanUI.FirstPanel(L.eval("{ name = 'f', recipeID = 2, cost = 5000, value = 3000, net = -2000 }"))
+fp = AuctionIQ.ScanUI.FirstPanel(L.eval("{ name = 'f', recipeID = 2, cost = 5000, value = 3000, net = -2000 }"))
 check("scan side card, First crafts: worth the knowledge, what the point costs", plain(fp.kicker) == "WORTH THE KNOWLEDGE?" and plain(fp.figures[3][1]) == "POINT COSTS")
 ev = L.eval("""(function()
   local oldH, oldS, oldP = AuctionIQ.Prices.Held, AuctionIQ.Prices.SellValue, AuctionIQ.Prices.PaidEach
@@ -2126,38 +2126,38 @@ check("craft or sell: within 5% is about even, and what you paid shows as sunk, 
 run("TradeSkillMasterDB['g@ @userData@sharedOperations'] = nil")
 run("AuctionIQ.Groups.Store().preferTSM = nil; TradeSkillMasterDB['p@Warband@userData@items'] = nil; AuctionIQ.Groups.ResetTSM()")
 run("AuctionIQ.GroupsUI.Select('Crafted'); AuctionIQ.UI.Page('settings', 'groups')")
-grows = list(CH.GroupsUI.Refresh().values())
-check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and CH.UI.IsShown())
-ef = CH.GroupsUI.Effective(302)
-el = [plain(x) for x in CH.GroupsUI.EffectiveLines(302).values()]
-gp302 = CH.Groups.Prices(302)
+grows = list(AuctionIQ.GroupsUI.Refresh().values())
+check("groups page: the group's items with their prices", any(r.id == 302 for r in grows) and AuctionIQ.UI.IsShown())
+ef = AuctionIQ.GroupsUI.Effective(302)
+el = [plain(x) for x in AuctionIQ.GroupsUI.EffectiveLines(302).values()]
+gp302 = AuctionIQ.Groups.Prices(302)
 check("groups page: an item shows its group, its operation and where each came from, and min, normal and max",
-      ef.path == CH.Groups.Path(302) and ef.op == CH.Groups.Operation(302)[1] and ef.pathFrom in ("moved", "tsm", "auto")
-      and ef.op in el[0] and ef.path in el[0] and "Min " + plain(CH.FormatMoney(gp302.min)) in el[1] and "Max " in el[1])
+      ef.path == AuctionIQ.Groups.Path(302) and ef.op == AuctionIQ.Groups.Operation(302)[1] and ef.pathFrom in ("moved", "tsm", "auto")
+      and ef.op in el[0] and ef.path in el[0] and "Min " + plain(AuctionIQ.FormatMoney(gp302.min)) in el[1] and "Max " in el[1])
 run("AuctionIQ.Groups.Assign(AuctionIQ.Groups.Path(302), 'Default')")
-check("groups page: an operation set on the item's own group says so", CH.GroupsUI.Effective(302).opFrom == CH.Groups.Path(302)
-      and "set on this group" in plain(CH.GroupsUI.EffectiveLines(302)[1]))
+check("groups page: an operation set on the item's own group says so", AuctionIQ.GroupsUI.Effective(302).opFrom == AuctionIQ.Groups.Path(302)
+      and "set on this group" in plain(AuctionIQ.GroupsUI.EffectiveLines(302)[1]))
 run("AuctionIQ.Groups.Assign(AuctionIQ.Groups.Path(302), nil)")
 run("AuctionIQ.GroupsUI.SelectItem(302)")
-check("groups page: clicking an item shows its rule under the list", ef.op in plain(CH.UI.Pages().groups.info[1].t)
-      if CH.UI.Pages().groups else True)
+check("groups page: clicking an item shows its rule under the list", ef.op in plain(AuctionIQ.UI.Pages().groups.info[1].t)
+      if AuctionIQ.UI.Pages().groups else True)
 check("groups now live in Settings: the old name opens them there", L.eval("AuctionIQ.UI.IsShown()"))
 # Trading tab: what to post and mail, before you get to the AH
-pp = {r.id: r for r in CH.TradingUI.PostPlan().values()}
+pp = {r.id: r for r in AuctionIQ.TradingUI.PostPlan().values()}
 check("trading: ready to post counts what every character holds in a posting group", 302 in pp and pp[302].held >= 3 and pp[302].verdict in ("post", "hold", "full"))
 r302 = pp[302]
 check("trading: posts no more than the group's cap less what's up", r302.post <= max(0, (r302.cap or 0) - r302.up))
-gp = CH.Groups.Prices(302)
+gp = AuctionIQ.Groups.Prices(302)
 if r302.ah:
     want = min(max(r302.ah - (gp.undercut or 1), gp.min or 0), gp.max or 10**12)
     want = max(want, gp.min or 0)
     check("trading: planned price undercuts the AH within min and max, as posting does", r302.price == want)
 run("AuctionIQ.UI.Page('operations', 'post')")
-check("old trading tab opens Operations on Ready to post", CH.LedgerUI.View() == "post" and CH.LedgerUI.Section() == "operations")
+check("old trading tab opens Operations on Ready to post", AuctionIQ.LedgerUI.View() == "post" and AuctionIQ.LedgerUI.Section() == "operations")
 pr, pf = L.eval("AuctionIQ.LedgerUI.Rows('post', {})")
 check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf))
 # Posting advice: post now, post fewer or wait, inside the TSM operation's limits
-D = CH.Decide
+D = AuctionIQ.Decide
 pa = lambda r, o="{}": D.PostAdvice(L.eval(r), L.eval(o))
 a1 = pa("{ id = 1, verdict = 'post', post = 10, up = 0, cap = 20, price = 100 }", "{ daily = 10 }")
 check("posting advice: post what TSM would when two days of sales cover it", a1.action == "post" and a1.qty == 10 and D.PostLabel(a1) == "Post 10")
@@ -2185,7 +2185,7 @@ check("Ready to post: each row's advice, with the reason on hover", all(plain(r.
 # Trade and the AH panel share one rule check
 r302 = pp[302]
 res302 = L.eval("(function() local r = AuctionIQ.Auction.Listings(302); return r end)()")
-ev302 = CH.Auction.Evaluate(302, L.eval("{}") if res302 is None else L.eval("{ results = AuctionIQ.Auction.Listings(302) }"))
+ev302 = AuctionIQ.Auction.Evaluate(302, L.eval("{}") if res302 is None else L.eval("{ results = AuctionIQ.Auction.Listings(302) }"))
 check("Ready to post prices with the AH panel's own rule check", r302.price == (ev302.price or r302.price) and r302.why is not None)
 ca = pa("{ id = 1, verdict = 'post', post = 3, up = 0, cap = 5, price = 33400000000, check = true }", "{ daily = 0 }")
 check("no scan and no sales: Check live price, not Post 1", ca.action == "check" and ca.qty == 0 and D.PostLabel(ca) == "Check live price")
@@ -2193,11 +2193,11 @@ sk = pa("{ id = 1, verdict = 'skip', post = 0, up = 0, cap = 5, price = 100, why
 check("a rule that stops posting is the reason given", sk.action == "wait" and "expired 3 times" in sk.reason)
 prow = [r for r in pr2 if r.id == 302]
 if prow:
-    det = CH.TradingUI.PostDetail(prow[0])
+    det = AuctionIQ.TradingUI.PostDetail(prow[0])
     labels = [plain(x[1]) for x in det.rows.values()]
     check("Ready to post pane: recommended apart from allowed by your rules, with the price source",
           "Recommended" in labels and "Allowed by your rules" in labels and "Price from" in labels)
-check("auction panel builds", CH.AuctionUI.Build() is not None)
+check("auction panel builds", AuctionIQ.AuctionUI.Build() is not None)
 # A long buy list scrolls, and every row (not only the first) explains itself on hover
 run("""
 local plan = AuctionIQ.AuctionUI.Plan()
@@ -2212,7 +2212,7 @@ check("auction hover: the last row has its own story too", plain(L.eval("Auction
 run("AuctionIQ.AuctionUI.Build().scripts.OnMouseWheel(nil, -1)")
 check("auction panel: the wheel scrolls past the first 18 rows", plain(L.eval("AuctionIQ.AuctionUI.HoverLines(1)")[2][1]) == "Skip: row 4")
 run("local plan = AuctionIQ.AuctionUI.Plan(); for k in pairs(plan) do plan[k] = nil end; AuctionIQ.AuctionUI.Refresh()")
-tl = [plain(l[1]) for l in CH.TooltipLines("i:302").values()]
+tl = [plain(l[1]) for l in AuctionIQ.TooltipLines("i:302").values()]
 check("tooltip: shows how AuctionIQ will post it", "Posting" in tl and "  Min / normal / max" in tl)
 bef = L.eval("(function() local be, row = AuctionIQ.BreakEvenFor(302); return { be = be, has = row ~= nil } end)()")
 check("tooltip: a crafted item shows its break-even, each, and the auction side can ask for it",
@@ -2223,29 +2223,29 @@ check("when it sells: weekday and 4-hour window per item", st[301].sold == 5 and
 comp = {e.id: e for e in LG.Competition(-1e12).values()}
 check("competition: post scans count how often you're beaten", comp[302].seen >= 3 and comp[302].beaten >= 1)
 for v in ["when", "rivals"]:
-    CH.LedgerUI.Rows(v, L.eval("{ }"))
+    AuctionIQ.LedgerUI.Rows(v, L.eval("{ }"))
 run("AuctionIQ.db.token = { price = 2500000000, at = 1 }")
-check("token value: gold read as tokens", CH.Alerts.InTokens(5000000000) == "2.0 tokens")
+check("token value: gold read as tokens", AuctionIQ.Alerts.InTokens(5000000000) == "2.0 tokens")
 run("for _, c in pairs(AuctionIQ.db.characters) do for _, p in pairs(c.professions) do p.conc = p.concMax; p.concAt = STUB.now end end")
-fired = list(CH.Alerts.Check().values())
-again = list(CH.Alerts.Check().values())
+fired = list(AuctionIQ.Alerts.Check().values())
+again = list(AuctionIQ.Alerts.Check().values())
 check("alerts fire once, then wait 6 hours", any("Concentration is full" in f for f in fired) and len(again) == 0)
 run("AuctionIQ.Planner.Store().kp['Seyko-Emerald Dream'] = { ['Midnight Enchanting'] = { first = { [AuctionIQ.Planner.WeekStart()] = 20 }, now = 26, unspent = 4 } }")
-kn = list(CH.Planner.Knowledge().values())
+kn = list(AuctionIQ.Planner.Knowledge().values())
 check("knowledge: points gained this week per character and profession", kn[0].gained == 6 and kn[0].unspent == 4 and len(list(kn[0].tasks.values())) == 4)
-check("knowledge: tick a weekly source", CH.Planner.Tick("Seyko-Emerald Dream", "Midnight Enchanting", "Treatise") == True and list(CH.Planner.Knowledge().values())[0].tasks[1].done)
+check("knowledge: tick a weekly source", AuctionIQ.Planner.Tick("Seyko-Emerald Dream", "Midnight Enchanting", "Treatise") == True and list(AuctionIQ.Planner.Knowledge().values())[0].tasks[1].done)
 run("SlashCmdList.AUCTIONIQ('event ' .. date('%Y-%m-%d', STUB.now + 3 * 86400) .. ' Season 2 starts')")
-up = list(CH.Planner.Upcoming().values())
+up = list(AuctionIQ.Planner.Upcoming().values())
 check("calendar: your dates with what they mean for demand", up[0].name.lower() == "season 2 starts" and "potions" in up[0].hint)
 run("AuctionIQ.Planner.StartSession('Auction House'); STUB.now = STUB.now + 1800; AuctionIQ.Planner.StopSession('Auction House')")
-tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
+tm = AuctionIQ.Planner.Time(L.eval("STUB.now") - 86400)
 check("gold per hour: time per activity", abs(tm.kinds["Auction House"] - 0.5) < 1e-9 and tm.perHour is not None)
 run("AuctionIQ.Planner.StartSession('Auction House'); AuctionIQ.Planner.StartSession('Crafting'); STUB.now = STUB.now + 1800; AuctionIQ.Planner.StopSession('Crafting'); AuctionIQ.Planner.StopSession('Auction House')")
-tm = CH.Planner.Time(L.eval("STUB.now") - 86400)
+tm = AuctionIQ.Planner.Time(L.eval("STUB.now") - 86400)
 check("gold per hour: two windows open together count the time once", abs(tm.hours - 1.0) < 1e-9 and abs(tm.kinds["Crafting"] - 0.5) < 1e-9)
 run("AuctionIQ.UI.Page('operations', 'professions')")
-check("plan page draws", CH.UI.IsShown() and len(list(CH.PlanUI.Refresh().values())) == 1)
-csvtext, nrows = CH.Export.CSV("sales", L.eval("{ }"))
+check("plan page draws", AuctionIQ.UI.IsShown() and len(list(AuctionIQ.PlanUI.Refresh().values())) == 1)
+csvtext, nrows = AuctionIQ.Export.CSV("sales", L.eval("{ }"))
 run("AuctionIQ.Export.Export('sales', { days = 30 })")
 check("export: a Ledger table as CSV", csvtext.split("\n")[0].startswith("Item,Character") and nrows == 3 and "300.00" in csvtext)
 run("AuctionIQ.UI.Page('ledger')")
@@ -2257,23 +2257,23 @@ run("""C_AuctionHouse.GetNumItemSearchResults = function() return 3 end
 C_AuctionHouse.GetItemSearchResultInfo = function(key, i) return ({ { buyoutAmount = 100000, quantity = 1 }, { buyoutAmount = 140000, quantity = 1 },
   { buyoutAmount = 90000, quantity = 1, containsOwnerItem = true } })[i] end""")
 run('STUB.Fire("ITEM_SEARCH_RESULTS_UPDATED", { itemID = 302 })')
-sc = CH.Scans.Get(302)
+sc = AuctionIQ.Scans.Get(302)
 check("scan: an item search is saved with its cheapest and market price", sc.min == 90000 and sc.market == 90000 and sc.qty == 3 and sc.full and sc.age == 0)
 run("STUB.now = STUB.now - 3 * 86400; AuctionIQ.Scans.Record(302, { { price = 110000, qty = 1 } }, false); STUB.now = STUB.now + 3 * 86400")
 run("AuctionIQ.Scans.Record(302, { { price = 123400, qty = 1 } }, false)")
-sc = CH.Scans.Get(302)
+sc = AuctionIQ.Scans.Get(302)
 check("scan: one market price a day makes a 7-day average", sc.days == 2 and abs(sc.avg7 - (110000 + (90000 + 123400) / 2) / 2) < 1 and sc.change7 > 0)
-tl = [l[1] for l in CH.TooltipLines("item:302").values()]
+tl = [l[1] for l in AuctionIQ.TooltipLines("item:302").values()]
 check("tooltip: your last AH scan shows", "Your AH scan" in tl and any("7-day average" in x for x in tl))
 run("AuctionIQ.Scans.RecordBrowse(302, 50000, 9)")
-check("scan: a browse row doesn't replace a fresh full search", CH.Scans.Get(302).market == 123400)
+check("scan: a browse row doesn't replace a fresh full search", AuctionIQ.Scans.Get(302).market == 123400)
 run("AuctionIQ.Scans.RecordBrowse(303, 50000, 9)")
-check("scan: a browse row is kept as cheapest price", CH.Scans.Get(303).min == 50000 and not CH.Scans.Get(303).full)
+check("scan: a browse row is kept as cheapest price", AuctionIQ.Scans.Get(303).min == 50000 and not AuctionIQ.Scans.Get(303).full)
 run("STUB.now = STUB.now + 31 * 86400; AuctionIQ.Scans.Prune(); STUB.now = STUB.now - 31 * 86400")
-check("scan: items not seen in 30 days are dropped", CH.Scans.Get(303) is None)
+check("scan: items not seen in 30 days are dropped", AuctionIQ.Scans.Get(303) is None)
 run("AuctionIQ.db.scans = {}")
 run("AuctionIQ.Auction.RecordOwned({})")
-LU = CH.LedgerUI
+LU = AuctionIQ.LedgerUI
 rows, foot = LU.Rows("sales", L.eval("{ days = 30 }"))
 check("ledger sales: in the time frame only, with the total", len(list(rows.values())) == 2 and plain(foot) == "3 items sold: 700g")
 rows, foot = LU.Rows("sales", L.eval("{ char = 'Luxaren' }"))
@@ -2288,16 +2288,16 @@ inv = list(LU.Rows("inventory", L.eval("{ char = 'Courtizy' }"))[0].values())
 check("ledger inventory: one character leaves out the others and the warband", len(inv) == 1 and inv[0].cells[2] == 3)
 run("AuctionIQ.UI.Page('ledger')")
 run("AuctionIQ.LedgerUI.Set({ view = 'sales', days = false, sort = 6, desc = true })")
-shown = list(CH.LedgerUI.Refresh()[0].values())
+shown = list(AuctionIQ.LedgerUI.Refresh()[0].values())
 check("ledger table sorts by any column", [r.sort[6] for r in shown] == sorted([r.sort[6] for r in shown], reverse=True) and len(shown) == 3)
 run("AuctionIQ.LedgerUI.Set({ sort = 6, desc = false })")
-shown = list(CH.LedgerUI.Refresh()[0].values())
+shown = list(AuctionIQ.LedgerUI.Refresh()[0].values())
 check("and back the other way", [r.sort[6] for r in shown] == sorted(r.sort[6] for r in shown))
-check("time frame reads like TSM's", CH.LedgerUI.Ago(L.eval("STUB.now") - 3 * 86400 - 7200, L.eval("STUB.now")) == "3 Days 2 Hr")
+check("time frame reads like TSM's", AuctionIQ.LedgerUI.Ago(L.eval("STUB.now") - 3 * 86400 - 7200, L.eval("STUB.now")) == "3 Days 2 Hr")
 run("AuctionIQ.UI.Page('today')")
-check("dashboard page draws", CH.UI.IsShown())
+check("dashboard page draws", AuctionIQ.UI.IsShown())
 run("AuctionIQ.UI.Page('today')")
-pt = CH.UI.ChartHover(10000)
+pt = AuctionIQ.UI.ChartHover(10000)
 check("chart hover: nearest point with who held what", pt.v == LG.Gold() and sorted(b.name for b in pt.by.values()) == ["Courtizy", "Luxaren", "Warband"])
 run("AuctionIQ.UI.CharacterMenu(nil, 'Warband'); AuctionIQ.UI.CharacterMenu(nil, 'Luxaren')")
 check("characters can be left out, warband too", LG.Gold() == 5000000 and not LG.Included("Warband"))
@@ -2306,10 +2306,10 @@ check("the chart leaves them out too", last.v == 5000000 and len(list(last.by.va
 run("AuctionIQ.UI.CharacterMenu(nil, 'Warband'); AuctionIQ.UI.CharacterMenu(nil, 'Luxaren')")
 check("and back in", LG.Gold() == 10000000)
 run("AuctionIQ.UI.Page('ledger'); AuctionIQ.UI.Page('ledger', 'report')")
-check("ledger and briefing pages draw", CH.UI.IsShown())
+check("ledger and briefing pages draw", AuctionIQ.UI.IsShown())
 
 # Three tabs: each view opens in the tab it belongs to, and old tab names are gone
-LUI = CH.LedgerUI
+LUI = AuctionIQ.LedgerUI
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 check("Performance opens in Accounting, Statements", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Statements")
 run("AuctionIQ.UI.Page('ledger', 'post')")
@@ -2317,19 +2317,19 @@ check("a view named on the wrong tab opens where it lives: Ready to post in Oper
 for view, (sec, group) in {"results": ("ledger", "Statements"), "scenarios": ("operations", "Craft"), "paths": ("operations", "Craft"),
         "post": ("operations", "Trade"), "professions": ("operations", "Craft")}.items():
     run(f"AuctionIQ.UI.Page('operations', '{view}')")
-    check(f"view {view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and CH.UI.IsShown())
+    check(f"view {view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and AuctionIQ.UI.IsShown())
 check("old tab names (research, markets, analytics) no longer open anything",
-      not CH.UI.Go("research") and not CH.UI.Go("markets") and not CH.UI.Go("analytics"))
+      not AuctionIQ.UI.Go("research") and not AuctionIQ.UI.Go("markets") and not AuctionIQ.UI.Go("analytics"))
 check("retired views are gone: Resale, Report and Gold per hour",
-      CH.LedgerUI.ViewDef("resale") is None and CH.LedgerUI.ViewDef("report") is None and CH.LedgerUI.ViewDef("time") is None)
+      AuctionIQ.LedgerUI.ViewDef("resale") is None and AuctionIQ.LedgerUI.ViewDef("report") is None and AuctionIQ.LedgerUI.ViewDef("time") is None)
 # Dashboard figures: queued crafts split into ready, short of reagents, and on other characters
 run("""STUB.oldQueue = AuctionIQ.db.queue
 AuctionIQ.db.queue = { { char = AuctionIQ.CharacterKey(), name = 'A', qty = 3, shop = {} },
   { char = AuctionIQ.CharacterKey(), name = 'B', qty = 2, shop = { { itemID = 987654, n = 5 } } },
   { char = 'Other-Realm', name = 'C', qty = 1, shop = {} } }""")
-nb = [e for e in CH.Next.List().values() if e.title == "Buy reagents"]
+nb = [e for e in AuctionIQ.Next.List().values() if e.title == "Buy reagents"]
 check("do next: the queue's shopping list is a card that opens it", len(nb) == 1 and nb[0].go[2] == "shopping" and "for your queue" in nb[0].detail)
-fig = CH.UI.DashboardFigures()
+fig = AuctionIQ.UI.DashboardFigures()
 check("dashboard figures: queued crafts, ready, short, on other characters", fig.queued == 6 and fig.ready == 1 and fig.short == 1 and fig.elsewhere == 1)
 qrows, qfoot = L.eval("AuctionIQ.LedgerUI.Rows('queue', {})")
 qr = {plain(r.cells[1]): plain(r.cells[7]) for r in qrows.values()}
@@ -2341,7 +2341,7 @@ run("AuctionIQ.UI.Page('today')")
 qf = L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued")
 check("dashboard: the queued figure shows", plain(L.eval("AuctionIQ.UI.Pages().dashboard.d.figures.queued.value:GetText()")) == "6")
 run("AuctionIQ.UI.Pages().dashboard.d.figures.queued.hit.scripts.OnClick()")
-check("dashboard: clicking it opens Operations, Work queue", CH.LedgerUI.View() == "queue" and CH.LedgerUI.Section() == "operations")
+check("dashboard: clicking it opens Operations, Work queue", AuctionIQ.LedgerUI.View() == "queue" and AuctionIQ.LedgerUI.Section() == "operations")
 run("AuctionIQ.db.queue = STUB.oldQueue; AuctionIQ.UI.Page('operations', 'post')")
 check("tabs: Dashboard, Operations, Accounting", [t[2] for t in L.eval("AuctionIQ.UI.TABS").values()] == ["Dashboard", "Operations", "Accounting"])
 run("AuctionIQ.UI.Page('operations', 'post')")
@@ -2480,39 +2480,39 @@ check("old crafting tab opens Operations, Professions on Compare crafts", LUI.Se
 run("AuctionIQ.UI.Page('operations', 'professions')")
 check("Knowledge shows beside the nav", LUI.View() == "professions" and L.eval("AuctionIQ.UI.Pages().plan:IsShown()") is True)
 def market_rows(id):
-    d = CH.TradingUI.PostDetail(L.eval("{ x = { plan = { id = %d, post = 1, held = 1, up = 0, cap = 5 } } }" % id))
+    d = AuctionIQ.TradingUI.PostDetail(L.eval("{ x = { plan = { id = %d, post = 1, held = 1, up = 0, cap = 5 } } }" % id))
     return {plain(r[1]): plain(r[2]) for r in d.section.rows.values()}
-check("market prices without the app come from TSM", CH.Prices.MarketAny(301).source == "tsm" and "Market / 7-day avg" in market_rows(301))
+check("market prices without the app come from TSM", AuctionIQ.Prices.MarketAny(301).source == "tsm" and "Market / 7-day avg" in market_rows(301))
 run("OEMarketInfo = function(item, t) if item == 'item:301' then t.market = 25000; t.region = 24000; t.days = 1 end return t end")
-oe = CH.Prices.Oribos(301)
+oe = AuctionIQ.Prices.Oribos(301)
 check("Oribos Exchange read directly", oe.market == 25000 and oe.region == 24000)
 run("STUB.savedPrices = STUB.prices; STUB.prices = {}; AuctionIQ.Prices.ClearCache()")
-m301 = CH.Prices.MarketAny(301)
+m301 = AuctionIQ.Prices.MarketAny(301)
 check("market prices fall back to Oribos Exchange without TSM data", m301.market == 25000 and m301.source == "oribos")
 run("STUB.prices = STUB.savedPrices; OEMarketInfo = nil; AuctionIQ.Prices.ClearCache()")
 run("STUB.now = STUB.now - 2 * 86400; AuctionIQ.Scans.Record(301, { { price = 18000, qty = 40 } }, true); STUB.now = STUB.now + 2 * 86400")
 run("AuctionIQ.Scans.Record(301, { { price = 22000, qty = 40 } }, true)")
 check("market prices use your AH scans first, with the 7-day change in the item panel",
-      CH.Prices.MarketAny(301).source == "scan" and "+10%" in market_rows(301).get("Market / 7-day avg", ""))
+      AuctionIQ.Prices.MarketAny(301).source == "scan" and "+10%" in market_rows(301).get("Market / 7-day avg", ""))
 # Compare prices: AH scan vs TSM vs Oribos (Data/Compare.lua)
-tsm301 = CH.Prices.Raw("dbmarket", 301)
-cr = CH.Compare.Row(301)
+tsm301 = AuctionIQ.Prices.Raw("dbmarket", 301)
+cr = AuctionIQ.Compare.Row(301)
 check("compare: realm prices side by side with a gap", cr.ah == 22000 and cr.tsm == tsm301 and cr.ahFresh and cr.gap is not None and abs(cr.gap - (22000 / tsm301 - 1)) < 1e-9)
 run("OEMarketInfo = function(item, t) if item == 'item:301' then t.market = 40000; t.region = 30000 end return t end")
-cr = CH.Compare.Row(301)
+cr = AuctionIQ.Compare.Row(301)
 check("compare: Oribos joins and the gap is against the middle of TSM and Oribos", cr.oe == 40000 and cr.oeRegion == 30000 and abs(cr.gap - (22000 / ((tsm301 + 40000) / 2) - 1)) < 1e-9)
 check("compare: well under the others reads cheap now", (cr.verdict == "cheap now") == (22000 <= 0.85 * (tsm301 + 40000) / 2))
 run("AuctionIQ.db.scans[301].at = STUB.now - 2 * 86400")
-cr = CH.Compare.Row(301)
+cr = AuctionIQ.Compare.Row(301)
 check("compare: an old scan is shown but not judged", not cr.ahFresh and cr.gap is None and cr.verdict in ("agree", "disagree"))
 check("Trade item panel: Sources reads the price comparison", market_rows(301).get("Sources") == cr.verdict)
-check("compare: median of an even list", CH.Compare.Median(L.eval("{ 4, 1, 3, 2 }")) == 2.5)
+check("compare: median of an even list", AuctionIQ.Compare.Median(L.eval("{ 4, 1, 3, 2 }")) == 2.5)
 run("OEMarketInfo = nil; AuctionIQ.db.scans = {}; AuctionIQ.Prices.ClearCache()")
 run("AuctionIQ.UI.Page('ledger')")
 check("Accounting remembers its last view", LUI.Section() == "ledger" and LUI.View() == "perf")
 run("AuctionIQ.UI.Page('settings', 'groups')"); run("AuctionIQ.UI.Page('operations', 'professions')"); run("AuctionIQ.UI.Page('today')")
-check("old page names open the new tabs", CH.UI.IsShown())
-nxt = list(CH.Next.List().values())
+check("old page names open the new tabs", AuctionIQ.UI.IsShown())
+nxt = list(AuctionIQ.Next.List().values())
 check("do next is ranked, leaking value first", len(nxt) > 0 and all(nxt[i].tier <= nxt[i + 1].tier for i in range(len(nxt) - 1)))
 # Do next as decisions: the same action on several items is one card, four cards at most
 run("""STUB.oldNextList = AuctionIQ.Next.List
@@ -2548,7 +2548,7 @@ check("What changed: sales and purchases come from the ledger, the rest of the g
       all(abs(v) >= 10000 for v in mv.values()) and data.cash is not None
       and ("sales" not in mv or mv["sales"] == data.cash.inflows.auction + data.cash.inflows.other)
       and ("other" not in mv or abs(mv["other"] - data.cash.unclassified) < 1))
-cf = CH.Statements.Cash(data.since, data.now)
+cf = AuctionIQ.Statements.Cash(data.since, data.now)
 check("What changed and the Cash Flow statement agree: same range, same characters, same unclassified",
       w2.gold == cf.change and abs(cf.unclassified - (cf.change - cf.classified)) < 1)
 # Do next cards carry a button that does the job: queue the Concentration craft or the restock
@@ -2559,11 +2559,11 @@ AuctionIQ.db.characters['Alt-Realm'] = { name = 'Alt', class = 'MAGE', professio
     accounts = { cost = 500, reagents = { { itemID = 201, n = 2 } }, queue = { { itemID = 201, slot = 1, n = 2 } } },
     concAccounts = { cost = 500, reagents = { { itemID = 201, n = 2 } }, queue = { { itemID = 201, slot = 1, n = 2 } } } } } } } } }
 AuctionIQ.Queue.Clear()""")
-spend = [e for e in CH.Next.List().values() if e.title == "Spend Concentration" and "Alt" in e.detail]
+spend = [e for e in AuctionIQ.Next.List().values() if e.title == "Spend Concentration" and "Alt" in e.detail]
 check("do next: full Concentration names the best craft per point and how many", len(spend) == 1 and "x3" in spend[0].detail and spend[0].act is not None)
 acted = L.eval("(function() for _, e in ipairs(AuctionIQ.Next.List()) do if e.title == 'Spend Concentration' and e.act and e.detail:find('Alt') then return { e.act.run() } end end end)()")
 check("do next: the button says what it did, for the card", acted[1] is True and "Queued 3 x Test Flask with Concentration for Alt" == acted[2])
-qe = list(CH.db.queue.values())
+qe = list(AuctionIQ.db.queue.values())
 check("do next: its button queues that craft with Concentration for that character", len(qe) == 1 and qe[0].char == "Alt-Realm" and qe[0].qty == 3
       and qe[0].concentration == 300 and qe[0].reagents[1].slot == 1)
 # Do next ranks by one measure: the expected gain from acting now (a week, after fees)
@@ -2573,12 +2573,12 @@ run("""STUB.oldReport, STUB.oldAvail = AuctionIQ.Ledger.Report, AuctionIQ.Ledger
 AuctionIQ.Ledger.Available = function() return true end
 AuctionIQ.Ledger.Report = function() return { restock = { { id = 100, sold = 2, gold = 9000000 }, { id = 777777, sold = 50, gold = 99000000 } },
   expired = {}, stale = {} } end""")
-nr = {e.go[3].id: e for e in CH.Next.List().values() if e.title == "Restock"}
+nr = {e.go[3].id: e for e in AuctionIQ.Next.List().values() if e.title == "Restock"}
 check("do next: Restock's gain is the scan's profit for the crafts it takes; last week's sales are evidence, not gold",
       nr[100].gold == 2 * 1000 and nr[100].evidence.kind == "pastSales" and nr[100].evidence.amount == 9000000)
 check("do next: a Restock with no scan has no gold, says to scan, and doesn't outrank a priced one on its past sales",
       nr[777777].gold is None and "scan to price it" in nr[777777].detail
-      and [e.go[3].id for e in CH.Next.List().values() if e.title == "Restock"] == [100, 777777])
+      and [e.go[3].id for e in AuctionIQ.Next.List().values() if e.title == "Restock"] == [100, 777777])
 # Recommendations use the same options: a scan too old to act on says refresh; a better option is named
 dn = L.eval("""(function()
   local rows = AuctionIQ.db.characters['Alt-Realm'].professions[99].scan.rows
@@ -2617,7 +2617,7 @@ run("""STUB.oldTimes, STUB.oldAdvice, STUB.oldAvail = AuctionIQ.Ledger.SaleTimes
 AuctionIQ.Ledger.Available = function() return true end
 AuctionIQ.Ledger.SaleTimes = function() return { { id = 100, sold = 9, gold = 20000000, share = 0.9, bestHour = tonumber(date('%H', STUB.now)) } } end
 AuctionIQ.TradingUI.Advice = function() return { [100] = { action = 'post', qty = 6, reason = 'test' } } end""")
-pn = [e for e in CH.Next.List().values() if e.title == "Post now"]
+pn = [e for e in AuctionIQ.Next.List().values() if e.title == "Post now"]
 ev100 = L.eval("(AuctionIQ.Expect.Value(100, AuctionIQ.Prices.Get('chvalue', 'i:100')))")
 check("do next: Post now's gain is what Trade would post, each after the cut and expected deposits; 30-day sales are evidence",
       len(pn) == 1 and abs(pn[0].gold - 6 * ev100) < 1 and pn[0].evidence.kind == "pastSales" and pn[0].evidence.amount == 20000000
@@ -2710,7 +2710,7 @@ check("do next: a restock finds the saved scan that makes the item", k[1] == "Al
 run("AuctionIQ.UI.Page('today')")
 d = L.eval("AuctionIQ.UI and nil")
 run("AuctionIQ.Queue.Clear(); AuctionIQ.db.characters['Alt-Realm'] = nil; AuctionIQ.ConcentrationNow = STUB.oldConcNow")
-check("crafting tab text has Concentration and best crafts", "Concentration" in plain(CH.UI.CraftingText()) and "Best crafts" in plain(CH.UI.CraftingText()))
+check("crafting tab text has Concentration and best crafts", "Concentration" in plain(AuctionIQ.UI.CraftingText()) and "Best crafts" in plain(AuctionIQ.UI.CraftingText()))
 
 # recipe scan: how many you can make now, with finishing reagents and Concentration
 run("STUB.bags[901] = 10; STUB.bags[902] = 3; STUB.bags[903] = 1")
@@ -2729,58 +2729,58 @@ check("paths tree: the game's own positions win when it gives them", lay2[2].x =
 # Queue first crafts and work orders
 run("AuctionIQ.Queue.Clear(); STUB.recipeIDs = { 10 }; local g = C_TradeSkillUI.GetRecipeInfo; STUB.oldInfo = g; C_TradeSkillUI.GetRecipeInfo = function(id) local i = g(id); if id == 10 then i.firstCraft = true end return i end")
 n1 = L.eval("(AuctionIQ.Queue.FillFirstCrafts())")
-fq = list(CH.db.queue.values())
+fq = list(AuctionIQ.db.queue.values())
 check("first crafts: unmade recipes queue once each, cheapest, marked 1KP", n1 == 1 and fq[0].firstCraft and fq[0].qty == 1 and not fq[0].concentration)
-fc = list(CH.Orders.FirstCrafts().values())
+fc = list(AuctionIQ.Orders.FirstCrafts().values())
 check("first crafts list: each recipe with its cheapest reagents and what the point costs", len(fc) == 1 and fc[0].recipeID == 10 and fc[0].cost == fq[0].cost
       and abs(fc[0].net - ((fc[0].value or 0) - fc[0].cost)) < 1e-6)
 run("AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Open(); AuctionIQ.ScanUI.SetMode('first')")
-frows = list(CH.ScanUI.Refresh().values())
-check("scan tab: First crafts lists the recipe", CH.ScanUI.IsShown() and CH.ScanUI.Mode() == "first" and len(frows) == 1 and "net=" in frows[0])
-check("scan tab: Queue all queues every first craft", CH.ScanUI.QueueAll() == 1 and list(CH.db.queue.values())[0].firstCraft)
+frows = list(AuctionIQ.ScanUI.Refresh().values())
+check("scan tab: First crafts lists the recipe", AuctionIQ.ScanUI.IsShown() and AuctionIQ.ScanUI.Mode() == "first" and len(frows) == 1 and "net=" in frows[0])
+check("scan tab: Queue all queues every first craft", AuctionIQ.ScanUI.QueueAll() == 1 and list(AuctionIQ.db.queue.values())[0].firstCraft)
 run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; STUB.recipeIDs = nil; AuctionIQ.Queue.Clear()")
 run("""C_CraftingOrders = { GetCrafterOrders = function() return { { orderID = 77, spellID = 10, minQuality = 1, tipAmount = 50000000, consortiumCut = 0, customerName = 'Patron', reagents = {} } } end, ClaimOrder = function(id) STUB.claimed = id; STUB.claimedOrder = { orderID = id, isFulfillable = false, reagents = {} } end, FulfillOrder = function(id) STUB.fulfilled = id end,
   GetClaimedOrder = function() return STUB.claimedOrder end }""")
 n2 = L.eval("(AuctionIQ.Queue.FillOrders())")
-oq = list(CH.db.queue.values())
+oq = list(AuctionIQ.db.queue.values())
 check("orders: a paying order is queued with its order ID", n2 == 1 and oq[0].orderID == "77")
-check("orders: the button goes Claim first", CH.Queue.OrderStep(oq[0]) == "Claim")
+check("orders: the button goes Claim first", AuctionIQ.Queue.OrderStep(oq[0]) == "Claim")
 run("AuctionIQ.Queue.FillOrders()")
-check("orders: Queue all twice queues each order once", CH.Queue.Count() == 1 and CH.db.queue[1].qty == 1)
+check("orders: Queue all twice queues each order once", AuctionIQ.Queue.Count() == 1 and AuctionIQ.db.queue[1].qty == 1)
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
-check("orders: Claim asks the game and waits: Claiming... until it says yes", L.eval("STUB.claimed") == 77 and CH.Queue.OrderStep(oq[0]) == "Claiming..."
+check("orders: Claim asks the game and waits: Claiming... until it says yes", L.eval("STUB.claimed") == 77 and AuctionIQ.Queue.OrderStep(oq[0]) == "Claiming..."
       and L.eval("(AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1]))") is False)
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
-check("orders: Claim claims it, then Craft once the game confirms", CH.Queue.OrderStep(oq[0]) == "Craft")
+check("orders: Claim claims it, then Craft once the game confirms", AuctionIQ.Queue.OrderStep(oq[0]) == "Craft")
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
 check("orders: crafting passes the claimed order's ID, and waits on the game", L.eval("STUB.crafted.id") == 10 and L.eval("STUB.crafted.order") == 77
-      and CH.Queue.OrderStep(oq[0]) == "Crafting...")
+      and AuctionIQ.Queue.OrderStep(oq[0]) == "Crafting...")
 run('STUB.claimedOrder.isFulfillable = true; STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
-check("orders: after the craft it's Turn in", CH.Queue.OrderStep(oq[0]) == "Turn in")
+check("orders: after the craft it's Turn in", AuctionIQ.Queue.OrderStep(oq[0]) == "Turn in")
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1])")
-check("orders: Turn in sends it and keeps it, Turning in..., until the game says yes", L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 1
-      and CH.Queue.OrderStep(CH.db.queue[1]) == "Turning in...")
+check("orders: Turn in sends it and keeps it, Turning in..., until the game says yes", L.eval("STUB.fulfilled") == 77 and AuctionIQ.Queue.Count() == 1
+      and AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Turning in...")
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
-check("orders: a turn-in the game refuses stays, ready to try again", CH.Queue.Count() == 1 and CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+check("orders: a turn-in the game refuses stays, ready to try again", AuctionIQ.Queue.Count() == 1 and AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Turn in")
 run("AuctionIQ.Queue.Craft(AuctionIQ.db.queue[1]); STUB.Fire('CRAFTINGORDERS_FULFILL_ORDER_RESPONSE', 0, 77)")
-check("orders: the game taking it removes it from the queue", CH.Queue.Count() == 0)
+check("orders: the game taking it removes it from the queue", AuctionIQ.Queue.Count() == 0)
 run("AuctionIQ.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.claimedOrder = nil; C_CraftingOrders.GetClaimedOrder = nil")
 # One button: Next step walks claim, craft, turn in
 run("AuctionIQ.Queue.FillOrders()")
 st = L.eval("(AuctionIQ.Queue.DoNext())")
 check("next step: first click claims", st == "Claim" and L.eval("STUB.claimed") == 77)
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 3, 77)')
-check("next step: a refused claim goes back to Claim", CH.Queue.OrderStep(CH.db.queue[1]) == "Claim")
+check("next step: a refused claim goes back to Claim", AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Claim")
 run("AuctionIQ.Queue.DoNext(); STUB.Fire('CRAFTINGORDERS_CLAIM_ORDER_RESPONSE', 0, 77)")
 run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = false } end")
 st = L.eval("(AuctionIQ.Queue.DoNext())")
 check("next step: then crafts", st == "Craft" and L.eval("STUB.crafted.id") == 10)
 run("C_CraftingOrders.GetClaimedOrder = function() return { orderID = 77, isFulfillable = true } end")
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
-check("next step: the game saying it's done means Turn in", CH.Queue.OrderStep(CH.db.queue[1]) == "Turn in")
+check("next step: the game saying it's done means Turn in", AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Turn in")
 st = L.eval("(AuctionIQ.Queue.DoNext())")
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
-check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 0)
+check("next step: then turns it in", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and AuctionIQ.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil")
 # Crafting an order crafts into the live claimed order, leaves out the customer's reagents, and only counts once the game says it's done
 run("""AuctionIQ.Queue.Clear(); STUB.claimed = nil; STUB.fulfilled = nil; STUB.crafted = nil; STUB.created = nil; STUB.completed = nil
@@ -2809,16 +2809,16 @@ st = L.eval("{ AuctionIQ.Queue.DoNext() }")
 check("order craft: refuses, and says why, when even Concentration can't reach the rank", L.eval("STUB.crafted") is None and "needs rank 9" in str(st[2]))
 run("STUB.claimedOrder.minQuality = nil")
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
-check("order craft: a craft that didn't go into the order stays Craft", CH.Queue.OrderStep(CH.db.queue[1]) == "Craft")
+check("order craft: a craft that didn't go into the order stays Craft", AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Craft")
 run('STUB.claimedOrder.isFulfillable = true')
 st = L.eval("(AuctionIQ.Queue.DoNext())")
-check("order craft: Turn in asks Blizzard to fulfil the claimed order and waits", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and CH.Queue.Count() == 1
-      and CH.Queue.OrderStep(CH.db.queue[1]) == "Turning in...")
+check("order craft: Turn in asks Blizzard to fulfil the claimed order and waits", st == "Turn in" and L.eval("STUB.fulfilled") == 77 and AuctionIQ.Queue.Count() == 1
+      and AuctionIQ.Queue.OrderStep(AuctionIQ.db.queue[1]) == "Turning in...")
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
-check("order craft: once Blizzard confirms the turn-in, the order leaves the queue", CH.Queue.Count() == 0)
+check("order craft: once Blizzard confirms the turn-in, the order leaves the queue", AuctionIQ.Queue.Count() == 0)
 run("C_CraftingOrders.GetClaimedOrder = nil; ProfessionsFrame.OrdersPage.OrderView = nil")
 run("STUB.claimed = nil; AuctionIQ.ScanUI.Open(); AuctionIQ.ScanUI.SetMode('orders'); AuctionIQ.ScanUI.Next()")
-check("next step button: queues the paying orders and claims the first", CH.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
+check("next step button: queues the paying orders and claims the first", AuctionIQ.Queue.Count() == 1 and L.eval("STUB.claimed") == 77)
 run("""STUB.viewed = nil; ProfessionsFrame = ProfessionsFrame or { IsShown = function() return true end }
 ProfessionsFrame.craftingOrdersTabID = 3; ProfessionsFrame.tab = 1
 ProfessionsFrame.GetTab = function(self) return self.tab end; ProfessionsFrame.SetTab = function(self, t) self.tab = t end
@@ -2836,11 +2836,11 @@ C_CraftingOrders.GetCrafterOrders = function() return {
   { orderID = 78, spellID = 10, minQuality = 1, tipAmount = 100, consortiumCut = 0, orderType = 3, reagents = {},
     npcOrderRewards = { { itemLink = 'item:901', count = 1 }, { itemLink = 'item:902', count = 2 } } },
   { orderID = 79, spellID = 10, minQuality = 9, tipAmount = 100, consortiumCut = 0, orderType = 3, reagents = {} } } end""")
-ol = list(CH.Orders.List().values())
+ol = list(AuctionIQ.Orders.List().values())
 by = {o.orderID: o for o in ol}
 check("order list: every order, the ones you can fill first", len(ol) == 3 and ol[-1].orderID == 79 and not by[79].ok)
 check("order list: a knowledge reward marks it 1KP and sorts ahead of plain profit", by[78].kp and ol[0].orderID == 78 and not by[77].kp)
-check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * CH.Prices.Get("chvalue", "i:902") * CH.AH_CUT) < 1
+check("order list: sellable rewards are valued after the cut, knowledge isn't", abs(by[78].rewardValue - 2 * AuctionIQ.Prices.Get("chvalue", "i:902") * AuctionIQ.AH_CUT) < 1
       and [r.value for r in by[78].rewards.values()][0] is None)
 check("order list: profit and reagent cost come from the advisor's best craft", by[77].profit == by[77].row.profit and by[77].cost == by[77].row.cost and by[77].profit > 0)
 pb = L.eval("""AuctionIQ.Advisor.PickBest({ { quality = 1, profit = -100, short = true },
@@ -2849,17 +2849,17 @@ check("orders: when only Concentration reaches the rank asked, the order is reac
       pb[0] is None and pb[1] is not None and pb[1].profit == -500)
 check("order list: who it's from", by[77]["from"] == "Pat" and by[78]["from"] == "Patron")
 run("AuctionIQ.ScanUI.SetMode('orders')")
-orows = list(CH.ScanUI.Refresh().values())
+orows = list(AuctionIQ.ScanUI.Refresh().values())
 check("scan tab: lists orders with 1KP flagged", len(orows) == 3 and "kp=true" in orows[0])
-tip = [plain(l[1]) for l in CH.ScanUI.OrderLines(by[78]).values()]
+tip = [plain(l[1]) for l in AuctionIQ.ScanUI.OrderLines(by[78]).values()]
 check("scan tab hover: the knowledge reward is named", any("Knowledge Notes" in t and "knowledge" in t for t in tip))
-pl = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[77], 4).values()]
+pl = [plain(l[1]).strip() for l in AuctionIQ.ScanUI.OrderCellLines(by[77], 4).values()]
 check("orders: hovering Profit reads like a statement: revenue, costs, profit", pl[0] == "Revenue" and pl[1].startswith("Commission") and "Costs" in pl and "Profit" in pl)
-cl = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[77], 5).values()]
+cl = [plain(l[1]).strip() for l in AuctionIQ.ScanUI.OrderCellLines(by[77], 5).values()]
 check("orders: hovering Crafting costs lists each reagent you supply with how many you have", cl[0] == "Crafting costs" and any("have" in x for x in cl) and "Total" in cl)
-rl2 = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[78], 3).values()]
+rl2 = [plain(l[1]).strip() for l in AuctionIQ.ScanUI.OrderCellLines(by[78], 3).values()]
 check("orders: hovering Rewards names each reward", rl2[0] == "Rewards" and any("Knowledge Notes" in x for x in rl2))
-ph = [plain(l[1]).strip() for l in CH.ScanUI.OrderCellLines(by[78], 4).values()]
+ph = [plain(l[1]).strip() for l in AuctionIQ.ScanUI.OrderCellLines(by[78], 4).values()]
 hv = L.eval("AuctionIQ.ScanUI.ORDER_HOVER")
 check("orders: the Reagents column's hover is the reagents you supply, Profit's lists the rewards", hv[3] == 5 and hv[4] == 4 and any("Knowledge Notes" in x for x in ph))
 tw = L.eval("""(function()
@@ -3001,15 +3001,15 @@ end)()""")
 check("shatter: motes only in the warband bank are found there", wb.id == 701 and wb.bag == 13 and wb.slot == 3)
 check("shatter: the advisor counts Shattering Essence before it's cast (as CraftSim), and not twice once it's on",
       sh.shatterModel and not sh.shatter2 and sh.ing1 == sh.ing2 + 5)
-check("orders: an order's button starts at Claim", CH.ScanUI.ClaimState(by[77]) == "claim")
+check("orders: an order's button starts at Claim", AuctionIQ.ScanUI.ClaimState(by[77]) == "claim")
 run("AuctionIQ.Queue.Clear()")
-check("orders: Claim claims that order (and queues it for the next steps)", CH.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77
+check("orders: Claim claims that order (and queues it for the next steps)", AuctionIQ.ScanUI.Claim(by[77]) and L.eval("STUB.claimed") == 77
       and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
-check("orders: until the game answers, the button reads Claiming...", CH.ScanUI.ClaimLabel(CH.ScanUI.ClaimState(by[77]), by[77]) == "Claiming...")
+check("orders: until the game answers, the button reads Claiming...", AuctionIQ.ScanUI.ClaimLabel(AuctionIQ.ScanUI.ClaimState(by[77]), by[77]) == "Claiming...")
 run('STUB.Fire("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", 0, 77)')
 check("orders: once claimed, the order opens and its button moves on to Craft",
-      L.eval("STUB.opened") == 77 and CH.ScanUI.ClaimState(by[77]) == "craft" and plain(CH.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
-check("orders: another order can't be claimed while one is", CH.ScanUI.ClaimState(by[78]) == "busy" and not CH.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
+      L.eval("STUB.opened") == 77 and AuctionIQ.ScanUI.ClaimState(by[77]) == "craft" and plain(AuctionIQ.ScanUI.ClaimLines(by[77])[1][1]).startswith("Craft"))
+check("orders: another order can't be claimed while one is", AuctionIQ.ScanUI.ClaimState(by[78]) == "busy" and not AuctionIQ.ScanUI.Claim(by[78]) and L.eval("STUB.claimed") == 77)
 run("STUB.crafted = nil; STUB.oldCraft = C_TradeSkillUI.CraftRecipe; C_TradeSkillUI.CraftRecipe = function(id, n, r, _, order, conc) STUB.crafted = { id = id, order = order, conc = conc } end")
 rp = L.eval("""(function()
   local e = { orderID = '77', recipeID = 10, reagents = {}, concentration = 999 }
@@ -3025,18 +3025,18 @@ rp2 = L.eval("""(function()
   return { ok = ok, stale = stale, cost = e.cost, n = #e.shop }
 end)()""")
 check("orders: replanning replaces the cost and shopping list too, not only the reagents (AIQ-06)", rp2.ok and not rp2.stale and rp2.cost != 1 and rp2.n > 0)
-check("orders: Craft crafts it into the claimed order", CH.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
+check("orders: Craft crafts it into the claimed order", AuctionIQ.ScanUI.Claim(by[77]) and L.eval("STUB.crafted and STUB.crafted.order") == 77)
 run("C_TradeSkillUI.CraftRecipe = STUB.oldCraft; STUB.claimedOrder.isFulfillable = true; STUB.fulfilled = nil; C_CraftingOrders.FulfillOrder = function(id) STUB.fulfilled = id end")
 check("orders: while the craft is casting, the button reads Crafting... and won't press again",
-      CH.ScanUI.ClaimState(by[77]) == "pending" and CH.ScanUI.ClaimLabel("pending", by[77]) == "Crafting..." and not CH.ScanUI.Claim(by[77]))
+      AuctionIQ.ScanUI.ClaimState(by[77]) == "pending" and AuctionIQ.ScanUI.ClaimLabel("pending", by[77]) == "Crafting..." and not AuctionIQ.ScanUI.Claim(by[77]))
 run('STUB.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 10); STUB.RunTimers()')
-check("orders: when crafted, the button reads Turn in and turns it in", CH.ScanUI.ClaimState(by[77]) == "turnin" and CH.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
+check("orders: when crafted, the button reads Turn in and turns it in", AuctionIQ.ScanUI.ClaimState(by[77]) == "turnin" and AuctionIQ.ScanUI.Claim(by[77]) and L.eval("STUB.fulfilled") == 77)
 check("orders: until the game takes it, the button reads Turning in... and the order stays queued",
-      CH.ScanUI.ClaimLabel(CH.ScanUI.ClaimState(by[77]), by[77]) == "Turning in..." and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
+      AuctionIQ.ScanUI.ClaimLabel(AuctionIQ.ScanUI.ClaimState(by[77]), by[77]) == "Turning in..." and L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil"))
 run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 5, 77)')
 check("orders: a refused turn-in leaves the order queued with Turn in to try again",
-      L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil") and CH.ScanUI.ClaimState(by[77]) == "turnin")
-run('STUB.fulfilled = nil'); CH.ScanUI.Claim(by[77]); run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
+      L.eval("AuctionIQ.Queue.ForOrder(77) ~= nil") and AuctionIQ.ScanUI.ClaimState(by[77]) == "turnin")
+run('STUB.fulfilled = nil'); AuctionIQ.ScanUI.Claim(by[77]); run('STUB.Fire("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", 0, 77)')
 check("orders: once the game takes it, it leaves the queue", L.eval("STUB.fulfilled") == 77 and L.eval("AuctionIQ.Queue.ForOrder(77) == nil"))
 rel = L.eval("""(function() local Q = AuctionIQ.Queue
   local e = Q.AddEntry({ char = 'Me-Realm', recipeID = 10, orderID = '88', reagents = {}, shop = {}, stage = 'claimed' }, 1)
@@ -3046,40 +3046,40 @@ check("orders: releasing a claimed order (Cancel Order) puts it back to Claim", 
 run("STUB.claimedOrder.isFulfillable = nil; AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Orders.Open = STUB.oldOpen; C_CraftingOrders.GetClaimedOrder = nil; STUB.claimedOrder = nil; STUB.claimed = nil")
 run("AuctionIQ.Queue.Clear()")
-check("scan tab: Queue all queues orders that pay or give knowledge", CH.ScanUI.QueueAll() == 2)
+check("scan tab: Queue all queues orders that pay or give knowledge", AuctionIQ.ScanUI.QueueAll() == 2)
 # popped out and closed, the Queue window comes up when Queue all adds orders
 run("""AuctionIQ.Queue.Clear(); AuctionIQ.QueueUI.Show(); AuctionIQ.Window.ToggleQueuePop()
 AuctionIQ.QueueUI.Toggle(); STUB.wasShown = AuctionIQ.QueueUI.IsShown()
 AuctionIQ.ScanUI.allButton.scripts.OnClick()""")
-check("pop-out: Queue all opens the closed Queue window", not L.globals().STUB.wasShown and CH.QueueUI.IsShown() and CH.db.queue[1] is not None)
+check("pop-out: Queue all opens the closed Queue window", not L.globals().STUB.wasShown and AuctionIQ.QueueUI.IsShown() and AuctionIQ.db.queue[1] is not None)
 run("AuctionIQ.Window.ToggleQueuePop(); AuctionIQ.ScanUI.Open(); AuctionIQ.ScanUI.SetMode(\"orders\"); AuctionIQ.Queue.Clear()")
 run("AuctionIQ.Queue.Clear(); STUB.oldCount = C_Item.GetItemCount; C_Item.GetItemCount = function() return 0 end")
-nohave = list(CH.Orders.List().values())
+nohave = list(AuctionIQ.Orders.List().values())
 check("orders: each says whether you hold the reagents, and which are missing", not nohave[0].have and len(list(nohave[0].missing.values())) > 0)
 rc = [plain(L.eval("AuctionIQ.ScanUI.ReagentsCell")(L.eval("{ reagentsHave = %d, reagentsNeed = %d }" % hn))) for hn in [(3, 10), (10, 10), (0, 0)]]
 check("orders: the Reagents cell reads simply Need or Have", rc == ["Need", "Have", "Have"])
 check("orders: a Reagents column reads have/need in units, for the reagent you're shortest on", nohave[0].reagentsNeed > 0 and nohave[0].reagentsHave < nohave[0].reagentsNeed and nohave[0].reagentsLow is not None)
-CH.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the reagents for", CH.ScanUI.QueueAll() == 0)
-tipm = [plain(l[1]) for l in CH.ScanUI.OrderLines(nohave[0]).values()]
+AuctionIQ.ScanUI.Refresh(); check("orders: Queue all skips orders you don't have the reagents for", AuctionIQ.ScanUI.QueueAll() == 0)
+tipm = [plain(l[1]) for l in AuctionIQ.ScanUI.OrderLines(nohave[0]).values()]
 check("orders hover: lists the missing reagents", "Missing reagents" in tipm)
 run("C_Item.GetItemCount = STUB.oldCount; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
 # a recipe this character hasn't learned: never "can make", never queued
 run("""STUB.oldInfo = C_TradeSkillUI.GetRecipeInfo
 C_TradeSkillUI.GetRecipeInfo = function(id) local i = STUB.oldInfo(id); if id == 10 and i then i.learned = false end; return i end""")
-nl = list(CH.Orders.List().values())
+nl = list(AuctionIQ.Orders.List().values())
 check("orders: an unlearned recipe isn't craftable", all(not o.ok and o.learned is False for o in nl))
-nlrows = list(CH.ScanUI.Refresh().values())
-check("orders: an unlearned recipe says so and Queue all skips it", CH.ScanUI.QueueAll() == 0
-      and "You haven't learned this recipe." in [plain(l[1]) for l in CH.ScanUI.OrderLines(nl[0]).values()])
+nlrows = list(AuctionIQ.ScanUI.Refresh().values())
+check("orders: an unlearned recipe says so and Queue all skips it", AuctionIQ.ScanUI.QueueAll() == 0
+      and "You haven't learned this recipe." in [plain(l[1]) for l in AuctionIQ.ScanUI.OrderLines(nl[0]).values()])
 run("C_TradeSkillUI.GetRecipeInfo = STUB.oldInfo; AuctionIQ.Queue.Clear(); AuctionIQ.ScanUI.Refresh(); AuctionIQ.ScanUI.QueueAll()")
 # orders for another expansion than the one open are tagged and left out
 run("""STUB.oldLine = C_TradeSkillUI.GetTradeSkillLineForRecipe
 C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) if id == 10 then return 2871, 'Khaz Algar Alchemy' end return 2906, 'Midnight Alchemy' end
 STUB.oldInfos = C_TradeSkillUI.GetChildProfessionInfos
 C_TradeSkillUI.GetChildProfessionInfos = function() return { { professionID = 2906, expansionName = 'Midnight' }, { professionID = 2871, expansionName = 'Khaz Algar' } } end""")
-olist = list(CH.Orders.List().values())
+olist = list(AuctionIQ.Orders.List().values())
 check("orders: each order knows its expansion and whether it's the current one", olist[0].expansion == "Khaz Algar" and not olist[0].current)
-check("orders: orders for another expansion are left out of the list", len(list(CH.ScanUI.Refresh().values())) == 0)
+check("orders: orders for another expansion are left out of the list", len(list(AuctionIQ.ScanUI.Refresh().values())) == 0)
 run("C_TradeSkillUI.GetTradeSkillLineForRecipe = STUB.oldLine; C_TradeSkillUI.GetChildProfessionInfos = STUB.oldInfos")
 # the list keeps each order's row between redraws; the game's bag or Concentration events redo it
 run("""AuctionIQ.Orders.MAX_AGE = 60; STUB.analyses = 0; STUB.oldAnalyze = AuctionIQ.Orders.Analyze
@@ -3092,12 +3092,12 @@ check("orders: a redraw reuses each order's row; a bag change works them out aga
       S.first > 0 and S.again == S.first and S.after == 2 * S.first)
 run("AuctionIQ.Orders.Analyze = STUB.oldAnalyze; AuctionIQ.Orders.MAX_AGE = -1")
 run("AuctionIQ.ScanUI.SortBy('from')")
-srt = list(CH.ScanUI.Refresh().values())
+srt = list(AuctionIQ.ScanUI.Refresh().values())
 check("scan tab: clicking a header sorts by that column", srt[0].startswith("Test Flask from=Pat ") and "from=Patron" in srt[-1])
 run("AuctionIQ.ScanUI.SortBy('from')")
-check("scan tab: clicking the same header flips it", "from=Patron" in list(CH.ScanUI.Refresh().values())[0])
+check("scan tab: clicking the same header flips it", "from=Patron" in list(AuctionIQ.ScanUI.Refresh().values())[0])
 run("AuctionIQ.ScanUI.SetMode('recipes')")
-check("scan tab: back to recipes", CH.ScanUI.Mode() == "recipes" and len(list(CH.ScanUI.Refresh().values())) > 0)
+check("scan tab: back to recipes", AuctionIQ.ScanUI.Mode() == "recipes" and len(list(AuctionIQ.ScanUI.Refresh().values())) > 0)
 # Fetching: every kind of order is asked for in turn and kept, like CraftSim, even when the game lists only the last one
 run("""STUB.requests = {}; Enum.CraftingOrderResult = { Ok = 0, ThrottleViolation = 3, Timeout = 4 }
 C_TradeSkillUI.GetChildProfessionInfo = function() return { profession = 3 } end
@@ -3116,7 +3116,7 @@ AuctionIQ.Orders.Fetch(function(n) STUB.fetched = n end)
 for i = 1, 40 do STUB.Fire("CRAFTINGORDERS_CAN_REQUEST"); STUB.RunTimers() end""")
 check("orders fetch: asks for patron, personal, public and guild, retrying a throttle", L.eval("STUB.fetched") == 4
       and len(list(L.eval("STUB.requests").values())) == 5)
-check("orders fetch: the list holds every kind, not just the last one shown", len(list(CH.Orders.List().values())) == 4)
+check("orders fetch: the list holds every kind, not just the last one shown", len(list(AuctionIQ.Orders.List().values())) == 4)
 check("/aiq orders explains each order without erroring", L.eval("(pcall(AuctionIQ.Orders.Debug))"))
 dbg = L.eval("AuctionIQ.db.debug and AuctionIQ.db.debug.orders")
 check("/aiq orders keeps its lines in the saved variables, with each recipe's quality setup, for a bug report",
@@ -3129,14 +3129,14 @@ run("AuctionIQ.Queue.Clear(); C_CraftingOrders = nil; C_Item.GetItemNameByID = n
 run("C_Item.GetItemInfo = function(id) if id == 302 then return 'Warbound Cloak', nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, 7 end end")
 inv2 = {e.id: e for e in LG.Inventory().values()}
 check("warbound items count as held but worth nothing", 302 in inv2 and inv2[302].bound and inv2[302].value == 0)
-check("the tooltip says it can't go on the AH", "can't go on the AH" in plain(CH.TooltipLines("i:302")[1][2]))
-check("other items keep their value", CH.Unsellable(100) is False or CH.Unsellable(100) is None or not CH.Unsellable(100))
+check("the tooltip says it can't go on the AH", "can't go on the AH" in plain(AuctionIQ.TooltipLines("i:302")[1][2]))
+check("other items keep their value", AuctionIQ.Unsellable(100) is False or AuctionIQ.Unsellable(100) is None or not AuctionIQ.Unsellable(100))
 run("C_Item.GetItemInfo = nil")
 
 # Settings: what the commands did, as buttons; operations and price sources without commands
-S = CH.Settings
+S = AuctionIQ.Settings
 run("AuctionIQ.UI.Page('settings')")
-names = list(CH.SettingsUI.Refresh().values())
+names = list(AuctionIQ.SettingsUI.Refresh().values())
 check("settings: opens from the window and lists the operations, Default first", names[0] == "Default" and "Crafted" in names)
 was = S.Get("coins")
 run("AuctionIQ.Settings.Flip('coins')")
@@ -3144,26 +3144,26 @@ check("settings: a toggle does what /aiq coins did", S.Get("coins") == (not was)
 run("AuctionIQ.Settings.Flip('coins')")
 run("AuctionIQ.Settings.DailyCap(20)")
 check("settings: gold a day cap", L.eval("AuctionIQ.db.settings.scan.dailyCap") == 20)
-check("settings: a new operation copies Default", S.NewOp("Flasks") == "Flasks" and CH.Groups.Store().ops.Flasks.floorPct == CH.Groups.Store().ops.Default.floorPct)
+check("settings: a new operation copies Default", S.NewOp("Flasks") == "Flasks" and AuctionIQ.Groups.Store().ops.Flasks.floorPct == AuctionIQ.Groups.Store().ops.Default.floorPct)
 check("settings: names can't repeat", S.NewOp("Flasks")[0] is None)
 run("AuctionIQ.Settings.OpStep('Flasks', 'priceReset', 1); AuctionIQ.Settings.OpStep('Flasks', 'duration', 1); AuctionIQ.Settings.OpStep('Flasks', 'undercut', 1)")
-fl = CH.Groups.Store().ops.Flasks
+fl = AuctionIQ.Groups.Store().ops.Flasks
 check("settings: picks cycle and numbers step", fl.priceReset == "minPrice" and fl.duration == 3 and fl.undercut == 101)
 ok, err = S.SetOpFormula("Flasks", "minPrice", "max(")
 check("settings: a bad formula is refused with the reason", ok is False and err and fl.minPrice is None)
 check("settings: a good formula saves", S.SetOpFormula("Flasks", "minPrice", "80% chvalue") is True and fl.minPrice == "80% chvalue")
 run("AuctionIQ.Groups.Assign('Crafted', 'Flasks')")
-check("settings: renaming keeps the groups that use it", S.RenameOp("Flasks", "Flask rules") == "Flask rules" and CH.Groups.Store().assign.Crafted == "Flask rules")
+check("settings: renaming keeps the groups that use it", S.RenameOp("Flasks", "Flask rules") == "Flask rules" and AuctionIQ.Groups.Store().assign.Crafted == "Flask rules")
 check("settings: built-in operations can't be deleted", S.DeleteOp("Default")[0] is None and S.DeleteOp("Crafted")[0] is None)
-check("settings: deleting one sends its groups back to inheriting", S.DeleteOp("Flask rules") == 1 and CH.Groups.Store().assign.Crafted is None)
-check("settings: a price source saves", S.SetSource("MyFloor", "max(vendorsell, 1g)") is True and CH.Formula.Custom().myfloor == "max(vendorsell, 1g)")
+check("settings: deleting one sends its groups back to inheriting", S.DeleteOp("Flask rules") == 1 and AuctionIQ.Groups.Store().assign.Crafted is None)
+check("settings: a price source saves", S.SetSource("MyFloor", "max(vendorsell, 1g)") is True and AuctionIQ.Formula.Custom().myfloor == "max(vendorsell, 1g)")
 check("settings: a source can't take a built-in name", S.SetSource("dbmarket", "1g")[0] is False)
 check("settings: a source with a bad formula is refused", S.SetSource("broken", "min(")[0] is False)
-check("settings: the source works in formulas", CH.Formula.Value("myfloor", 302) == 10000)
+check("settings: the source works in formulas", AuctionIQ.Formula.Value("myfloor", 302) == 10000)
 run("AuctionIQ.Settings.DeleteSource('myfloor')")
-check("settings: delete a source", CH.Formula.Custom().myfloor is None)
+check("settings: delete a source", AuctionIQ.Formula.Custom().myfloor is None)
 run("AuctionIQ.Settings.UseTSM(false)")
-check("settings: TSM groups off", CH.Groups.Store().useTSM is False)
+check("settings: TSM groups off", AuctionIQ.Groups.Store().useTSM is False)
 run("AuctionIQ.Settings.UseTSM(true)")
 
 # layout: nothing outside its panel, no one-line text cut off, button labels fit
@@ -3187,7 +3187,7 @@ check("footer: a Concentration slot for every character with a current-expansion
 check("footer: only the current expansion's professions, one bar each",
       all(len(b) == 2 and all(y.prof.startswith("Midnight") for y in b) and all(0 <= y.share <= 1 for y in b) for b in cfb))
 check("footer: older expansions' full Concentration isn't counted as wasted on the Dashboard",
-      CH.UI.DashboardFigures().conc == 0)
+      AuctionIQ.UI.DashboardFigures().conc == 0)
 check("footer: full names, the bars 50 wide, in columns that fit right of the help line",
       all(x.name == x.char for x in cf) and len({x.width for x in cf}) == 1
       and max(x.col for x in cf) * cf[0].width + (max(x.col for x in cf) - 1) * L.eval("AuctionIQ.UI.CONC_GAP") <= L.eval("AuctionIQ.UI.concRoom"))
@@ -3222,17 +3222,17 @@ for v in ["inventory", "sales", "income", "purchases", "expense", "expired", "ca
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("view " + v)
 check("resize: a grip in the corner, the size kept between 0.6 and 1.6 and saved",
-      CH.UI.Pages().ledger.parent.sizer is not None and CH.UI.SetScale(3) == 1.6 and CH.db.settings.window.scale == 1.6 and CH.UI.SetScale(1) == 1)
+      AuctionIQ.UI.Pages().ledger.parent.sizer is not None and AuctionIQ.UI.SetScale(3) == 1.6 and AuctionIQ.db.settings.window.scale == 1.6 and AuctionIQ.UI.SetScale(1) == 1)
 run("AuctionIQ.UI.Page('ledger', 'sales')")
 check("resize: taller shows more table rows, the footer stays inside the page",
-      CH.UI.SetHeight(900) == 900 and CH.LedgerUI.SetRows(None) > 30 and CH.UI.Pages().ledger.h == 900 - 54 - 26
-      and CH.UI.SetHeight(100) == 600 and CH.LedgerUI.SetRows(None) == 24)
-w2, h2 = CH.UI.SetSize(1400, 900)
+      AuctionIQ.UI.SetHeight(900) == 900 and AuctionIQ.LedgerUI.SetRows(None) > 30 and AuctionIQ.UI.Pages().ledger.h == 900 - 54 - 26
+      and AuctionIQ.UI.SetHeight(100) == 600 and AuctionIQ.LedgerUI.SetRows(None) == 24)
+w2, h2 = AuctionIQ.UI.SetSize(1400, 900)
 check("resize: wider and taller, every page laid out again for the size",
-      (w2, h2) == (1400, 900) and CH.UI.Pages().ledger.w == 1376 and CH.UI.Pages().paths.w == 1376 - 172
-      and CH.UI.Pages().dashboard.w == 1376 and CH.UI.IsShown())
+      (w2, h2) == (1400, 900) and AuctionIQ.UI.Pages().ledger.w == 1376 and AuctionIQ.UI.Pages().paths.w == 1376 - 172
+      and AuctionIQ.UI.Pages().dashboard.w == 1376 and AuctionIQ.UI.IsShown())
 run("AuctionIQ.UI.Page('ledger', 'sales')")
-heads = [h for h in CH.UI.Pages().ledger.heads.values() if h.shown]
+heads = [h for h in AuctionIQ.UI.Pages().ledger.heads.values() if h.shown]
 check("resize: table columns spread across a wider window", len(heads) > 2 and max(h.point[2] for h in heads) > 172 + 800)
 for tab in ["today", "research", "operations", "ledger", "report", "settings"]:
     run(f"AuctionIQ.UI.Page('{tab}')")
@@ -3240,9 +3240,9 @@ for tab in ["today", "research", "operations", "ledger", "report", "settings"]:
 for v in ["professions", "paths", "plans", "sales", "queue"]:
     run(f"AuctionIQ.UI.Page('ledger', '{v}')")
     audit("large view " + v)
-check("resize: never smaller than the normal size", CH.UI.SetSize(100, 100) == (920, 600) or tuple(CH.UI.SetSize(100, 100)) == (920, 600))
+check("resize: never smaller than the normal size", AuctionIQ.UI.SetSize(100, 100) == (920, 600) or tuple(AuctionIQ.UI.SetSize(100, 100)) == (920, 600))
 run("AuctionIQ.UI.Page('today')")
-navs = list(CH.UI.Pages().ledger.nav.values())
+navs = list(AuctionIQ.UI.Pages().ledger.nav.values())
 long = [plain(b.text.t) for b in navs if b.text and not b.fits]
 check("nav: every label fits its button on one line", len(navs) >= 12 and long == [] and all(b.text.wrap is False for b in navs if b.text))
 run("AuctionIQ.UI.Page('today')")
@@ -3256,14 +3256,14 @@ check("details: break-even chart, price check, will it sell and what drives the 
       dd is not None and dd.chart is not None and len(list(dd.chartLines.values())) >= 1 and dd.price.verdict and dd.sell.verdict
       and len(list(dd.sell.rows.values())) >= 3 and len(list(dd.cost.rows.values())) >= 1 and "%" in plain(dd.cost.verdict))
 check("details: the reagents are ranked by their share of the cost", all("%" in plain(r[2]) for r in dd.cost.rows.values()))
-check("details: showing while on", CH.ScanUI.DetailsShown())
+check("details: showing while on", AuctionIQ.ScanUI.DetailsShown())
 hov = L.eval("(function() local ch = AuctionIQ.ScanUI.DetailsChart(); local pl = ch.plot; return AuctionIQ.AdvisorUI.ChartHover(ch, pl.x0 + pl.X(1)) end)()")
 hl = [plain(l[1]) for l in hov.values()]
 check("break-even chart hover: the price step under the mouse, and each craft's profit and break-even there",
       hl[0] in ("Sale price at 99% of the estimate", "Sale price at 100% of the estimate", "Sale price at 101% of the estimate") and "  Profit a craft" in hl and "  Breaks even at" in hl)
 audit("craft details")
 run("AuctionIQ.ScanUI.SetDetails(false)")
-check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False and not CH.ScanUI.DetailsShown())
+check("details: Back returns to the list", L.eval("AuctionIQ.ScanUI.DetailsOn()") is False and not AuctionIQ.ScanUI.DetailsShown())
 # Review fixes ---------------------------------------------------------------------------------
 # 1. a browse doesn't make an old buying ladder look fresh, and a browse at a different price drops it
 run("""AuctionIQ.db.scans = AuctionIQ.db.scans or {}
@@ -3700,7 +3700,7 @@ AuctionIQ.Log.Started(10, 1, false, { { itemID = 202, quantity = 1, dataSlotInde
 po = L.eval("AuctionIQ.Log.Pending()")
 check("craft log: an order craft knows what the order pays", po.order and po.orderIncome == 450000)
 run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })')
-oe = list(CH.Log.Rows().values())[0].e
+oe = list(AuctionIQ.Log.Rows().values())[0].e
 check("craft log: the order's pay is counted once, not the item at market", oe.value == 450000 and oe.orderIncome == 450000 and oe.orderCrafts == 1)
 run("""C_CraftingOrders = { GetClaimedOrder = function() return { orderID = 89, spellID = 10, tipAmount = 0, reagents = {
   { reagentInfo = { reagent = { itemID = 202 }, quantity = 1, dataSlotIndex = 1 } } } } end }
@@ -4187,7 +4187,7 @@ check("Capital allocation: a row each, and a footer with the gold in, the profit
 check("Capital allocation: the reserve steps 10% -> 25% and back", abs(cp.reserve - 0.25) < 1e-9 and abs(cp.back - 0.1) < 1e-9)
 
 # Math engine: probability helpers, Bayesian sell-through, expected value -----------------------
-P = CH.Prob
+P = AuctionIQ.Prob
 check("prob: Beta CDF matches known values", abs(P.BetaCDF(0.5, 2, 2) - 0.5) < 1e-9 and abs(P.BetaCDF(0.3, 1, 1) - 0.3) < 1e-9
       and abs(P.BetaCDF(0.8, 9, 3) - 0.6174015488) < 1e-8)
 check("prob: Poisson quantile (2 a day for 7 days at 90% is 19)", P.PoissonQuantile(14, 0.9) == 19 and P.PoissonQuantile(0, 0.9) == 0
@@ -4327,7 +4327,7 @@ STUB.sellThrough = {}
 AuctionIQ.Ledger.SellThrough = function(id) local t = STUB.sellThrough[id]; if t then return t[1], t[2] end return 0, 0 end
 STUB.sellThrough[901] = { 40, 2 }; STUB.sellThrough[902] = { 3, 1 }; STUB.sellThrough[903] = { 2, 30 }; STUB.sellThrough[904] = { 1, 1 }
 """)
-f901, f902, f903, f904 = (CH.Groups.Learn(i) for i in (901, 902, 903, 904))
+f901, f902, f903, f904 = (AuctionIQ.Groups.Learn(i) for i in (901, 902, 903, 904))
 check("learn: a strong record raises the price, by up to 5%", 1.03 <= f901[0] <= 1.05 and "sure" in f901[1])
 check("learn: four posts are not enough to move it", f902 == 1 and f904 == 1)
 check("learn: mostly expiring cuts it, by up to 10%", 0.9 <= f903[0] <= 0.93)
@@ -4337,17 +4337,17 @@ local gi = C_Item.GetItemInfo
 C_Item.GetItemInfo = function(id) if id == 905 then return "Thing", "link", 3, 1, 1, "", "", 20, "", 0, 400000 end return gi and gi(id) end
 STUB.sellThrough[905] = { 5, 15 }
 """)
-ev, d = CH.Expect.Value(905, 1000000, 24)
+ev, d = AuctionIQ.Expect.Value(905, 1000000, 24)
 # p = (4*0.5 + 5) / (4 + 20) = 7/24; deposit 15% of 40g for 24h = 12g a listing
 p_ = 7 / 24
 want = 950000 - 120000 * (1 - p_) / p_ - 950000 * 0.01 * (24 / (24 * p_))
 check("expect: value = price after cut, less lost deposits and carrying", abs(ev - want) < 1 and abs(d.p - p_) < 1e-9 and abs(d.days - 1 / p_) < 1e-9)
-check("expect: no sale rate means just the cut", CH.Expect.Value(906, 1000000)[0] == 950000)
-check("expect: carrying cost is a setting", CH.Settings.Model("carry")[1] == "1.00%" and CH.Settings.Model("carry", 2)[1] == "1.50%")
+check("expect: no sale rate means just the cut", AuctionIQ.Expect.Value(906, 1000000)[0] == 950000)
+check("expect: carrying cost is a setting", AuctionIQ.Settings.Model("carry")[1] == "1.00%" and AuctionIQ.Settings.Model("carry", 2)[1] == "1.50%")
 run("AuctionIQ.Settings.Model('carry', -2)")
-lines = [plain(l[1]) for l in CH.AdvisorUI.ExpectLines(d).values()]
+lines = [plain(l[1]) for l in AuctionIQ.AdvisorUI.ExpectLines(d).values()]
 check("expect: the advisor hover shows each step", any("Deposits lost" in x for x in lines) and any("Gold tied up" in x for x in lines) and lines[-1] == "Expected each")
-check("failed auctions: deposits lost", CH.Expect.LostDeposit(905, 3) == 360000)
+check("failed auctions: deposits lost", AuctionIQ.Expect.LostDeposit(905, 3) == 360000)
 run("STUB.sellThrough = {}")
 
 # One theme across the addon: every window's main action is the filled button, and the main blocks
@@ -4358,7 +4358,7 @@ check("theme: T.Card gives a shaded card with an accent line", L.eval("select(2,
 check("theme: T.Primary fills a button", L.eval("type(AuctionIQ.Theme.Primary(AuctionIQ.Theme.Button(CreateFrame('Frame'), 'x2', 10, 10)).aiqFill) == 'table'"))
 
 # Accounting statements
-St = CH.Statements
+St = AuctionIQ.Statements
 inc = St.Income(0, L.eval("time()") + 1)
 check("statements: net sales = auction sales less the 5% cut, plus other sales", abs(inc.net - (inc.auction * 0.95 + inc.other)) < 1)
 check("statements: net income = gross profit - deposits - expenses + other income",
@@ -4399,13 +4399,13 @@ check("Inventory: one view under Statements, what you hold against what it cost"
 ir = list(LUI.Rows("inventory", L.eval("{}"))[0].values())
 check("Inventory: hovering Held shows where it is", len(ir) > 0 and plain(ir[0].cellTip(2)[1][1]) == "Where it is")
 run("Enum.CraftingOrderReagentSource = { Any = 0, Customer = 1, Crafter = 2, None = 3 }")
-fo = CH.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
+fo = AuctionIQ.Orders.FromOrder(L.eval("""{ orderID = 5, spellID = 10, tipAmount = 100, reagents = {
   { source = 0, reagentInfo = { reagent = { itemID = 201 }, dataSlotIndex = 1, quantity = 2 } },
   { source = 2, reagentInfo = { reagent = { itemID = 202 }, dataSlotIndex = 2, quantity = 3 } } } }"""))
 check("orders: only reagents the customer gives come off your cost, not ones the crafter must bring",
       fo.providedSlots[1] == 2 and fo.providedSlots[2] is None and len(list(fo.provided.values())) == 1)
 # Reports > Performance: the headline, eight weeks of profit and what drove the change
-PF = CH.Performance
+PF = AuctionIQ.Performance
 run("AuctionIQ.UI.Page('ledger', 'overview')")
 check("Performance: a page under Statements, beside the nav", LUI.Group() == "Statements" and L.eval("AuctionIQ.UI.Pages().perf:IsShown()") is True
       and L.eval("AuctionIQ.UI.Pages().ledger.body:IsShown()") is False)
@@ -4448,9 +4448,9 @@ audit_all[_before:] = [a for a in audit_all[_before:] if "This week so far" in a
 PF.ToggleScatter()
 PF.Refresh(L.eval("STUB.now"))
 PF.OpenWeek(wk[-2])
-check("Performance: a week's bar opens that week's Income Statement", LUI.View() == "statement" and CH.Statements.Period() == "custom"
-      and abs(CH.Statements.Income(wk[-2]["from"], wk[-2].to - 1).netIncome - wk[-2].profit) < 1)
-CH.Statements.SetPeriod("week")
+check("Performance: a week's bar opens that week's Income Statement", LUI.View() == "statement" and AuctionIQ.Statements.Period() == "custom"
+      and abs(AuctionIQ.Statements.Income(wk[-2]["from"], wk[-2].to - 1).netIncome - wk[-2].profit) < 1)
+AuctionIQ.Statements.SetPeriod("week")
 run("AuctionIQ.UI.Page('ledger', 'overview')")
 lt = ir[0].cellTip(7)
 check("Inventory: Last sold sits before Days of stock, with the sales rate on hover",
@@ -4569,7 +4569,7 @@ E = lambda i: L.eval(f"AuctionIQ.Demand.Estimate({i})")
 e1, e2 = E(880001), E(880002)
 check("demand: never listed, the region's figure stands in, counted at your cap, and says so",
       e1.source == "region" and e1.units == 10 and e1.capped and e2.units == 4 and not e2.capped
-      and "counted as 10 (your cap)" in CH.Demand.Text(e1) and "haven't listed it" in CH.Demand.Text(e1))
+      and "counted as 10 (your cap)" in AuctionIQ.Demand.Text(e1) and "haven't listed it" in AuctionIQ.Demand.Text(e1))
 check("demand: no region figure and no record is no sales rate, not a guess", E(880003).source == "none" and E(880003).units == 0)
 # 20 days listed (recorded), 2 sold a day on 10 of them: your record carries it, the cap doesn't
 run("""local sales = {}
@@ -4578,7 +4578,7 @@ for k = 0, 9 do sales[#sales + 1] = { STUB.dmDay(k), nil, nil, nil, 880001, 2 } 
 STUB.dmSet('Sales', sales)""")
 e = E(880001)
 check("demand: 20 listed days, 20 sold: your own pace with a little of the capped region (20 + 5 x 10) / 25 = 2.8",
-      e.source == "own" and e.listed == 20 and e.sold == 20 and abs(e.units - 70 / 25) < 1e-9 and "your 20 sold over 20 days listed" in CH.Demand.Text(e))
+      e.source == "own" and e.listed == 20 and e.sold == 20 and abs(e.units - 70 / 25) < 1e-9 and "your 20 sold over 20 days listed" in AuctionIQ.Demand.Text(e))
 # days you weren't listed don't count as no demand: older sales outside the listed days change nothing
 before = E(880001).units
 run("AuctionIQ.Demand.Mark(880001, STUB.dmDay(45))") # outside the 30-day window
@@ -4624,7 +4624,7 @@ run("AuctionIQ.Demand.Mark(880007)")
 e7 = E(880007)
 check("demand: a new listed day updates the index in place, without walking the sales again",
       e7.listed == 1 and L.eval("AuctionIQ.Demand.builds") == b0)
-check("demand: the scan's daily units are the estimate's", CH.Scan.DailyUnits(880001) == E(880001).units and CH.Scan.DailyUnits(None) == 0)
+check("demand: the scan's daily units are the estimate's", AuctionIQ.Scan.DailyUnits(880001) == E(880001).units and AuctionIQ.Scan.DailyUnits(None) == 0)
 ev = D.EvidenceText(D.Evidence(880001))
 check("demand: the evidence line says where the sales a day come from", ev.volume.startswith("Sales: ") and "region" in ev.volume)
 run("""AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Available, AuctionIQ.db.exposure = STUB.dm.oldRecords, STUB.dm.oldAvail, STUB.dm.oldExp

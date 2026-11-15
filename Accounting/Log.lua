@@ -1,20 +1,20 @@
 -- Craft results log: what each craft really gave (Multicraft extras, reagents Resourcefulness saved,
 -- Ingenuity refunds, Concentration spent) against what the advisor expected, so you can see whether
 -- the averages hold for you. Kept per character.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Lg = {}
-CH.Log = Lg
+AuctionIQ.Log = Lg
 
 local pending -- the craft just started: recipe, expected row
 
 local function log()
-	local me = CH.Me()
+	local me = AuctionIQ.Me()
 	me.log = me.log or {}
 	return me.log
 end
 
-local function price(kind, id) return id and CH.Prices.Get(kind, "i:" .. id) end
+local function price(kind, id) return id and AuctionIQ.Prices.Get(kind, "i:" .. id) end
 
 -- The reagents a craft really used ({ itemID, quantity } infos from CraftRecipe), priced at chmat,
 -- plus the fixed reagents the advisor knows about. On a crafting order the slots the customer
@@ -54,10 +54,10 @@ end
 -- The order a craft fills: { commission, rewards, providedSlots } from the advisor's order, else
 -- from the game's live order. nil when the craft isn't for an order, or the order can't be found.
 local function orderFor(r, orderID)
-	if r and r.order and (orderID == nil or CH.Orders.Same(r.order.orderID, orderID)) then return r.order end
-	if orderID == nil or not CH.Orders then return nil end
-	local live = CH.Orders.Live and CH.Orders.Live(orderID)
-	return live and CH.Orders.FromOrder(live) or { orderID = orderID }
+	if r and r.order and (orderID == nil or AuctionIQ.Orders.Same(r.order.orderID, orderID)) then return r.order end
+	if orderID == nil or not AuctionIQ.Orders then return nil end
+	local live = AuctionIQ.Orders.Live and AuctionIQ.Orders.Live(orderID)
+	return live and AuctionIQ.Orders.FromOrder(live) or { orderID = orderID }
 end
 
 -- The advisor row these reagents match (same units of each quality in each slot), if any.
@@ -94,7 +94,7 @@ function Lg.Expect(e) expect = e and { recipeID = e.recipeID, cost = e.cost, pro
 --   actual    the market when made: reagents used and saved at today's price (chmat), items at chvalue
 --   realized  what sold, less the same reagents at that same price as actual
 -- so the move from the forecast's basis to market prices is its own step, not part of "market".
-local function basisNow() return CH.Prices.CostBasis and CH.Prices.CostBasis() or "replacement" end
+local function basisNow() return AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() or "replacement" end
 
 -- How many of each item the craft can make you already hold, before it starts (all characters,
 -- the bank, mail and the AH, as Par.Held counts them), so the batch's results can leave that
@@ -106,18 +106,18 @@ local function heldBefore(recipeID, r, q)
 	local s = C_TradeSkillUI and C_TradeSkillUI.GetRecipeSchematic and C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
 	if s and s.outputItemID then ids[s.outputItemID] = true end
 	local out = {}
-	local held = CH.Par and CH.Par.Held
+	local held = AuctionIQ.Par and AuctionIQ.Par.Held
 	if not held then return out end
 	for id in pairs(ids) do local ok, n = pcall(held, id); if ok and n then out[id] = n end end
 	return out
 end
 
 function Lg.Started(recipeID, count, concentrate, reagents, orderID)
-	CH.craftSeq = (CH.craftSeq or 0) + 1
-	local seq = CH.craftSeq
+	AuctionIQ.craftSeq = (AuctionIQ.craftSeq or 0) + 1
+	local seq = AuctionIQ.craftSeq
 	local q = expect
 	expect = nil
-	local r = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
+	local r = AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.Current and AuctionIQ.AdvisorUI.Current()
 	if r and r.recipeID ~= recipeID then r = nil end
 	-- a queued craft brings its own forecast: the card may be on another recipe, or on another mix
 	if q and q.recipeID == recipeID and not orderID then
@@ -144,7 +144,7 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		res = row and row.parts and row.parts.res, ing = row and row.ingenuity, name = r and r.name,
 		order = order and true or nil,
 		-- the forecast's yield, Resourcefulness and item value, kept so results can be explained later
-		items = row and CH.Decide and CH.Decide.Items(r.made, row.parts) or nil, expSaved = row and row.parts and row.parts.resGold or nil,
+		items = row and AuctionIQ.Decide and AuctionIQ.Decide.Items(r.made, row.parts) or nil, expSaved = row and row.parts and row.parts.resGold or nil,
 		unit = row and row.unit or nil,
 		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
 		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil,
@@ -161,7 +161,7 @@ function Lg.Forget(p) if pending == p then pending = nil end end
 function Lg.Result(data)
 	if not data then return end
 	-- the request this result belongs to (Queue keeps every request sent, in order)
-	local Q = CH.Queue and CH.Queue.ForResult and CH.Queue
+	local Q = AuctionIQ.Queue and AuctionIQ.Queue.ForResult and AuctionIQ.Queue
 	local req = Q and Q.ForResult(data.recipeID)
 	-- a craft logged without a request (Started called on its own) keeps the old one-at-a-time match
 	local loose = pending and not pending.attached and pending or nil
@@ -194,7 +194,7 @@ function Lg.Result(data)
 		e.orderIncome = (e.orderIncome or 0) + income
 	else
 		local unit = price("chvalue", data.itemID)
-		income = unit and unit * CH.AH_CUT * qty
+		income = unit and unit * AuctionIQ.AH_CUT * qty
 	end
 	if income then e.value = e.value + income end
 	local saved = 0
@@ -213,12 +213,12 @@ function Lg.Result(data)
 	end
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
 	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
-	if CH.Forecast and data.itemID and not (pending and pending.order) then
+	if AuctionIQ.Forecast and data.itemID and not (pending and pending.order) then
 		-- what you held before this run of crafts: kept on its first craft only (the run's later crafts
 		-- add to it, and they are batches of their own)
 		local held = pending and pending.held and pending.held[data.itemID]
 		if held then pending.held[data.itemID] = nil end
-		CH.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
+		AuctionIQ.Forecast.Record(data.itemID, qty, { cost = pending and pending.cost, profit = pending and pending.expected,
 			costRepl = pending and (pending.costRepl or pending.cost),
 			concentration = (data.concentrationSpent or 0) > 0, recipeID = recipeID, held = held })
 	end
@@ -252,7 +252,7 @@ function Lg.Result(data)
 		end
 		pending.results = (pending.results or 0) + 1
 	end
-	if req then CH.Queue.Settle(req) end
+	if req then AuctionIQ.Queue.Settle(req) end
 	if loose then
 		loose.count = loose.count - 1
 		if loose.count <= 0 then Lg.Forget(loose) end
@@ -280,7 +280,7 @@ function Lg.Clear() wipe(log()); if Lg.Changed then Lg.Changed() end end
 
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftRecipe then
 	hooksecurefunc(C_TradeSkillUI, "CraftRecipe", function(recipeID, count, reagents, _, orderID, concentrate)
-		local req = CH.Queue and CH.Queue.Attempt and CH.Queue.Attempt(recipeID, count)
+		local req = AuctionIQ.Queue and AuctionIQ.Queue.Attempt and AuctionIQ.Queue.Attempt(recipeID, count)
 		local p = Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		if req and p then req.log, p.attached = p, true end
 	end)
@@ -288,23 +288,23 @@ end
 -- an enchant onto vellum is a craft too (CraftEnchant(recipeID, count, reagents, target, concentrate))
 if hooksecurefunc and C_TradeSkillUI and C_TradeSkillUI.CraftEnchant then
 	hooksecurefunc(C_TradeSkillUI, "CraftEnchant", function(recipeID, count, reagents, _, concentrate)
-		local req = CH.Queue and CH.Queue.Attempt and CH.Queue.Attempt(recipeID, count)
+		local req = AuctionIQ.Queue and AuctionIQ.Queue.Attempt and AuctionIQ.Queue.Attempt(recipeID, count)
 		local p = Lg.Started(recipeID, count, concentrate, reagents, nil)
 		if req and p then req.log, p.attached = p, true end
 	end)
 end
-CH.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
+AuctionIQ.On("TRADE_SKILL_ITEM_CRAFTED_RESULT", function(_, data) Lg.Result(data) end)
 
 -- Results, in Analytics -----------------------------------------------------------------------
 -- What each character's crafts really gave against what the advisor expected, one row per character
 -- and recipe. Profit here is the crafts' output valued at market now, not what it sold for.
 local LUI = {}
-CH.LogUI = LUI
+AuctionIQ.LogUI = LUI
 
 --- Rows for every character: { char, recipeID, name, crafts, actual, expected, rates... }.
 function Lg.AllRows()
 	local out = {}
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		for id, e in pairs(c.log or {}) do
 			if (e.crafts or 0) > 0 then
 				table.insert(out, { char = c.name or key, recipeID = id, name = e.name, crafts = e.crafts,
@@ -342,14 +342,14 @@ function Lg.Stages(char, recipeID, e)
 	-- realized: the batches these crafts recorded, with what has sold of each
 	local made, sold, revenue, soldCost, forecastSold, unsold = 0, 0, 0, 0, 0, 0
 	local unsoldValue, unsoldMargin = 0, 0
-	if CH.Forecast then
+	if AuctionIQ.Forecast then
 		local byItem = {}
-		for _, b in ipairs(CH.Forecast.Store()) do
+		for _, b in ipairs(AuctionIQ.Forecast.Store()) do
 			if b.recipe == recipeID and (not b.char or not char or b.char == char) then byItem[b.id] = true end
 		end
 		for id in pairs(byItem) do
-			local value = CH.Prices.Get("chvalue", "i:" .. id)
-			for _, b in ipairs(CH.Forecast.Batches(id)) do
+			local value = AuctionIQ.Prices.Get("chvalue", "i:" .. id)
+			for _, b in ipairs(AuctionIQ.Forecast.Batches(id)) do
 				if b.recipe == recipeID and (not b.char or not char or b.char == char) then
 					made = made + b.qty
 					sold = sold + (b.sold or 0)
@@ -360,7 +360,7 @@ function Lg.Stages(char, recipeID, e)
 					forecastSold = forecastSold + (b.expectEach or 0) * (b.sold or 0)
 					local left = b.qty - (b.sold or 0)
 					unsold = unsold + left
-					unsoldValue = unsoldValue + left * (value or 0) * CH.AH_CUT
+					unsoldValue = unsoldValue + left * (value or 0) * AuctionIQ.AH_CUT
 					unsoldMargin = unsoldMargin + left * ((b.expectEach or 0) - (bc and bc / b.qty or 0))
 				end
 			end
@@ -423,7 +423,7 @@ end
 
 --- Hover lines explaining one recipe's stages: { { label, value } }.
 function Lg.StageLines(d)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local s = d.stages
 	local mut = function(t) return T.Color("muted", t) end
 	local signed = function(c) return T.Color(c >= 0 and "ok" or "bad", (c >= 0 and "+" or "") .. M(c)) end
@@ -448,7 +448,7 @@ function Lg.StageLines(d)
 			local big = 1
 			for _, st in ipairs(w) do big = math.max(big, math.abs(st[2])) end
 			for _, st in ipairs(w) do
-				local bar = CH.UI and CH.UI.TextBar and CH.UI.TextBar(math.abs(st[2]) / big, 60) or ""
+				local bar = AuctionIQ.UI and AuctionIQ.UI.TextBar and AuctionIQ.UI.TextBar(math.abs(st[2]) / big, 60) or ""
 				table.insert(out, { (st[3] and st[1] or ("   " .. st[1])) .. "  " .. bar, st[3] and M(st[2]) or signed(st[2]) })
 			end
 		end
@@ -460,16 +460,16 @@ function Lg.StageLines(d)
 end
 
 local function pct(a, b)
-	if not a then return CH.Theme.Color("muted", "-") end
+	if not a then return AuctionIQ.Theme.Color("muted", "-") end
 	local s = string.format("%d%%", math.floor(a * 100 + 0.5))
-	if b then s = s .. CH.Theme.Color("muted", string.format("/%d", math.floor(b * 100 + 0.5))) end
+	if b then s = s .. AuctionIQ.Theme.Color("muted", string.format("/%d", math.floor(b * 100 + 0.5))) end
 	return s
 end
 
 local function resultRows(ctx)
-	local T, out = CH.Theme, {}
+	local T, out = AuctionIQ.Theme, {}
 	local crafts, forecast, actual, realized = 0, 0, 0, 0
-	local M = CH.FormatMoney
+	local M = AuctionIQ.FormatMoney
 	for _, d in ipairs(Lg.AllRows()) do
 		if ctx.keepName(d.name) then
 			local s = d.stages
@@ -489,7 +489,7 @@ local function resultRows(ctx)
 	if not out[1] then
 		return out, T.Color("muted", "Nothing logged yet. Every craft is recorded here, on each character.")
 	end
-	local cal = CH.Decide and CH.Decide.Calibration()
+	local cal = AuctionIQ.Decide and AuctionIQ.Decide.Calibration()
 	local calText = cal and string.format("  Batch forecasts: %d checked, %d inside their 80%% range, %d came in under the median%s.", cal.checked, cal.inside, cal.under,
 		cal.checked >= 4 and cal.under / cal.checked >= 0.7 and " (runs optimistic)" or "") or ""
 	return out, string.format("%d crafts: forecast %s, actual %s at market, %s realized from sales.", crafts, M(forecast), M(actual), M(realized)) .. calText
@@ -497,13 +497,13 @@ local function resultRows(ctx)
 end
 
 -- (Core/Views.lua puts it in Accounting, under Performance)
-CH.LedgerUI.Register("ledger", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
+AuctionIQ.LedgerUI.Register("ledger", { results = { label = "Craft results", sort = 3, noTime = true, rows = resultRows,
 	cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 }, { "Crafts", 258, 44 }, { "Forecast", 306, 80 }, { "Actual", 390, 84 },
 		{ "Yield", 478, 66 }, { "Realized", 548, 96 }, { "Sold", 648, 76 } } } }, {})
 
 --- Craft results now live in Analytics.
-function LUI.Open() if CH.UI and CH.UI.Page then CH.UI.Page("ledger", "results") end end
+function LUI.Open() if AuctionIQ.UI and AuctionIQ.UI.Page then AuctionIQ.UI.Page("ledger", "results") end end
 LUI.Toggle = LUI.Open
 function LUI.Refresh() end
 
-Lg.Changed = function() if CH.UI and CH.UI.IsShown and CH.UI.IsShown() then CH.UI.Refresh() end end
+Lg.Changed = function() if AuctionIQ.UI and AuctionIQ.UI.IsShown and AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end end

@@ -1,15 +1,15 @@
 -- Draws a specialization tree the way the game lays it out (each tab its own tree: the game's node
 -- positions, icons and links) with a knowledge point plan on top: a gold ring and "now > planned" on
 -- each node the plan raises, and the plan's step numbers in a badge.
-local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
+local AuctionIQ = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (AuctionIQ.Paths.Load)
 
 local TV = {}
-CH.TreeView = TV
+AuctionIQ.TreeView = TV
 
 local NODE = 30
 local PAD = 26
 
-local stepText = CH.Paths.StepText
+local stepText = AuctionIQ.Paths.StepText
 TV.StepText = stepText
 
 --- Rank text for a node: "12/30", or "12>20/30" when the plan raises it, "locked" ranks show as 0.
@@ -62,7 +62,7 @@ end
 --- A tree view inside parent at x, y, w by h. Returns the view; view:Draw(tree, tabID, marks, prof)
 --- lays out that tab and returns the nodes it drew, for tests.
 function TV.New(parent, x, y, w, h)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local v = CreateFrame("Frame", nil, parent)
 	v:SetPoint("TOPLEFT", x, y)
 	v:SetSize(w, h)
@@ -92,7 +92,7 @@ function TV.New(parent, x, y, w, h)
 		b.badge.text:SetPoint("CENTER", 0, 0)
 		b.badge.text:SetTextColor(color(T.bg))
 		b:EnableMouse(true)
-		b:SetScript("OnEnter", function(self) if self.tip then CH.Window.Tooltip(self, self.tip) end end)
+		b:SetScript("OnEnter", function(self) if self.tip then AuctionIQ.Window.Tooltip(self, self.tip) end end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		-- the tree calculator: the page decides what a click does
 		b:SetScript("OnMouseUp", function(self, button) if self.nodeID and v.onClick then v.onClick(self.nodeID, button) end end)
@@ -156,7 +156,7 @@ function TV.New(parent, x, y, w, h)
 			local node = tree.nodes[id]
 			if node and prof then
 				local perks = {}
-				for perkID, th in pairs(node.perks or {}) do table.insert(perks, { th = th, text = CH.Spec.PerkText(prof, perkID) }) end
+				for perkID, th in pairs(node.perks or {}) do table.insert(perks, { th = th, text = AuctionIQ.Spec.PerkText(prof, perkID) }) end
 				table.sort(perks, function(a, c) return a.th < c.th end)
 				for _, p in ipairs(perks) do
 					if p.text ~= "" then

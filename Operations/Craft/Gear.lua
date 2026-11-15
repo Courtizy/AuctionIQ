@@ -1,10 +1,10 @@
 -- Top gear: which profession tool and accessories to wear for a recipe. Tries every combination of
 -- what's equipped and what's in your bags, works out the stats each gives, and re-runs the
 -- advisor's numbers with them (like CraftSim's Top Gear).
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local G = {}
-CH.Gear = G
+AuctionIQ.Gear = G
 
 local TOOL, GEAR = "INVTYPE_PROFESSION_TOOL", "INVTYPE_PROFESSION_GEAR"
 
@@ -50,7 +50,7 @@ function G.Candidates()
 	local function add(link, where)
 		local loc = forProfession(link, slots)
 		if not loc then return end
-		local c = { link = link, itemID = (instant(link)), stats = CH.Stats.FromItem(link) }
+		local c = { link = link, itemID = (instant(link)), stats = AuctionIQ.Stats.FromItem(link) }
 		for k, v in pairs(where) do c[k] = v end
 		table.insert(loc == TOOL and out.tools or out.gear, c)
 	end
@@ -70,8 +70,8 @@ function G.Candidates()
 end
 
 local function sum(items)
-	local s = CH.Stats.New()
-	for _, it in ipairs(items) do if it then CH.Stats.Add(s, it.stats) end end
+	local s = AuctionIQ.Stats.New()
+	for _, it in ipairs(items) do if it then AuctionIQ.Stats.Add(s, it.stats) end end
 	return s
 end
 
@@ -141,8 +141,8 @@ local function shortlist(c, model, finishing, score, baseScore)
 		if #list <= keep then return list end
 		local scored = {}
 		for _, it in ipairs(list) do
-			if CH.Scan and CH.Scan.Yield then CH.Scan.Yield() end
-			local r = it.worn and baseScore or score(CH.Advisor.Evaluate(model, { sim = it.stats or CH.Stats.New(), finishing = finishing }))
+			if AuctionIQ.Scan and AuctionIQ.Scan.Yield then AuctionIQ.Scan.Yield() end
+			local r = it.worn and baseScore or score(AuctionIQ.Advisor.Evaluate(model, { sim = it.stats or AuctionIQ.Stats.New(), finishing = finishing }))
 			scored[#scored + 1] = { it = it, s = it.worn and math.huge or (r or -math.huge) }
 		end
 		table.sort(scored, function(a, b) return a.s > b.s end)
@@ -163,7 +163,7 @@ function G.Best(model, mode, c, finishing)
 	end
 	if #G.Sets(c) <= 1 then return nil end
 	local now = sum(worn(c))
-	local base = CH.Advisor.Evaluate(model, { sim = CH.Stats.New(), finishing = finishing })
+	local base = AuctionIQ.Advisor.Evaluate(model, { sim = AuctionIQ.Stats.New(), finishing = finishing })
 	local baseScore = score(base)
 	if not baseScore then return nil end
 	if #G.Sets(c) > G.FULL_UP_TO then c = shortlist(c, model, finishing, score, baseScore) end
@@ -171,11 +171,11 @@ function G.Best(model, mode, c, finishing)
 	local best, bestScore, bestResult = nil, baseScore, base
 	for _, set in ipairs(sets) do
 		if not isWorn(set) then
-			if CH.Scan and CH.Scan.Yield then CH.Scan.Yield() end -- in the background: a set at a time
-			local delta = CH.Stats.Diff(sum(setItems(set)), now)
+			if AuctionIQ.Scan and AuctionIQ.Scan.Yield then AuctionIQ.Scan.Yield() end -- in the background: a set at a time
+			local delta = AuctionIQ.Stats.Diff(sum(setItems(set)), now)
 			local t0 = debugprofilestop and debugprofilestop()
-			local r = CH.Advisor.Evaluate(model, { sim = delta, finishing = finishing })
-			if t0 and CH.MeasureAdd then CH.MeasureAdd("advisor: gear, one set", debugprofilestop() - t0) end
+			local r = AuctionIQ.Advisor.Evaluate(model, { sim = delta, finishing = finishing })
+			if t0 and AuctionIQ.MeasureAdd then AuctionIQ.MeasureAdd("advisor: gear, one set", debugprofilestop() - t0) end
 			local s = score(r)
 			if s and s > bestScore + 1 then best, bestScore, bestResult = set, s, r end
 		end

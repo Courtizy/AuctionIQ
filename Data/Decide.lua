@@ -12,10 +12,10 @@
 -- expected deposits and gold tied up, Multicraft's extras included), reagents consumed, what
 -- Resourcefulness gives back, deposits (which don't move with the price) and a fixed cost (the item a
 -- recraft uses up). Profit = revenue - consumed + returned - fixed.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local D = {}
-CH.Decide = D
+AuctionIQ.Decide = D
 D.FEW = 5 -- fewer days of your own posts than this and the region's numbers carry the estimate
 
 -- Parts and scenarios ----------------------------------------------------------------------------
@@ -45,14 +45,14 @@ function D.AccountParts(row, acc)
 		-- worked back from what an item kept after the cut
 		local price, from = a.price, "scan"
 		if not price then
-			price = row and row.item and CH.Prices and CH.Prices.Get and CH.Prices.Get("chvalue", "i:" .. row.item)
+			price = row and row.item and AuctionIQ.Prices and AuctionIQ.Prices.Get and AuctionIQ.Prices.Get("chvalue", "i:" .. row.item)
 			from = price and "market" or nil
-			if not price and a.unit and a.unit > 0 then price, from = a.unit / (CH.AH_CUT or 0.95), "kept" end
+			if not price and a.unit and a.unit > 0 then price, from = a.unit / (AuctionIQ.AH_CUT or 0.95), "kept" end
 		end
 		-- reagents at today's prices (yours at their opportunity cost), the same the Scan tab shows
 		local consumed = a.cost
-		if a.reagents and a.reagents[1] and CH.ReagentBook then
-			local ok, _, total = pcall(CH.ReagentBook, a)
+		if a.reagents and a.reagents[1] and AuctionIQ.ReagentBook then
+			local ok, _, total = pcall(AuctionIQ.ReagentBook, a)
 			if ok and total then consumed = total end
 		end
 		return { revenue = revenue, consumed = consumed, returned = a.resGold or 0, deposits = (a.deposit or 0) * units,
@@ -70,7 +70,7 @@ end
 
 --- The downside scenario you set in Scenarios: { reagents, price } (fractions).
 function D.Scenario()
-	local s = CH.db and CH.db.scenario
+	local s = AuctionIQ.db and AuctionIQ.db.scenario
 	return { reagents = s and s.reagents or 0.10, price = s and s.price or 0.10 }
 end
 
@@ -94,14 +94,14 @@ end
 --- the ledger doesn't know), and today's buy price for the rest. Returns the cost and how much of it
 --- is what you paid; nil when the reagents can't be listed.
 function D.SpentCost(result, r)
-	if not (CH.Queue and CH.Queue.FromRow and CH.Scan and CH.Scan.ReagentPrice) then return nil end
-	local ok, e = pcall(CH.Queue.FromRow, result, r)
+	if not (AuctionIQ.Queue and AuctionIQ.Queue.FromRow and AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice) then return nil end
+	local ok, e = pcall(AuctionIQ.Queue.FromRow, result, r)
 	if not (ok and e and e.shop and e.shop[1]) then return nil end
-	local P = CH.Prices
+	local P = AuctionIQ.Prices
 	local total, paidPart = 0, 0
 	for _, sh in ipairs(e.shop) do
 		local n = sh.n or 0
-		local unit = CH.Scan.ReagentPrice(sh.itemID, result.recipeID)
+		local unit = AuctionIQ.Scan.ReagentPrice(sh.itemID, result.recipeID)
 		if not unit then return nil end
 		local own = math.min(n, P.Held and P.Held(sh.itemID) or 0)
 		local pe = own > 0 and P.PaidEach and P.PaidEach(sh.itemID)
@@ -154,13 +154,13 @@ end
 
 -- Evidence behind a sale estimate -----------------------------------------------------------------
 
-local function raw(name, id) return CH.Prices.Raw and CH.Prices.Raw(name, id) end
+local function raw(name, id) return AuctionIQ.Prices.Raw and AuctionIQ.Prices.Raw(name, id) end
 
 --- Which TSM number chvalue mostly comes from, following its formula: min(listing now, post price).
 --- "listing" (realm's lowest listing), "market" (realm market value, the 80% floor), "region" (a region
 --- average), or nil without TSM. Only a label: a custom chvalue source may differ.
 function D.PriceBasis(id)
-	if not id or not CH.Prices.Available() then return nil end
+	if not id or not AuctionIQ.Prices.Available() then return nil end
 	local minb, mkt, rmkt, rsale = raw("dbminbuyout", id), raw("dbmarket", id), raw("dbregionmarketavg", id), raw("dbregionsaleavg", id)
 	local first = minb or mkt or rmkt
 	local floor = (mkt or rmkt) and 0.8 * (mkt or rmkt)
@@ -182,19 +182,19 @@ D.BASIS = { listing = "your realm's lowest listing", market = "your realm's mark
 function D.Evidence(id, now)
 	now = now or time()
 	local e = { basis = D.PriceBasis(id) }
-	local scan = CH.Scans and CH.Scans.Get(id)
+	local scan = AuctionIQ.Scans and AuctionIQ.Scans.Get(id)
 	if scan then e.scan = { age = scan.age } end
-	if CH.Ledger and CH.Ledger.Available() then
-		local v = CH.Prices.Values(id, now)
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+		local v = AuctionIQ.Prices.Values(id, now)
 		if v.realized then e.sales = { n = v.n, last = v.lastSale } end
-		local sold, expired, detail = CH.Ledger.SellThrough(id)
+		local sold, expired, detail = AuctionIQ.Ledger.SellThrough(id)
 		e.posts = { sold = sold or 0, expired = expired or 0, detail = detail }
 	end
-	e.regionRate = CH.Expect and CH.Expect.RegionRate(id)
-	e.regionPerDay = CH.Advisor and CH.Advisor.SoldPerDay(id)
-	e.demand = CH.Demand and CH.Demand.Estimate(id, now)
-	if CH.Forecast then
-		local f, why = CH.Forecast.Shade(id, now)
+	e.regionRate = AuctionIQ.Expect and AuctionIQ.Expect.RegionRate(id)
+	e.regionPerDay = AuctionIQ.Advisor and AuctionIQ.Advisor.SoldPerDay(id)
+	e.demand = AuctionIQ.Demand and AuctionIQ.Demand.Estimate(id, now)
+	if AuctionIQ.Forecast then
+		local f, why = AuctionIQ.Forecast.Shade(id, now)
 		if f then e.shade = { factor = f, why = why } end
 	end
 	-- your own evidence in days with a sale or an expiry (Ledger.SellThrough), rounded
@@ -208,7 +208,7 @@ end
 --- The evidence as short phrases: { price, rate, volume } for one line or a hover.
 function D.EvidenceText(e)
 	local out = {}
-	local age = function(s) return CH.Scans and CH.Scans.Age(s) or "?" end
+	local age = function(s) return AuctionIQ.Scans and AuctionIQ.Scans.Age(s) or "?" end
 	out.price = "Price: TSM, " .. (D.BASIS[e.basis] or "no TSM price")
 		.. (e.scan and (", your AH scan " .. age(e.scan.age) .. " old") or " (TSM doesn't tell addons how old its data is)")
 	if e.ownPosts >= D.FEW then
@@ -228,7 +228,7 @@ function D.EvidenceText(e)
 	else
 		out.sales = "Your sales: none in 30 days"
 	end
-	out.volume = "Sales: " .. (e.demand and CH.Demand.Text(e.demand) or "no sales rate")
+	out.volume = "Sales: " .. (e.demand and AuctionIQ.Demand.Text(e.demand) or "no sales rate")
 	if e.shade then out.shade = "Your record: " .. e.shade.why end
 	return out
 end
@@ -274,7 +274,7 @@ function D.ConcForecastFor(r, budget)
 	if not r or not r.concentration or not budget then return nil end
 	local s = r.stats or {}
 	local ing = r.ingenuity or 0
-	local refund = r.concentration * ((CH.Stats.REFUND or 0.5) + (s.refundExtra or 0))
+	local refund = r.concentration * ((AuctionIQ.Stats.REFUND or 0.5) + (s.refundExtra or 0))
 	return D.ConcForecast(budget, r.concentration, ing, refund)
 end
 
@@ -335,15 +335,15 @@ end
 --- from, so the result shows which inputs are yours and which are the region's or assumptions.
 function D.BatchInputs(result, r)
 	if not result or not r or not r.unit or result.order then return nil end
-	local St = CH.Stats
+	local St = AuctionIQ.Stats
 	local s = r.stats or St.New()
 	local made = result.made or 1
 	local mc, res = St.Chance(s, "multicraft"), St.Chance(s, "resourcefulness")
 	local maxExtra = (St.MC_CONSTANT[made] or St.MC_CONSTANT.default) * made * (1 + (s.mcExtra or 0))
-	local lines = CH.Advisor.CostLines(result, r.picks, r.finishing)
+	local lines = AuctionIQ.Advisor.CostLines(result, r.picks, r.finishing)
 	local deposit = r.ev and r.ev.deposits or 0
 	local item = r.item
-	local daily = item and CH.Scan and CH.Scan.DailyUnits(item) or 0
+	local daily = item and AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits(item) or 0
 	local ev = D.Evidence(item)
 	return { item = item, made = made, mc = mc, maxExtra = math.max(1, maxExtra), res = res, saved = r.parts and r.parts.saved or 0,
 		price = r.price, deposit = deposit, unit = r.unit, reagents = lines, daily = daily,
@@ -358,12 +358,12 @@ function D.BatchCost(inp, n)
 	for _, c in ipairs(inp.reagents) do
 		local need = c.n * n
 		local unit = c.unit or 0
-		local d = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, need)
+		local d = (not c.finishing) and AuctionIQ.Depth and AuctionIQ.Depth.Cost(c.id, need)
 		local all = d and d.cost or unit * need
 		material = material + all
 		local buy = math.max(0, need - (c.id and inp.have and inp.have(c.id) or 0))
 		if buy > 0 then
-			local db = (not c.finishing) and CH.Depth and CH.Depth.Cost(c.id, buy)
+			local db = (not c.finishing) and AuctionIQ.Depth and AuctionIQ.Depth.Cost(c.id, buy)
 			cash = cash + (db and db.cost or unit * buy)
 		end
 	end
@@ -399,7 +399,7 @@ function D.Batch(inp, opts)
 			items = math.floor(items + 0.5)
 			local shock = math.max(0.05, 1 + sd * normal(u))
 			local sold = math.min(items, poisson(u, inp.daily * days))
-			local cash = sold * math.max(0, (inp.price or 0) * shock * CH.AH_CUT - (inp.deposit or 0))
+			local cash = sold * math.max(0, (inp.price or 0) * shock * AuctionIQ.AH_CUT - (inp.deposit or 0))
 			local cost = spend - saved
 			if cash >= cost then covered = covered + 1 end
 			nets[k], backs[k], lefts[k], made[k] = cash - cost, cash, items - sold, items
@@ -444,7 +444,7 @@ function D.Scenarios(inp, n, opts)
 	local out = {}
 	for _, sc in ipairs(D.SCENARIOS) do
 		local price = (inp.price or 0) * (sc.fall and (1 - fall) or 1)
-		local each = math.max(0, price * CH.AH_CUT - (inp.deposit or 0))
+		local each = math.max(0, price * AuctionIQ.AH_CUT - (inp.deposit or 0))
 		local demand = (inp.daily or 0) * sc.pace * days
 		-- what you hold sells first; the new batch gets what's left of the week's demand
 		local sold = math.max(0, math.min(items, demand - held))
@@ -467,7 +467,7 @@ function D.ScanInputs(row, conc)
 	local parts = D.AccountParts({ item = item, profit = row.profit, cost = row.cost }, a)
 	if not (parts.price and parts.price > 0 and parts.items and parts.items > 0) then return nil end
 	return { item = item, conc = conc or nil, made = parts.items, mc = 0, maxExtra = 1, res = 0, saved = 0, price = parts.price,
-		deposit = a.deposit or 0, unit = a.unit, daily = CH.Scan and CH.Scan.DailyUnits(item) or 0,
+		deposit = a.deposit or 0, unit = a.unit, daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits(item) or 0,
 		reagents = { { n = 1, unit = parts.consumed - parts.returned, finishing = true } },
 		have = function(id) return id and C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0 end }
 end
@@ -524,7 +524,7 @@ end
 --- 2 expected, 0 fast." Concentration's extra per craft is added for a Concentration craft.
 function D.SuggestText(s)
 	if not s then return nil end
-	local M = CH.FormatMoney
+	local M = AuctionIQ.FormatMoney
 	if s.n == 0 then return s.why end
 	local sc = s.scenarios
 	local function whole(x) return math.floor(x + 0.5) end
@@ -594,8 +594,8 @@ function D.Quantity(inp, opts)
 	local sug = opts.suggest or D.Suggest(inp, { held = held, concCrafts = opts.concCrafts, gain = opts.gain })
 	out.suggested = sug and sug.n or 0
 	local perCraft = D.ItemsPerCraft(inp)
-	local M = CH.FormatMoney or tostring
-	local rateText = demand and CH.Demand and CH.Demand.Text(demand) or "no sales rate"
+	local M = AuctionIQ.FormatMoney or tostring
+	local rateText = demand and AuctionIQ.Demand and AuctionIQ.Demand.Text(demand) or "no sales rate"
 	out.assumptions = {
 		string.format("Sales: %s", rateText),
 		string.format("Price: %s an item before the cut; the slow case has it %d%% lower", M(inp.price or 0), math.floor(D.Scenario().price * 100 + 0.5)),
@@ -692,9 +692,9 @@ D.PEAK_AHEAD = 6     -- hours: wait for a window that starts within this many ho
 function D.PostAdvice(r, opts)
 	opts = opts or {}
 	if not r then return nil end
-	local M = CH.FormatMoney
+	local M = AuctionIQ.FormatMoney
 	local daily = opts.daily
-	if daily == nil then daily = CH.Scan and CH.Scan.DailyUnits(r.id) or 0 end
+	if daily == nil then daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits(r.id) or 0 end
 	local out = { price = r.price, daily = daily, qty = 0, up = r.up, cap = r.cap }
 	if r.verdict == "full" then
 		out.action, out.reason = "wait", string.format("%d up already, your rules' cap", r.up)
@@ -763,8 +763,8 @@ function D.PostLabel(a)
 end
 
 local function adviceLog()
-	CH.db.postAdvice = CH.db.postAdvice or {}
-	return CH.db.postAdvice
+	AuctionIQ.db.postAdvice = AuctionIQ.db.postAdvice or {}
+	return AuctionIQ.db.postAdvice
 end
 D.AdviceLog = adviceLog
 D.ADVICE_KEEP = 500
@@ -838,14 +838,14 @@ D.SHARED = 0.6 -- how much of a price move is the market's (shared) rather than 
 --- What one queued craft makes and sells for, from the best saved scan that makes its item:
 --- { item, items (per craft, Multicraft included), price, deposit, unit, daily } or nil.
 function D.EntryModel(e)
-	if not (e and e.item and CH.Queue and CH.Queue.ScanRowFor) then return nil end
-	local _, _, row = CH.Queue.ScanRowFor(e.item)
+	if not (e and e.item and AuctionIQ.Queue and AuctionIQ.Queue.ScanRowFor) then return nil end
+	local _, _, row = AuctionIQ.Queue.ScanRowFor(e.item)
 	local acc = row and ((e.concentration and row.concAccounts) or row.accounts)
-	local price = acc and acc.price or CH.Prices.Get("chvalue", "i:" .. e.item)
+	local price = acc and acc.price or AuctionIQ.Prices.Get("chvalue", "i:" .. e.item)
 	if not price then return nil end
 	local items = acc and ((acc.made or 1) + (acc.extraItems or 0)) or (row and row.made) or 1
 	return { item = e.item, items = items, price = price, deposit = acc and acc.deposit or 0,
-		unit = acc and acc.unit or price * CH.AH_CUT, daily = CH.Scan and CH.Scan.DailyUnits(e.item) or 0 }
+		unit = acc and acc.unit or price * AuctionIQ.AH_CUT, daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits(e.item) or 0 }
 end
 
 --- Outcomes of a plan: { cash (to buy what you don't have, walking the listings), crafts, back = {
@@ -856,7 +856,7 @@ function D.Plan(entries, opts)
 	local runs, days = opts.runs or 500, opts.days or D.HORIZON
 	local fall = opts.price or D.Scenario().price
 	local sd = fall / 1.2816
-	local shop, cash = CH.Queue.ShoppingList(entries)
+	local shop, cash = AuctionIQ.Queue.ShoppingList(entries)
 	local spend = 0
 	for _, s in ipairs(shop) do spend = spend + (s.unit or 0) * s.need end
 	local byItem, unpriced, crafts = {}, 0, 0
@@ -881,7 +881,7 @@ function D.Plan(entries, opts)
 			local shock = math.max(0.05, 1 + sd * z)
 			local made = math.floor(x.items + u()) -- whole items, fractions drawn
 			local sold = math.min(made, poisson(u, x.m.daily * days))
-			back = back + sold * math.max(0, x.m.price * shock * CH.AH_CUT - x.m.deposit)
+			back = back + sold * math.max(0, x.m.price * shock * AuctionIQ.AH_CUT - x.m.deposit)
 			left = left + (made - sold) * x.m.unit
 		end
 		if back >= spend then covered = covered + 1 end
@@ -896,7 +896,7 @@ end
 --- its sales, less what you hold). { { label, entries } }.
 D.LEAN_DAYS = 3
 function D.Plans(queue)
-	queue = queue or (CH.Queue and CH.Queue.Active and CH.Queue.Active()) or CH.db.queue
+	queue = queue or (AuctionIQ.Queue and AuctionIQ.Queue.Active and AuctionIQ.Queue.Active()) or AuctionIQ.db.queue
 	local lean, made = {}, {}
 	for _, e in ipairs(queue) do
 		local m = D.EntryModel(e)
@@ -918,8 +918,8 @@ end
 -- happened. Over many batches that shows whether the simulation runs optimistic.
 
 local function forecasts()
-	CH.db.batchForecasts = CH.db.batchForecasts or {}
-	return CH.db.batchForecasts
+	AuctionIQ.db.batchForecasts = AuctionIQ.db.batchForecasts or {}
+	return AuctionIQ.db.batchForecasts
 end
 D.Forecasts = forecasts
 
@@ -939,13 +939,13 @@ end
 --- (within the middle 80%), under (below the median), over } or nil before any can be checked.
 function D.Calibration(now)
 	now = now or time()
-	if not (CH.Ledger and CH.Ledger.Available()) then return nil end
-	local sales = CH.Ledger.Records("Sales")
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available()) then return nil end
+	local sales = AuctionIQ.Ledger.Records("Sales")
 	local out = { checked = 0, inside = 0, under = 0, over = 0 }
 	-- each item's sales once, so every forecast walks only its own item's sales
 	local byItem, want = {}, {}
 	for _, f in ipairs(forecasts()) do if f.item then want[f.item] = true end end
-	local fid = CH.Ledger.F and CH.Ledger.F.id
+	local fid = AuctionIQ.Ledger.F and AuctionIQ.Ledger.F.id
 	for _, s in ipairs(sales) do
 		local id = fid and s[fid] or s.id
 		if id and want[id] then
@@ -967,7 +967,7 @@ function D.Calibration(now)
 			local t = s.time
 			for k = #fs, 1, -1 do
 				local f = fs[k]
-				if f.at <= t and t < f.at + span then got[f] = (got[f] or 0) + CH.Ledger.Net(s); break end
+				if f.at <= t and t < f.at + span then got[f] = (got[f] or 0) + AuctionIQ.Ledger.Net(s); break end
 			end
 		end
 	end
@@ -1001,7 +1001,7 @@ function D.Alternatives(acc, opts)
 	opts = opts or {}
 	local now = opts.now or time()
 	local items = (acc.made or 1) + (acc.extraItems or 0)
-	local cs = CH.CraftOrSell and CH.CraftOrSell(acc) or nil
+	local cs = AuctionIQ.CraftOrSell and AuctionIQ.CraftOrSell(acc) or nil
 	local held = cs and cs.sell or 0
 	local options = {}
 	local craftGain = cs and cs.gain or acc.profit
@@ -1026,13 +1026,13 @@ function D.Alternatives(acc, opts)
 	local best, second = options[1], options[2]
 	-- within 5% of the gold at stake, the top two are about even
 	local scale = math.max(held, acc.cost or 0, 1)
-	local even = second and (best.gain - second.gain) <= (CH.CRAFT_OR_SELL_EVEN or 0.05) * scale or false
+	local even = second and (best.gain - second.gain) <= (AuctionIQ.CRAFT_OR_SELL_EVEN or 0.05) * scale or false
 	local stale = {}
 	if opts.at and now - opts.at > D.SCAN_STALE then
-		stale[#stale + 1] = "the profession scan is " .. (CH.Scans and CH.Scans.Age and CH.Scans.Age(now - opts.at) or "old") .. " old: rescan it"
+		stale[#stale + 1] = "the profession scan is " .. (AuctionIQ.Scans and AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(now - opts.at) or "old") .. " old: rescan it"
 	end
 	-- no sale value in the scan, and none now either (an older scan may not have kept it)
-	local priced = (acc.sales or 0) > 0 or (opts.item and CH.Prices.Get("chvalue", "i:" .. opts.item))
+	local priced = (acc.sales or 0) > 0 or (opts.item and AuctionIQ.Prices.Get("chvalue", "i:" .. opts.item))
 	if not priced then stale[#stale + 1] = "there's no price for the item: scan the AH or check TSM" end
 	local verdict = #stale > 0 and "refresh" or best.key
 	return { options = options, best = best, runnerUp = second, verdict = verdict, even = even, stale = stale, cs = cs,
@@ -1041,7 +1041,7 @@ end
 
 --- The alternatives' one-sentence verdict, and its colour (ok, bad, fg or accent).
 function D.AlternativesText(a)
-	local M = CH.FormatMoney
+	local M = AuctionIQ.FormatMoney
 	if not a then return nil end
 	if a.verdict == "refresh" then
 		return "Refresh first: " .. table.concat(a.stale, "; ") .. ".", "accent"
@@ -1064,7 +1064,7 @@ end
 --- The alternatives as tooltip rows, best first: { { label, value } }.
 function D.AlternativesLines(a)
 	if not a then return {} end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out = { { "Your options", "" }, { T.Color("muted", "Each is " .. a.basis .. ", for one craft's worth.") } }
 	for i, o in ipairs(a.options) do
 		local v = o.gain == 0 and T.Color("muted", "0") or T.Color(o.gain > 0 and "ok" or "bad", (o.gain > 0 and "+" or "") .. M(o.gain))

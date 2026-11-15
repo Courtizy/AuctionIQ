@@ -7,10 +7,10 @@
 --   * a daily net worth snapshot (gold + what your inventory is worth at AuctionIQ value), which
 --     TSM doesn't keep, so profit can be shown as the change in net worth
 -- Nothing is ever written to TSM's data.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Lg = {}
-CH.Ledger = Lg
+AuctionIQ.Ledger = Lg
 
 local DAY = 86400
 
@@ -336,7 +336,7 @@ end
 function Lg.Net(s)
 	if not s then return 0 end
 	local src = s.source
-	if src == nil or src == "Auction" then return (s.amount or 0) * CH.AH_CUT end
+	if src == nil or src == "Auction" then return (s.amount or 0) * AuctionIQ.AH_CUT end
 	return s.amount or 0
 end
 
@@ -346,9 +346,9 @@ local function goldLog(scope) return csv("s@" .. scope .. "@internalData@goldLog
 Lg.WARBAND = "Warband"
 
 local function store0()
-	CH.db.ledger = CH.db.ledger or { days = {}, worth = {} }
-	CH.db.ledger.exclude = CH.db.ledger.exclude or {}
-	return CH.db.ledger
+	AuctionIQ.db.ledger = AuctionIQ.db.ledger or { days = {}, worth = {} }
+	AuctionIQ.db.ledger.exclude = AuctionIQ.db.ledger.exclude or {}
+	return AuctionIQ.db.ledger
 end
 
 --- Whether a character (or Lg.WARBAND) counts in the gold totals and chart. All do by default.
@@ -458,8 +458,8 @@ function Lg.ArchiveCommit(days)
 	if not s.net then
 		for k, v in pairs(s.days) do
 			if not days[k] then
-				v.sales = (v.sales or 0) * CH.AH_CUT
-				for id, g in pairs(v.items or {}) do v.items[id] = g * CH.AH_CUT end
+				v.sales = (v.sales or 0) * AuctionIQ.AH_CUT
+				for id, g in pairs(v.items or {}) do v.items[id] = g * AuctionIQ.AH_CUT end
 			end
 		end
 		s.net = true
@@ -477,7 +477,7 @@ end
 function Lg.PruneHistory(days, apply, now)
 	days = math.floor(tonumber(days) or 0)
 	local out = { days = 0, worth = 0, rivals = 0 }
-	if days < 1 or not CH.db then return out end
+	if days < 1 or not AuctionIQ.db then return out end
 	now = now or time()
 	-- as TSM: what's older than now minus the days goes; a day goes once all of it is that old
 	local cutTime = now - days * DAY
@@ -486,10 +486,10 @@ function Lg.PruneHistory(days, apply, now)
 	local s = store()
 	for k in pairs(s.days or {}) do if k < cut then out.days = out.days + 1; if apply then s.days[k] = nil end end end
 	for k in pairs(s.worth or {}) do if k < cut then out.worth = out.worth + 1; if apply then s.worth[k] = nil end end end
-	for id, c in pairs(CH.db.competition or {}) do
+	for id, c in pairs(AuctionIQ.db.competition or {}) do
 		if not c.at or c.at < cutTime then
 			out.rivals = out.rivals + 1
-			if apply then CH.db.competition[id] = nil end
+			if apply then AuctionIQ.db.competition[id] = nil end
 		end
 	end
 	if apply then s.keepFrom = math.max(s.keepFrom or cut, cut) end
@@ -552,8 +552,8 @@ function Lg.Inventory(filter, char)
 	for _, e in pairs(items) do
 		e.name = e.id and C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(e.id) or nil
 		if not key or (e.name and string.lower(e.name):find(key, 1, true)) then
-			e.bound = CH.Unsellable(e.id)
-			local unit = not e.bound and CH.Prices.Get("chvalue", e.item) or nil
+			e.bound = AuctionIQ.Unsellable(e.id)
+			local unit = not e.bound and AuctionIQ.Prices.Get("chvalue", e.item) or nil
 			e.unit = unit
 			e.value = unit and unit * e.total or 0
 			table.insert(out, e)
@@ -630,7 +630,7 @@ end
 --- prof the profession that makes it ("Alchemy", not the expansion's sub-profession).
 function Lg.Crafted()
 	local out = {}
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			local prof = p.parent or p.name or "Other"
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
@@ -742,7 +742,7 @@ function Lg.ProductPL(since, char)
 		if cr and s.time >= since and (not char or s.player == char) then
 			local e = rows[s.id]
 			if not e then
-				e = { id = s.id, name = cr.name, line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(cr.name) or "Other", prof = cr.prof,
+				e = { id = s.id, name = cr.name, line = AuctionIQ.Paths and AuctionIQ.Paths.MainGroup and AuctionIQ.Paths.MainGroup(cr.name) or "Other", prof = cr.prof,
 					sold = 0, revenue = 0, cost = 0, known = 0 }
 				rows[s.id] = e
 			end
@@ -1002,8 +1002,8 @@ function Lg.SaleTimes(since, char) return Lg.SaleTimesJob(since, char).step() en
 
 -- Competition --------------------------------------------------------------------------------
 local function rivals()
-	CH.db.competition = CH.db.competition or {}
-	return CH.db.competition
+	AuctionIQ.db.competition = AuctionIQ.db.competition or {}
+	return AuctionIQ.db.competition
 end
 
 --- Note what a search found for an item: whether someone outside your account was cheaper, and who.
@@ -1130,8 +1130,8 @@ function Lg.WarmAll(done)
 			if tok and not times then C_Timer.After(0, tick); return end
 			-- the rest are small now: one frame each
 			local rest = {
-				function() CH.Measure("ledger snapshot", pcall, Lg.Snapshot) end,
-				function() if CH.Demand then CH.Measure("demand index", pcall, CH.Demand.Warm) end end,
+				function() AuctionIQ.Measure("ledger snapshot", pcall, Lg.Snapshot) end,
+				function() if AuctionIQ.Demand then AuctionIQ.Measure("demand index", pcall, AuctionIQ.Demand.Warm) end end,
 			}
 			local i = 1
 			local function after()
@@ -1143,7 +1143,7 @@ function Lg.WarmAll(done)
 	end)
 end
 
-CH.On("PLAYER_LOGIN", function()
+AuctionIQ.On("PLAYER_LOGIN", function()
 	C_Timer.After(10, function()
 		if not Lg.Available() then return end
 		Lg.WarmAll()

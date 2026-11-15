@@ -1,9 +1,9 @@
 -- Shared window parts for the scan, queue and results windows: a themed, draggable panel with a
 -- title bar, and a table of rows with hover and click.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local W = {}
-CH.Window = W
+AuctionIQ.Window = W
 
 --- A movable panel with the AuctionIQ title bar. Returns the frame; frame.bar holds buttons,
 --- frame.title the title text, frame.close the close button.
@@ -63,7 +63,7 @@ function W.Pixel(f, user)
 	f.aiqUserScale = user
 	f:SetScale(W.PixelScale() * (user or 1))
 	scaled[f] = true
-	if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
+	if AuctionIQ.Theme and AuctionIQ.Theme.Edges then AuctionIQ.Theme.Edges(f) end
 	return f
 end
 
@@ -86,18 +86,18 @@ end
 local function rescale()
 	for f in pairs(scaled) do
 		f:SetScale(W.PixelScale() * (tonumber(rawget(f, "aiqUserScale")) or 1))
-		if CH.Theme and CH.Theme.Edges then CH.Theme.Edges(f) end
+		if AuctionIQ.Theme and AuctionIQ.Theme.Edges then AuctionIQ.Theme.Edges(f) end
 		if f:IsShown() then W.Snap(f) end
 	end
 	if W.Arrange then W.Arrange() end
 end
-if CH.On then
-	CH.On("UI_SCALE_CHANGED", rescale)
-	CH.On("DISPLAY_SIZE_CHANGED", rescale)
+if AuctionIQ.On then
+	AuctionIQ.On("UI_SCALE_CHANGED", rescale)
+	AuctionIQ.On("DISPLAY_SIZE_CHANGED", rescale)
 end
 
 function W.New(name, title, width, height)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	T.Sync()
 	local f = CreateFrame("Frame", name, UIParent, "BackdropTemplate")
 	T.Panel(f, "bg", 0.95)
@@ -157,7 +157,7 @@ end
 --- A table: cols = { { label, x, width, justify } }, n rows of height h from y. onClick(i, button)
 --- and onEnter(owner, i, col) are optional. Returns rows, each { cells = {fs...}, bg }.
 function W.Table(parent, cols, n, y, h, onClick, onEnter, width)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	for _, c in ipairs(cols) do
 		local fs = W.OneLine(W.Text(parent, c[2], y, c[3], c[4] or (c[2] <= 12 and "LEFT" or "RIGHT"), "GameFontDisableSmall"))
 		fs:SetText(c[1])
@@ -226,7 +226,7 @@ end
 --- shown, total) after each redraw; both hide when everything fits. noCount leaves out the count
 --- (for lists that already say it in their heading).
 function W.ScrollBar(parent, x, y, h, noCount)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local bar = {}
 	local track = parent:CreateTexture(nil, "ARTWORK")
 	track:SetPoint("TOPLEFT", x, y)
@@ -274,7 +274,7 @@ end
 --- Theme names. A line with no right side is a note and wraps.
 function W.Tooltip(owner, lines)
 	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-	local Th = CH.Theme
+	local Th = AuctionIQ.Theme
 	for _, l in ipairs(lines) do
 		if l[2] then
 			local lc = Th[l[4] or (tostring(l[1]):sub(1, 2) == "  " and "fg" or "accent")] or Th.fg
@@ -296,17 +296,17 @@ end
 ---   Note("Only what you supply.")        muted note
 local Book = {}
 W.Book = Book
-local function gold(c) return CH.FormatMoney(c or 0) end
+local function gold(c) return AuctionIQ.FormatMoney(c or 0) end
 function Book.Head(label, right) return { label, right or "", "muted", "accent" } end
 function Book.Line(label, c, out)
-	if c == nil then return { "  " .. label, CH.Theme.Color("muted", "-"), "muted", "fg" } end
+	if c == nil then return { "  " .. label, AuctionIQ.Theme.Color("muted", "-"), "muted", "fg" } end
 	local neg = out or c < 0
 	return { "  " .. label, (neg and c ~= 0 and "-" or "") .. gold(math.abs(c)), neg and c ~= 0 and "bad" or "fg", "fg" }
 end
 function Book.Text(label, text, color) return { "  " .. label, text, color or "fg", "fg" } end
 function Book.Sub(label, text) return { "      " .. label, text, "muted", "muted" } end
 function Book.Total(label, c) return { label, (c and c < 0 and "-" or "") .. gold(math.abs(c or 0)), (c or 0) >= 0 and "ok" or "bad", "accent" } end
-function Book.Note(text) return { CH.Theme.Color("muted", text) } end
+function Book.Note(text) return { AuctionIQ.Theme.Color("muted", text) } end
 
 --- An item's icon, inline in text. The game has every item icon loaded, so this is cheap.
 function W.ItemIcon(itemID, size)
@@ -319,8 +319,8 @@ end
 --- The Concentration icon, inline in text (the currency's own icon once a profession has shown it).
 function W.ConcIcon(size)
 	size = size or 14
-	local icon = CH.db and CH.db.concIcon
-	if not icon then return CH.Theme.Color("accent", "C") end
+	local icon = AuctionIQ.db and AuctionIQ.db.concIcon
+	if not icon then return AuctionIQ.Theme.Color("accent", "C") end
 	return "|T" .. icon .. ":" .. size .. ":" .. size .. ":0:0:64:64:5:59:5:59|t"
 end
 
@@ -344,8 +344,8 @@ end
 local tabs, byKey = {}, {}
 local active, strip, switching
 
-local function deck() return CH.db.settings.advisor end -- docked, point: shared with the advisor's old settings
-local function ws() return CH.db.settings.window end
+local function deck() return AuctionIQ.db.settings.advisor end -- docked, point: shared with the advisor's old settings
+local function ws() return AuctionIQ.db.settings.window end
 
 --- Register a tab. open() shows its window, building it if needed.
 function W.AddTab(key, label, open, tip)
@@ -391,7 +391,7 @@ function W.Place(f)
 end
 
 local function colorTab(b, on)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local fs = b.text or (b.GetFontString and b:GetFontString())
 	local c = on and T.accent or T.muted
 	if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
@@ -402,7 +402,7 @@ local function colorTab(b, on)
 end
 
 local function buildStrip()
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	strip = CreateFrame("Frame", "AuctionIQTabs", UIParent)
 	W.Pixel(strip)
 	strip:SetFrameStrata("HIGH")
@@ -544,7 +544,7 @@ function W.ToggleQueuePop()
 	local q = byKey.queue
 	if s.popQueue then
 		W.Arrange()
-		if not W.Active() and CH.OpenProfessionID() then byKey.advisor.open() end
+		if not W.Active() and AuctionIQ.OpenProfessionID() then byKey.advisor.open() end
 		W.Arrange()
 	elseif q.frame and q.frame:IsShown() then
 		q.frame:Hide()
@@ -553,9 +553,9 @@ function W.ToggleQueuePop()
 	return s.popQueue
 end
 
-W.AddTab("advisor", "Advisor", function() CH.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
-W.AddTab("scan", "Craft", function() CH.ScanUI.Open() end, "Every recipe in this profession, ranked, and the one you pick.")
-W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue and shopping list.")
+W.AddTab("advisor", "Advisor", function() AuctionIQ.AdvisorUI.Open() end, "Every result quality for the selected recipe.")
+W.AddTab("scan", "Craft", function() AuctionIQ.ScanUI.Open() end, "Every recipe in this profession, ranked, and the one you pick.")
+W.AddTab("queue", "Queue", function() AuctionIQ.QueueUI.Show() end, "Your craft queue and shopping list.")
 
 --- A side panel beside a table, as the design draws it (the Craft page's Next Move panel): a card
 --- with the accent line holding a kicker, a headline, a sub line, three big figures, an optional
@@ -569,7 +569,7 @@ W.AddTab("queue", "Queue", function() CH.QueueUI.Show() end, "Your craft queue a
 --- actions = { { label, run, tip, off } } }. The blocks stack from the top, each as tall as its text.
 function W.SidePanel(parent, width, height, opts)
 	opts = opts or {}
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local det = CreateFrame("Frame", nil, parent)
 	det:SetSize(width, height)
 	det.width, det.height = width, height
@@ -725,7 +725,7 @@ end
 --- Fill a side panel (W.SidePanel) from d, with said (a line saying what the last action did) above
 --- the buttons. The blocks stack from the top as tall as their text. Shows the panel and returns d.
 function W.DrawSidePanel(det, d, said)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local function at(fs, x, y) fs:ClearAllPoints(); fs:SetPoint("TOPLEFT", x, y) end
 	-- how tall a wrapped line of text is: its width over the line's, up to two lines
 	local function height(fs, lineH)
@@ -831,7 +831,7 @@ function W.DrawSidePanel(det, d, said)
 		local top = y
 		at(det.chartHead, 12, y - 6); det.chartHead:SetText(T.Color("accent", ch.head or ""))
 		at(det.chartRange, 12, y - 6)
-		local M = CH.FormatMoney
+		local M = AuctionIQ.FormatMoney
 		det.chartRange:SetText(ch.lo and ch.hi and (M(ch.lo, true) .. " - " .. M(ch.hi, true)) or "")
 		local PH, plotTop = 60, y - 24
 		local lo, hi = ch.lo or math.huge, ch.hi or 0

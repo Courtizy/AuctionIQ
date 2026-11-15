@@ -1,10 +1,10 @@
 -- Probability helpers for the math engine: the Beta distribution (how sure we are of a sell-through
 -- rate), Poisson quantiles (stock that covers demand at a service level) and the normal quantile.
 -- Plain Lua, no game calls, so the tests run them directly.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local P = {}
-CH.Prob = P
+AuctionIQ.Prob = P
 
 local exp, log, sqrt, floor, abs = math.exp, math.log, math.sqrt, math.floor, math.abs
 

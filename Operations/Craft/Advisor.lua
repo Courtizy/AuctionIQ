@@ -9,25 +9,25 @@
 --   * finishing reagents: every combination is tried and the best kept
 -- Measure() asks the game once; Evaluate() can then be re-run with simulated stats (more skill, a
 -- spec plan, other gear) without asking again.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local A = {}
-CH.Advisor = A
+AuctionIQ.Advisor = A
 
 local unpack = unpack or table.unpack
 
 local function api() return C_TradeSkillUI end
-local function St() return CH.Stats end
+local function St() return AuctionIQ.Stats end
 
 local function price(kind, itemID)
-	return itemID and CH.Prices.Get(kind, "i:" .. itemID)
+	return itemID and AuctionIQ.Prices.Get(kind, "i:" .. itemID)
 end
 
 -- A reagent's price in a recipe: buying it, or making it when someone on the warband crafts it for
 -- less (Scan.ReagentPrice). Marks the model when a crafted price was used.
 local function reagentPrice(model, itemID)
-	if not (CH.Scan and CH.Scan.ReagentPrice) then return price("chmat", itemID) end
-	local p, via = CH.Scan.ReagentPrice(itemID, model and model.recipeID)
+	if not (AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice) then return price("chmat", itemID) end
+	local p, via = AuctionIQ.Scan.ReagentPrice(itemID, model and model.recipeID)
 	if via and model then model.viaCraft = true end
 	return p, via
 end
@@ -40,7 +40,7 @@ local function heldInfo(model, id)
 	model.heldCache = model.heldCache or {}
 	local h = model.heldCache[id]
 	if not h then
-		local P = CH.Prices
+		local P = AuctionIQ.Prices
 		local n = P.Held and P.Held(id) or 0
 		-- opportunity cost: what yours would bring if you sold them instead (after the cut)
 		local v = n > 0 and P.SellValue(id) or nil
@@ -53,14 +53,14 @@ end
 -- listings you've seen (a live search, else your last scan) for those n units. Only on the
 -- replacement basis (today's price), for a reagent you'd buy rather than craft; nil otherwise.
 local function listedEach(model, id, n, via)
-	if via or not (CH.Depth and CH.Depth.Cost) then return nil end -- crafting it is cheaper: that's its price
+	if via or not (AuctionIQ.Depth and AuctionIQ.Depth.Cost) then return nil end -- crafting it is cheaper: that's its price
 	-- listings change: a minute at most, then look again
 	if not model.listedCache or time() - (model.listedAt or 0) > 60 then model.listedCache, model.listedAt = {}, time() end
 	local key = id * 100000 + n
 	local c = model.listedCache[key]
 	if c == nil then
-		local basis = CH.Prices.CostBasis and CH.Prices.CostBasis() or "replacement"
-		local d = (basis == "replacement" or basis == "held") and CH.Depth.Cost(id, n)
+		local basis = AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() or "replacement"
+		local d = (basis == "replacement" or basis == "held") and AuctionIQ.Depth.Cost(id, n)
 		c = d and d.source ~= "chmat" and d.unit or false
 		model.listedCache[key] = c
 	end
@@ -72,7 +72,7 @@ local function unitsCost(model, id, n)
 	if n <= 0 then return 0 end
 	local buy, via = reagentPrice(model, id)
 	buy = listedEach(model, id, n, via) or buy
-	if not (CH.Prices.CostBasis and CH.Prices.CostBasis() == "held") then return buy and n * buy end
+	if not (AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() == "held") then return buy and n * buy end
 	local h = heldInfo(model, id)
 	local own = math.min(n, h.n)
 	local ownEach = h.each or buy
@@ -135,9 +135,9 @@ function A.ScrollOutputs(recipeID, info)
 	local out = {}
 	-- the game has no output item for an enchant (GetRecipeOutputItemData answers nothing useful),
 	-- so, as CraftSim does, the scroll comes from a table keyed by the recipe's craftingDataID
-	if ui and ui.GetCraftingOperationInfo and CH.EnchantScrolls then
+	if ui and ui.GetCraftingOperationInfo and AuctionIQ.EnchantScrolls then
 		local ok, op = pcall(ui.GetCraftingOperationInfo, recipeID, {}, nil, false)
-		local ids = ok and op and op.craftingDataID and CH.EnchantScrolls[op.craftingDataID]
+		local ids = ok and op and op.craftingDataID and AuctionIQ.EnchantScrolls[op.craftingDataID]
 		if ids then for q, id in ipairs(ids) do out[q] = id end; return out end
 	end
 	if not (ui and ui.GetRecipeOutputItemData) then return out end
@@ -277,7 +277,7 @@ function A.Measure(recipeID, opts)
 	opts = opts or {}
 	local ui = api()
 	if not ui or not ui.GetCraftingOperationInfo then return nil, "This game version has no crafting simulation." end
-	if not CH.Prices.Available() then return nil, "Needs TradeSkillMaster for prices." end
+	if not AuctionIQ.Prices.Available() then return nil, "Needs TradeSkillMaster for prices." end
 	local info = ui.GetRecipeInfo(recipeID)
 	local schematic = ui.GetRecipeSchematic(recipeID, opts.allocationGUID ~= nil)
 	if not info or not schematic then return nil, "No recipe data." end
@@ -370,19 +370,19 @@ function A.Measure(recipeID, opts)
 	-- What the spec adds that the game doesn't report: perk bonuses to Multicraft items,
 	-- Resourcefulness savings, Ingenuity refunds and Concentration cost.
 	local profID = opts.professionID
-	local tree = profID and CH.Spec and CH.Spec.Tree(profID)
+	local tree = profID and AuctionIQ.Spec and AuctionIQ.Spec.Tree(profID)
 	model.tree = tree
 	if tree then
-		local s = CH.Spec.CurrentStats(profID, tree, recipeID)
+		local s = AuctionIQ.Spec.CurrentStats(profID, tree, recipeID)
 		model.stats0.mcExtra, model.stats0.resExtra = s.mcExtra, s.resExtra
 		model.stats0.refundExtra, model.stats0.concReduce = s.refundExtra, s.concReduce
 	end
 
 	-- Midnight enchanting crafts cast Shatter first (the Craft button does it), so count Shattering
 	-- Essence even before it's on you, as CraftSim does.
-	if CH.Queue and CH.Queue.NeedsShatter and CH.Queue.NeedsShatter(recipeID) then
+	if AuctionIQ.Queue and AuctionIQ.Queue.NeedsShatter and AuctionIQ.Queue.NeedsShatter(recipeID) then
 		model.raw0 = St().Copy(model.stats0) -- what the game reports, to measure finishing reagents against
-		St().Add(model.stats0, CH.Queue.ShatterStats(profID))
+		St().Add(model.stats0, AuctionIQ.Queue.ShatterStats(profID))
 		model.shatter = true
 	end
 
@@ -425,7 +425,7 @@ function A.Measure(recipeID, opts)
 						local cost = p or 0
 						if own > 0 then
 							local sell = price("chvalue", id)
-							cost = sell and math.min(cost > 0 and cost or math.huge, sell * CH.AH_CUT) or cost
+							cost = sell and math.min(cost > 0 and cost or math.huge, sell * AuctionIQ.AH_CUT) or cost
 						end
 						table.insert(options, { itemID = id, slot = slot.index, cost = cost, buy = p, own = own, delta = d })
 					end
@@ -480,7 +480,7 @@ end
 -- A row's value: item price after cut (or the order's commission) and the average profit.
 local function valueRow(model, row, stats, item, costR, fin)
 	local key = model.outputKeys and model.outputKeys[row.quality]
-	local unit = key and CH.Prices.Get("chvalue", key) or price("chvalue", item)
+	local unit = key and AuctionIQ.Prices.Get("chvalue", key) or price("chvalue", item)
 	local total = costR + finCost(fin)
 	-- the reagents Resourcefulness can save: all the required ones but the vellum
 	local saveable = math.max(0, costR - vellumCost(model))
@@ -498,18 +498,18 @@ local function valueRow(model, row, stats, item, costR, fin)
 	if not unit then row.value, row.profit = nil, nil; return row end
 	-- your record: an item that keeps selling under forecast is valued at what it really fetches
 	local shade, why
-	if CH.Forecast then shade, why = CH.Forecast.Shade(item) end
+	if AuctionIQ.Forecast then shade, why = AuctionIQ.Forecast.Shade(item) end
 	if shade then unit = unit * shade; row.shade, row.shadeWhy = shade, why end
 	-- expected gold: after the cut, less deposits lost to expiries and gold tied up until it sells
 	row.price = unit
-	local ev, detail = CH.Expect.Value(item, unit)
+	local ev, detail = AuctionIQ.Expect.Value(item, unit)
 	unit, row.ev = ev, detail
 	local avg, parts = St().Average(unit, model.made, total, saveable, stats)
 	row.unit, row.value, row.profit, row.parts = unit, unit * model.made, avg, parts
 	if model.recraftFrom then
 		local okey = model.outputKeys and model.outputKeys[model.recraftFrom]
-		local old = okey and CH.Prices.Get("chvalue", okey) or price("chvalue", model.outputs[model.recraftFrom] or model.output)
-		row.oldValue = old and old * CH.AH_CUT
+		local old = okey and AuctionIQ.Prices.Get("chvalue", okey) or price("chvalue", model.outputs[model.recraftFrom] or model.output)
+		row.oldValue = old and old * AuctionIQ.AH_CUT
 		row.profit = row.oldValue and (row.profit - row.oldValue) or nil
 	end
 	return row
@@ -518,7 +518,7 @@ end
 -- One pass: cheapest reagents for each quality with this finishing set. live asks the game for
 -- quality and Concentration; otherwise the model works them out from skill (for simulations).
 -- Long work (a scan) can pause here and pick up next frame, so one heavy recipe can't freeze the game.
-local function yield() local s = CH.Scan; if s and s.Yield then s.Yield() end end
+local function yield() local s = AuctionIQ.Scan; if s and s.Yield then s.Yield() end end
 
 local frontier, picksOf -- below: the cheapest reagent mixes for each amount of skill
 
@@ -755,7 +755,7 @@ local function priceKey(model)
 	local parts = {}
 	for _, slot in ipairs(model.qual) do
 		for _, id in ipairs(slot.items) do
-			local h = CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" and heldInfo(model, id)
+			local h = AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() == "held" and heldInfo(model, id)
 			parts[#parts + 1] = tostring(reagentPrice(model, id) or "-") .. (h and ("/" .. h.n .. "@" .. tostring(h.each)) or "")
 		end
 	end
@@ -878,7 +878,7 @@ function A.Evaluate(model, opts)
 		finishingPicks = { plain = finPlain, conc = finConc } }
 	-- the decision numbers: break-even sale price, and what Concentration adds over the plain craft
 	-- (opts.lean leaves them out: the knowledge point planner only reads the best rows' profit)
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	if Dc and not opts.lean then
 		for _, r in ipairs(rows) do
 			r.breakEven = Dc.BreakEven(result, r)
@@ -963,7 +963,7 @@ end
 --- Add to a reagent line what you hold of it: own (units from your stock), ownEach (what you paid,
 --- or today's price), buyN (units to buy) and sell (what one would bring on the AH after the cut).
 function A.HeldLine(l, model)
-	if not (model and CH.Prices.CostBasis and CH.Prices.CostBasis() == "held") then return l end
+	if not (model and AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() == "held") then return l end
 	local h = heldInfo(model, l.id)
 	l.own = math.min(l.n, h.n)
 	l.buyN = l.n - l.own
@@ -980,11 +980,11 @@ end
 function A.HeldText(l)
 	local out = {}
 	if not (l and l.own and l.own > 0) then return out end
-	local M, T = CH.FormatMoney, CH.Theme
+	local M, T = AuctionIQ.FormatMoney, AuctionIQ.Theme
 	local function m(v) return v and M(v) or T.Color("muted", "-") end
-	local B = CH.Window.Book
-	local list = CH.Prices.Get("chvalue", "i:" .. l.id)
-	local lowest = CH.Prices.Raw and CH.Prices.Raw("dbminbuyout", l.id) or l.buy
+	local B = AuctionIQ.Window.Book
+	local list = AuctionIQ.Prices.Get("chvalue", "i:" .. l.id)
+	local lowest = AuctionIQ.Prices.Raw and AuctionIQ.Prices.Raw("dbminbuyout", l.id) or l.buy
 	out[#out + 1] = B.Sub(string.format("Opportunity cost (%d yours)", l.own), m(l.ownEach))
 	out[#out + 1] = B.Sub("   Stock", tostring(l.stock or l.own))
 	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
@@ -992,7 +992,7 @@ function A.HeldText(l)
 	out[#out + 1] = B.Sub("   Sell price", m(list))
 	-- what selling them would really leave you: the cut, plus deposits and waiting for a slow seller
 	if list and l.ownEach and l.sell then
-		local _, how = CH.Prices.SellValue(l.id)
+		local _, how = AuctionIQ.Prices.SellValue(l.id)
 		local days = how and how.days
 		out[#out + 1] = B.Sub(days and days >= 0.5 and string.format("   Cut, deposits, ~%.0f days to sell", days) or "   Cut, deposits, wait",
 			"-" .. M(math.max(0, list - l.ownEach)))
@@ -1018,7 +1018,7 @@ end
 function A.CraftOrSellLines(result, r)
 	local cs = A.CraftOrSell(result, r)
 	if not cs then return {} end
-	local B = CH.Window.Book
+	local B = AuctionIQ.Window.Book
 	return { B.Head("Craft or sell?"),
 		B.Line("Craft and sell the item", cs.craft),
 		B.Line("Sell your reagents instead", cs.sell),
@@ -1034,7 +1034,7 @@ function A.CostLines(result, picks, fin)
 			local n = picks[i][q] or 0
 			if n > 0 then
 				local id = slot.items[q]
-				local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
+				local unit, via = reagentPrice(result.model, id), AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice and select(2, AuctionIQ.Scan.ReagentPrice(id, result.recipeID))
 				local total = unitsCost(result.model, id, n)
 				local listed = listedEach(result.model, id, n, via)
 				table.insert(out, A.HeldLine({ id = id, name = itemName(id), rank = q, tiers = #slot.items, n = n, unit = total and total / n or unit,
@@ -1044,7 +1044,7 @@ function A.CostLines(result, picks, fin)
 	end
 	for _, slot in ipairs(result.fixed) do
 		local id = slot.items[1]
-		local unit, via = reagentPrice(result.model, id), CH.Scan and CH.Scan.ReagentPrice and select(2, CH.Scan.ReagentPrice(id, result.recipeID))
+		local unit, via = reagentPrice(result.model, id), AuctionIQ.Scan and AuctionIQ.Scan.ReagentPrice and select(2, AuctionIQ.Scan.ReagentPrice(id, result.recipeID))
 		local total = unitsCost(result.model, id, slot.qty)
 		local listed = listedEach(result.model, id, slot.qty, via)
 		table.insert(out, A.HeldLine({ id = id, name = itemName(id), n = slot.qty, unit = total and total / slot.qty or unit, buy = listed or unit,
@@ -1151,7 +1151,7 @@ function A.HeldConcRow(result)
 	r.avgConcentration, r.ingenuity = avgConc, ing
 	r.perPoint = r.profit and avgConc and avgConc > 0 and r.profit / avgConc or nil
 	r.fromBags = true
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	if Dc then
 		r.breakEven = Dc.BreakEven(result, r)
 		r.gain = Dc.ConcGain(r, result.best and result.best.profit)

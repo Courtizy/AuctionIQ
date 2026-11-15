@@ -6,10 +6,10 @@
 --   normal post here when nobody is cheaper: AuctionIQ value
 --   max    never post above it: 3x normal
 -- and how many to keep up across the whole Warband (stock target, else a cap).
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local G = {}
-CH.Groups = G
+AuctionIQ.Groups = G
 
 local SEP = "/"
 G.SEP = SEP
@@ -25,8 +25,8 @@ G.DEFAULT_OPS = {
 }
 
 local function store()
-	CH.db.groups = CH.db.groups or {}
-	local s = CH.db.groups
+	AuctionIQ.db.groups = AuctionIQ.db.groups or {}
+	local s = AuctionIQ.db.groups
 	s.auto = s.auto or {}
 	s.manual = s.manual or {}
 	s.ops = s.ops or {}
@@ -187,7 +187,7 @@ function G.ImportTSM()
 	opsFrom(profile and db["p@" .. profile .. "@userData@operations"])
 	local custom = db["g@ @userData@customPriceSources"]
 	if type(custom) == "table" then
-		local mine = CH.Formula.Custom()
+		local mine = AuctionIQ.Formula.Custom()
 		for k, v in pairs(custom) do
 			if type(v) == "string" then mine[tostring(k):lower()] = v; n.sources = n.sources + 1 end
 		end
@@ -291,17 +291,17 @@ function G.Rebuild()
 	local s = store()
 	local auto, n = {}, 0
 	local function put(id, path) if id and not auto[id] then auto[id] = path; n = n + 1 end end
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
-				local line = CH.Paths and CH.Paths.MainGroup and CH.Paths.MainGroup(r.name) or "Other"
+				local line = AuctionIQ.Paths and AuctionIQ.Paths.MainGroup and AuctionIQ.Paths.MainGroup(r.name) or "Other"
 				local path = "Crafted" .. SEP .. (p.name or "?") .. SEP .. line
 				put(r.item, path)
 				put(r.concItem, path)
 			end
 		end
 	end
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
 				for _, acc in ipairs({ r.accounts or {}, r.concAccounts or {} }) do
@@ -310,8 +310,8 @@ function G.Rebuild()
 			end
 		end
 	end
-	if CH.Ledger and CH.Ledger.Available() then
-		local paid, sold = CH.Ledger.Paid(), CH.Ledger.LastSold()
+	if AuctionIQ.Ledger and AuctionIQ.Ledger.Available() then
+		local paid, sold = AuctionIQ.Ledger.Paid(), AuctionIQ.Ledger.LastSold()
 		for id in pairs(paid) do if sold[id] then put(id, "Resale") end end
 	end
 	s.auto = auto
@@ -349,7 +349,7 @@ end
 G.Members = members
 
 --- Put an item in a group yourself (path), or back to automatic (nil).
-function G.Move(id, path) store().manual[id] = path; if CH.Market then CH.Market.Clear() end end
+function G.Move(id, path) store().manual[id] = path; if AuctionIQ.Market then AuctionIQ.Market.Clear() end end
 
 --- Every group with its item count (sub-groups included), sorted: { path, n, own }.
 function G.Tree()
@@ -434,7 +434,7 @@ function G.CraftRule(id, level)
 	local s = store()
 	local op, name = ruleFor(id, level, s.craftAssign, s.craftOps)
 	if not op then return nil end
-	local F = CH.Formula
+	local F = AuctionIQ.Formula
 	local function v(x) return type(x) == "number" and x or (x and F.Value(x, id, nil, level)) end
 	local minR, maxR = v(op.minRestock), v(op.maxRestock)
 	return { op = name, minRestock = math.max(0, math.floor(minR or 1)), maxRestock = math.max(0, math.floor(maxR or 0)),
@@ -448,7 +448,7 @@ function G.ShopRule(id, level)
 	local op, name = ruleFor(id, level, s.shopAssign, s.shopOps)
 	if not op then return nil end
 	local mp = op.maxPrice
-	mp = type(mp) == "number" and mp or (mp and CH.Formula.Value(mp, id, nil, level))
+	mp = type(mp) == "number" and mp or (mp and AuctionIQ.Formula.Value(mp, id, nil, level))
 	return { op = name, maxPrice = mp, showAbove = op.showAbove ~= false }
 end
 
@@ -460,10 +460,10 @@ end
 
 -- What making one costs, from the newest scan that makes it.
 local function costEach(id)
-	local _, acc = CH.CraftAccounts(id)
+	local _, acc = AuctionIQ.CraftAccounts(id)
 	if not acc then return nil end
-	local paid = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Paid() or {}
-	return CH.Ledger and CH.Ledger.CostAtPaid(acc, paid) or nil
+	local paid = AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.Paid() or {}
+	return AuctionIQ.Ledger and AuctionIQ.Ledger.CostAtPaid(acc, paid) or nil
 end
 
 G.CostEach = costEach
@@ -475,10 +475,10 @@ G.CostEach = costEach
 --- posts sell, and down (to -10%) only when it is likely that under 40% do; the step grows with how
 --- sure it is. Otherwise 1 (no change).
 function G.Learn(id)
-	if not (CH.Ledger and CH.Ledger.Available()) then return 1 end
-	local sold, expired, detail = CH.Ledger.SellThrough(id)
+	if not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available()) then return 1 end
+	local sold, expired, detail = AuctionIQ.Ledger.SellThrough(id)
 	if sold + expired == 0 then return 1 end
-	local st = CH.Prob.SellThrough(sold, expired, CH.Expect and CH.Expect.RegionRate(id) or 0.5)
+	local st = AuctionIQ.Prob.SellThrough(sold, expired, AuctionIQ.Expect and AuctionIQ.Expect.RegionRate(id) or 0.5)
 	local f, sure = 1, nil
 	if st.pUp > 0.6 then f, sure = 1 + 0.05 * (st.pUp - 0.6) / 0.4, st.pUp
 	elseif st.pDown > 0.6 then f, sure = 1 - 0.10 * (st.pDown - 0.6) / 0.4, st.pDown end
@@ -497,9 +497,9 @@ function G.Prices(id, opName, level)
 	local op, name = G.Operation(id, level)
 	if opName and store().ops[opName] then op, name = store().ops[opName], opName end
 	op = op or store().ops.Default
-	local F = CH.Formula
+	local F = AuctionIQ.Formula
 	local item = level and ("i:" .. id .. "::i" .. level) or ("i:" .. id)
-	local normal = op.normalPrice and F.Value(op.normalPrice, id, nil, level) or CH.Prices.Get("chvalue", item)
+	local normal = op.normalPrice and F.Value(op.normalPrice, id, nil, level) or AuctionIQ.Prices.Get("chvalue", item)
 	local learned
 	if op.learn and normal then
 		local f, why = G.Learn(id)
@@ -512,18 +512,18 @@ function G.Prices(id, opName, level)
 		local floor
 		if op.floor == "cost" then
 			local c = costEach(id)
-			floor, why = c and c / CH.AH_CUT, "cost to make"
+			floor, why = c and c / AuctionIQ.AH_CUT, "cost to make"
 		elseif op.floor == "paid" then
-			local p = CH.Ledger and CH.Ledger.Available() and CH.Ledger.Paid()[id]
-			floor, why = p and p.each / CH.AH_CUT, "what you paid"
+			local p = AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Ledger.Paid()[id]
+			floor, why = p and p.each / AuctionIQ.AH_CUT, "what you paid"
 		end
-		if not floor then floor, why = CH.Prices.Get("chmat", item), "buy price" end
+		if not floor then floor, why = AuctionIQ.Prices.Get("chmat", item), "buy price" end
 		min = floor and floor * (op.floorPct or 1)
 	end
 	local max
 	if op.maxPrice then max = F.Value(op.maxPrice, id, { normal = normal, min = min }, level)
 	else max = normal and normal * (op.maxMult or 3) end
-	local cap = op.cap or (CH.Par and CH.Par.Target(id)) or 5
+	local cap = op.cap or (AuctionIQ.Par and AuctionIQ.Par.Target(id)) or 5
 	local undercut = type(op.undercut) == "number" and op.undercut or F.Value(op.undercut, id, nil, level) or 1
 	return { min = min and math.floor(min), normal = normal and math.floor(normal), max = max and math.floor(max), cap = cap,
 		undercut = undercut, duration = op.duration or 2, post = op.post ~= false and cap > 0, op = name, why = why,

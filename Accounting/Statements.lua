@@ -9,10 +9,10 @@
 --   Cash Flow: why your gold changed over the period. TSM's gold log sets the change; the ledger
 --     classifies what it can, and the rest is Unclassified gold movement. Gold moved between your
 --     own characters is neither in nor out.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local St = {}
-CH.Statements = St
+AuctionIQ.Statements = St
 
 local DAY = 86400
 local WEEK = 7 * DAY
@@ -62,7 +62,7 @@ end
 -- Shared pieces --------------------------------------------------------------------------------
 local function mine()
 	local set = {}
-	for _, c in ipairs(CH.Ledger.Characters()) do set[c.name] = true end
+	for _, c in ipairs(AuctionIQ.Ledger.Characters()) do set[c.name] = true end
 	return set
 end
 
@@ -71,7 +71,7 @@ end
 local function within(r, from, to, char)
 	if r.time < from or r.time >= to + 1 then return false end
 	if char then return r.player == char end
-	return not r.player or CH.Ledger.Included(r.player)
+	return not r.player or AuctionIQ.Ledger.Included(r.player)
 end
 local function isAuction(r) return r.source == nil or r.source == "Auction" end
 
@@ -80,16 +80,16 @@ local function isAuction(r) return r.source == nil or r.source == "Auction" end
 local function costEach(id, t, ctx)
 	local cr = ctx.crafted[id]
 	if cr then
-		local each, share = CH.Ledger.CostAt(cr.acc, ctx.index, t)
+		local each, share = AuctionIQ.Ledger.CostAt(cr.acc, ctx.index, t)
 		return each, "crafted", share
 	end
-	local p = CH.Ledger.PaidAt(ctx.index, id, t)
+	local p = AuctionIQ.Ledger.PaidAt(ctx.index, id, t)
 	if p then return p, "bought", 1 end
 	return nil, "gathered"
 end
 
 local function context()
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	return { crafted = L.Crafted(), index = L.PaidIndex() }
 end
 
@@ -97,7 +97,7 @@ end
 --- What you earned from `from` to `to`: { auction, cut, other, net, cogs = { crafted, bought, free,
 --- freeUnits }, gross, deposits, expenses = { { type, gold } }, expenseTotal, income, netIncome }.
 function St.Income(from, to, char)
-	local L, E = CH.Ledger, CH.Expect
+	local L, E = AuctionIQ.Ledger, AuctionIQ.Expect
 	local ctx, own = context(), mine()
 	local s = { auction = 0, other = 0, cogs = { crafted = 0, bought = 0, free = 0, freeUnits = 0 }, deposits = 0, expenses = {}, expenseTotal = 0, income = 0 }
 	for _, r in ipairs(L.Records("Sales")) do
@@ -110,7 +110,7 @@ function St.Income(from, to, char)
 			else s.cogs.freeUnits = s.cogs.freeUnits + r.quantity end
 		end
 	end
-	s.cut = -s.auction * (1 - CH.AH_CUT)
+	s.cut = -s.auction * (1 - AuctionIQ.AH_CUT)
 	s.net = s.auction + s.cut + s.other
 	s.cogsTotal = s.cogs.crafted + s.cogs.bought
 	s.cogs.backedShare = s.cogsTotal > 0 and (s.cogs.backed or 0) / s.cogsTotal or nil
@@ -142,14 +142,14 @@ end
 --- less what the units cost you): { [id] = { id, sold, revenue, cost, profit, each } }. Their profits
 --- add up to the statement's gross profit, less sales TSM logged without an item.
 function St.Items(from, to, char)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local ctx, out = context(), {}
 	for _, r in ipairs(L.Records("Sales")) do
 		if r.id and within(r, from, to, char) then
 			local x = out[r.id] or { id = r.id, sold = 0, revenue = 0, cost = 0 }
 			out[r.id] = x
 			x.sold = x.sold + (r.quantity or 0)
-			x.revenue = x.revenue + (isAuction(r) and (r.amount or 0) * CH.AH_CUT or (r.amount or 0))
+			x.revenue = x.revenue + (isAuction(r) and (r.amount or 0) * AuctionIQ.AH_CUT or (r.amount or 0))
 			local each = costEach(r.id, r.time, ctx)
 			x.cost = x.cost + (each or 0) * (r.quantity or 0)
 		end
@@ -166,8 +166,8 @@ end
 --- nothing), how ("crafted", "bought" or "gathered"), market.
 function St.Value(e, ctx, now)
 	if not e.unit or e.unit <= 0 then return nil end
-	local E = CH.Expect
-	local nrv = (E and E.Value and E.Value(e.id, e.unit)) or e.unit * CH.AH_CUT
+	local E = AuctionIQ.Expect
+	local nrv = (E and E.Value and E.Value(e.id, e.unit)) or e.unit * AuctionIQ.AH_CUT
 	nrv = math.max(0, nrv)
 	local cost, how = costEach(e.id, now, ctx)
 	return { book = cost and math.min(cost, nrv) or nrv, nrv = nrv, cost = cost, how = how, market = e.unit }
@@ -176,7 +176,7 @@ end
 --- What you hold now: { gold, holders = { { name, money } }, held = { book, market, costed, free },
 --- listed = { book, market }, assets, market (inventory at market), unrealized }.
 function St.Balance(char, now)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	now = now or time()
 	local ctx = context()
 	local b = { holders = {}, gold = 0, held = { book = 0, market = 0, costed = 0, free = 0, writedown = 0 }, listed = { book = 0, market = 0 },
@@ -220,8 +220,8 @@ function St.Balance(char, now)
 	b.unrealized = b.market - b.inventory
 	-- gold already promised: reagents still to buy for the crafts you've queued
 	b.committed = 0
-	if CH.Queue and CH.Queue.ShoppingList then
-		local ok, _, total = pcall(CH.Queue.ShoppingList)
+	if AuctionIQ.Queue and AuctionIQ.Queue.ShoppingList then
+		local ok, _, total = pcall(AuctionIQ.Queue.ShoppingList)
 		if ok then b.committed = total or 0 end
 	end
 	b.freeGold = b.gold - b.committed
@@ -242,7 +242,7 @@ end
 --- { opening, netIncome, unclassified, prices (the rest: price changes on stock you hold and stock
 --- you gathered), closing, since (the snapshot day it starts from) } or nil without snapshots.
 function St.Bridge(from, to)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	if not L.WorthChange then return nil end
 	local change, first, last, firstK = L.WorthChange(from)
 	if not change then return nil end
@@ -259,7 +259,7 @@ end
 --- income }, outflows = { buys, expenses }, classified, unclassified }. The opening and closing come
 --- from TSM's gold log; transfers between your own characters aren't counted either way.
 function St.Cash(from, to, char)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local own = mine()
 	local c = { inflows = { auction = 0, other = 0, income = 0 }, outflows = { buys = 0, expenses = 0 } }
 	-- each kind's records from `from` on, in time order, until past `to`
@@ -296,9 +296,9 @@ function St.Cash(from, to, char)
 end
 
 -- Views ----------------------------------------------------------------------------------------
-local LUI = CH.LedgerUI
-local T = CH.Theme
-local function money(c) return CH.FormatMoney and CH.FormatMoney(c or 0) or tostring(c) end
+local LUI = AuctionIQ.LedgerUI
+local T = AuctionIQ.Theme
+local function money(c) return AuctionIQ.FormatMoney and AuctionIQ.FormatMoney(c or 0) or tostring(c) end
 local function amount(c, kind)
 	if not c then return T.Color("muted", "-") end
 	if kind == "total" then return T.Color(c >= 0 and "ok" or "bad", money(c)) end

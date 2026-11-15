@@ -1,10 +1,10 @@
 -- Research, Professions, Paths: type what you want to sell, get a knowledge point plan for the open
 -- profession, see it on the profession's own trees (the game's layout), then try it in the crafting
 -- advisor (simulation) before spending a point. A page beside Research's nav, 724 wide.
-local CH = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (CH.Paths.Load)
+local AuctionIQ = AuctionIQ -- part of AuctionIQ_Paths, loaded on demand (AuctionIQ.Paths.Load)
 
 local PUI = {}
-CH.PathsUI = PUI
+AuctionIQ.PathsUI = PUI
 local frame, input, out, pointsText, goalButtons, tabButtons, view, treeNote
 local W = 724 -- the page's width, and the tree's: both follow the window (set in Build)
 local TREE_W, TREE_H = 724, 228 -- the whole tree across the page; the plan explained below it
@@ -26,7 +26,7 @@ PUI.MIDNIGHT = MIDNIGHT
 function PUI.Professions()
 	local out, seen = {}, {}
 	local function add(id, name)
-		if id and not seen[id] and CH.Spec.Data(id) then seen[id] = true; table.insert(out, { id = id, name = name or ("Profession " .. id) }) end
+		if id and not seen[id] and AuctionIQ.Spec.Data(id) then seen[id] = true; table.insert(out, { id = id, name = name or ("Profession " .. id) }) end
 	end
 	if GetProfessions and GetProfessionInfo then
 		local a, b = GetProfessions()
@@ -37,14 +37,14 @@ function PUI.Professions()
 			end
 		end
 	end
-	for id, p in pairs(CH.Me().professions or {}) do add(id, p.parent or p.name) end
+	for id, p in pairs(AuctionIQ.Me().professions or {}) do add(id, p.parent or p.name) end
 	return out
 end
 
 --- The profession the page shows: the open profession window's, else the one picked, else the first.
 function PUI.Prof()
-	local open = CH.OpenProfessionID()
-	if open and CH.Spec.Data(open) then return open end
+	local open = AuctionIQ.OpenProfessionID()
+	if open and AuctionIQ.Spec.Data(open) then return open end
 	local list = PUI.Professions()
 	for _, p in ipairs(list) do if p.id == chosenProf then return chosenProf end end
 	return list[1] and list[1].id or open
@@ -60,7 +60,7 @@ function PUI.Choose(id)
 end
 
 -- true when planning can run: the page's profession is the one open in the profession window
-local function canPlan() return CH.OpenProfessionID() ~= nil and CH.OpenProfessionID() == PUI.Prof() end
+local function canPlan() return AuctionIQ.OpenProfessionID() ~= nil and AuctionIQ.OpenProfessionID() == PUI.Prof() end
 
 local function render(lines)
 	out:SetText(table.concat(lines or {}, "\n"))
@@ -69,10 +69,10 @@ end
 
 local function updatePoints()
 	local prof = PUI.Prof()
-	local tree = prof and CH.Spec.Tree(prof)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
 	local unspent = tree and tree.unspent or 0
 	pointsText:SetText(string.format("Plan %d points  %s", unspent + extra,
-		CH.Theme.Color("muted", string.format("(%d unspent + %d to earn)", unspent, extra))))
+		AuctionIQ.Theme.Color("muted", string.format("(%d unspent + %d to earn)", unspent, extra))))
 end
 
 local function setLabel(b, t)
@@ -82,11 +82,11 @@ end
 --- Redraw the tree for the selected spec tab with the current plan on it. Returns what it drew.
 function PUI.DrawTree()
 	if not frame then return {} end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local prof = PUI.Prof() or (lastPlan and lastPlan.prof)
-	local tree = prof and CH.Spec.Tree(prof)
-	local plan = CH.Paths.Current(prof)
-	local marks = CH.Paths.Marks(plan)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
+	local plan = AuctionIQ.Paths.Current(prof)
+	local marks = AuctionIQ.Paths.Marks(plan)
 	local tabs = tree and tree.tabs or {}
 	-- keep the chosen tab, else the one the plan starts in, else the first
 	local valid = false
@@ -113,7 +113,7 @@ function PUI.DrawTree()
 				setLabel(b, t.name .. (n > 0 and (" (" .. n .. ")") or ""))
 				local fs = b.text or (b.GetFontString and b:GetFontString())
 				if fs and fs.SetFontObject then fs:SetFontObject(font) end
-				CH.Window.OneLine(fs or {})
+				AuctionIQ.Window.OneLine(fs or {})
 				local c = t.id == selectedTab and T.accent or T.fg
 				if fs and fs.SetTextColor then fs:SetTextColor(c[1], c[2], c[3]) end
 				b:SetScript("OnClick", function() selectedTab = t.id; PUI.DrawTree() end)
@@ -145,34 +145,34 @@ function PUI.Run(goal, recipes)
 	if not canPlan() then
 		local name = "the profession"
 		for _, p in ipairs(PUI.Professions()) do if p.id == PUI.Prof() then name = p.name end end
-		render({ CH.Theme.Color("muted", "Open " .. name .. " to plan for it: a plan needs its recipes. The tree above shows where your points are now.") })
+		render({ AuctionIQ.Theme.Color("muted", "Open " .. name .. " to plan for it: a plan needs its recipes. The tree above shows where your points are now.") })
 		return
 	end
 	calc = nil
 	lastFocus = lastFocus and lastFocus.label == goal and lastFocus or { label = goal }
-	render({ CH.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
-	local plan, why = CH.Paths.Plan({ goal = goal, recipes = recipes, label = recipes and goal or nil, points = extra, onDone = function(p)
+	render({ AuctionIQ.Theme.Color("accent", "Working out a plan for \"" .. goal .. "\" ...") })
+	local plan, why = AuctionIQ.Paths.Plan({ goal = goal, recipes = recipes, label = recipes and goal or nil, points = extra, onDone = function(p)
 		lastPlan = p
 		if p.error then
-			render({ CH.Theme.Color("bad", "Couldn't finish the plan: " .. tostring(p.error)) })
+			render({ AuctionIQ.Theme.Color("bad", "Couldn't finish the plan: " .. tostring(p.error)) })
 		else
 			render(p.text)
 			selectedTab = nil
-			CH.Paths.SetCurrent(p)
+			AuctionIQ.Paths.SetCurrent(p)
 		end
 		PUI.simButton:SetEnabled(p.ranks ~= nil)
 	end })
-	if not plan then render({ CH.Theme.Color("muted", why) }) end
+	if not plan then render({ AuctionIQ.Theme.Color("muted", why) }) end
 end
 
 --- Set the points to what finishing the path for these recipes takes (less what's unspent).
 function PUI.DefaultPoints(recipes)
 	local prof = canPlan() and PUI.Prof()
-	local tree = prof and CH.Spec.Tree(prof)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
 	if not tree then return extra end
-	if not recipes then recipes = CH.Paths.Match(input and input:GetText() or "") end
+	if not recipes then recipes = AuctionIQ.Paths.Match(input and input:GetText() or "") end
 	local goal = input and input:GetText() or ""
-	extra = math.max(0, CH.Paths.PathCost(prof, recipes, (not recipes or #recipes == 0) and goal or nil) - (tree.unspent or 0))
+	extra = math.max(0, AuctionIQ.Paths.PathCost(prof, recipes, (not recipes or #recipes == 0) and goal or nil) - (tree.unspent or 0))
 	updatePoints()
 	return extra
 end
@@ -182,11 +182,11 @@ local presetLines
 --- Show a saved preset on the tree and under it (no planning needed).
 function PUI.ShowPreset(prof, p)
 	calc = nil
-	local plan = CH.Presets.AsPlan(prof, p)
+	local plan = AuctionIQ.Presets.AsPlan(prof, p)
 	lastPlan = plan
 	selectedTab = nil
 	render(presetLines(plan, p))
-	CH.Paths.SetCurrent(plan)
+	AuctionIQ.Paths.SetCurrent(plan)
 	if PUI.simButton then PUI.simButton:SetEnabled(plan.ranks ~= nil) end
 	return plan
 end
@@ -196,7 +196,7 @@ function PUI.Pick(label, recipes)
 	input:SetText(label)
 	lastFocus = { label = label, recipes = recipes }
 	local prof = PUI.Prof()
-	local p = prof and CH.Presets.Get(prof, label)
+	local p = prof and AuctionIQ.Presets.Get(prof, label)
 	if p then return PUI.ShowPreset(prof, p) end
 	PUI.DefaultPoints(recipes)
 	PUI.Run(label, recipes)
@@ -204,11 +204,11 @@ end
 
 --- Build the page into p (from the main window: Research, Professions, Paths).
 function PUI.Build(p)
-	local T, Wd = CH.Theme, CH.Window
+	local T, Wd = AuctionIQ.Theme, AuctionIQ.Window
 	frame = p
 	W = math.max(724, math.floor(p:GetWidth() or 724))
 	TREE_W = W
-	TREE_H = 228 + math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600) -- a taller window, a taller tree
+	TREE_H = 228 + math.max(0, (AuctionIQ.UI.Height and AuctionIQ.UI.Height() or 600) - 600) -- a taller window, a taller tree
 	selectedTab = nil
 	-- your professions, to pick whose tree to show
 	profButtons = {}
@@ -225,14 +225,14 @@ function PUI.Build(p)
 	-- what you spend in the tree
 	local weekly = T.Button(frame, "Weekly", 70, 18)
 	weekly:SetPoint("TOPRIGHT", -74, PAY_Y + 2)
-	weekly:SetScript("OnClick", function() CH.UI.Go("operations", "professions") end)
-	weekly:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "The weekly knowledge checklist for every character and profession, what's coming up, and Concentration." } }) end)
+	weekly:SetScript("OnClick", function() AuctionIQ.UI.Go("operations", "professions") end)
+	weekly:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "The weekly knowledge checklist for every character and profession, what's coming up, and Concentration." } }) end)
 	weekly:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	frame.weekly = weekly
 	local byRecipe = T.Button(frame, "By recipe", 70, 18)
 	byRecipe:SetPoint("TOPRIGHT", 0, PAY_Y + 2)
-	byRecipe:SetScript("OnClick", function() CH.UI.Go("operations", "plans") end)
-	byRecipe:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Each saved plan, recipe by recipe: quality and profit now against planned." } }) end)
+	byRecipe:SetScript("OnClick", function() AuctionIQ.UI.Go("operations", "plans") end)
+	byRecipe:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Each saved plan, recipe by recipe: quality and profit now against planned." } }) end)
 	byRecipe:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	frame.byRecipe = byRecipe
 	local ask = Wd.Text(frame, 0, ASK_Y, W, "LEFT", "GameFontNormal")
@@ -265,31 +265,31 @@ function PUI.Build(p)
 	local presets = T.Button(frame, "Work out presets", 120, 18)
 	presets:SetPoint("TOPLEFT", 380, POINTS_Y)
 	presets:SetScript("OnClick", function()
-		local ok, why = CH.Presets.Build(PUI.Prof())
-		if not ok then render({ CH.Theme.Color("muted", why) }) else lastPlan = nil; PUI.Refresh() end
+		local ok, why = AuctionIQ.Presets.Build(PUI.Prof())
+		if not ok then render({ AuctionIQ.Theme.Color("muted", why) }) else lastPlan = nil; PUI.Refresh() end
 	end)
-	presets:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "A build for each thing this profession sells, from your build now, tested in market simulations. Again once they're a day old." } }) end)
+	presets:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "A build for each thing this profession sells, from your build now, tested in market simulations. Again once they're a day old." } }) end)
 	presets:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	frame.presets = presets
 	PUI.simButton = T.Button(frame, "Simulate", 90, 18)
 	PUI.simButton:SetPoint("TOPRIGHT", -66, POINTS_Y)
 	PUI.simButton:SetEnabled(lastPlan ~= nil and lastPlan.ranks ~= nil) -- kept when the window is resized
 	PUI.simButton:SetScript("OnClick", function()
-		if lastPlan and lastPlan.ranks then CH.AdvisorUI.SetPlan(lastPlan) end
+		if lastPlan and lastPlan.ranks then AuctionIQ.AdvisorUI.SetPlan(lastPlan) end
 	end)
 	PUI.simButton:SetScript("OnEnter", function(self)
-		CH.Window.Tooltip(self, { { "Show the crafting advisor's numbers as if you'd spent these points. Turn it off from the advisor's Sim bar." } })
+		AuctionIQ.Window.Tooltip(self, { { "Show the crafting advisor's numbers as if you'd spent these points. Turn it off from the advisor's Sim bar." } })
 	end)
 	PUI.simButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	local clear = T.Button(frame, "Clear", 60, 18)
 	clear:SetPoint("TOPRIGHT", 0, POINTS_Y)
 	clear:SetScript("OnClick", function()
-		CH.Paths.ClearCurrent(lastPlan and lastPlan.prof or PUI.Prof())
+		AuctionIQ.Paths.ClearCurrent(lastPlan and lastPlan.prof or PUI.Prof())
 		lastPlan, calc = nil, nil
 		PUI.simButton:SetEnabled(false)
-		render({ CH.Theme.Color("muted", "Plan cleared.") })
+		render({ AuctionIQ.Theme.Color("muted", "Plan cleared.") })
 	end)
-	clear:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { "Take the plan off the trees, here and in the game's Specializations tab." } }) end)
+	clear:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { "Take the plan off the trees, here and in the game's Specializations tab." } }) end)
 	clear:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 	-- the profession's spec tabs, then its tree as the game lays it out
@@ -300,9 +300,9 @@ function PUI.Build(p)
 		b:Hide()
 		tabButtons[i] = b -- widths and positions set from their names in DrawTree
 	end
-	view = CH.TreeView.New(frame, 0, TREE_Y, TREE_W, TREE_H)
+	view = AuctionIQ.TreeView.New(frame, 0, TREE_Y, TREE_W, TREE_H)
 	view.onClick = function(id, button) PUI.NodeClick(id, button, IsShiftKeyDown and IsShiftKeyDown()) end
-	treeNote = CH.Window.OneLine(Wd.Text(frame, 0, TREE_Y - TREE_H - 4, TREE_W))
+	treeNote = AuctionIQ.Window.OneLine(Wd.Text(frame, 0, TREE_Y - TREE_H - 4, TREE_W))
 
 	local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", 0, TREE_Y - TREE_H - 22)
@@ -335,7 +335,7 @@ local function groupMenu(owner, g)
 end
 
 local function fillGoals()
-	local groups = canPlan() and CH.Paths.GoalGroups() or {}
+	local groups = canPlan() and AuctionIQ.Paths.GoalGroups() or {}
 	PUI.groups = groups
 	local gx = 0
 	for i, b in ipairs(goalButtons) do
@@ -351,8 +351,8 @@ local function fillGoals()
 			b:SetScript("OnClick", function(self) groupMenu(self, g) end)
 			b:SetScript("OnEnter", function(self)
 				local lines = { { g.name }, g.yield and { "Plans the Disenchanting tree for more rank 2 materials", "" } or { #g.recipes .. " recipes", "" } }
-				if #g.subs > 0 then table.insert(lines, { CH.Theme.Color("muted", "Click to pick all of them or one branch.") }) end
-				CH.Window.Tooltip(self, lines)
+				if #g.subs > 0 then table.insert(lines, { AuctionIQ.Theme.Color("muted", "Click to pick all of them or one branch.") }) end
+				AuctionIQ.Window.Tooltip(self, lines)
 			end)
 			b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 			b:Show()
@@ -364,7 +364,7 @@ end
 
 --- Open Research, Professions, Paths in the main window; again closes the window.
 local function fillProfessions()
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local list, current = PUI.Professions(), PUI.Prof()
 	local x = 0
 	for i, b in ipairs(profButtons) do
@@ -387,21 +387,21 @@ local function fillProfessions()
 end
 
 function PUI.Toggle()
-	if PUI.IsShown() then CH.UI.Toggle() else PUI.Open() end
+	if PUI.IsShown() then AuctionIQ.UI.Toggle() else PUI.Open() end
 end
 
-function PUI.Open() CH.UI.Page("operations", "paths") end
+function PUI.Open() AuctionIQ.UI.Page("operations", "paths") end
 
 --- Knowledge for a profession on this character, in a line: unspent points, gained this week and the
 --- weekly sources ticked off.
 function PUI.KnowledgeLine(prof)
-	local T = CH.Theme
-	local name = CH.SpecData and CH.SpecData[prof] and CH.SpecData[prof].name
-	local tree = prof and CH.Spec.Tree(prof)
-	local key = CH.CharacterKey and CH.CharacterKey()
+	local T = AuctionIQ.Theme
+	local name = AuctionIQ.SpecData and AuctionIQ.SpecData[prof] and AuctionIQ.SpecData[prof].name
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
+	local key = AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()
 	local row
-	pcall(CH.Planner.RecordKP)
-	for _, r in ipairs(CH.Planner.Knowledge()) do
+	pcall(AuctionIQ.Planner.RecordKP)
+	for _, r in ipairs(AuctionIQ.Planner.Knowledge()) do
 		if r.key == key and name and (r.prof == name or r.prof:find(name, 1, true) or name:find(r.prof, 1, true)) then row = r end
 	end
 	local unspent = tree and tree.unspent or (row and row.unspent) or 0
@@ -433,18 +433,18 @@ end
 --- Plan payoff for a profession, in a line: this character's saved plan, its gold a day now and once
 --- finished, and how many of its points are in.
 function PUI.PayoffLine(prof)
-	local T, M = CH.Theme, CH.FormatMoney
-	local me = CH.Me and CH.Me() or {}
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
+	local me = AuctionIQ.Me and AuctionIQ.Me() or {}
 	local sum
-	for _, s in pairs(CH.db.plans or {}) do
+	for _, s in pairs(AuctionIQ.db.plans or {}) do
 		if s.prof == prof and (not sum or s.char == me.name) then sum = s end
 	end
-	local name = CH.SpecData and CH.SpecData[prof] and CH.SpecData[prof].name or "this profession"
+	local name = AuctionIQ.SpecData and AuctionIQ.SpecData[prof] and AuctionIQ.SpecData[prof].name or "this profession"
 	if not sum then return T.Color("accent", "Plan payoff  ") .. T.Color("muted", "No saved plan for " .. name .. " yet. Plan below and it shows here.") end
 	local gain = (sum.final or 0) - (sum.start or 0)
 	local t = T.Color("accent", "Plan payoff  ") .. string.format("%s, %d points: %s to %s a day ", sum.label or "?", sum.budget or 0, M(sum.start or 0), M(sum.final or 0))
 		.. T.Color(gain >= 0 and "ok" or "bad", string.format("(%s%s)", gain >= 0 and "+" or "", M(gain)))
-	local done, total = PUI.PlanProgress(sum, CH.Spec.Tree(prof))
+	local done, total = PUI.PlanProgress(sum, AuctionIQ.Spec.Tree(prof))
 	if done and total > 0 then
 		t = t .. (done >= total and T.Color("ok", ". Done.") or string.format(". %d of %d points in.", done, total))
 	end
@@ -453,14 +453,14 @@ end
 
 -- A preset in words: what it brings on your market and how sure that is, then its steps.
 presetLines = function(plan, p)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local L = {}
 	table.insert(L, T.Color("accent", "Preset: ") .. (p.group and (p.group .. " - ") or "") .. p.label
-		.. T.Color("muted", string.format("  worked out %s ago on your market", CH.Scans.Age(time() - (p.at or time())))))
+		.. T.Color("muted", string.format("  worked out %s ago on your market", AuctionIQ.Scans.Age(time() - (p.at or time())))))
 	table.insert(L, string.format("From your build now, %d point%s to finish it. %s a day now, %s once done.", p.points, p.points == 1 and "" or "s", M(p.start), M(p.final)))
 	if p.mean then
 		table.insert(L, string.format("Across %d market simulations: %s a day on average, %s to %s in 8 of 10, and the best preset in %d%% of them.",
-			CH.Presets.RUNS, M(p.mean), M(p.p10), M(p.p90), math.floor((p.wins or 0) * 100 + 0.5)))
+			AuctionIQ.Presets.RUNS, M(p.mean), M(p.p10), M(p.p90), math.floor((p.wins or 0) * 100 + 0.5)))
 	end
 	table.insert(L, "")
 	for i, st in ipairs(plan.steps) do
@@ -476,11 +476,11 @@ end
 
 --- The presets for a profession, as lines: best on your market first.
 function PUI.PresetsText(prof)
-	local T, M, Pr = CH.Theme, CH.FormatMoney, CH.Presets
+	local T, M, Pr = AuctionIQ.Theme, AuctionIQ.FormatMoney, AuctionIQ.Presets
 	local L = {}
 	local list, stale = Pr.List(prof)
 	if Pr.Running() then
-		local r = CH.Presets.Progress and CH.Presets.Progress() or {}
+		local r = AuctionIQ.Presets.Progress and AuctionIQ.Presets.Progress() or {}
 		table.insert(L, T.Color("accent", "Working out presets") .. T.Color("muted", string.format("  %d of %d (%s)...", r.at or 0, r.of or 0, r.label or "")))
 	end
 	if #list == 0 then
@@ -504,11 +504,11 @@ end
 --- below what you've spent. The gold a day is for the focus last picked, else everything.
 function PUI.NodeClick(nodeID, button, shift)
 	local prof = PUI.Prof()
-	local tree = prof and CH.Spec.Tree(prof)
+	local tree = prof and AuctionIQ.Spec.Tree(prof)
 	local n = tree and tree.nodes[nodeID]
 	if not n then return end
-	local now = CH.Spec.Ranks(tree)
-	if not calc or calc.prof ~= prof then calc = { prof = prof, ranks = CH.Spec.Ranks(tree) } end
+	local now = AuctionIQ.Spec.Ranks(tree)
+	if not calc or calc.prof ~= prof then calc = { prof = prof, ranks = AuctionIQ.Spec.Ranks(tree) } end
 	local r = calc.ranks[nodeID] or -1
 	local step = shift and 5 or 1
 	if button == "RightButton" then r = math.max(now[nodeID] or -1, r - step)
@@ -527,12 +527,12 @@ function PUI.NodeClick(nodeID, button, shift)
 	end
 	table.sort(plan.steps, function(a, b) return a.node < b.node end)
 	lastPlan = plan
-	CH.Paths.current[prof] = plan
-	local T, M = CH.Theme, CH.FormatMoney
+	AuctionIQ.Paths.current[prof] = plan
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local L = { T.Color("accent", "Tree calculator: ") .. string.format("+%d point%s (%d unspent now)", spent, spent == 1 and "" or "s", tree.unspent or 0) }
 	if canPlan() then
 		local f = lastFocus or {}
-		local worth, before, label = CH.Paths.Worth({ prof = prof, recipes = f.recipes, goal = f.label or "gold", label = f.label }, calc.ranks)
+		local worth, before, label = AuctionIQ.Paths.Worth({ prof = prof, recipes = f.recipes, goal = f.label or "gold", label = f.label }, calc.ranks)
 		if worth then
 			local gain = worth - before
 			table.insert(L, string.format("%s: %s a day, now %s ", label or f.label or "Everything", M(worth), M(before))
@@ -563,38 +563,38 @@ function PUI.Refresh()
 	frame.payText:SetText(prof and PUI.PayoffLine(prof) or "")
 	frame.byRecipe:SetShown(prof ~= nil)
 	if not PUI.Prof() then
-		render({ CH.Theme.Color("muted", "No crafting profession with a specialization tree on this character.") })
+		render({ AuctionIQ.Theme.Color("muted", "No crafting profession with a specialization tree on this character.") })
 	elseif not canPlan() then
-		if not lastPlan then render({ CH.Theme.Color("muted", "The tree shows where your knowledge points are now. To plan where the next ones go, open this profession and pick what you want to sell.") }) end
+		if not lastPlan then render({ AuctionIQ.Theme.Color("muted", "The tree shows where your knowledge points are now. To plan where the next ones go, open this profession and pick what you want to sell.") }) end
 	elseif not lastPlan then
 		local L = PUI.PresetsText(prof)
 		table.insert(L, "")
-		table.insert(L, CH.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Click nodes on the tree to try points of your own."))
+		table.insert(L, AuctionIQ.Theme.Color("muted", "Pick a group above (some open a menu, like Light or Void potions) or type what you want to sell and press Plan. Click nodes on the tree to try points of your own."))
 		render(L)
 	end
 	if not lastPlan and PUI.Prof() and not canPlan() then
 		local L = PUI.PresetsText(prof)
-		if L[1] then table.insert(L, ""); table.insert(L, CH.Theme.Color("muted", "The tree shows where your knowledge points are now.")); render(L) end
+		if L[1] then table.insert(L, ""); table.insert(L, AuctionIQ.Theme.Color("muted", "The tree shows where your knowledge points are now.")); render(L) end
 	end
-	if canPlan() and CH.db.settings.presetsAuto ~= false then CH.Presets.Auto(prof) end
+	if canPlan() and AuctionIQ.db.settings.presetsAuto ~= false then AuctionIQ.Presets.Auto(prof) end
 	return PUI.DrawTree()
 end
 
 --- What the page says under the tree, for tests.
 function PUI.Text() return out and out:GetText() or "" end
 
-function PUI.IsShown() return frame ~= nil and frame:IsShown() and CH.UI.IsShown() end
+function PUI.IsShown() return frame ~= nil and frame:IsShown() and AuctionIQ.UI.IsShown() end
 
 local function changed()
 	if PUI.IsShown() then PUI.DrawTree() end
-	if CH.SpecOverlay then CH.SpecOverlay.Refresh() end
+	if AuctionIQ.SpecOverlay then AuctionIQ.SpecOverlay.Refresh() end
 end
-CH.Paths.Changed = changed
+AuctionIQ.Paths.Changed = changed
 -- While presets are worked out only the progress line changes: show it without refilling the page
 -- (the goal groups, knowledge and tree), which would read every recipe again once per preset.
-CH.Presets.Changed = function()
+AuctionIQ.Presets.Changed = function()
 	if not (PUI.IsShown() and not lastPlan) then return end
-	if CH.Presets.Running() and canPlan() then return render(PUI.PresetsText(PUI.Prof())) end
+	if AuctionIQ.Presets.Running() and canPlan() then return render(PUI.PresetsText(PUI.Prof())) end
 	PUI.Refresh()
 end
-CH.On("TRAIT_NODE_CHANGED", function() C_Timer.After(0.2, changed) end)
+AuctionIQ.On("TRAIT_NODE_CHANGED", function() C_Timer.After(0.2, changed) end)

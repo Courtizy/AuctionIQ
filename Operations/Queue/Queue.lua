@@ -1,12 +1,12 @@
 -- Craft queue and shopping list, across the whole warband. Entries come from the crafting advisor:
 -- each keeps the advisor's reagent picks and whether to use Concentration, so crafting from the
 -- queue uses exactly what the advisor recommended.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Q = {}
-CH.Queue = Q
+AuctionIQ.Queue = Q
 
-local function list() return CH.db.queue end
+local function list() return AuctionIQ.db.queue end
 
 local function have(id)
 	if not C_Item or not C_Item.GetItemCount then return 0 end
@@ -29,7 +29,7 @@ local function keyOf(e)
 end
 
 --- Turn an advisor row into a queue entry for this character: a craft plan (Operations/Craft/Plan.lua).
-function Q.FromRow(result, r) return CH.Plan.FromAdvisor(result, r) end
+function Q.FromRow(result, r) return AuctionIQ.Plan.FromAdvisor(result, r) end
 
 --- Add qty crafts of an advisor row; the same recipe, quality and Concentration choice stack.
 --- extra adds fields to a new entry: firstCraft, orderID, customer, rewards.
@@ -41,7 +41,7 @@ function Q.Add(result, r, qty, extra)
 		e.orderID = tostring(e.orderID)
 		-- what the queue needs to tell, after a /reload or a day away, whether the order is still there:
 		-- when the game takes it back, and which profession's list it's in
-		local o = CH.Orders and CH.Orders.Live and CH.Orders.Live(e.orderID)
+		local o = AuctionIQ.Orders and AuctionIQ.Orders.Live and AuctionIQ.Orders.Live(e.orderID)
 		e.expires = e.expires or (o and tonumber(o.expirationTime)) or nil
 		local info = C_TradeSkillUI and C_TradeSkillUI.GetChildProfessionInfo and C_TradeSkillUI.GetChildProfessionInfo()
 		e.profession = e.profession or (info and info.profession) or nil
@@ -73,13 +73,13 @@ end
 
 --- A queue entry from a saved scan row, for any character, without the profession window open:
 --- a craft plan (Plan.FromScan). nil when the scan predates saving reagent slots.
-function Q.FromScan(charKey, char, row, conc) return CH.Plan.FromScan(charKey, char, row, conc) end
+function Q.FromScan(charKey, char, row, conc) return AuctionIQ.Plan.FromScan(charKey, char, row, conc) end
 
 --- Every item's best saved scan row, in one pass: { [itemID] = { charKey, char, row } }. The same
 --- picks as ScanRowFor, for a list that asks about many items at once.
 function Q.ScanRowIndex()
 	local idx = {}
-	for k, c in pairs(CH.db.characters or {}) do
+	for k, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
 				local b = r.item and idx[r.item]
@@ -95,7 +95,7 @@ end
 --- The best saved scan row, on any character, that makes an item: charKey, char, row, or nil.
 function Q.ScanRowFor(itemID)
 	local bk, bc, br
-	for k, c in pairs(CH.db.characters or {}) do
+	for k, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in ipairs(p.scan and p.scan.rows or {}) do
 				if r.item == itemID and r.accounts and r.accounts.queue and (not br or (r.profit or 0) > (br.profit or 0)) then
@@ -139,10 +139,10 @@ end
 --- Queue the best craft (by profit, without Concentration) of the top recipes in the open profession.
 function Q.FillFromBest(limit)
 	local added = 0
-	local best = CH.Scan and CH.Scan.Top(CH.OpenProfessionID(), limit or 5)
+	local best = AuctionIQ.Scan and AuctionIQ.Scan.Top(AuctionIQ.OpenProfessionID(), limit or 5)
 	if best and #best > 0 then
 		for _, c in ipairs(best) do
-			local ok, result = pcall(CH.Advisor.Analyze, c.recipeID, { professionID = CH.OpenProfessionID() })
+			local ok, result = pcall(AuctionIQ.Advisor.Analyze, c.recipeID, { professionID = AuctionIQ.OpenProfessionID() })
 			if ok and result and result.best and result.best.profit and result.best.profit > 0 then
 				Q.Add(result, result.best, 1)
 				added = added + 1
@@ -150,8 +150,8 @@ function Q.FillFromBest(limit)
 		end
 		return added
 	end
-	for _, c in ipairs(CH.BestCrafts(limit or 5)) do
-		local ok, result = pcall(CH.Advisor.Analyze, c.recipeID, { professionID = CH.OpenProfessionID() })
+	for _, c in ipairs(AuctionIQ.BestCrafts(limit or 5)) do
+		local ok, result = pcall(AuctionIQ.Advisor.Analyze, c.recipeID, { professionID = AuctionIQ.OpenProfessionID() })
 		if ok and result and result.best and result.best.profit and result.best.profit > 0 then
 			Q.Add(result, result.best, 1)
 			added = added + 1
@@ -183,7 +183,7 @@ function Q.FillFirstCrafts()
 	for _, id in ipairs(ui.GetAllRecipeIDs() or {}) do
 		local info = ui.GetRecipeInfo(id)
 		if eligible(info) and info.firstCraft then
-			local ok, result = pcall(CH.Advisor.Analyze, id, { professionID = CH.OpenProfessionID() })
+			local ok, result = pcall(AuctionIQ.Advisor.Analyze, id, { professionID = AuctionIQ.OpenProfessionID() })
 			local r = ok and cheapest(result)
 			if r then
 				Q.Add(result, r, 1, { firstCraft = true })
@@ -198,7 +198,7 @@ end
 local function openOrders()
 	local co = C_CraftingOrders
 	if not co or not co.GetCrafterOrders then return {} end
-	return CH.Orders and CH.Orders.All and CH.Orders.All() or co.GetCrafterOrders() or {}
+	return AuctionIQ.Orders and AuctionIQ.Orders.All and AuctionIQ.Orders.All() or co.GetCrafterOrders() or {}
 end
 
 --- Queue the crafting orders worth doing: each order's best craft that meets its minimum quality,
@@ -208,13 +208,13 @@ function Q.FillOrders(opts)
 	opts = opts or {}
 	local n, profit = 0, 0
 	for _, order in ipairs(openOrders()) do
-		local ok, result = pcall(CH.Orders.Analyze, order)
+		local ok, result = pcall(AuctionIQ.Orders.Analyze, order)
 		local r = ok and result and (result.best or result.bestConc) -- Concentration when only it reaches the rank
 		if r then
 			local special = false
 			for _, rw in ipairs(order.npcOrderRewards or {}) do
 				local id = rw.itemLink and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(rw.itemLink)
-				if id and CH.Unsellable(id) then special = true end
+				if id and AuctionIQ.Unsellable(id) then special = true end
 			end
 			if (r.profit or 0) >= 0 or special or opts.all then
 				Q.Add(result, r, 1, { orderID = order.orderID, customer = order.customerName or "Patron", special = special })
@@ -240,7 +240,7 @@ function Q.Lapsed(e, now)
 	if not (e and e.orderID) then return nil end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then e.gone = nil; return nil end
+	if claimed and AuctionIQ.Orders.Same(claimed.orderID, e.orderID) then e.gone = nil; return nil end
 	if e.gone then return e.gone end
 	if e.expires and (now or time()) >= e.expires then return "expired" end
 	return nil
@@ -254,11 +254,11 @@ Q.LAPSED_LABEL = { expired = "Expired", gone = "No longer listed" }
 function Q.Reconcile(fetched, prof)
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	local me = CH.CharacterKey and CH.CharacterKey()
+	local me = AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()
 	local changed = 0
 	for _, e in ipairs(list()) do
 		if e.orderID and e.profession and e.profession == prof and e.char == me
-			and not (claimed and CH.Orders.Same(claimed.orderID, e.orderID)) and not Q.Pending(e) then
+			and not (claimed and AuctionIQ.Orders.Same(claimed.orderID, e.orderID)) and not Q.Pending(e) then
 			local o = fetched[tostring(e.orderID)]
 			if o then
 				if e.stage or e.gone then e.stage, e.confirmed, e.gone = nil, nil, nil; changed = changed + 1 end
@@ -283,7 +283,7 @@ function Q.OrderStep(e)
 	if Q.Lapsed(e) then return "Remove" end
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	if claimed and CH.Orders.Same(claimed.orderID, e.orderID) then
+	if claimed and AuctionIQ.Orders.Same(claimed.orderID, e.orderID) then
 		if claimed.isFulfillable then e.stage = "crafted" elseif e.stage ~= "crafted" then e.stage = "claimed" end
 	end
 	if e.stage == "claimed" and Q.NeedsShatter(e.recipeID) then return "Shatter" end
@@ -296,8 +296,8 @@ end
 function Q.Replan(e)
 	local co = C_CraftingOrders
 	local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	if not (claimed and CH.Orders.Same(claimed.orderID, e.orderID)) then return false end
-	local ok, result = pcall(CH.Orders.Analyze, claimed)
+	if not (claimed and AuctionIQ.Orders.Same(claimed.orderID, e.orderID)) then return false end
+	local ok, result = pcall(AuctionIQ.Orders.Analyze, claimed)
 	if not (ok and result) then return false end
 	local r = result.best or result.bestConc
 	if not r then return false end
@@ -416,7 +416,7 @@ function Q.ShatterItem()
 	local owned = {}
 	for _, id in ipairs(Q.ShatterCandidates()) do
 		local n = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(id, true, false, true, true) or 0
-		if n > 0 then owned[#owned + 1] = { id = id, p = CH.Prices.Get("chmat", "i:" .. id) or math.huge } end
+		if n > 0 then owned[#owned + 1] = { id = id, p = AuctionIQ.Prices.Get("chmat", "i:" .. id) or math.huge } end
 	end
 	if not owned[1] then return nil end
 	table.sort(owned, function(a, b) return a.p < b.p end)
@@ -441,7 +441,7 @@ end
 --- The queue entry for an order, or nil.
 function Q.ForOrder(orderID)
 	for _, e in ipairs(list()) do
-		if e.orderID and CH.Orders.Same(e.orderID, orderID) then return e end
+		if e.orderID and AuctionIQ.Orders.Same(e.orderID, orderID) then return e end
 	end
 end
 
@@ -479,20 +479,20 @@ end
 ---   2. Then crafts that make a profit without Concentration, up to what sells in a day.
 --- Returns a summary { conc, plain, points, budget, profit, recipes }, or nil and why.
 --- The TSM Crafting rule for an item (Groups.CraftRule), or nil.
-function Q.Rule(itemID) return itemID and CH.Groups and CH.Groups.CraftRule and CH.Groups.CraftRule(itemID) or nil end
+function Q.Rule(itemID) return itemID and AuctionIQ.Groups and AuctionIQ.Groups.CraftRule and AuctionIQ.Groups.CraftRule(itemID) or nil end
 
 function Q.FillPlan(profID, opts)
 	opts = opts or {}
-	local scan = CH.Scan and CH.Scan.Results(profID)
+	local scan = AuctionIQ.Scan and AuctionIQ.Scan.Results(profID)
 	if not scan or #scan.rows == 0 then return nil, "scan the profession first (the Scan tab)" end
-	local p = CH.Me().professions[profID]
-	local budget = opts.budget or (p and CH.ConcentrationNow(p)) or 0
+	local p = AuctionIQ.Me().professions[profID]
+	local budget = opts.budget or (p and AuctionIQ.ConcentrationNow(p)) or 0
 	local out = { conc = 0, plain = 0, points = 0, budget = budget, profit = 0, recipes = 0, entries = {} } -- entries: a dry run's would-be crafts
 	local limit = opts.limit or 12
 	local results, queued, done = {}, {}, {}
 	local function analyze(id)
 		if results[id] == nil then
-			local ok, r = pcall(CH.Advisor.Analyze, id, { professionID = profID })
+			local ok, r = pcall(AuctionIQ.Advisor.Analyze, id, { professionID = profID })
 			results[id] = ok and r or false
 		end
 		return results[id]
@@ -502,13 +502,13 @@ function Q.FillPlan(profID, opts)
 		-- nothing under its min), else your stock target (counting stock on every character), else a day's sales
 		local rule = Q.Rule(itemID)
 		if rule then
-			local want = rule.maxRestock - CH.Par.Held(itemID) - (queued[itemID] or 0)
+			local want = rule.maxRestock - AuctionIQ.Par.Held(itemID) - (queued[itemID] or 0)
 			if want < math.max(1, rule.minRestock) then return 0 end
 			return math.ceil(want / (r.made or 1))
 		end
-		local par = CH.Par and itemID and CH.Par.Target(itemID)
-		local units = par or CH.Scan.DailyUnits(itemID)
-		local held = par and CH.Par.Held(itemID) or have(itemID or 0)
+		local par = AuctionIQ.Par and itemID and AuctionIQ.Par.Target(itemID)
+		local units = par or AuctionIQ.Scan.DailyUnits(itemID)
+		local held = par and AuctionIQ.Par.Held(itemID) or have(itemID or 0)
 		return math.max(0, math.ceil((units - held - (queued[itemID or 0] or 0)) / (r.made or 1)))
 	end
 	-- a TSM Crafting operation's minimum profit, per item made
@@ -589,20 +589,20 @@ function Q.ShoppingList(entries)
 		local h = have(id)
 		local buy = math.max(0, n - h)
 		-- walk the order book for the quantity bought, not chmat x quantity (see Depth.lua)
-		local d = buy > 0 and CH.Depth.Cost(id, buy)
-		local unit = d and d.unit or CH.Prices.Get("chmat", "i:" .. id)
+		local d = buy > 0 and AuctionIQ.Depth.Cost(id, buy)
+		local unit = d and d.unit or AuctionIQ.Prices.Get("chmat", "i:" .. id)
 		local cost = d and d.cost or (unit and unit * buy)
 		total = total + (cost or 0)
 		-- someone on the warband makes it for less than buying it: say who, and what it would cost them
-		local made = CH.Scan and CH.Scan.SubrecipesOn and CH.Scan.SubrecipesOn() and CH.Scan.Crafted(id)
+		local made = AuctionIQ.Scan and AuctionIQ.Scan.SubrecipesOn and AuctionIQ.Scan.SubrecipesOn() and AuctionIQ.Scan.Crafted(id)
 		local craft = made and buy > 0 and (not unit or made.each < unit) and
 			{ char = made.char, key = made.key, recipeID = made.recipeID, name = made.name, each = made.each, cost = made.each * buy } or nil
 		-- a TSM Shopping operation's maximum price: how many the listings seen offer at or under it
-		local rule = CH.Groups and CH.Groups.ShopRule and CH.Groups.ShopRule(id)
+		local rule = AuctionIQ.Groups and AuctionIQ.Groups.ShopRule and AuctionIQ.Groups.ShopRule(id)
 		local maxPrice = rule and rule.maxPrice
 		local overMax, underMax
 		if maxPrice and buy > 0 then
-			local rows, src = CH.Depth.Book(id)
+			local rows, src = AuctionIQ.Depth.Book(id)
 			if rows and src == "ah" then
 				underMax = 0
 				for _, r in ipairs(rows) do if r[1] <= maxPrice then underMax = underMax + r[2] end end
@@ -622,7 +622,7 @@ end
 
 -- The saved profession on a character that has a recipe (from its scan or its best crafts).
 local function professionOf(charKey, recipeID)
-	local c = CH.db.characters and CH.db.characters[charKey]
+	local c = AuctionIQ.db.characters and AuctionIQ.db.characters[charKey]
 	for id, p in pairs(c and c.professions or {}) do
 		for _, r in ipairs(p.scan and p.scan.rows or {}) do
 			if r.recipeID == recipeID then return p, id end
@@ -631,8 +631,8 @@ local function professionOf(charKey, recipeID)
 			if r.recipeID == recipeID then return p, id end
 		end
 	end
-	if charKey == CH.CharacterKey() and CH.OpenProfessionID then
-		local id = CH.OpenProfessionID()
+	if charKey == AuctionIQ.CharacterKey() and AuctionIQ.OpenProfessionID then
+		local id = AuctionIQ.OpenProfessionID()
 		local info = id and C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo and C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if info and info.learned then return c and c.professions[id], id end
 	end
@@ -659,12 +659,12 @@ function Q.Budget()
 	-- walk the queue craft by craft: reagents on hand first, then buying, then Concentration
 	local stock, gold, points, seen, seq, start = {}, out.gold.have, {}, {}, {}, {}
 	-- Ingenuity on an entry: saved with it, else worked out from the average cost its scan kept
-	local function refundOf(e) return e.refund or (e.concentration or 0) * (CH.Stats.REFUND or 0.5) end
+	local function refundOf(e) return e.refund or (e.concentration or 0) * (AuctionIQ.Stats.REFUND or 0.5) end
 	local function ingOf(e)
 		if e.ingenuity then return e.ingenuity end
 		local avg = e.avgConcentration
 		if not avg or not e.concentration or e.concentration <= 0 then return 0 end
-		return math.max(0, math.min(1, (1 - avg / e.concentration) / (CH.Stats.REFUND or 0.5)))
+		return math.max(0, math.min(1, (1 - avg / e.concentration) / (AuctionIQ.Stats.REFUND or 0.5)))
 	end
 	local function first(kind, e, n, extra)
 		if not out[kind].stop then out[kind].stop = { entry = e, n = n, why = kind, extra = extra } end
@@ -675,7 +675,7 @@ function Q.Budget()
 		if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
 		local pk = p and (e.char .. ":" .. tostring(pid))
 		if pk and not seen[pk] then
-			seen[pk] = { char = e.charName or e.char, prof = p.name, need = 0, have = CH.ConcentrationNow(p) or 0 }
+			seen[pk] = { char = e.charName or e.char, prof = p.name, need = 0, have = AuctionIQ.ConcentrationNow(p) or 0 }
 			table.insert(out.conc.by, seen[pk])
 			points[pk] = seen[pk].have
 			start[pk] = points[pk]
@@ -708,9 +708,9 @@ function Q.Budget()
 	end
 	-- refund upside: the chance Ingenuity refunds earlier in the queue let the blocked craft start
 	local st = out.conc.stop
-	if st and CH.Decide then
+	if st and AuctionIQ.Decide then
 		for pk, list in pairs(seq) do
-			local reach = CH.Decide.ConcSequence(start[pk], list)
+			local reach = AuctionIQ.Decide.ConcSequence(start[pk], list)
 			for k, c in ipairs(list) do
 				if c.entry == st.entry and c.n == st.n then
 					st.upside = reach[k]
@@ -730,7 +730,7 @@ end
 --- need (its Concentration), have (points left for it) }. why is nil (all ready), "switch" (another
 --- character's), "reagents" or "conc". Totals: { now, blocked }.
 function Q.Readiness()
-	local here = CH.CharacterKey and CH.CharacterKey()
+	local here = AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()
 	local stock, points, out, tot = {}, {}, {}, { now = 0, blocked = 0 }
 	for _, e in ipairs(list()) do
 		local r = { now = 0, blocked = 0, short = {}, shortN = 0 }
@@ -743,7 +743,7 @@ function Q.Readiness()
 			local p, pid
 			if e.concentration then p, pid = professionOf(e.char, e.recipeID) end
 			local pk = p and (e.char .. ":" .. tostring(pid))
-			if pk and points[pk] == nil then points[pk] = CH.ConcentrationNow(p) or 0 end
+			if pk and points[pk] == nil then points[pk] = AuctionIQ.ConcentrationNow(p) or 0 end
 			for _ = 1, e.qty do
 				local ok = true
 				for _, s in ipairs(e.shop or {}) do
@@ -775,7 +775,7 @@ end
 
 --- Whether this character can craft an entry now: theirs, profession open, recipe known.
 function Q.CanCraftHere(e)
-	if e.char ~= CH.CharacterKey() then return false, "on " .. tostring(e.charName or e.char or "another character") end
+	if e.char ~= AuctionIQ.CharacterKey() then return false, "on " .. tostring(e.charName or e.char or "another character") end
 	local ui = C_TradeSkillUI
 	local info = ui and ui.GetRecipeInfo and ui.GetRecipeInfo(e.recipeID)
 	if not info or not info.learned then return false, "open its profession" end
@@ -797,8 +797,8 @@ Q.inflight = inflight
 -- f.done counts casts the game confirmed; a request closes when no more casts will come, and leaves
 -- once the log has its result for every confirmed cast.
 local function track(e, n)
-	CH.craftSeq = (CH.craftSeq or 0) + 1
-	local f = { e = e, recipeID = e.recipeID, left = n or 1, n = n or 1, done = 0, seq = CH.craftSeq }
+	AuctionIQ.craftSeq = (AuctionIQ.craftSeq or 0) + 1
+	local f = { e = e, recipeID = e.recipeID, left = n or 1, n = n or 1, done = 0, seq = AuctionIQ.craftSeq }
 	table.insert(inflight, f)
 	return f
 end
@@ -840,8 +840,8 @@ local sending
 --- request: the queue's own when the queue sent it, else a new one.
 function Q.Attempt(recipeID, n)
 	if sending and sending.recipeID == recipeID then local f = sending; sending = nil; return f end
-	CH.craftSeq = (CH.craftSeq or 0) + 1
-	local f = { recipeID = recipeID, left = n or 1, n = n or 1, done = 0, seq = CH.craftSeq }
+	AuctionIQ.craftSeq = (AuctionIQ.craftSeq or 0) + 1
+	local f = { recipeID = recipeID, left = n or 1, n = n or 1, done = 0, seq = AuctionIQ.craftSeq }
 	table.insert(inflight, f)
 	return f
 end
@@ -888,7 +888,7 @@ end
 local function claimedOrder(id)
 	local co = C_CraftingOrders
 	local c = co and co.GetClaimedOrder and co.GetClaimedOrder()
-	if c and CH.Orders.Same(c.orderID, id) then return c end
+	if c and AuctionIQ.Orders.Same(c.orderID, id) then return c end
 end
 
 local function now() return GetTime and GetTime() or time() end
@@ -906,34 +906,34 @@ local function setPending(e, what) e.pending, e.pendingAt = what, what and now()
 Q.PENDING_LABEL = { claim = "Claiming...", craft = "Crafting...", turnin = "Turning in..." }
 
 local function entryForOrder(orderID)
-	for _, e in ipairs(list()) do if e.orderID and CH.Orders.Same(e.orderID, orderID) then return e end end
+	for _, e in ipairs(list()) do if e.orderID and AuctionIQ.Orders.Same(e.orderID, orderID) then return e end end
 end
 
 -- The game answers a claim or a turn-in later: the queue moves on only when it says yes.
-CH.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
+AuctionIQ.On("CRAFTINGORDERS_CLAIM_ORDER_RESPONSE", function(_, result, orderID)
 	local e = entryForOrder(orderID)
 	if not e then return end
 	setPending(e, nil)
 	if okResult(result) then
 		e.stage = "claimed"
-		CH.Print("claimed: " .. (e.name or "the order"))
+		AuctionIQ.Print("claimed: " .. (e.name or "the order"))
 	else
 		e.stage = nil
-		CH.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
+		AuctionIQ.Print("the game didn't let you claim that order (" .. tostring(result) .. "). Someone may have taken it, or you're at your claim limit.")
 	end
 	Q.Changed()
 end)
-CH.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
+AuctionIQ.On("CRAFTINGORDERS_FULFILL_ORDER_RESPONSE", function(_, result, orderID)
 	local e = entryForOrder(orderID)
-	if okResult(result) then CH.Orders.Forget(orderID) end
+	if okResult(result) then AuctionIQ.Orders.Forget(orderID) end
 	if not e then return end
 	setPending(e, nil)
 	if okResult(result) then
-		CH.Print("turned in: " .. (e.name or "the order"))
+		AuctionIQ.Print("turned in: " .. (e.name or "the order"))
 		Q.Remove(e)
 	else
 		e.stage = "crafted"
-		CH.Print("the game didn't take that order (" .. tostring(result) .. "). It's still in the queue: press Turn in to try again.")
+		AuctionIQ.Print("the game didn't take that order (" .. tostring(result) .. "). It's still in the queue: press Turn in to try again.")
 		Q.Changed()
 	end
 end)
@@ -943,16 +943,16 @@ local function released(orderID)
 	local co = C_CraftingOrders
 	local now = co and co.GetClaimedOrder and co.GetClaimedOrder()
 	for _, e in ipairs(list()) do
-		if e.orderID and e.stage and (orderID == nil and not (now and CH.Orders.Same(now.orderID, e.orderID))
-			or orderID ~= nil and CH.Orders.Same(e.orderID, orderID)) then
+		if e.orderID and e.stage and (orderID == nil and not (now and AuctionIQ.Orders.Same(now.orderID, e.orderID))
+			or orderID ~= nil and AuctionIQ.Orders.Same(e.orderID, orderID)) then
 			e.stage, e.confirmed = nil, nil
 			setPending(e, nil)
 		end
 	end
 	Q.Changed()
 end
-CH.On("CRAFTINGORDERS_RELEASE_ORDER_RESPONSE", function(_, result, orderID) if okResult(result) then released(orderID) end end)
-CH.On("CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", function() released(nil) end)
+AuctionIQ.On("CRAFTINGORDERS_RELEASE_ORDER_RESPONSE", function(_, result, orderID) if okResult(result) then released(orderID) end end)
+AuctionIQ.On("CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", function() released(nil) end)
 
 -- Is a reagent slot required (a basic reagent) or optional (finishing, optional)?
 local function slotRequired(sl)
@@ -987,7 +987,7 @@ function Q.OrderAllocation(e, claimed)
 			local sl = r.slot and slots[r.slot]
 			local required = not sl or slotRequired(sl)
 			local have = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(r.itemID, true, false, true, true) or n
-			if sl and CH.Advisor and CH.Advisor.SlotLocked and CH.Advisor.SlotLocked(e.recipeID, sl) then
+			if sl and AuctionIQ.Advisor and AuctionIQ.Advisor.SlotLocked and AuctionIQ.Advisor.SlotLocked(e.recipeID, sl) then
 				if required then return nil, string.format("%s goes in a slot that's locked for you", nm) end
 				dropped[#dropped + 1] = nm .. " (slot locked)"
 			elseif have < n then
@@ -1037,7 +1037,7 @@ function Q.Craft(e, amount)
 	local lapsed = Q.Lapsed(e)
 	if lapsed and not Q.Pending(e) then
 		Q.Remove(e)
-		CH.Print(string.format("removed %s from the queue: the order is %s", e.name or "the order", Q.LAPSED_LABEL[lapsed]:lower()))
+		AuctionIQ.Print(string.format("removed %s from the queue: the order is %s", e.name or "the order", Q.LAPSED_LABEL[lapsed]:lower()))
 		return true
 	end
 	local ok, why = Q.CanCraftHere(e)
@@ -1060,7 +1060,7 @@ function Q.Craft(e, amount)
 	if e.orderID then
 		local step = Q.OrderStep(e)
 		if step == "Claim" then
-			local o = CH.Orders.Live(e.orderID)
+			local o = AuctionIQ.Orders.Live(e.orderID)
 			if not o then return false, "that order isn't listed any more: fetch the work orders again" end
 			setPending(e, "claim")
 			C_CraftingOrders.ClaimOrder(o.orderID, profession())
@@ -1101,7 +1101,7 @@ function Q.Craft(e, amount)
 		local changes = {}
 		if replanned then
 			changes[#changes + 1] = string.format("uses different reagents than queued (your cost %s, was %s)",
-				replanned.cost and CH.FormatMoney(replanned.cost) or "?", replanned.cost0 and CH.FormatMoney(replanned.cost0) or "?")
+				replanned.cost and AuctionIQ.FormatMoney(replanned.cost) or "?", replanned.cost0 and AuctionIQ.FormatMoney(replanned.cost0) or "?")
 		end
 		if #alloc.dropped > 0 then changes[#changes + 1] = "leaves out " .. table.concat(alloc.dropped, ", ") end
 		if conc and e.concentration == nil then
@@ -1116,7 +1116,7 @@ function Q.Craft(e, amount)
 		e.confirmed = nil
 		setPending(e, "craft")
 		local f = track(e, 1)
-		CH.Print(string.format("crafting %s into the order with %s, Concentration %s%s",
+		AuctionIQ.Print(string.format("crafting %s into the order with %s, Concentration %s%s",
 			e.name or "?", #alloc.names > 0 and table.concat(alloc.names, ", ") or "only the customer's reagents",
 			conc and "on" or "off", points and conc and string.format(" (%d points)", math.floor(points + 0.5)) or ""))
 		local ui = C_TradeSkillUI
@@ -1144,13 +1144,13 @@ function Q.Craft(e, amount)
 			n, note = stack, string.format("%d made: that's all one stack of Enchanting Vellum holds. Craft again for the rest.", stack)
 		end
 		local f = track(e, n)
-		if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
+		if AuctionIQ.Log and AuctionIQ.Log.Expect then AuctionIQ.Log.Expect(e) end
 		send(f, ui.CraftEnchant, e.recipeID, n, reagents, loc, e.concentration ~= nil)
-		if note then CH.Print(note) end
+		if note then AuctionIQ.Print(note) end
 		return true, note
 	end
 	local f = track(e, amount or 1)
-	if CH.Log and CH.Log.Expect then CH.Log.Expect(e) end
+	if AuctionIQ.Log and AuctionIQ.Log.Expect then AuctionIQ.Log.Expect(e) end
 	send(f, ui.CraftRecipe, e.recipeID, amount or 1, reagents, nil, nil, e.concentration ~= nil)
 	return true
 end
@@ -1238,11 +1238,11 @@ local function firstTime(guid)
 	if #seenOrder > 50 then seenCast[table.remove(seenOrder, 1)] = nil end
 	return true
 end
-CH.On("UNIT_SPELLCAST_START", function(_, unit, _, spellID)
+AuctionIQ.On("UNIT_SPELLCAST_START", function(_, unit, _, spellID)
 	if unit ~= "player" then return end
 	for _, f in ipairs(inflight) do if f.recipeID == spellID and not f.closed and not f.started then f.started = true; return end end
 end)
-CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, guid, spellID)
+AuctionIQ.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, guid, spellID)
 	if unit ~= "player" then return end
 	local i, f = oldestFor(spellID)
 	if not f or not firstTime(guid) then return end
@@ -1259,10 +1259,10 @@ CH.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit, guid, spellID)
 		local function settle()
 			setPending(e, nil)
 			local claimed = co and co.GetClaimedOrder and co.GetClaimedOrder()
-			if not claimed or not CH.Orders.Same(claimed.orderID, e.orderID) or claimed.isFulfillable then
+			if not claimed or not AuctionIQ.Orders.Same(claimed.orderID, e.orderID) or claimed.isFulfillable then
 				e.stage = "crafted"
 			else
-				CH.Print("that craft didn't go into the order. Press Craft on the order's page (Crafting Orders tab), then Turn in next.")
+				AuctionIQ.Print("that craft didn't go into the order. Press Craft on the order's page (Crafting Orders tab), then Turn in next.")
 			end
 			Q.Changed()
 		end
@@ -1276,7 +1276,7 @@ end)
 -- FAILED is a request the game refused to start (the newest that never started); INTERRUPTED
 -- stops the one casting (the oldest). Either way the rest of that request's batch won't come.
 for ev, pick in pairs({ UNIT_SPELLCAST_FAILED = refusedFor, UNIT_SPELLCAST_INTERRUPTED = oldestFor }) do
-	CH.On(ev, function(_, unit, _, spellID)
+	AuctionIQ.On(ev, function(_, unit, _, spellID)
 		if unit ~= "player" then return end
 		local _, f = pick(spellID)
 		if not f then return end

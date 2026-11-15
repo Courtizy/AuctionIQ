@@ -20,10 +20,10 @@
 -- you choose the age, 365 days by default, and it says what will go before anything does. It covers
 -- AuctionIQ's own day-by-day totals, net worth days and competition notes. Crafting records follow
 -- CraftSim's rule instead: they stay with the character and go only with the profession.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local C = {}
-CH.Cleanup = C
+AuctionIQ.Cleanup = C
 
 local function add(set, id)
 	id = tonumber(id)
@@ -33,26 +33,26 @@ end
 --- The items whose scans are worth saving: { [id] = true }.
 function C.Keep(now)
 	local keep = {}
-	if CH.Compare and CH.Compare.Items then
-		local ok, ids = pcall(CH.Compare.Items, nil, now)
+	if AuctionIQ.Compare and AuctionIQ.Compare.Items then
+		local ok, ids = pcall(AuctionIQ.Compare.Items, nil, now)
 		if ok and type(ids) == "table" then for id in pairs(ids) do add(keep, id) end end
 	end
-	for _, c in pairs(CH.db.characters or {}) do
+	for _, c in pairs(AuctionIQ.db.characters or {}) do
 		for _, p in pairs(c.professions or {}) do
 			for _, r in pairs(p.scan and p.scan.rows or {}) do add(keep, r.item); add(keep, r.concItem) end
 		end
 	end
-	for _, q in pairs(CH.db.queue or {}) do add(keep, q.id or q.item or q.itemID) end
-	for _, a in pairs(CH.db.postAdvice or {}) do add(keep, a.id) end
-	for id in pairs(CH.db.competition or {}) do add(keep, id) end
-	for _, b in pairs(CH.db.batches or {}) do add(keep, b.id) end
-	for _, id in pairs(CH.db.alerts and CH.db.alerts.prices or {}) do add(keep, id) end
+	for _, q in pairs(AuctionIQ.db.queue or {}) do add(keep, q.id or q.item or q.itemID) end
+	for _, a in pairs(AuctionIQ.db.postAdvice or {}) do add(keep, a.id) end
+	for id in pairs(AuctionIQ.db.competition or {}) do add(keep, id) end
+	for _, b in pairs(AuctionIQ.db.batches or {}) do add(keep, b.id) end
+	for _, id in pairs(AuctionIQ.db.alerts and AuctionIQ.db.alerts.prices or {}) do add(keep, id) end
 	return keep
 end
 
 --- Drop the scans of items nothing uses. Returns how many went and how many stay.
 function C.Scans(now)
-	local store = CH.db and CH.db.scans
+	local store = AuctionIQ.db and AuctionIQ.db.scans
 	if not store then return 0, 0 end
 	local keep = C.Keep(now)
 	local dropped, kept = 0, 0
@@ -79,7 +79,7 @@ end
 
 --- Drop this character's saved data for professions it no longer has. Returns the names dropped.
 function C.Professions()
-	local me = CH.Me and CH.Me()
+	local me = AuctionIQ.Me and AuctionIQ.Me()
 	local names = known()
 	local out = {}
 	if not (me and me.professions and names) then return out end
@@ -97,7 +97,7 @@ end
 
 --- Everything above. Returns { scans = dropped, kept = n, professions = { names } }.
 function C.Run(now)
-	if not CH.db then return { scans = 0, kept = 0, professions = {} } end
+	if not AuctionIQ.db then return { scans = 0, kept = 0, professions = {} } end
 	local dropped, kept = C.Scans(now)
 	return { scans = dropped, kept = kept, professions = C.Professions() }
 end
@@ -120,24 +120,24 @@ function C.Temporary(done, rebuilt)
 	local function clear(f, ...)
 		if type(f) == "function" and pcall(f, ...) then n = n + 1 end
 	end
-	clear(CH.Prices and CH.Prices.ClearCache)
-	clear(CH.Depth and CH.Depth.Forget)
-	clear(CH.Demand and CH.Demand.Clear)
-	clear(CH.Forecast and CH.Forecast.Clear)
-	clear(CH.Par and CH.Par.Clear)
-	clear(CH.Next and CH.Next.ClearAlternatives)
-	clear(CH.Deals and CH.Deals.Clear)
-	clear(CH.Market and CH.Market.Clear)
-	clear(CH.Groups and CH.Groups.ResetTSM)
-	clear(CH.TradingUI and CH.TradingUI.ClearPlanCache)
-	clear(CH.Scan and CH.Scan.ClearCrafted)
-	clear(CH.Orders and CH.Orders.Invalidate)
-	clear(CH.ScanUI and CH.ScanUI.InvalidateRows)
-	if CH.AdvisorUI and CH.AdvisorUI.ClearCaches then
-		local ok, k = pcall(CH.AdvisorUI.ClearCaches)
+	clear(AuctionIQ.Prices and AuctionIQ.Prices.ClearCache)
+	clear(AuctionIQ.Depth and AuctionIQ.Depth.Forget)
+	clear(AuctionIQ.Demand and AuctionIQ.Demand.Clear)
+	clear(AuctionIQ.Forecast and AuctionIQ.Forecast.Clear)
+	clear(AuctionIQ.Par and AuctionIQ.Par.Clear)
+	clear(AuctionIQ.Next and AuctionIQ.Next.ClearAlternatives)
+	clear(AuctionIQ.Deals and AuctionIQ.Deals.Clear)
+	clear(AuctionIQ.Market and AuctionIQ.Market.Clear)
+	clear(AuctionIQ.Groups and AuctionIQ.Groups.ResetTSM)
+	clear(AuctionIQ.TradingUI and AuctionIQ.TradingUI.ClearPlanCache)
+	clear(AuctionIQ.Scan and AuctionIQ.Scan.ClearCrafted)
+	clear(AuctionIQ.Orders and AuctionIQ.Orders.Invalidate)
+	clear(AuctionIQ.ScanUI and AuctionIQ.ScanUI.InvalidateRows)
+	if AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.ClearCaches then
+		local ok, k = pcall(AuctionIQ.AdvisorUI.ClearCaches)
 		if ok then n = n + (tonumber(k) or 1) end
 	end
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	clear(L and L.ClearStats)
 	r.caches, r.before = n, before
 	local clock = debugprofilestop or function() return 0 end
@@ -175,7 +175,7 @@ end
 --- /aiq cleanup: runs it and says what it did once the memory is measured (a moment later).
 function C.Report(done)
 	return C.Temporary(function(r)
-		CH.Print(C.ReportText(r))
+		AuctionIQ.Print(C.ReportText(r))
 		if done then done(r) end
 	end)
 end
@@ -185,7 +185,7 @@ C.PRUNE_DAYS = 365 -- TSM's default for Clear Old Data
 
 --- What pruning at `days` would remove, as one sentence, and the counts (Ledger.PruneHistory).
 function C.PruneText(days, now)
-	local p = CH.Ledger.PruneHistory(days, false, now)
+	local p = AuctionIQ.Ledger.PruneHistory(days, false, now)
 	local cutDate = p.cut and date and date("%Y-%m-%d", p.cut * 86400) or "?"
 	if p.days + p.worth + p.rivals == 0 then
 		return string.format("Nothing in AuctionIQ's history is older than %d days.", days), p
@@ -196,10 +196,10 @@ end
 
 --- Prune now, without asking (the confirm dialog calls this). Returns the counts removed.
 function C.Prune(days, now)
-	local p = CH.Ledger.PruneHistory(days, true, now)
-	CH.Print(string.format("prune: removed %d days of sales totals, %d days of net worth and %d competition notes older than %d days.",
+	local p = AuctionIQ.Ledger.PruneHistory(days, true, now)
+	AuctionIQ.Print(string.format("prune: removed %d days of sales totals, %d days of net worth and %d competition notes older than %d days.",
 		p.days, p.worth, p.rivals, days))
-	if CH.UI and CH.UI.IsShown and CH.UI.IsShown() then pcall(CH.UI.Refresh) end
+	if AuctionIQ.UI and AuctionIQ.UI.IsShown and AuctionIQ.UI.IsShown() then pcall(AuctionIQ.UI.Refresh) end
 	return p
 end
 
@@ -215,14 +215,14 @@ function C.AskPrune(days)
 			local eb = self.editBox or self.EditBox
 			local d = tonumber(eb and eb:GetText() or "")
 			if d and d >= 1 then C_Timer.After(0, function() C.AskPrune(math.floor(d)) end)
-			else CH.Print("prune: give a number of days, 1 or more.") end
+			else AuctionIQ.Print("prune: give a number of days, 1 or more.") end
 		end,
 		EditBoxOnEnterPressed = function(self) local p = self:GetParent(); StaticPopupDialogs.AUCTIONIQ_PRUNE_DAYS.OnAccept(p); p:Hide() end,
 		EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
 	}
 	if not days then StaticPopup_Show("AUCTIONIQ_PRUNE_DAYS"); return end
 	local text, p = C.PruneText(days)
-	if p.days + p.worth + p.rivals == 0 then CH.Print("prune: " .. text); return end
+	if p.days + p.worth + p.rivals == 0 then AuctionIQ.Print("prune: " .. text); return end
 	StaticPopupDialogs.AUCTIONIQ_PRUNE = {
 		text = "AuctionIQ: " .. text:gsub("%%", "%%%%"),
 		button1 = REMOVE or "Remove", button2 = CANCEL or "Cancel",
@@ -232,4 +232,4 @@ function C.AskPrune(days)
 	StaticPopup_Show("AUCTIONIQ_PRUNE")
 end
 
-CH.On("PLAYER_LOGOUT", function() if CH.db then pcall(C.Run) end end)
+AuctionIQ.On("PLAYER_LOGOUT", function() if AuctionIQ.db then pcall(C.Run) end end)

@@ -13,13 +13,13 @@
 --   profit, cost, basis            the forecast per craft, and the cost basis it was priced on
 --   qty                            crafts (the queue sets it)
 --   source, at                     "advisor" or "scan", and when its numbers were worked out
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local P = {}
-CH.Plan = P
+AuctionIQ.Plan = P
 P.VERSION = 1
 
-local function basis() return CH.Prices and CH.Prices.CostBasis and CH.Prices.CostBasis() or nil end
+local function basis() return AuctionIQ.Prices and AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() or nil end
 
 --- A plan from a live advisor row (Advisor.Analyze's result and one of its rows), for this character.
 function P.FromAdvisor(result, r)
@@ -44,15 +44,15 @@ function P.FromAdvisor(result, r)
 		given = given or {}
 		given[g.itemID] = (given[g.itemID] or 0) + (g.quantity or 0)
 	end
-	local me = CH.Me()
+	local me = AuctionIQ.Me()
 	return { given = given,
-		char = CH.CharacterKey(), charName = me.name, class = me.class,
+		char = AuctionIQ.CharacterKey(), charName = me.name, class = me.class,
 		recipeID = result.recipeID, name = result.name, quality = r.quality, tiers = result.model and result.model.maxQ,
 		concentration = r.concentration, avgConcentration = r.concentration and r.avgConcentration or nil,
 		profit = r.profit, cost = r.cost, item = r.item, basis = basis(),
 		-- Ingenuity: the chance a Concentration craft refunds, and how many points it gives back
 		ingenuity = r.concentration and r.ingenuity or nil,
-		refund = r.concentration and r.concentration * ((CH.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
+		refund = r.concentration and r.concentration * ((AuctionIQ.Stats.REFUND or 0.5) + (r.stats and r.stats.refundExtra or 0)) or nil,
 		reagents = reagents, shop = shop, qty = 0,
 		source = "advisor", at = time(),
 	}
@@ -62,7 +62,7 @@ end
 --- chance): avg = cost x (1 - chance x refund share).
 local function ingenuityFrom(cost, avg)
 	if not (cost and cost > 0 and avg) then return nil end
-	return math.max(0, math.min(1, (1 - avg / cost) / (CH.Stats.REFUND or 0.5)))
+	return math.max(0, math.min(1, (1 - avg / cost) / (AuctionIQ.Stats.REFUND or 0.5)))
 end
 
 --- A plan from a saved scan row, for any character, without the profession window open. conc picks
@@ -81,7 +81,7 @@ function P.FromScan(charKey, char, row, conc)
 		quality = conc and row.concQuality or row.quality, tiers = row.tiers, concentration = cost,
 		profit = conc and row.concProfit or row.profit, cost = acc.cost, basis = basis(), item = conc and (row.concItem or row.item) or row.item,
 		avgConcentration = avg, ingenuity = ing,
-		refund = cost and cost * (CH.Stats.REFUND or 0.5) or nil,
+		refund = cost and cost * (AuctionIQ.Stats.REFUND or 0.5) or nil,
 		reagents = acc.queue, shop = shop, qty = 0,
 		source = "scan", at = row.at,
 	}
@@ -92,7 +92,7 @@ function P.Same(a, b)
 	if not (a and b) then return false end
 	if a.char ~= b.char or a.recipeID ~= b.recipeID or a.quality ~= b.quality then return false end
 	if (a.concentration == nil) ~= (b.concentration == nil) then return false end
-	return CH.Queue.MixOf(a) == CH.Queue.MixOf(b)
+	return AuctionIQ.Queue.MixOf(a) == AuctionIQ.Queue.MixOf(b)
 end
 
 local function ago(s)
@@ -113,7 +113,7 @@ function P.Provenance(e, now)
 	if e.source == "scan" then parts[#parts + 1] = age and ("scanned " .. ago(age)) or "scanned (age unknown)"
 	elseif e.source == "advisor" then parts[#parts + 1] = age and ("worked out " .. ago(age)) or "worked out live"
 	else parts[#parts + 1] = "age unknown" end
-	local b = e.basis and CH.Prices and CH.Prices.BASIS_NAMES and CH.Prices.BASIS_NAMES[e.basis]
+	local b = e.basis and AuctionIQ.Prices and AuctionIQ.Prices.BASIS_NAMES and AuctionIQ.Prices.BASIS_NAMES[e.basis]
 	if b then parts[#parts + 1] = b end
 	return table.concat(parts, ", "), age == nil or age > P.STALE
 end
@@ -133,7 +133,7 @@ end
 --- source (label), stale }.
 function P.Batch(row, conc, n, opts)
 	opts = opts or {}
-	local D = CH.Decide
+	local D = AuctionIQ.Decide
 	local inp = D and D.ScanInputs(row, conc)
 	if not inp then return nil end
 	local q = D.Quantity(inp, { gold = opts.gold, held = opts.held, noExplore = true,
@@ -154,14 +154,14 @@ function P.Batch(row, conc, n, opts)
 	end
 	-- the choices worth comparing, for this batch
 	local choices = { { key = "craft", label = string.format("Craft %d", size), gold = out.net,
-		note = string.format("expected net over %d days, %s if it sells slowly", out.horizon, CH.FormatMoney and CH.FormatMoney(out.netSlow) or tostring(out.netSlow)) } }
+		note = string.format("expected net over %d days, %s if it sells slowly", out.horizon, AuctionIQ.FormatMoney and AuctionIQ.FormatMoney(out.netSlow) or tostring(out.netSlow)) } }
 	local acc = conc and row.concAccounts or row.accounts
-	local cs = acc and CH.CraftOrSell and CH.CraftOrSell(acc)
+	local cs = acc and AuctionIQ.CraftOrSell and AuctionIQ.CraftOrSell(acc)
 	if cs and cs.sell and cs.sell > 0 then
 		choices[#choices + 1] = { key = "sell", label = "Sell the reagents you hold", gold = cs.sell, note = "gold now, after the cut, instead of crafting with them" }
 	end
-	local label, stale = P.Provenance(P.FromScan(opts.charKey or (CH.CharacterKey and CH.CharacterKey()), opts.char or (CH.Me and CH.Me()) or {}, row, conc)
-		or { source = "scan", at = row.at, charName = opts.char and opts.char.name, basis = CH.Prices and CH.Prices.CostBasis and CH.Prices.CostBasis() }, opts.now)
+	local label, stale = P.Provenance(P.FromScan(opts.charKey or (AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()), opts.char or (AuctionIQ.Me and AuctionIQ.Me()) or {}, row, conc)
+		or { source = "scan", at = row.at, charName = opts.char and opts.char.name, basis = AuctionIQ.Prices and AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() }, opts.now)
 	out.source, out.stale = label, stale
 	if q.action == "hold" or stale then
 		choices[#choices + 1] = { key = "wait", label = stale and "Rescan, then decide" or "Wait",

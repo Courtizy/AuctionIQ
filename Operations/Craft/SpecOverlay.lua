@@ -2,10 +2,10 @@
 -- the plan raises, with its step numbers and the rank it goes to. The badges sit on Blizzard's node
 -- buttons, and are redrawn when the tab or the tree changes. Only reads the game's frames, so it
 -- can't break spending points; if Blizzard changes the frame, the badges just don't show.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local SO = {}
-CH.SpecOverlay = SO
+AuctionIQ.SpecOverlay = SO
 local badges = {} -- [node button] = badge
 local hooked
 
@@ -14,7 +14,7 @@ local function page() return ProfessionsFrame and ProfessionsFrame.SpecPage end
 local function badgeFor(button)
 	local b = badges[button]
 	if b then return b end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	b = CreateFrame("Frame", nil, button, "BackdropTemplate")
 	if b.SetFrameLevel and button.GetFrameLevel then b:SetFrameLevel((button:GetFrameLevel() or 1) + 10) end
 	b:SetSize(20, 15)
@@ -36,17 +36,17 @@ function SO.Refresh()
 	for _, b in pairs(badges) do b:Hide() end
 	local sp = page()
 	if not sp or not sp:IsShown() or not sp.GetTalentButtonByNodeID then return 0 end
-	local prof = CH.OpenProfessionID()
-	local plan = CH.Paths.Current(prof)
+	local prof = AuctionIQ.OpenProfessionID()
+	local plan = AuctionIQ.Paths.Current(prof)
 	if not plan then return 0 end
-	local tree = CH.Spec.Tree(prof)
+	local tree = AuctionIQ.Spec.Tree(prof)
 	local n = 0
-	for nodeID, m in pairs(CH.Paths.Marks(plan)) do
+	for nodeID, m in pairs(AuctionIQ.Paths.Marks(plan)) do
 		local ok, button = pcall(sp.GetTalentButtonByNodeID, sp, nodeID)
 		local node = tree and tree.layout and tree.layout[nodeID]
 		if ok and button and button:IsShown() and (not node or m.to > (node.rank or -1)) then
 			local b = badgeFor(button)
-			local t = CH.Paths.StepText(m.steps)
+			local t = AuctionIQ.Paths.StepText(m.steps)
 			b.text:SetText(t)
 			b:SetWidth(math.max(18, 8 + 6 * #t))
 			b.to:SetText("> " .. m.to)
@@ -57,7 +57,7 @@ function SO.Refresh()
 	return n
 end
 
-local function later() C_Timer.After(0, function() CH.Measure("profession: spec overlay", SO.Refresh) end) end
+local function later() C_Timer.After(0, function() AuctionIQ.Measure("profession: spec overlay", SO.Refresh) end) end
 
 local function hook()
 	if hooked then return end
@@ -70,4 +70,4 @@ local function hook()
 	end
 end
 
-CH.On("TRADE_SKILL_SHOW", function() hook(); later() end)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() hook(); later() end)

@@ -12,16 +12,16 @@
 -- Profit here is crafted items' real sales after the cut, less reagents at what you paid for them
 -- around the time of each sale (Ledger.ProductPL): an estimate of cost, since bought reagents
 -- aren't tracked batch by batch. Comparisons are against the period of the same length just before.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local AV = {}
-CH.AnalyticsViews = AV
-local LUI = CH.LedgerUI
+AuctionIQ.AnalyticsViews = AV
+local LUI = AuctionIQ.LedgerUI
 local DAY = 86400
 
 local function money(c) return LUI.Money(c) end
 local function signed(c) return LUI.Signed(c) end
-local function pct(x) return x and string.format("%d%%", math.floor(x * 100 + 0.5)) or CH.Theme.Color("muted", "-") end
+local function pct(x) return x and string.format("%d%%", math.floor(x * 100 + 0.5)) or AuctionIQ.Theme.Color("muted", "-") end
 
 -- The period a view looks at, and the one before it: all-time compares the last 30 days.
 local function periods(ctx)
@@ -33,7 +33,7 @@ end
 
 -- Product P&L for [from, to): ProductPL counts everything since a time, so subtract.
 local function plBetween(from, to, char)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local a, b = {}, {}
 	for _, e in ipairs(L.ProductPL(from, char)) do a[e.id] = e end
 	for _, e in ipairs(L.ProductPL(to, char)) do b[e.id] = e end
@@ -55,25 +55,25 @@ AV.PLBetween = plBetween
 
 local function plSince(since, char)
 	local out = {}
-	for _, e in ipairs(CH.Ledger.ProductPL(since, char)) do out[e.id] = e end
+	for _, e in ipairs(AuctionIQ.Ledger.ProductPL(since, char)) do out[e.id] = e end
 	return out
 end
 
 -- An item's category: its product line when crafted, else its top group, else Other.
 local function category(id, crafted)
 	local c = crafted and crafted[id]
-	if c and CH.Paths and CH.Paths.MainGroup then
-		local line = CH.Paths.MainGroup(c.name)
+	if c and AuctionIQ.Paths and AuctionIQ.Paths.MainGroup then
+		local line = AuctionIQ.Paths.MainGroup(c.name)
 		if line then return line end
 	end
-	local path = CH.Groups and CH.Groups.Path(id)
+	local path = AuctionIQ.Groups and AuctionIQ.Groups.Path(id)
 	return path and path:match("^([^/]+)") or "Other"
 end
 AV.Category = category
 
 local function needLedger(out)
-	if CH.Ledger.Available() then return nil end
-	return out, CH.Theme.Color("muted", "Needs TradeSkillMaster: it reads your sales and inventory.")
+	if AuctionIQ.Ledger.Available() then return nil end
+	return out, AuctionIQ.Theme.Color("muted", "Needs TradeSkillMaster: it reads your sales and inventory.")
 end
 
 -- Performance ---------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ function AV.Performance(ctx)
 	end
 	for _, e in pairs(now) do add("Line", e.line or "Other", e, "now"); total = total + e.profit end
 	for _, e in pairs(prev) do add("Line", e.line or "Other", e, "prev"); totalPrev = totalPrev + e.profit end
-	for _, c in ipairs(CH.Ledger.Characters()) do
+	for _, c in ipairs(AuctionIQ.Ledger.Characters()) do
 		for _, e in pairs(plSince(start, c.name)) do add("Character", c.name, e, "now") end
 		for _, e in pairs(plBetween(before, start, c.name)) do add("Character", c.name, e, "prev") end
 	end
@@ -106,7 +106,7 @@ local function performanceRows(ctx)
 	local out = {}
 	if needLedger(out) then return needLedger(out) end
 	local list, total, totalPrev = AV.Performance(ctx)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local up, down
 	for _, x in ipairs(list) do
 		local change = x.profit - x.prev
@@ -134,9 +134,9 @@ function AV.Drivers(ctx)
 	local now, prev
 	-- opened from Performance's chart: its exact windows, on the Income Statement's basis
 	local range = ctx.opts and ctx.opts.focus and ctx.opts.focus.range
-	if range and CH.Statements and CH.Statements.Items then
-		now = CH.Statements.Items(range.from, range.to - 1, ctx.opts.char)
-		prev = CH.Statements.Items(range.pfrom, range.pto - 1, ctx.opts.char)
+	if range and AuctionIQ.Statements and AuctionIQ.Statements.Items then
+		now = AuctionIQ.Statements.Items(range.from, range.to - 1, ctx.opts.char)
+		prev = AuctionIQ.Statements.Items(range.pfrom, range.pto - 1, ctx.opts.char)
 	else
 		local start, before = periods(ctx)
 		now, prev = plSince(start), plBetween(before, start)
@@ -172,7 +172,7 @@ local DRIVER = { price = "selling price", volume = "how many sold", cost = "reag
 local function driverRows(ctx)
 	local out = {}
 	if needLedger(out) then return needLedger(out) end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local sums = { price = 0, volume = 0, cost = 0 }
 	for _, x in ipairs(AV.Drivers(ctx)) do
 		local text, name = LUI.ItemText(x.id)
@@ -198,14 +198,14 @@ end
 --- change between buying and selling doesn't skew it).
 function AV.Capital(ctx)
 	local start, _, len = periods(ctx)
-	local crafted = CH.Ledger.Crafted()
+	local crafted = AuctionIQ.Ledger.Crafted()
 	local by, held, earned = {}, 0, 0
 	local function cat(name)
 		local x = by[name] or { name = name, value = 0, profit = 0, revenue = 0, units = 0, sold = 0 }
 		by[name] = x
 		return x
 	end
-	for _, e in ipairs(CH.Ledger.Inventory(nil, ctx.opts.char)) do
+	for _, e in ipairs(AuctionIQ.Ledger.Inventory(nil, ctx.opts.char)) do
 		if e.id and e.value > 0 then
 			local x = cat(category(e.id, crafted))
 			x.value, held = x.value + e.value, held + e.value
@@ -232,7 +232,7 @@ end
 local function capitalRows(ctx)
 	local out = {}
 	if needLedger(out) then return needLedger(out) end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local list, held, earned = AV.Capital(ctx)
 	local worst
 	for _, x in ipairs(list) do
@@ -259,7 +259,7 @@ end
 --- and how the procs compare with what the advisor expected.
 function AV.Crafting(ctx)
 	local out = {}
-	for _, d in ipairs(CH.Log.AllRows()) do
+	for _, d in ipairs(AuctionIQ.Log.AllRows()) do
 		if ctx.keepName(d.name) then
 			d.each = d.crafts > 0 and d.actual / d.crafts or 0
 			d.perPoint = d.concSpent and d.concSpent > 0 and d.concActual and d.concActual / d.concSpent or nil
@@ -270,14 +270,14 @@ function AV.Crafting(ctx)
 end
 
 local function rate(a, b)
-	if not a then return CH.Theme.Color("muted", "-") end
+	if not a then return AuctionIQ.Theme.Color("muted", "-") end
 	local s = pct(a)
-	if b then s = CH.Theme.Color(a + 0.02 >= b and "ok" or "bad", s) .. CH.Theme.Color("muted", " / " .. pct(b)) end
+	if b then s = AuctionIQ.Theme.Color(a + 0.02 >= b and "ok" or "bad", s) .. AuctionIQ.Theme.Color("muted", " / " .. pct(b)) end
 	return s
 end
 
 local function craftingRows(ctx)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local out = {}
 	local crafts, made = 0, 0
 	for _, d in ipairs(AV.Crafting(ctx)) do
@@ -286,11 +286,11 @@ local function craftingRows(ctx)
 			rate(d.mcRate, d.expMcRate), rate(d.resRate, d.expResRate), rate(d.ingRate, d.expIngRate) },
 			sort = { d.name or "", d.char, d.crafts, d.each, d.perPoint or -math.huge, d.mcRate or 0, d.resRate or 0, d.ingRate or 0 } })
 	end
-	local x = CH.Planner and CH.Planner.Time(ctx.since > -math.huge and ctx.since or ctx.now - 30 * DAY)
+	local x = AuctionIQ.Planner and AuctionIQ.Planner.Time(ctx.since > -math.huge and ctx.since or ctx.now - 30 * DAY)
 	local hours = x and x.kinds and x.kinds.Crafting or 0
 	local start = periods(ctx)
 	local profit = 0
-	if CH.Ledger.Available() then for _, e in pairs(plSince(start)) do profit = profit + e.profit end end
+	if AuctionIQ.Ledger.Available() then for _, e in pairs(plSince(start)) do profit = profit + e.profit end end
 	local perHour = hours > 0 and string.format("  %s realized profit per crafting hour (%.1f hours with a profession open).", signed(profit / hours), hours) or ""
 	if not out[1] then return out, T.Color("muted", "Nothing logged yet. Every craft is recorded, on each character.") .. perHour end
 	return out, string.format("%d crafts, %s at market.", crafts, money(made)) .. perHour
@@ -298,12 +298,12 @@ local function craftingRows(ctx)
 end
 
 -- Scenarios ----------------------------------------------------------------------------------
-AV.SCENARIO = { reagents = 0.10, price = 0.10 } -- the defaults; yours are saved in CH.db.scenario
+AV.SCENARIO = { reagents = 0.10, price = 0.10 } -- the defaults; yours are saved in AuctionIQ.db.scenario
 AV.STEPS = { 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50 }
 
 --- The scenario you set: { reagents = 0.15, price = 0.10 }.
 function AV.Scenario()
-	local s = CH.db and CH.db.scenario
+	local s = AuctionIQ.db and AuctionIQ.db.scenario
 	return { reagents = s and s.reagents or AV.SCENARIO.reagents, price = s and s.price or AV.SCENARIO.price }
 end
 
@@ -312,8 +312,8 @@ function AV.SetScenario(r, p)
 	local cur = AV.Scenario()
 	r = math.max(0, math.min(1, r or cur.reagents))
 	p = math.max(0, math.min(1, p or cur.price))
-	CH.db.scenario = { reagents = r, price = p }
-	return CH.db.scenario
+	AuctionIQ.db.scenario = { reagents = r, price = p }
+	return AuctionIQ.db.scenario
 end
 
 -- the next step up (dir 1) or down (dir -1) from x
@@ -329,10 +329,10 @@ end
 
 --- What a craft's money is made of, from its saved scan (Decide.AccountParts): revenue, reagents
 --- consumed, what Resourcefulness gives back, and deposits lost to expiries.
-function AV.Parts(row) return CH.Decide.AccountParts(row) end
+function AV.Parts(row) return AuctionIQ.Decide.AccountParts(row) end
 
 --- A craft's profit with reagents up r and the selling price down p (fractions): Decide.Reprice.
-function AV.Reprice(parts, r, p) return CH.Decide.Reprice(parts, r, p) end
+function AV.Reprice(parts, r, p) return AuctionIQ.Decide.Reprice(parts, r, p) end
 
 --- What price changes would do to each craft in your saved scans: profit a craft now, with reagents
 --- up, with the selling price down, both, and the reagent rise that would wipe the profit out.
@@ -340,7 +340,7 @@ function AV.Scenarios(ctx, r, p)
 	local sc = AV.Scenario()
 	r, p = r or sc.reagents, p or sc.price
 	local out = {}
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		for pid, prof in pairs(c.professions or {}) do
 			for _, row in ipairs(prof.scan and prof.scan.rows or {}) do
 				-- each character's own scan: their stats make each craft's numbers
@@ -348,7 +348,7 @@ function AV.Scenarios(ctx, r, p)
 					local parts = AV.Parts(row)
 					local now = AV.Reprice(parts, 0, 0)
 					local net = parts.consumed - parts.returned
-					local be = CH.Decide.BreakEvenParts(parts, parts.price)
+					local be = AuctionIQ.Decide.BreakEvenParts(parts, parts.price)
 					table.insert(out, { id = row.item, name = row.name, char = c.name or key, charKey = key, c = c, row = row,
 						prof = prof.name, profID = pid, scanAt = prof.scan.at, profit = now,
 						reagentsUp = AV.Reprice(parts, r, 0), priceDown = AV.Reprice(parts, 0, p), both = AV.Reprice(parts, r, p),
@@ -356,7 +356,7 @@ function AV.Scenarios(ctx, r, p)
 						-- the sale price per item where the craft makes nothing, and how far the estimate can fall
 						salePrice = be and be.price, estimate = be and be.estimate, cushion = be and be.cushion, priceFrom = parts.priceFrom,
 						-- how many to make (Decide.Suggest), from this scan
-						suggest = CH.Decide.Suggest(CH.Decide.ScanInputs(row), { fall = p }) })
+						suggest = AuctionIQ.Decide.Suggest(AuctionIQ.Decide.ScanInputs(row), { fall = p }) })
 				end
 			end
 		end
@@ -367,7 +367,7 @@ end
 --- Compare crafts: what each column is and how this craft's number was worked out, for its hover.
 --- Columns: 2 character, 3 profit now, 4 reagents up, 5 price down, 6 both, 7 break-even, 8 room, 9 make.
 function AV.ScenarioTip(x, j)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local sc = AV.Scenario()
 	local r, p = sc.reagents, sc.price
 	local parts = AV.Parts(x.row)
@@ -384,7 +384,7 @@ function AV.ScenarioTip(x, j)
 	local pctR, pctP = math.floor(r * 100 + 0.5), math.floor(p * 100 + 0.5)
 	local out
 	if j == 2 then
-		local age = x.scanAt and CH.Scans and CH.Scans.Age(time() - x.scanAt) or "?"
+		local age = x.scanAt and AuctionIQ.Scans and AuctionIQ.Scans.Age(time() - x.scanAt) or "?"
 		out = head("Character", "Whose scan this is. Their skill, Multicraft and Resourcefulness make this craft's numbers.")
 		table.insert(out, { string.format("%s, %s, scanned %s ago", x.char or "?", x.prof or "?", age) })
 	elseif j == 3 then
@@ -392,7 +392,7 @@ function AV.ScenarioTip(x, j)
 		now(out)
 		add(out, "Profit a craft", x.profit, true)
 		-- the reagents you hold: what crafting gives up by not selling them
-		for _, l in ipairs(CH.CraftOrSellBook(x.row and (x.row.item ~= x.id and x.row.concAccounts or x.row.accounts))) do table.insert(out, l) end
+		for _, l in ipairs(AuctionIQ.CraftOrSellBook(x.row and (x.row.item ~= x.id and x.row.concAccounts or x.row.accounts))) do table.insert(out, l) end
 	elseif j == "up" then
 		out = head(string.format("Reagents +%d%%", pctR), "Profit a craft if reagent prices rise this much. Resourcefulness gives back more too. Change it with the button above.")
 		add(out, "Profit now", x.profit, true)
@@ -444,7 +444,7 @@ function AV.ScenarioTip(x, j)
 		local sg = x.suggest
 		out = head("Make", "How many to craft: the biggest batch that still pays back if it sells slowly, without piling up stock.")
 		if sg then
-			table.insert(out, { CH.Decide.SuggestText(sg) })
+			table.insert(out, { AuctionIQ.Decide.SuggestText(sg) })
 			if sg.n > 0 and sg.why then table.insert(out, { T.Color("muted", sg.why) }) end
 		else
 			table.insert(out, { T.Color("muted", "No sale price in this scan, so no batch size.") })
@@ -454,7 +454,7 @@ function AV.ScenarioTip(x, j)
 end
 
 local function scenarioRows(ctx)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local out, fragile = {}, 0
 	for _, x in ipairs(AV.Scenarios(ctx)) do
 		if x.both < 0 then fragile = fragile + 1 end
@@ -481,15 +481,15 @@ end
 
 --- The live advisor result for a recipe, if the profession window has it open: result, row.
 function AV.LiveFor(recipeID)
-	local a = CH.AdvisorUI and CH.AdvisorUI.Current and CH.AdvisorUI.Current()
+	local a = AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.Current and AuctionIQ.AdvisorUI.Current()
 	if not (a and recipeID and a.recipeID == recipeID and not a.order and not a.sim) then return nil end
 	if ProfessionsFrame and ProfessionsFrame.IsShown and not ProfessionsFrame:IsShown() then return nil end
-	return a, (CH.AdvisorUI.SelectedRow and CH.AdvisorUI.SelectedRow()) or a.best
+	return a, (AuctionIQ.AdvisorUI.SelectedRow and AuctionIQ.AdvisorUI.SelectedRow()) or a.best
 end
 
 --- What a knowledge plan does to this craft: { from, to, char } or nil.
 function AV.PlanFor(item)
-	for _, sum in pairs(CH.db.plans or {}) do
+	for _, sum in pairs(AuctionIQ.db.plans or {}) do
 		for _, r in ipairs(sum.rows or {}) do
 			local saves = r.concQ and r.fromConc and r.toConc and r.fromConc - r.toConc >= 1 and math.floor(r.fromConc - r.toConc + 0.5) or nil
 			local qUp = r.fromQ and r.toQ and r.toQ > r.fromQ and r.toQ or nil
@@ -503,7 +503,7 @@ end
 --- A plan's effect on one recipe, in a line: "This plan saves 12 Concentration a craft", "... makes it
 --- Q2 without Concentration", else its profit now and planned.
 function AV.PlanText(plan)
-	local M = CH.FormatMoney
+	local M = AuctionIQ.FormatMoney
 	local name = "Your plan (" .. (plan.label or "Paths") .. ")"
 	local d = plan.from and plan.to and plan.to - plan.from
 	local more = d and math.abs(d) >= 1 and string.format(", %s%s a craft", d >= 0 and "+" or "", M(d)) or ""
@@ -514,24 +514,24 @@ end
 
 --- Rescan the profession a Compare crafts row came from. Returns ok, what happened.
 function AV.Rescan(x)
-	local open = CH.OpenProfessionID and CH.OpenProfessionID()
-	local me = CH.CharacterKey and CH.CharacterKey()
+	local open = AuctionIQ.OpenProfessionID and AuctionIQ.OpenProfessionID()
+	local me = AuctionIQ.CharacterKey and AuctionIQ.CharacterKey()
 	if x.charKey ~= me then return false, "That scan is " .. (x.char or "?") .. "'s: log in as them, open " .. (x.prof or "the profession") .. ", then rescan." end
 	if not open or (x.profID and open ~= x.profID) then return false, "Open " .. (x.prof or "the profession") .. " first (a crafting table for the best numbers), then rescan." end
-	if not (CH.ScanUI and CH.ScanUI.Start) then return false, "The scanner isn't loaded." end
-	CH.ScanUI.Start()
+	if not (AuctionIQ.ScanUI and AuctionIQ.ScanUI.Start) then return false, "The scanner isn't loaded." end
+	AuctionIQ.ScanUI.Start()
 	return true, "Scanning " .. (x.prof or "the profession") .. ": this list updates when it finishes."
 end
 
 --- Queue a batch of a scanned craft and save the decision behind it. Returns ok, what happened.
 function AV.QueueScan(x, n, conc, inp, plan)
-	local e = CH.Queue and CH.Queue.FromScan(x.charKey, x.c, x.row, conc)
+	local e = AuctionIQ.Queue and AuctionIQ.Queue.FromScan(x.charKey, x.c, x.row, conc)
 	if not e then return false, "This scan is too old to queue from: scan the profession again." end
-	CH.Queue.AddEntry(e, n)
-	if inp and CH.Forecast and CH.Forecast.SaveDecision then
-		local sc = CH.Decide.Scenarios(inp, n).expected
-		CH.Forecast.SaveDecision({ item = e.item, recipe = x.row.recipeID, name = x.name, char = x.char, quality = e.quality, conc = conc or nil,
-			n = n, itemsEach = CH.Decide.ItemsPerCraft(inp), costEach = sc.cost / n, priceEach = inp.price, netEach = sc.each,
+	AuctionIQ.Queue.AddEntry(e, n)
+	if inp and AuctionIQ.Forecast and AuctionIQ.Forecast.SaveDecision then
+		local sc = AuctionIQ.Decide.Scenarios(inp, n).expected
+		AuctionIQ.Forecast.SaveDecision({ item = e.item, recipe = x.row.recipeID, name = x.name, char = x.char, quality = e.quality, conc = conc or nil,
+			n = n, itemsEach = AuctionIQ.Decide.ItemsPerCraft(inp), costEach = sc.cost / n, priceEach = inp.price, netEach = sc.each,
 			daily = inp.daily, leftWeek = sc.left, profit = sc.items * sc.each - sc.cost, source = "the last scan", from = "craft", plan = plan })
 	end
 	return true, string.format("Queued %d x %s%s for %s", n, x.name or "?", conc and " with Concentration" or "", x.char or "?")
@@ -564,15 +564,15 @@ function AV.Selection(x, focus)
 	end
 	local inp, sug
 	if live then
-		local b = CH.AdvisorUI.BatchFor(live, lr)
+		local b = AuctionIQ.AdvisorUI.BatchFor(live, lr)
 		inp, sug = b and b.inputs, b and b.suggest
 	end
-	inp = inp or CH.Decide.ScanInputs(row, conc) or (conc and nil) or CH.Decide.ScanInputs(row)
-	sug = sug or (inp and CH.Decide.Suggest(inp, {}))
+	inp = inp or AuctionIQ.Decide.ScanInputs(row, conc) or (conc and nil) or AuctionIQ.Decide.ScanInputs(row)
+	sug = sug or (inp and AuctionIQ.Decide.Suggest(inp, {}))
 	-- the same quantity decision as the Craft card (can make, can afford, suggested), so what the
 	-- pane suggests is what's saved beside the batch you queue
-	local q = inp and CH.Decide.Quantity(inp, { suggest = sug, gold = GetMoney and GetMoney() or nil, noExplore = true }) or nil
-	local made = inp and CH.Decide.ItemsPerCraft(inp) or 1
+	local q = inp and AuctionIQ.Decide.Quantity(inp, { suggest = sug, gold = GetMoney and GetMoney() or nil, noExplore = true }) or nil
+	local made = inp and AuctionIQ.Decide.ItemsPerCraft(inp) or 1
 	-- how many crafts: the Dashboard's number (in items or crafts, as it said), else the suggestion
 	local n, from
 	if f and f.qty and f.qty > 0 then
@@ -589,7 +589,7 @@ end
 
 --- Use Concentration (or not) for a Compare crafts row. Returns the choice.
 function AV.SetConc(x, on)
-	local f = CH.LedgerUI and CH.LedgerUI.Focus and CH.LedgerUI.Focus()
+	local f = AuctionIQ.LedgerUI and AuctionIQ.LedgerUI.Focus and AuctionIQ.LedgerUI.Focus()
 	concChoice[rowKey(x)] = { on = on and true or false, focus = f }
 	return on and true or false
 end
@@ -597,26 +597,26 @@ end
 --- Queue exactly what the pane shows and save the decision behind it. Returns ok, what happened.
 function AV.QueueSelection(sel)
 	local x, n = sel.x, sel.n
-	if sel.live and sel.row and CH.AdvisorUI.QueueFrom then
-		local e = CH.AdvisorUI.QueueFrom(sel.live, sel.row, n, "craft")
+	if sel.live and sel.row and AuctionIQ.AdvisorUI.QueueFrom then
+		local e = AuctionIQ.AdvisorUI.QueueFrom(sel.live, sel.row, n, "craft")
 		if not e then return false, "The profession window didn't take that craft." end
 		return true, string.format("Queued %d x %s (Q%d%s) for %s", n, x.name or "?", sel.row.quality or 0, sel.conc and ", Concentration" or "", x.char or "?")
 	end
-	return AV.QueueScan(x, n, sel.conc, sel.inputs, CH.Decide.PlanRecord(sel.quantity))
+	return AV.QueueScan(x, n, sel.conc, sel.inputs, AuctionIQ.Decide.PlanRecord(sel.quantity))
 end
 
 function AV.CraftDetail(d, ctx)
 	local x = d.x
 	if not x then return nil end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local sel = AV.Selection(x, ctx and ctx.focus)
 	local live, inp, sug, n, row = sel.live, sel.inputs, sel.suggest, sel.n, x.row
-	local age = x.scanAt and CH.Scans and CH.Scans.Age(time() - x.scanAt) or "?"
+	local age = x.scanAt and AuctionIQ.Scans and AuctionIQ.Scans.Age(time() - x.scanAt) or "?"
 	local profit = sel.profit or 0
 	local function gold(v) return v and M(math.floor(v / 10000 + 0.5) * 10000) or "-" end
 	local function whole(v) return math.floor(v + 0.5) end
 	-- every figure is for the n crafts shown, the same n the Queue button adds
-	local sc = inp and CH.Decide.Scenarios(inp, n)
+	local sc = inp and AuctionIQ.Decide.Scenarios(inp, n)
 	local made = sel.made
 	local figures = { { "PROFIT", T.Color(profit >= 0 and "ok" or "bad", gold(profit)) },
 		{ "AT RISK", sc and T.Color("bad", gold(sc.slow.atRisk)) or T.Color("muted", "-") },
@@ -675,7 +675,7 @@ AV.CAUSES = { { "price", "Sale price", "what each sold for against the forecast 
 
 --- One line per cause and the takeaway, for a batch's hover.
 function AV.ExplainLines(d, x)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out = { { (d.name or "?") .. T.Color("muted", string.format("  %d of %d crafts, %d days since the first", d.crafts or 0, d.n or 0, math.floor(x.days + 0.5))) } }
 	table.insert(out, { x.takeaway })
 	table.insert(out, { "Forecast by now", M(x.forecast) })
@@ -687,7 +687,7 @@ function AV.ExplainLines(d, x)
 		x.sold, x.made, x.soldForecast, d.itemsEach or 0, x.left, M(x.leftWorth))) })
 	if d.source then table.insert(out, { T.Color("muted", "Sell rate from " .. d.source .. "; reagents at market when crafted.") }) end
 	-- only crafted units are credited: say how many sales went to stock you held or bought instead
-	local other = CH.Forecast.OtherSold and CH.Forecast.OtherSold(d.item) or 0
+	local other = AuctionIQ.Forecast.OtherSold and AuctionIQ.Forecast.OtherSold(d.item) or 0
 	if other > 0 then
 		table.insert(out, { T.Color("muted", string.format("%d sold of this item came out of stock you held or bought, so they aren't counted here.", other)) })
 	end
@@ -706,19 +706,19 @@ function AV.ExplainLines(d, x)
 end
 
 local function batchRows(ctx)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local out = {}
 	local fc, act, n = 0, 0, 0
-	for _, d in ipairs(CH.Forecast.Decisions()) do
-		local x = CH.Forecast.Explain(d, ctx.now)
+	for _, d in ipairs(AuctionIQ.Forecast.Decisions()) do
+		local x = AuctionIQ.Forecast.Explain(d, ctx.now)
 		if x and ctx.keepName(d.name or "") then
 			n, fc, act = n + 1, fc + x.forecast, act + x.actual
 			local word = x.main and ({ price = "Sale price", sell = "Sell-through", reagents = "Reagent cost", yield = "Craft yield" })[x.main] or "On forecast"
-			table.insert(out, { id = d.item, cells = { (d.name or "?") .. (d.conc and (" " .. CH.Window.ConcIcon(13)) or ""), d.char or "?",
+			table.insert(out, { id = d.item, cells = { (d.name or "?") .. (d.conc and (" " .. AuctionIQ.Window.ConcIcon(13)) or ""), d.char or "?",
 				string.format("%d/%d", d.crafts, d.n), string.format("%d/%d", x.sold, x.made), money(x.forecast), money(x.actual), signed(x.miss),
 				T.Color(x.main and (x.causes[x.main] >= 0 and "ok" or "bad") or "muted", word) },
 				sort = { d.name or "", d.char or "", d.crafts, x.sold, x.forecast, x.actual, x.miss, x.main or "" },
-				tip = function() return AV.ExplainLines(d, CH.Forecast.Explain(d)) end })
+				tip = function() return AV.ExplainLines(d, AuctionIQ.Forecast.Explain(d)) end })
 		end
 	end
 	if not out[1] then
@@ -735,7 +735,7 @@ end
 function AV.Professions(ctx)
 	local start = periods(ctx)
 	local days = math.max(1, (ctx.now - start) / DAY)
-	local crafted = CH.Ledger.Crafted()
+	local crafted = AuctionIQ.Ledger.Crafted()
 	local by, total = {}, { revenue = 0, profit = 0, held = 0, sold = 0 }
 	local function prof(name)
 		local x = by[name] or { name = name, sold = 0, revenue = 0, cost = 0, profit = 0, held = 0 }
@@ -747,7 +747,7 @@ function AV.Professions(ctx)
 		x.sold, x.revenue, x.cost, x.profit = x.sold + e.sold, x.revenue + e.revenue, x.cost + e.cost, x.profit + e.profit
 		total.sold, total.revenue, total.profit = total.sold + e.sold, total.revenue + e.revenue, total.profit + e.profit
 	end
-	for _, e in ipairs(CH.Ledger.Inventory(nil, ctx.opts and ctx.opts.char)) do
+	for _, e in ipairs(AuctionIQ.Ledger.Inventory(nil, ctx.opts and ctx.opts.char)) do
 		local c = e.id and crafted[e.id]
 		if c and e.value > 0 then
 			local x = prof(c.prof or "Other")
@@ -769,8 +769,8 @@ end
 --- average inventory of the daily snapshots. { cogs, avg, turns, days (to turn it once), snapshots } or nil.
 function AV.Turnover(ctx)
 	local start = periods(ctx)
-	local St = CH.Statements
-	local avg, n = CH.Ledger.AverageInventory and CH.Ledger.AverageInventory(start, ctx.now)
+	local St = AuctionIQ.Statements
+	local avg, n = AuctionIQ.Ledger.AverageInventory and AuctionIQ.Ledger.AverageInventory(start, ctx.now)
 	if not (St and avg and avg > 0) then return nil end
 	local inc = St.Income(start, ctx.now, ctx.opts and ctx.opts.char)
 	local cogs = inc.cogsTotal or 0
@@ -782,7 +782,7 @@ end
 local function professionRows(ctx)
 	local out = {}
 	if needLedger(out) then return needLedger(out) end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local list, total = AV.Professions(ctx)
 	for _, x in ipairs(list) do
 		local dtt = x.daysToTurn
@@ -838,7 +838,7 @@ AV.VIEWS.scenarios.controls = {
 local function profName(p) return p and (p.parent or p.name) or "?" end
 AV.VIEWS.scenarios.charChoices = function()
 	local list = {}
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		local profs = {}
 		for pid, p in pairs(c.professions or {}) do
 			if p.scan then table.insert(profs, { profName(p), pid }) end
@@ -860,7 +860,7 @@ end
 AV.VIEWS.scenarios.charLabel = function(v)
 	local name, pid = v:match("^([^#]+)#?(.*)$")
 	if pid == "" then return name end
-	for key, c in pairs(CH.db.characters or {}) do
+	for key, c in pairs(AuctionIQ.db.characters or {}) do
 		if (c.name or key:match("^[^%-]+")) == name then
 			local p = (c.professions or {})[tonumber(pid) or pid]
 			if p then return name .. " - " .. profName(p) end
@@ -874,39 +874,39 @@ end
 local lastRefresh = 0
 AV.VIEWS.scenarios.action = {
 	label = function()
-		local all = CH.Scan.all
+		local all = AuctionIQ.Scan.all
 		if all and all.waiting then return "Open" end -- the status line names which: "Open Enchanting" overflowed the button
 		return all and "Stop" or "Scan"
 	end,
-	status = function() return CH.Scan.AllStatus and CH.Scan.AllStatus() end,
+	status = function() return AuctionIQ.Scan.AllStatus and AuctionIQ.Scan.AllStatus() end,
 	tip = function()
-		local w = CH.Scan.all and CH.Scan.all.waiting
-		if w then return { { "Open " .. (w.name or "the next profession") }, { CH.Theme.Color("muted", "Opens it and scans it, then goes on to the next.") } } end
+		local w = AuctionIQ.Scan.all and AuctionIQ.Scan.all.waiting
+		if w then return { { "Open " .. (w.name or "the next profession") }, { AuctionIQ.Theme.Color("muted", "Opens it and scans it, then goes on to the next.") } } end
 		local names = {}
-		for _, p in ipairs(CH.Scan.MyProfessions()) do table.insert(names, p.name) end
-		return { { CH.Scan.all and "Stop scanning" or "Scan my professions" },
-			{ CH.Theme.Color("muted", "Opens and scans each of this character's professions in turn ("
+		for _, p in ipairs(AuctionIQ.Scan.MyProfessions()) do table.insert(names, p.name) end
+		return { { AuctionIQ.Scan.all and "Stop scanning" or "Scan my professions" },
+			{ AuctionIQ.Theme.Color("muted", "Opens and scans each of this character's professions in turn ("
 				.. (#names > 0 and table.concat(names, ", ") or "none found") .. "), then shows them here.") },
-			{ CH.Theme.Color("muted", "The game only lets an addon read the professions of the character you're logged in as, so log in as each crafter once and press Scan.") },
-			{ CH.Theme.Color("muted", "Stand at a crafting table for the best numbers: its bonuses count only while you're at it.") } }
+			{ AuctionIQ.Theme.Color("muted", "The game only lets an addon read the professions of the character you're logged in as, so log in as each crafter once and press Scan.") },
+			{ AuctionIQ.Theme.Color("muted", "Stand at a crafting table for the best numbers: its bonuses count only while you're at it.") } }
 	end,
 	click = function()
-		if CH.Scan.all and CH.Scan.all.waiting then
-			local name = CH.Scan.all.waiting.name
-			CH.Scan.ContinueAll()
+		if AuctionIQ.Scan.all and AuctionIQ.Scan.all.waiting then
+			local name = AuctionIQ.Scan.all.waiting.name
+			AuctionIQ.Scan.ContinueAll()
 			return true, "Scanning " .. (name or "the next profession") .. "."
 		end
-		if CH.Scan.all then CH.Scan.StopAll(); return true, "Stopping after this profession." end
-		local ok, why = CH.Scan.ScanAll(function()
+		if AuctionIQ.Scan.all then AuctionIQ.Scan.StopAll(); return true, "Stopping after this profession." end
+		local ok, why = AuctionIQ.Scan.ScanAll(function()
 			local now = GetTime and GetTime() or 0
-			if now - lastRefresh > 0.5 then lastRefresh = now; if CH.UI.IsShown() then CH.UI.Refresh() end end
+			if now - lastRefresh > 0.5 then lastRefresh = now; if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end end
 		end, function(results)
 			local parts = {}
 			for _, r in ipairs(results) do
 				table.insert(parts, r.why and (r.name .. " " .. r.why) or string.format("%s %d crafts", r.name, r.rows))
 			end
-			CH.Print("scanned " .. table.concat(parts, ", "))
-			if CH.UI.IsShown() then CH.UI.Refresh() end
+			AuctionIQ.Print("scanned " .. table.concat(parts, ", "))
+			if AuctionIQ.UI.IsShown() then AuctionIQ.UI.Refresh() end
 		end)
 		if not ok then return false, "Can't scan: " .. (why or "?") .. "." end
 		return true, "Scanning your professions: the list fills in as each one finishes."

@@ -2,11 +2,11 @@
 -- Statement, Balance Sheet, Cash Flow, Product P&L, Inventory, Performance) and Ledger (All, with
 -- Sales, Other income, Purchases, Other expenses, Expired and Cancelled as its filters). Filter by
 -- name, character and time frame, sort by any column, hover an item for its tooltip. Data comes from
--- CH.Ledger, which reads TSM's saved accounting and never writes to it.
-local _, CH = ...
+-- AuctionIQ.Ledger, which reads TSM's saved accounting and never writes to it.
+local _, AuctionIQ = ...
 
 local LUI = {}
-CH.LedgerUI = LUI
+AuctionIQ.LedgerUI = LUI
 
 local X0, TW = 172, 724 -- table left edge and width inside the page (TW follows the window)
 local BASE_TW = 724 -- the width the columns are laid out for; a wider table spreads them
@@ -76,13 +76,13 @@ LUI.VIEWS = VIEWS
 
 -- Formatting ----------------------------------------------------------------------------------
 local function money(c, sign)
-	if not c then return CH.Theme.Color("muted", "-") end
-	local t = CH.FormatMoney(c)
+	if not c then return AuctionIQ.Theme.Color("muted", "-") end
+	local t = AuctionIQ.FormatMoney(c)
 	if sign and c > 0 then t = "+" .. t end
 	return t
 end
 
-local function signed(c) return CH.Theme.Color(c >= 0 and "ok" or "bad", money(c)) end
+local function signed(c) return AuctionIQ.Theme.Color(c >= 0 and "ok" or "bad", money(c)) end
 LUI.Money, LUI.Signed = money, signed
 
 --- Another tab adds its views to this page: section is "operations" or "ledger", views maps a
@@ -171,10 +171,10 @@ function LUI.ItemText(id)
 	local name, link
 	if C_Item and C_Item.GetItemInfo then name, link = C_Item.GetItemInfo(id) end
 	name = name or (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id))
-	if name and CH.db then CH.db.itemNames = CH.db.itemNames or {}; CH.db.itemNames[id] = name end -- for the Python export
+	if name and AuctionIQ.db then AuctionIQ.db.itemNames = AuctionIQ.db.itemNames or {}; AuctionIQ.db.itemNames[id] = name end -- for the Python export
 	name = name or ("item " .. id)
 	local shown = link and link:gsub("|H.-|h%[?(.-)%]?|h", "%1") or name
-	return CH.Window.ItemIcon(id, 14) .. shown, name
+	return AuctionIQ.Window.ItemIcon(id, 14) .. shown, name
 end
 
 --- "2 Days 3 Hr", "21 Hr 41 Min", "28 Min", like TSM's time frame.
@@ -212,7 +212,7 @@ end
 
 function LUI.Rows(v, opts)
 	opts = opts or {}
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local now = opts.now or time()
 	local since = opts.days and (now - opts.days * 86400) or -math.huge
 	local key = opts.filter and opts.filter ~= "" and string.lower(opts.filter) or nil
@@ -236,7 +236,7 @@ function LUI.Rows(v, opts)
 	end
 
 	if v == "inventory" then
-		local T = CH.Theme
+		local T = AuctionIQ.Theme
 		local total, gain = 0, 0
 		-- what each cost: what you paid in the last 30 days of buying it, else what it costs to make
 		local paid, crafted, index = L.Paid(), L.Crafted(), L.PaidIndex()
@@ -291,8 +291,8 @@ function LUI.Rows(v, opts)
 							table.insert(lines, { "Sell-through, 30 days", string.format("%d%% (%d sold, %d expired, over %d day%s)", math.floor(sold / (sold + expired) * 100 + 0.5),
 								st.sold, st.expired, st.days, st.days == 1 and "" or "s") })
 						end
-						local rate = CH.Expect and CH.Expect.RegionRate and CH.Expect.RegionRate(e.id)
-						local perDayRegion = CH.Advisor and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(e.id)
+						local rate = AuctionIQ.Expect and AuctionIQ.Expect.RegionRate and AuctionIQ.Expect.RegionRate(e.id)
+						local perDayRegion = AuctionIQ.Advisor and AuctionIQ.Advisor.SoldPerDay and AuctionIQ.Advisor.SoldPerDay(e.id)
 						if perDayRegion then table.insert(lines, { "Region sold a day", string.format("%.1f", perDayRegion) }) end
 						if rate then table.insert(lines, { "Region sale rate", string.format("%d%%", math.floor(rate * 100 + 0.5)) }) end
 						table.insert(lines, { T.Color("muted", "Your own sales, from TSM. The region figures are TSM's market data for every seller.") })
@@ -307,11 +307,11 @@ function LUI.Rows(v, opts)
 				end })
 		end
 		return out, "Total value: " .. money(total) .. "   Unrealized on what has a cost: " .. signed(gain)
-			.. CH.Theme.Color("muted", "   Hover Held for where it is.")
+			.. AuctionIQ.Theme.Color("muted", "   Hover Held for where it is.")
 	end
 
 	if v == "all" then
-		local T = CH.Theme
+		local T = AuctionIQ.Theme
 		local inn, outg = 0, 0
 		local function add(r, kind, sign, label)
 			if not keepRec(r) then return end
@@ -354,13 +354,13 @@ function LUI.Rows(v, opts)
 			if keepRec(r) and keepName(r.source) then
 				local own = mine[r.other]
 				if own then transfers = transfers + r.amount else total = total + r.amount end
-				local other = own and CH.Theme.Color("muted", r.other .. " (yours)") or (r.other or "")
+				local other = own and AuctionIQ.Theme.Color("muted", r.other .. " (yours)") or (r.other or "")
 				table.insert(out, { cells = { r.source or "?", r.player or "?", other, money(r.amount), LUI.Ago(r.time, now) },
 					sort = { r.source or "", r.player or "", r.other or "", r.amount, now - r.time } })
 			end
 		end
 		local foot = "Total: " .. money(total)
-		if transfers > 0 then foot = foot .. CH.Theme.Color("muted", "   (plus " .. money(transfers) .. " moved between your characters)") end
+		if transfers > 0 then foot = foot .. AuctionIQ.Theme.Color("muted", "   (plus " .. money(transfers) .. " moved between your characters)") end
 		return out, foot
 	end
 
@@ -372,7 +372,7 @@ function LUI.Rows(v, opts)
 			if keepName(name) or keepName(e.line) then
 				rev, prof = rev + e.revenue, prof + e.profit
 				lines[e.line] = (lines[e.line] or 0) + e.profit
-				local est = e.paidShare < 0.5 and CH.Theme.Color("muted", "*") or ""
+				local est = e.paidShare < 0.5 and AuctionIQ.Theme.Color("muted", "*") or ""
 				table.insert(out, { id = e.id, cells = { text, e.line, e.sold, money(e.revenue), money(e.cost) .. est, signed(e.profit),
 					string.format("%d%%", math.floor(e.margin * 100 + 0.5)) },
 					sort = { name, e.line, e.sold, e.revenue, e.cost, e.profit, e.margin } })
@@ -382,25 +382,25 @@ function LUI.Rows(v, opts)
 		for l, g in pairs(lines) do if not bv or g > bv then best, bv = l, g end end
 		return out, string.format("Crafted sales %s, profit %s%s", money(rev), signed(prof),
 			best and ("   best line: " .. best .. " " .. money(bv)) or "")
-			.. CH.Theme.Color("muted", "   * mostly today's prices: you bought few of its reagents")
+			.. AuctionIQ.Theme.Color("muted", "   * mostly today's prices: you bought few of its reagents")
 	end
 
 	if v == "perf" then
 		local made, sold, rev, exp, real, fc = 0, 0, 0, 0, 0, 0
-		for _, e in ipairs(CH.Forecast.Performance(opts.days and since or 0)) do
+		for _, e in ipairs(AuctionIQ.Forecast.Performance(opts.days and since or 0)) do
 			local text, name = LUI.ItemText(e.id)
 			if keepName(name) then
 				made, sold, rev, real, fc = made + e.made, sold + e.sold, rev + e.revenue, real + e.realized, fc + e.forecast
 				exp = exp + (e.expectEach and e.expectEach * e.sold or 0)
 				local acc = e.accuracy and (e.accuracy - 1)
 				table.insert(out, { id = e.id, cells = { text, e.made, e.sold, money(e.expectEach), money(e.actualEach),
-					acc and CH.Theme.Color(acc >= -0.05 and "ok" or "bad", string.format("%+d%%", math.floor(acc * 100 + 0.5))) or CH.Theme.Color("muted", "-"),
-					e.days and string.format("%.1f", e.days) or CH.Theme.Color("muted", "-"), signed(e.realized) },
+					acc and AuctionIQ.Theme.Color(acc >= -0.05 and "ok" or "bad", string.format("%+d%%", math.floor(acc * 100 + 0.5))) or AuctionIQ.Theme.Color("muted", "-"),
+					e.days and string.format("%.1f", e.days) or AuctionIQ.Theme.Color("muted", "-"), signed(e.realized) },
 					sort = { name, e.made, e.sold, e.expectEach or 0, e.actualEach or 0, acc or 0, e.days or 1e9, e.realized } })
 			end
 		end
 		if made == 0 then
-			return out, CH.Theme.Color("muted", "Nothing yet: every craft from now on saves its forecast, and sales are matched to it oldest first.")
+			return out, AuctionIQ.Theme.Color("muted", "Nothing yet: every craft from now on saves its forecast, and sales are matched to it oldest first.")
 		end
 		local acc = exp > 0 and string.format("%+d%%", math.floor((rev / exp - 1) * 100 + 0.5)) or "-"
 		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
@@ -416,15 +416,15 @@ function LUI.Rows(v, opts)
 		if keepRec(r) then
 			local text, name = LUI.ItemText(r.id)
 			if keepName(name) then
-				local d = r.id and CH.Expect.LostDeposit(r.id, r.quantity) or 0
+				local d = r.id and AuctionIQ.Expect.LostDeposit(r.id, r.quantity) or 0
 				n, lost = n + r.quantity, lost + d
-				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, d > 0 and money(d) or CH.Theme.Color("muted", "-"),
+				table.insert(out, { id = r.id, cells = { text, r.player or "?", r.quantity, d > 0 and money(d) or AuctionIQ.Theme.Color("muted", "-"),
 					LUI.Ago(r.time, now) }, sort = { name, r.player or "", r.quantity, d, now - r.time } })
 			end
 		end
 	end
 	return out, string.format("%d items %s, about %s in deposits lost", n, v, money(lost))
-		.. CH.Theme.Color("muted", "   estimated from vendor price and listing length")
+		.. AuctionIQ.Theme.Color("muted", "   estimated from vendor price and listing length")
 end
 
 local function sortRows(rows, col, desc)
@@ -448,7 +448,7 @@ local function setView(v)
 	lastView[section] = v
 	if VIEWS[v].parent then lastIn[VIEWS[v].parent] = v end
 	sortCol, sortDesc = VIEWS[v].sort, not VIEWS[v].asc
-	CH.UI.Refresh()
+	AuctionIQ.UI.Refresh()
 end
 
 local function pick(owner, title, list, onPick)
@@ -468,7 +468,7 @@ local function pick(owner, title, list, onPick)
 end
 
 function LUI.Build(p, fs, panel)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	page = p
 	TW = math.max(BASE_TW, math.floor((p:GetWidth() or (X0 + BASE_TW)) - X0))
 	TWT = TW
@@ -501,7 +501,7 @@ function LUI.Build(p, fs, panel)
 				if sub and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
 				-- one line always: a label too long for the button gets the smaller font, never a
 				-- second line running into the next button
-				CH.Window.OneLine(f)
+				AuctionIQ.Window.OneLine(f)
 				local room = (sub and 120 or 144) - 12
 				if f.GetStringWidth and f:GetStringWidth() > room and f.SetFontObject then f:SetFontObject("GameFontHighlightSmall") end
 				b.fits = not (f.GetStringWidth and f:GetStringWidth() > room)
@@ -547,7 +547,7 @@ function LUI.Build(p, fs, panel)
 		if t == filter then return end
 		filter = t; offset = 0
 		if focus and t ~= (focus.name or "") then focus = nil end
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	p.search = search
 	search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -564,16 +564,16 @@ function LUI.Build(p, fs, panel)
 		if own then
 			for _, e in ipairs(own()) do table.insert(list, { e[1], e[2], selected = char == e[2] }) end
 		else
-			for _, c in ipairs(CH.Ledger.Characters()) do table.insert(list, { c.name, c.name, selected = char == c.name }) end
+			for _, c in ipairs(AuctionIQ.Ledger.Characters()) do table.insert(list, { c.name, c.name, selected = char == c.name }) end
 		end
-		pick(self, own and "Character and profession" or "Character", list, function(v) char = v or nil; offset = 0; CH.UI.Refresh() end)
+		pick(self, own and "Character and profession" or "Character", list, function(v) char = v or nil; offset = 0; AuctionIQ.UI.Refresh() end)
 	end)
 	p.timeButton = T.Button(body, "Last 30 Days", 110, 20)
 	p.timeButton:SetPoint("TOPLEFT", X0 + 424, -4)
 	p.timeButton:SetScript("OnClick", function(self)
 		local list = {}
 		for _, t in ipairs(TIMES) do table.insert(list, { t[1], t[2] or false, selected = days == t[2] }) end
-		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; CH.UI.Refresh() end)
+		pick(self, "Time frame", list, function(v) days = v or nil; offset = 0; AuctionIQ.UI.Refresh() end)
 	end)
 
 	-- a view's own settings (Scenarios: how far reagents rise, prices fall): left-click up, right-click down
@@ -584,11 +584,11 @@ function LUI.Build(p, fs, panel)
 		if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
 		b:SetScript("OnClick", function(self, button)
 			local c = VIEWS[view].controls and VIEWS[view].controls[i]
-			if c then c.click(button == "RightButton" and -1 or 1); CH.UI.Refresh() end
+			if c then c.click(button == "RightButton" and -1 or 1); AuctionIQ.UI.Refresh() end
 		end)
 		b:SetScript("OnEnter", function(self)
 			local c = VIEWS[view].controls and VIEWS[view].controls[i]
-			if c and c.tip then CH.Window.Tooltip(self, { { c.tip }, { "Left-click raises it, right-click lowers it." } }) end
+			if c and c.tip then AuctionIQ.Window.Tooltip(self, { { c.tip }, { "Left-click raises it, right-click lowers it." } }) end
 		end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		b:Hide()
@@ -597,7 +597,7 @@ function LUI.Build(p, fs, panel)
 
 	p.exportButton = T.Button(body, "Export", 70, 20)
 	p.exportButton:SetPoint("TOPLEFT", X0 + 540, -4)
-	p.exportButton:SetScript("OnClick", function() CH.Export.Export(view, { filter = filter, char = char, days = days }) end)
+	p.exportButton:SetScript("OnClick", function() AuctionIQ.Export.Export(view, { filter = filter, char = char, days = days }) end)
 	-- a view's own action in Export's place (Compare crafts: scan your professions)
 	p.actionButton = T.Button(body, "", 70, 20)
 	p.actionButton:SetPoint("TOPLEFT", X0 + 540, -4)
@@ -607,11 +607,11 @@ function LUI.Build(p, fs, panel)
 		if not a then return end
 		local ok, msg = a.click()
 		said = msg and { ok = ok, msg = msg } or nil
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end)
 	p.actionButton:SetScript("OnEnter", function(self)
 		local a = VIEWS[view] and VIEWS[view].action
-		if a and a.tip then CH.Window.Tooltip(self, a.tip()) end
+		if a and a.tip then AuctionIQ.Window.Tooltip(self, a.tip()) end
 	end)
 	p.actionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	p.actionButton:Hide()
@@ -624,12 +624,12 @@ function LUI.Build(p, fs, panel)
 		h.text = fs(h, 0, -2, 10, "LEFT", "GameFontNormalSmall")
 		h:SetScript("OnClick", function()
 			if sortCol == j then sortDesc = not sortDesc else sortCol, sortDesc = j, j ~= 1 end
-			CH.UI.Refresh()
+			AuctionIQ.UI.Refresh()
 		end)
 		-- a short code heading (MV, RV, EV, RZ) explains itself on hover
 		h:SetScript("OnEnter", function(self)
-			local say = self.code and CH.GLOSSARY and CH.GLOSSARY[self.code]
-			if say then CH.Window.Tooltip(self, { { CH.Theme.Color("accent", self.code) }, { say } }) end
+			local say = self.code and AuctionIQ.GLOSSARY and AuctionIQ.GLOSSARY[self.code]
+			if say then AuctionIQ.Window.Tooltip(self, { { AuctionIQ.Theme.Color("accent", self.code) }, { say } }) end
 		end)
 		h:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		p.heads[j] = h
@@ -647,7 +647,7 @@ function LUI.Build(p, fs, panel)
 			-- a row can carry its own explanation (tip lines); else the item's tooltip
 			if self.tip then
 				local lines = type(self.tip) == "function" and self.tip() or self.tip
-				if lines and lines[1] then CH.Window.Tooltip(self, lines) end
+				if lines and lines[1] then AuctionIQ.Window.Tooltip(self, lines) end
 			elseif self.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				GameTooltip:SetItemByID(self.id)
@@ -660,7 +660,7 @@ function LUI.Build(p, fs, panel)
 		end)
 		hit:SetScript("OnClick", function(self)
 			-- a statement line opens the transactions behind it
-			if self.go then return CH.UI.Go(self.go[1], self.go[2]) end
+			if self.go then return AuctionIQ.UI.Go(self.go[1], self.go[2]) end
 			if VIEWS[view] and VIEWS[view].detail and self.key then LUI.Select(self.key) end
 		end)
 		local bg = hit:CreateTexture(nil, "BACKGROUND")
@@ -674,25 +674,25 @@ function LUI.Build(p, fs, panel)
 	-- the selected row's detail, in a panel right of the table, for a view that has one: a kicker, a
 	-- headline, three figures, label and value rows, a section of rows (each explains itself on hover),
 	-- a note, and buttons from the bottom up (the first, the main one, lowest)
-	local det = CH.Window.SidePanel(body, SIDE, ROWS * RH + 20, { rows = 7, srows = 6, onAction = function(self)
+	local det = AuctionIQ.Window.SidePanel(body, SIDE, ROWS * RH + 20, { rows = 7, srows = 6, onAction = function(self)
 		local ok, msg = self.run()
 		said = msg and { ok = ok, msg = msg } or nil
-		CH.UI.Refresh()
+		AuctionIQ.UI.Refresh()
 	end })
 	det:Hide()
 	p.detail = det
 	p.footer = fs(body, X0, -52 - ROWS * RH - 8, TW, "CENTER", "GameFontNormal")
-	p.bar = CH.Window.ScrollBar(body, X0 + TW - 3, -50, ROWS * RH, true)
+	p.bar = AuctionIQ.Window.ScrollBar(body, X0 + TW - 3, -50, ROWS * RH, true)
 	LUI.SetRows(ROWS)
 	p:EnableMouseWheel(true)
-	p:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 5); CH.UI.Refresh() end)
+	p:SetScript("OnMouseWheel", function(_, delta) offset = math.max(0, offset - delta * 5); AuctionIQ.UI.Refresh() end)
 end
 
 --- Redraw. Returns the rows shown (all of them, sorted) and the footer, for tests.
 function LUI.Refresh()
 	local p = page
 	if not p then return {} end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local v = VIEWS[view]
 	-- a view with a detail panel gives the table's right side to it
 	TWT = v.detail and (TW - SIDE - 8) or TW
@@ -758,7 +758,7 @@ function LUI.Refresh()
 	end
 
 	local rows, footer = {}, ""
-	if CH.Ledger.Available() then
+	if AuctionIQ.Ledger.Available() then
 		rows, footer = LUI.Rows(view, { filter = filter, char = char, days = view ~= "inventory" and days or nil, focus = focus })
 		if not v.fixed then sortRows(rows, sortCol or 1, sortDesc) end -- a statement keeps its own order
 	end
@@ -804,8 +804,8 @@ function LUI.Refresh()
 		p.search:SetText(filter)
 		p.hint:SetText(filter == "" and "Filter by name" or "")
 	end
-	if focus and CH.Ledger.Available() then footer = LUI.FocusText(focus) .. "   " .. footer end
-	p.footer:SetText(CH.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
+	if focus and AuctionIQ.Ledger.Available() then footer = LUI.FocusText(focus) .. "   " .. footer end
+	p.footer:SetText(AuctionIQ.Ledger.Available() and (footer .. more) or T.Color("muted", "Needs TradeSkillMaster."))
 	return rows, footer
 end
 
@@ -830,7 +830,7 @@ function LUI.ShowCellTip(hit, j)
 	hit.col = j
 	local lines = j > 1 and hit.cellTip and hit.cellTip(j)
 	if lines and lines[1] then
-		CH.Window.Tooltip(hit, lines)
+		AuctionIQ.Window.Tooltip(hit, lines)
 	elseif j == 1 and hit.id and GameTooltip.SetItemByID and not ((LUI.quietUntil or 0) > (GetTime and GetTime() or 0)) then
 		GameTooltip:SetOwner(hit, "ANCHOR_RIGHT")
 		GameTooltip:SetItemByID(hit.id)
@@ -845,7 +845,7 @@ end
 function LUI.Select(key)
 	if key ~= selected then said = nil end
 	selected = key
-	CH.UI.Refresh()
+	AuctionIQ.UI.Refresh()
 end
 function LUI.Selected() return selected end
 
@@ -861,7 +861,7 @@ function LUI.DrawDetail(p, v, sel, shown)
 	det:SetPoint("TOPLEFT", X0 + TW - SIDE, -32)
 	det:SetHeight(ROWS * RH + 20)
 	local busy = v.action and v.action.status and v.action.status()
-	CH.Window.DrawSidePanel(det, d, busy and CH.Theme.Color("accent", busy) or said and CH.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
+	AuctionIQ.Window.DrawSidePanel(det, d, busy and AuctionIQ.Theme.Color("accent", busy) or said and AuctionIQ.Theme.Color(said.ok and "ok" or "bad", said.msg) or "")
 	LUI.lastDetail = d
 	return d
 end
@@ -887,12 +887,12 @@ end
 function LUI.ParClick(id, mod)
 	mod = mod or (IsAltKeyDown and IsAltKeyDown() and "alt") or (IsControlKeyDown and IsControlKeyDown() and "ctrl")
 		or (IsShiftKeyDown and IsShiftKeyDown() and "shift")
-	local cur = CH.Par.Target(id) or 0
-	if mod == "alt" then CH.Par.Set(id, nil)
-	elseif mod == "ctrl" then CH.Par.Set(id, cur - 1)
-	elseif mod == "shift" then CH.Par.Set(id, cur + 1) end
-	CH.UI.Refresh()
-	return CH.Par.Target(id)
+	local cur = AuctionIQ.Par.Target(id) or 0
+	if mod == "alt" then AuctionIQ.Par.Set(id, nil)
+	elseif mod == "ctrl" then AuctionIQ.Par.Set(id, cur - 1)
+	elseif mod == "shift" then AuctionIQ.Par.Set(id, cur + 1) end
+	AuctionIQ.UI.Refresh()
+	return AuctionIQ.Par.Target(id)
 end
 
 --- Which tab's views the page shows: "ledger" (Accounting) or "operations".
@@ -916,7 +916,7 @@ end
 
 --- The line a handed-over recommendation puts over a view's footer.
 function LUI.FocusText(f)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local what = (f.qty and f.qty > 0 and (f.qty .. " x ") or "") .. (f.name or "")
 	return T.Color("accent", "From Dashboard: " .. (f.title or "") .. (what ~= "" and (", " .. what) or ""))
 		.. (f.char and T.Color("muted", " on " .. f.char) or "")
@@ -949,8 +949,8 @@ end
 
 -- Item names arrive from the server a moment after first asked for: redraw once they do.
 local pending
-CH.On("GET_ITEM_INFO_RECEIVED", function()
+AuctionIQ.On("GET_ITEM_INFO_RECEIVED", function()
 	if pending or not (page and page:IsShown()) then return end
 	pending = true
-	C_Timer.After(0.3, function() pending = nil; if page and page:IsShown() then CH.UI.Refresh() end end)
+	C_Timer.After(0.3, function() pending = nil; if page and page:IsShown() then AuctionIQ.UI.Refresh() end end)
 end)

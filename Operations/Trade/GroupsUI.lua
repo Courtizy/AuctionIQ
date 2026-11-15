@@ -3,17 +3,17 @@
 -- items automatically; right-click an item to move it yourself. Click an item to see the rule that
 -- really applies to it: its group and why it's there, its operation and where that was set, and the
 -- min, normal and max it evaluates to.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local GUI = {}
-CH.GroupsUI = GUI
+AuctionIQ.GroupsUI = GUI
 local page, selected, treeOffset, itemOffset = nil, "Crafted", 0, 0
 local selItem -- the item whose effective rule is shown under the list
 local TREE_ROWS, ITEM_ROWS, RH = 26, 14, 18
 local INFO = 36 -- the effective-rule lines under the items
 local X0 = 232
 
-local function money(c) return c and CH.FormatMoney(c) or CH.Theme.Color("muted", "-") end
+local function money(c) return c and AuctionIQ.FormatMoney(c) or AuctionIQ.Theme.Color("muted", "-") end
 
 local OP_FIELDS = {
 	{ "post", "Post it", "bool" }, { "undercut", "Undercut", "num", 100 }, { "duration", "Hours (1=12 2=24 3=48)", "num", 1 },
@@ -25,31 +25,31 @@ local FORMULAS = { { "minPrice", "Min" }, { "normalPrice", "Normal" }, { "maxPri
 
 -- The operation the selected group uses: op, name.
 local function currentOp()
-	local _, name = CH.Groups.Operation(CH.Groups.Items(selected)[1] or 0)
+	local _, name = AuctionIQ.Groups.Operation(AuctionIQ.Groups.Items(selected)[1] or 0)
 	name = name or "Default"
-	return CH.Groups.Store().ops[name], name
+	return AuctionIQ.Groups.Store().ops[name], name
 end
 
 --- Set one of the selected operation's formulas (blank clears it). Returns true, or false and why.
 function GUI.SetFormula(field, text)
 	local op = currentOp()
 	text = text and text:match("^%s*(.-)%s*$") or ""
-	if text == "" then op[field] = nil; CH.UI.Refresh(); return true end
-	local ok, err = CH.Formula.Valid(text)
-	if not ok then CH.Print("that formula doesn't read: " .. tostring(err)); return false, err end
+	if text == "" then op[field] = nil; AuctionIQ.UI.Refresh(); return true end
+	local ok, err = AuctionIQ.Formula.Valid(text)
+	if not ok then AuctionIQ.Print("that formula doesn't read: " .. tostring(err)); return false, err end
 	op[field] = text
-	CH.UI.Refresh()
+	AuctionIQ.UI.Refresh()
 	return true
 end
 
 --- Items of the selected group as rows (for tests): { id, cells }.
 function GUI.Rows(path)
 	local out = {}
-	for _, id in ipairs(CH.Groups.Items(path or selected)) do
-		local p = CH.Groups.Prices(id)
-		local text, name = CH.LedgerUI.ItemText(id)
-		table.insert(out, { id = id, name = name, cells = { text, money(p.min), money(p.normal), money(p.max), p.cap, CH.Auction.Listed(id),
-			p.post and p.op or CH.Theme.Color("muted", p.op .. ", no post") } })
+	for _, id in ipairs(AuctionIQ.Groups.Items(path or selected)) do
+		local p = AuctionIQ.Groups.Prices(id)
+		local text, name = AuctionIQ.LedgerUI.ItemText(id)
+		table.insert(out, { id = id, name = name, cells = { text, money(p.min), money(p.normal), money(p.max), p.cap, AuctionIQ.Auction.Listed(id),
+			p.post and p.op or AuctionIQ.Theme.Color("muted", p.op .. ", no post") } })
 	end
 	table.sort(out, function(a, b) return a.name < b.name end)
 	return out
@@ -61,7 +61,7 @@ local SEP = "/"
 --- { path, pathFrom, op, opFrom, prices } (pathFrom: "moved", "tsm", "auto"; opFrom: the group
 --- path that sets it, or "default").
 function GUI.Effective(id)
-	local G, s = CH.Groups, CH.Groups.Store()
+	local G, s = AuctionIQ.Groups, AuctionIQ.Groups.Store()
 	local path = G.Path(id)
 	if not path then return nil end
 	local tsm = s.useTSM and G.TSMGroups()[id] or nil
@@ -77,10 +77,10 @@ end
 
 --- The two lines under the items for the selected item (also used by the tests).
 function GUI.EffectiveLines(id)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local e = id and GUI.Effective(id)
 	if not e then return { T.Color("muted", id and "This item isn't in any group." or "Click an item to see the rule that applies to it."), "" } end
-	local _, name = CH.LedgerUI.ItemText(id)
+	local _, name = AuctionIQ.LedgerUI.ItemText(id)
 	local from = ({ moved = "you moved it", tsm = "TSM group", auto = "automatic" })[e.pathFrom]
 	local opFrom = e.opFrom == "default" and "default for " .. (e.path:match("^([^" .. SEP .. "]+)") or "its group")
 		or e.opFrom == e.path and "set on this group" or ("from " .. e.opFrom)
@@ -94,24 +94,24 @@ function GUI.EffectiveLines(id)
 end
 
 --- Show an item's effective rule under the list (as a click on it does).
-function GUI.SelectItem(id) selItem = id; CH.UI.Refresh() end
+function GUI.SelectItem(id) selItem = id; AuctionIQ.UI.Refresh() end
 
 local function moveMenu(owner, id)
 	if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
 	MenuUtil.CreateContextMenu(owner, function(_, root)
 		root:CreateTitle("Move to group")
-		for _, g in ipairs(CH.Groups.Tree()) do
+		for _, g in ipairs(AuctionIQ.Groups.Tree()) do
 			if g.depth <= 2 and g.path:sub(1, 4) ~= "TSM/" then
-				root:CreateButton(string.rep("  ", g.depth) .. g.name, function() CH.Groups.Move(id, g.path); CH.UI.Refresh() end)
+				root:CreateButton(string.rep("  ", g.depth) .. g.name, function() AuctionIQ.Groups.Move(id, g.path); AuctionIQ.UI.Refresh() end)
 			end
 		end
 		root:CreateDivider()
-		root:CreateButton("Back to automatic", function() CH.Groups.Move(id, nil); CH.UI.Refresh() end)
+		root:CreateButton("Back to automatic", function() AuctionIQ.Groups.Move(id, nil); AuctionIQ.UI.Refresh() end)
 	end)
 end
 
 function GUI.Build(p, fs, panel)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	page = p
 	local tree = panel(p, 0, 0, 220, (p:GetHeight() or 552))
 	p.tree = {}
@@ -123,34 +123,34 @@ function GUI.Build(p, fs, panel)
 		b:SetScript("OnClick", function(self)
 			if not self.path then return end
 			selected, itemOffset, selItem = self.path, 0, nil
-			CH.UI.Refresh()
+			AuctionIQ.UI.Refresh()
 		end)
 		p.tree[i] = b
 	end
 	local rebuild = T.Button(tree, "Rebuild", 70, 18)
 	rebuild:SetPoint("TOPLEFT", 6, -6)
-	rebuild:SetScript("OnClick", function() local n = CH.Groups.Rebuild(); CH.Print("groups rebuilt: " .. n .. " items sorted"); CH.UI.Refresh() end)
+	rebuild:SetScript("OnClick", function() local n = AuctionIQ.Groups.Rebuild(); AuctionIQ.Print("groups rebuilt: " .. n .. " items sorted"); AuctionIQ.UI.Refresh() end)
 	local tsm = T.Button(tree, "TSM groups", 110, 18)
 	tsm:SetPoint("TOPLEFT", 82, -6)
-	tsm:SetScript("OnClick", function() local s = CH.Groups.Store(); s.useTSM = not s.useTSM; CH.UI.Refresh() end)
+	tsm:SetScript("OnClick", function() local s = AuctionIQ.Groups.Store(); s.useTSM = not s.useTSM; AuctionIQ.UI.Refresh() end)
 	p.tsmButton = tsm
 	tree:EnableMouseWheel(true)
-	tree:SetScript("OnMouseWheel", function(_, d) treeOffset = math.max(0, treeOffset - d * 3); CH.UI.Refresh() end)
+	tree:SetScript("OnMouseWheel", function(_, d) treeOffset = math.max(0, treeOffset - d * 3); AuctionIQ.UI.Refresh() end)
 
 	p.title = fs(p, X0, -2, 396, "LEFT", "GameFontNormal")
 	local back = T.Button(p, "< Settings", 90, 18)
 	back:SetPoint("TOPLEFT", X0 + 408, -2)
-	back:SetScript("OnClick", function() CH.UI.Go("settings") end)
+	back:SetScript("OnClick", function() AuctionIQ.UI.Go("settings") end)
 	p.opButton = T.Button(p, "Operation", 140, 18)
 	p.opButton:SetPoint("TOPRIGHT", p, "TOPLEFT", X0 + 664, -2)
 	p.opButton:SetScript("OnClick", function(self)
 		if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
 		MenuUtil.CreateContextMenu(self, function(_, root)
 			root:CreateTitle("Operation for " .. selected)
-			for name in pairs(CH.Groups.Store().ops) do
-				root:CreateButton(name, function() CH.Groups.Assign(selected, name); CH.UI.Refresh() end)
+			for name in pairs(AuctionIQ.Groups.Store().ops) do
+				root:CreateButton(name, function() AuctionIQ.Groups.Assign(selected, name); AuctionIQ.UI.Refresh() end)
 			end
-			root:CreateButton("Inherit", function() CH.Groups.Assign(selected, nil); CH.UI.Refresh() end)
+			root:CreateButton("Inherit", function() AuctionIQ.Groups.Assign(selected, nil); AuctionIQ.UI.Refresh() end)
 		end)
 	end)
 	local cols = { { "Item", 0, 220 }, { "Min", 224, 80 }, { "Normal", 308, 80 }, { "Max", 392, 80 }, { "Keep up", 476, 54 },
@@ -179,9 +179,9 @@ function GUI.Build(p, fs, panel)
 		p.items[i] = r
 	end
 	p.info = {}
-	for k = 1, 2 do p.info[k] = CH.Window.OneLine(fs(p, X0, -44 - ITEM_ROWS * RH - 2 - (k - 1) * 16, 664, "LEFT")) end
+	for k = 1, 2 do p.info[k] = AuctionIQ.Window.OneLine(fs(p, X0, -44 - ITEM_ROWS * RH - 2 - (k - 1) * 16, 664, "LEFT")) end
 	p:EnableMouseWheel(true)
-	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); CH.UI.Refresh() end)
+	p:SetScript("OnMouseWheel", function(_, d) itemOffset = math.max(0, itemOffset - d * 5); AuctionIQ.UI.Refresh() end)
 
 	-- operation settings for the selected group's operation
 	p.opTitle = fs(p, X0, -44 - ITEM_ROWS * RH - INFO - 8, 500, "LEFT", "GameFontNormal")
@@ -189,13 +189,13 @@ function GUI.Build(p, fs, panel)
 	p.importTSM = T.Button(p, "Import TSM rules", 150, 18)
 	p.importTSM:SetPoint("TOPLEFT", X0 + 514, -44 - ITEM_ROWS * RH - INFO - 6)
 	p.importTSM:SetScript("OnClick", function()
-		local n, err = CH.Groups.ImportTSM()
+		local n, err = AuctionIQ.Groups.ImportTSM()
 		if n then
-			local head, lines = CH.Groups.ImportSummary(n)
-			CH.Print("copied from TSM: " .. head .. ". They're AuctionIQ's now.")
-			for _, l in ipairs(lines) do CH.Print("  " .. l) end
-		else CH.Print("couldn't import: " .. tostring(err)) end
-		CH.UI.Refresh()
+			local head, lines = AuctionIQ.Groups.ImportSummary(n)
+			AuctionIQ.Print("copied from TSM: " .. head .. ". They're AuctionIQ's now.")
+			for _, l in ipairs(lines) do AuctionIQ.Print("  " .. l) end
+		else AuctionIQ.Print("couldn't import: " .. tostring(err)) end
+		AuctionIQ.UI.Refresh()
 	end)
 	p.opFields = {}
 	for i, f in ipairs(OP_FIELDS) do
@@ -212,11 +212,11 @@ function GUI.Build(p, fs, panel)
 			if f[3] == "bool" then
 				if f[1] == "learn" then op.learn = not op.learn else op[f[1]] = not (v ~= false) end
 			else
-				if type(v) == "string" then v = CH.Formula.Value(v, CH.Groups.Items(selected)[1] or 0) or 0 end
+				if type(v) == "string" then v = AuctionIQ.Formula.Value(v, AuctionIQ.Groups.Items(selected)[1] or 0) or 0 end
 				op[f[1]] = math.max(0, (v or 0) + dir * f[4])
 			end
 			if f[1] == "cap" and op.cap == 0 then op.cap = nil end
-			CH.UI.Refresh()
+			AuctionIQ.UI.Refresh()
 		end
 		minus:SetScript("OnClick", function() change(-1) end)
 		plus:SetScript("OnClick", function() change(1) end)
@@ -233,7 +233,7 @@ function GUI.Build(p, fs, panel)
 		eb:SetPoint("TOPLEFT", X0 + 62, y + 1)
 		eb:SetAutoFocus(false)
 		eb:SetScript("OnEnterPressed", function(self) self:ClearFocus(); GUI.SetFormula(f[1], self:GetText()) end)
-		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); CH.UI.Refresh() end)
+		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); AuctionIQ.UI.Refresh() end)
 		p.formulas[i] = { box = eb, f = f }
 	end
 	p.formulaHelp = fs(p, X0, fy - 3 * 24 - 2, 664, "LEFT", "GameFontDisableSmall")
@@ -243,10 +243,10 @@ end
 function GUI.Refresh()
 	local p = page
 	if not p then return {} end
-	local T = CH.Theme
-	local s = CH.Groups.Store()
+	local T = AuctionIQ.Theme
+	local s = AuctionIQ.Groups.Store()
 	if p.tsmButton.text then p.tsmButton.text:SetText(s.useTSM and "TSM groups: on" or "TSM groups: off") end
-	local tree = CH.Groups.Tree()
+	local tree = AuctionIQ.Groups.Tree()
 	treeOffset = math.max(0, math.min(treeOffset, #tree - TREE_ROWS))
 	for i, b in ipairs(p.tree) do
 		local g = tree[i + treeOffset]
@@ -269,7 +269,7 @@ function GUI.Refresh()
 	end
 	local lines = GUI.EffectiveLines(selItem)
 	for k, fsk in ipairs(p.info) do fsk:SetText(lines[k] or "") end
-	local _, name = CH.Groups.Operation(CH.Groups.Items(selected)[1] or 0)
+	local _, name = AuctionIQ.Groups.Operation(AuctionIQ.Groups.Items(selected)[1] or 0)
 	name = name or "Default"
 	if p.opButton.text then p.opButton.text:SetText("Operation: " .. name) end
 	local op = s.ops[name]
@@ -280,7 +280,7 @@ function GUI.Refresh()
 		if e.f[1] == "learn" then e.val:SetText(v and T.Color("ok", "yes") or T.Color("muted", "no"))
 		elseif e.f[3] == "bool" then e.val:SetText(v ~= false and T.Color("ok", "yes") or T.Color("bad", "no"))
 		elseif e.f[1] == "cap" and not v then e.val:SetText("target")
-		elseif e.f[1] == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and CH.FormatMoney(v) or (v .. "c"))
+		elseif e.f[1] == "undercut" and type(v) == "number" then e.val:SetText(v >= 100 and AuctionIQ.FormatMoney(v) or (v .. "c"))
 		else e.val:SetText(tostring(v or 0)) end
 	end
 	for _, e in ipairs(p.formulas) do

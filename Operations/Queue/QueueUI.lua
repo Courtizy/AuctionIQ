@@ -1,9 +1,9 @@
 -- Craft queue and shopping list panel. A tab beside Craft, or popped out beside it; /aiq queue opens it anywhere
 -- (at the auction house, say) on its own.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local QUI = {}
-CH.QueueUI = QUI
+AuctionIQ.QueueUI = QUI
 local panel, qrows, srows, shopHead, empty, blocker
 local QROWS, SROWS, W = 8, 8, 540
 local budget -- { head, rows = { { label, text } } }
@@ -25,10 +25,10 @@ end
 
 --- Hover lines for a shopping row's cost: where the price came from and how far up the book it goes.
 function QUI.CostLines(s)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out = {}
 	if not s or s.buy <= 0 or not s.cost then return out end
-	local from = s.source == "ah" and "your AH search" or s.source == "scan" and ("your last AH scan, " .. CH.Scans.Age(s.age) .. " old")
+	local from = s.source == "ah" and "your AH search" or s.source == "scan" and ("your last AH scan, " .. AuctionIQ.Scans.Age(s.age) .. " old")
 		or "chmat (no listings seen)"
 	out[#out + 1] = "Buying " .. s.buy .. " costs " .. M(s.cost)
 	if s.first and s.source ~= "chmat" then
@@ -59,11 +59,11 @@ end
 
 local function rank(q, tiers)
 	if not q then return "" end
-	return " " .. CH.Window.QualityIcon(q, 14, tiers)
+	return " " .. AuctionIQ.Window.QualityIcon(q, 14, tiers)
 end
 
 local function updatePop()
-	local popped = not CH.Window.InTabs("queue")
+	local popped = not AuctionIQ.Window.InTabs("queue")
 	local b = panel.pop
 	local t = popped and "Join tabs" or "Pop out"
 	if b.text then b.text:SetText(t) elseif b.SetText then b:SetText(t) end
@@ -92,15 +92,15 @@ local C = { name = { 12, 206 }, who = { 222, 72 }, state = { 298, 96 }, profit =
 
 -- A card's heading, as the Craft window's side panel draws QUALITY: small, bold, the theme colour.
 local function head(parent, x, y, w)
-	local fs = CH.Window.OneLine(text(parent, x, y, w, "LEFT", "GameFontNormalSmall"))
-	CH.Theme.TitleFont(fs, 10, "bold")
+	local fs = AuctionIQ.Window.OneLine(text(parent, x, y, w, "LEFT", "GameFontNormalSmall"))
+	AuctionIQ.Theme.TitleFont(fs, 10, "bold")
 	return fs
 end
 
 -- Column heads, as the Craft list has them: muted capitals.
 local function colHeads(parent, y, cols)
 	for _, c in ipairs(cols) do
-		local h = CH.Window.OneLine(text(parent, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall"))
+		local h = AuctionIQ.Window.OneLine(text(parent, c[2], y, c[3], c[4] or "RIGHT", "GameFontDisableSmall"))
 		h:SetText(c[1]:upper())
 	end
 end
@@ -109,26 +109,26 @@ end
 local function hairline(parent, y, w)
 	local line = parent:CreateTexture(nil, "BACKGROUND", nil, 3)
 	line:SetPoint("TOPLEFT", 7, y)
-	line:SetSize(w, CH.Theme.Px(parent))
+	line:SetSize(w, AuctionIQ.Theme.Px(parent))
 	line:SetColorTexture(0, 0, 0, 0.6)
 	return line
 end
 
 local function hoverTip(f, lines)
-	f:SetScript("OnEnter", function(self) local l = lines(self); if l and l[1] then CH.Window.Tooltip(self, l) end end)
+	f:SetScript("OnEnter", function(self) local l = lines(self); if l and l[1] then AuctionIQ.Window.Tooltip(self, l) end end)
 	f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 --- The bar's More menu: what it offers, for the menu and the tests. { label, run }.
 function QUI.MenuItems()
 	return {
-		{ "Compare restock plans", function() if CH.UI and CH.UI.Page then CH.UI.Page("operations", "restock") end end },
-		{ "Clear queue", function() CH.Queue.Clear() end },
+		{ "Compare restock plans", function() if AuctionIQ.UI and AuctionIQ.UI.Page then AuctionIQ.UI.Page("operations", "restock") end end },
+		{ "Clear queue", function() AuctionIQ.Queue.Clear() end },
 	}
 end
 
 local function build()
-	local T, Wd = CH.Theme, CH.Window
+	local T, Wd = AuctionIQ.Theme, AuctionIQ.Window
 	panel = Wd.New("AuctionIQQueue", "Queue", W, -BY + BH + 8)
 	panel:SetScript("OnDragStart", nil); panel:SetScript("OnDragStop", nil) -- Attach moves it with the tabs
 	local bar = panel.bar
@@ -152,9 +152,9 @@ local function build()
 		end)
 	end)
 	panel.pop = barButton("Pop out", 70, function()
-		return { { CH.Window.InTabs("queue") and "Pop out" or "Join tabs" }, { T.Color("muted", CH.Window.InTabs("queue")
+		return { { AuctionIQ.Window.InTabs("queue") and "Pop out" or "Join tabs" }, { T.Color("muted", AuctionIQ.Window.InTabs("queue")
 			and "Take the queue out of the tabs so it sits beside the Craft window." or "Put the queue back in the tabs, behind the Craft window.") } }
-	end, function() CH.Window.ToggleQueuePop(); updatePop() end)
+	end, function() AuctionIQ.Window.ToggleQueuePop(); updatePop() end)
 	-- a status line under the bar, as the Craft window's
 	panel.status = Wd.OneLine(text(panel, 12, -31, W - 24, "LEFT"))
 
@@ -190,7 +190,7 @@ local function build()
 	qwheel:SetPoint("TOPLEFT", 0, y + 2)
 	qwheel:SetSize(W, QROWS * H)
 	qBar = Wd.ScrollBar(panel, W - 9, y + 2, QROWS * H, true)
-	Wd.Wheel(qwheel, QROWS, function() return qOffset end, function(v) qOffset = v end, function() return #CH.db.queue end, QUI.Refresh, qBar)
+	Wd.Wheel(qwheel, QROWS, function() return qOffset end, function(v) qOffset = v end, function() return #AuctionIQ.db.queue end, QUI.Refresh, qBar)
 
 	-- the first thing in the way, between the work and what to buy
 	T.BorderCard(panel, 6, KY, W - 12, KH)
@@ -248,7 +248,7 @@ end
 --- The shopping list as the card shows it: reagents to buy first, then one row that folds the covered
 --- ones away (or opens them under it). Returns the rows, the total to buy and the full list.
 function QUI.ShopRows()
-	local shop, total = CH.Queue.ShoppingList()
+	local shop, total = AuctionIQ.Queue.ShoppingList()
 	local rows, covered = {}, {}
 	for _, s in ipairs(shop) do
 		if s.buy > 0 then rows[#rows + 1] = s else covered[#covered + 1] = s end
@@ -278,15 +278,15 @@ end
 
 --- A queue row's status: its text and the hover lines. rd from Queue.Readiness, can/why from CanCraftHere.
 function QUI.RowState(e, rd, can, why, step, shop)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local lines = { { e.name or "?" } }
 	local function count() return string.format("Craft %d now · %d blocked", rd.now, rd.blocked) end
 	if step == "Turn in" then return T.Color("ok", "Ready"), { { "Ready to turn in" } } end
 	if step == "Remove" then
-		local why = CH.Queue.Lapsed(e)
+		local why = AuctionIQ.Queue.Lapsed(e)
 		table.insert(lines, { T.Color("muted", why == "expired" and "The order expired: the game took it back." or
 			"The board doesn't list this order any more and you haven't claimed it: someone else took it, it was cancelled, or it was turned in.") })
-		return T.Color("bad", CH.Queue.LAPSED_LABEL[why] or "Gone"), lines
+		return T.Color("bad", AuctionIQ.Queue.LAPSED_LABEL[why] or "Gone"), lines
 	end
 	if rd.why == "switch" then
 		table.insert(lines, { T.Color("muted", "Queued for " .. (e.charName or "another character") .. ": log in as them to craft it.") })
@@ -307,11 +307,11 @@ end
 
 --- The line between the queue and the shopping list: the first thing that stops you, or that nothing does.
 function QUI.BlockerLine(ready, tot, b)
-	local T, M = CH.Theme, CH.FormatMoney
-	local q = CH.db.queue
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
+	local q = AuctionIQ.db.queue
 	if not q[1] then return "" end
-	if not ready then ready, tot = CH.Queue.Readiness() end
-	b = b or CH.Queue.Budget()
+	if not ready then ready, tot = AuctionIQ.Queue.Readiness() end
+	b = b or AuctionIQ.Queue.Budget()
 	local gold = b.gold.need > b.gold.have and b.gold.need >= 1
 		and T.Color("muted", string.format(". Buying it all costs %s, you have %s", M(b.gold.need), M(b.gold.have))) or ""
 	for _, e in ipairs(q) do
@@ -338,17 +338,17 @@ end
 --- Redraw. Returns the queue and shopping lines it wrote, for the tests.
 function QUI.Refresh()
 	if not panel or not panel:IsShown() then return end
-	local T = CH.Theme
-	local q = CH.db.queue
-	local ready, tot = CH.Queue.Readiness()
-	local b = CH.Queue.Budget()
+	local T = AuctionIQ.Theme
+	local q = AuctionIQ.db.queue
+	local ready, tot = AuctionIQ.Queue.Readiness()
+	local b = AuctionIQ.Queue.Budget()
 	-- the status line: how many crafts, how many you can make now, and what they should earn
-	local n, sum = CH.Queue.Count(), 0
-	for _, e in ipairs(CH.Queue.Active()) do sum = sum + (e.profit or 0) * (e.qty or 0) end
+	local n, sum = AuctionIQ.Queue.Count(), 0
+	for _, e in ipairs(AuctionIQ.Queue.Active()) do sum = sum + (e.profit or 0) * (e.qty or 0) end
 	panel.status:SetText(n == 0 and T.Color("muted", "Nothing queued.")
 		or (T.Color("muted", string.format("%d %s queued · ", n, n == 1 and "craft" or "crafts"))
 		.. T.Color(tot.now > 0 and "ok" or "muted", tot.now .. " ready now") .. T.Color("muted", " · Estimated profit ")
-		.. T.Color(sum >= 0 and "ok" or "bad", CH.FormatMoney(sum))
+		.. T.Color(sum >= 0 and "ok" or "bad", AuctionIQ.FormatMoney(sum))
 		.. (#q > QROWS and T.Color("muted", string.format(" · rows %d-%d of %d", qOffset + 1, math.min(#q, qOffset + QROWS), #q)) or "")))
 	empty:SetText(#q == 0 and T.Color("muted", "Empty. Queue crafts from the Craft window: a recipe's Queue button, Fill queue, Work orders or First crafts.") or "")
 	local shopRows, total, shop = QUI.ShopRows()
@@ -364,15 +364,15 @@ function QUI.Refresh()
 		r.line:SetShown(show)
 		r.stateHit:SetShown(show)
 		if show then
-			local tag = (e.concentration and (" " .. CH.Window.ConcIcon(13)) or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
+			local tag = (e.concentration and (" " .. AuctionIQ.Window.ConcIcon(13)) or "") .. (e.firstCraft and T.Color("accent", " 1KP") or "")
 				.. (e.orderID and T.Color("accent", " order") or "") .. (e.special and T.Color("accent", " reward") or "")
 			-- the count first, so a long name cut short keeps it
-			r.name:SetText(string.format("%s%dx %s%s%s", CH.Window.ItemIcon(e.item, 15), e.qty, e.name or "?", rank(e.quality, e.tiers), tag))
+			r.name:SetText(string.format("%s%dx %s%s%s", AuctionIQ.Window.ItemIcon(e.item, 15), e.qty, e.name or "?", rank(e.quality, e.tiers), tag))
 			r.who:SetText(classColor(e.class) .. (e.charName or "?") .. "|r")
-			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", CH.FormatMoney(e.profit * e.qty)) or "")
+			r.profit:SetText(e.profit and T.Color(e.profit >= 0 and "ok" or "bad", AuctionIQ.FormatMoney(e.profit * e.qty)) or "")
 			local rd = ready[e] or { now = 0, blocked = e.qty, short = {} }
-			local can, why = CH.Queue.CanCraftHere(e)
-			local step = CH.Queue.OrderStep(e)
+			local can, why = AuctionIQ.Queue.CanCraftHere(e)
+			local step = AuctionIQ.Queue.OrderStep(e)
 			local state, tip = QUI.RowState(e, rd, can, why, step, shop)
 			r.state:SetText(state)
 			r.stateHit.lines = tip
@@ -383,14 +383,14 @@ function QUI.Refresh()
 			if r.craft.text then r.craft.text:SetText(label) elseif r.craft.SetText then r.craft:SetText(label) end
 			r.craft:SetScript("OnClick", function()
 				-- check again: bags and Concentration may have changed since the redraw
-				local now = CH.Queue.Readiness()[e]
+				local now = AuctionIQ.Queue.Readiness()[e]
 				if gated and not (now and now.now > 0) then
-					CH.Print("can't craft " .. (e.name or "it") .. " yet: " .. T.Color("bad", (now and now.why == "conc") and "not enough Concentration" or "reagents missing") .. ".")
+					AuctionIQ.Print("can't craft " .. (e.name or "it") .. " yet: " .. T.Color("bad", (now and now.why == "conc") and "not enough Concentration" or "reagents missing") .. ".")
 					return QUI.Refresh()
 				end
-				local ok, why = CH.Queue.Craft(e, gated and step == "Craft" and math.min(e.qty, now.now) or e.qty)
+				local ok, why = AuctionIQ.Queue.Craft(e, gated and step == "Craft" and math.min(e.qty, now.now) or e.qty)
 				-- say why nothing happened, rather than a click that does nothing
-				if not ok and why then CH.Print("can't " .. step:lower() .. " " .. (e.name or "it") .. ": " .. tostring(why)) end
+				if not ok and why then AuctionIQ.Print("can't " .. step:lower() .. " " .. (e.name or "it") .. ": " .. tostring(why)) end
 			end)
 			r.craft:SetScript("OnEnter", function(self)
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -405,7 +405,7 @@ function QUI.Refresh()
 				GameTooltip:Show()
 			end)
 			r.craft:SetScript("OnLeave", function() GameTooltip:Hide() end)
-			r.minus:SetScript("OnClick", function() CH.Queue.Remove(e, IsShiftKeyDown() and e.qty or 1) end)
+			r.minus:SetScript("OnClick", function() AuctionIQ.Queue.Remove(e, IsShiftKeyDown() and e.qty or 1) end)
 			r.minus.lines = { { "Remove one" }, { T.Color("muted", e.qty > 1 and ("Shift-click removes all " .. e.qty .. ".") or "It's the last one: the row goes.") } }
 			table.insert(lines.queue, string.format("%s Q%d x%d %s", e.name, e.quality or 0, e.qty, e.charName or ""))
 			table.insert(lines.state, state)
@@ -418,10 +418,10 @@ function QUI.Refresh()
 	local buyN = 0
 	for _, s in ipairs(shop) do if s.buy > 0 then buyN = buyN + 1 end end
 	shopHead:SetText(T.Color("accent", "SHOPPING LIST") .. (#shop > 0 and T.Color("muted", (total or 0) >= 1
-		and string.format("  %d to buy for %s, Shop queue at the AH", buyN, CH.FormatMoney(total)) or "  nothing to buy: you have it all") or ""))
+		and string.format("  %d to buy for %s, Shop queue at the AH", buyN, AuctionIQ.FormatMoney(total)) or "  nothing to buy: you have it all") or ""))
 	sOffset = math.max(0, math.min(sOffset, #shopRows - SROWS))
 	sBar:Set(sOffset, SROWS, #shopRows)
-	if #shopRows > SROWS then shopHead:SetText(shopHead:GetText() .. CH.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shopRows, sOffset + SROWS), #shopRows))) end
+	if #shopRows > SROWS then shopHead:SetText(shopHead:GetText() .. AuctionIQ.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shopRows, sOffset + SROWS), #shopRows))) end
 	for i, r in ipairs(srows) do
 		local s = shopRows[i + sOffset]
 		r.hit.id = s and s.itemID
@@ -434,11 +434,11 @@ function QUI.Refresh()
 			for j = 2, 5 do r[j]:SetText("") end
 			table.insert(lines.shop, string.format("covered=%d %s", s.n, showCovered and "open" or "folded"))
 		elseif s then
-			r[1]:SetText(CH.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
+			r[1]:SetText(AuctionIQ.Window.ItemIcon(s.itemID, 15) .. s.name .. rank(s.rank, s.tiers))
 			r[2]:SetText(s.need)
 			r[3]:SetText(T.Color(s.have >= s.need and "ok" or "fg", tostring(s.have)))
 			r[4]:SetText(s.buy > 0 and T.Color("bad", tostring(s.buy)) or T.Color("muted", "0"))
-			r[5]:SetText(s.buy > 0 and s.cost and T.Color((s.short or 0) > 0 and "bad" or "fg", CH.FormatMoney(s.cost)) or "")
+			r[5]:SetText(s.buy > 0 and s.cost and T.Color((s.short or 0) > 0 and "bad" or "fg", AuctionIQ.FormatMoney(s.cost)) or "")
 		else
 			for j = 1, 5 do r[j]:SetText("") end
 		end
@@ -452,8 +452,8 @@ end
 --- The budget lines: shopping cost against your gold, the reagents still missing, and Concentration
 --- needed against what each character's profession has. Also used by the tests.
 function QUI.BudgetLines(b)
-	local T, M = CH.Theme, CH.FormatMoney
-	b = b or CH.Queue.Budget()
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
+	b = b or AuctionIQ.Queue.Budget()
 	local out = {}
 	local g = b.gold
 	out[1] = g.need < 1 and T.Color("muted", "nothing to buy")
@@ -477,7 +477,7 @@ end
 --- Draw the budget lines. Returns them.
 function QUI.RenderBudget(b)
 	if not budget then return {} end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	local lines = QUI.BudgetLines(b)
 	budget.head:SetText(T.Color("accent", "BUDGET") .. T.Color("muted", "  what the queue needs against what you have"))
 	for i, row in ipairs(budget.rows) do row.text:SetText(lines[i]) end
@@ -485,11 +485,11 @@ function QUI.RenderBudget(b)
 end
 
 function QUI.Show()
-	if CH.Window.ResetQueueSpot then CH.Window.ResetQueueSpot() end
+	if AuctionIQ.Window.ResetQueueSpot then AuctionIQ.Window.ResetQueueSpot() end
 	if not panel then build() end
 	updatePop()
 	panel:Show()
-	CH.Window.Arrange()
+	AuctionIQ.Window.Arrange()
 	return QUI.Refresh()
 end
 
@@ -499,6 +499,6 @@ end
 
 function QUI.IsShown() return panel ~= nil and panel:IsShown() end
 
-CH.Queue.Changed = function() QUI.Refresh(); if CH.AdvisorUI and CH.AdvisorUI.UpdateQueueButton then CH.AdvisorUI.UpdateQueueButton() end; if CH.ScanUI and CH.ScanUI.UpdateNext then CH.ScanUI.UpdateNext() end end
-CH.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
-CH.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then CH.Window.Arrange(); QUI.Refresh() end end)
+AuctionIQ.Queue.Changed = function() QUI.Refresh(); if AuctionIQ.AdvisorUI and AuctionIQ.AdvisorUI.UpdateQueueButton then AuctionIQ.AdvisorUI.UpdateQueueButton() end; if AuctionIQ.ScanUI and AuctionIQ.ScanUI.UpdateNext then AuctionIQ.ScanUI.UpdateNext() end end
+AuctionIQ.On("BAG_UPDATE_DELAYED", function() QUI.Refresh() end)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() if QUI.IsShown() then AuctionIQ.Window.Arrange(); QUI.Refresh() end end)

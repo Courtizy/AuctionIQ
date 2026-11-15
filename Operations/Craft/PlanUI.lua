@@ -2,19 +2,19 @@
 -- what's coming up, best crafts and Concentration, and buttons for the crafting windows (the
 -- advisor stays docked to the profession window). Paths, beside it, plans the knowledge trees. It sits right of
 -- Research's nav, 724 wide.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local PUI = {}
-CH.PlanUI = PUI
+AuctionIQ.PlanUI = PUI
 local page
 local ROWS, TASKS = 14, 4
 
 function PUI.Build(p, fs, panel)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	page = p
 	-- the page grows with the window: Coming up takes the extra width, the crafts the extra height
 	local PW = math.max(724, math.floor(p:GetWidth() or 724))
-	local extra = math.max(0, (CH.UI.Height and CH.UI.Height() or 600) - 600)
+	local extra = math.max(0, (AuctionIQ.UI.Height and AuctionIQ.UI.Height() or 600) - 600)
 	local kp = panel(p, 0, 0, 476, 330)
 	local h = fs(kp, 10, -8, 456, "LEFT", "GameFontNormal")
 	h:SetText("Knowledge this week" .. T.Color("muted", "  tick what's done; clears at the reset"))
@@ -33,7 +33,7 @@ function PUI.Build(p, fs, panel)
 		for t = 1, TASKS do
 			local b = T.Button(kp, "", 36, 16)
 			b:SetPoint("TOPLEFT", 316 + (t - 1) * 40, y + 2)
-			b:SetScript("OnClick", function(self) if self.k then CH.Planner.Tick(self.k[1], self.k[2], self.k[3]); CH.UI.Refresh() end end)
+			b:SetScript("OnClick", function(self) if self.k then AuctionIQ.Planner.Tick(self.k[1], self.k[2], self.k[3]); AuctionIQ.UI.Refresh() end end)
 			r.ticks[t] = b
 		end
 		p.rows[i] = r
@@ -62,16 +62,16 @@ function PUI.Build(p, fs, panel)
 	p.crafts:SetSpacing(3)
 	-- the crafting windows
 	local x = 0
-	for _, b in ipairs({ { "Scan recipes", function() CH.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
-		{ "Back to Specialization", function() CH.UI.Go("operations", "paths") end, "The specialization tree and its plans" },
-		{ "Queue and shopping", function() CH.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
-		{ "Results", function() CH.LogUI.Open() end, "What your crafts really gave, in Performance" },
-		{ "Advisor on/off", function() CH.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
+	for _, b in ipairs({ { "Scan recipes", function() AuctionIQ.ScanUI.Toggle() end, "Rank every recipe of the open profession" },
+		{ "Back to Specialization", function() AuctionIQ.UI.Go("operations", "paths") end, "The specialization tree and its plans" },
+		{ "Queue and shopping", function() AuctionIQ.QueueUI.Toggle() end, "The craft queue and what to buy for it" },
+		{ "Results", function() AuctionIQ.LogUI.Open() end, "What your crafts really gave, in Performance" },
+		{ "Advisor on/off", function() AuctionIQ.AdvisorUI.ToggleSetting() end, "The advisor docked to the profession window" } }) do
 		local w = b[1]:len() * 7 + 24
 		local btn = T.Button(p, b[1], w, 20)
 		btn:SetPoint("TOPLEFT", x, -494 - extra)
 		btn:SetScript("OnClick", b[2])
-		btn:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, { { b[3] } }) end)
+		btn:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { b[3] } }) end)
 		btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		x = x + w + 6
 	end
@@ -80,7 +80,7 @@ end
 function PUI.Refresh()
 	local p = page
 	if not p then return {} end
-	local T, Pl = CH.Theme, CH.Planner
+	local T, Pl = AuctionIQ.Theme, AuctionIQ.Planner
 	pcall(Pl.RecordKP)
 	local tasks = Pl.Store().tasks
 	for t = 1, TASKS do p.taskHeads[t]:SetText(tasks[t] and tasks[t]:sub(1, 6) or "") end
@@ -106,7 +106,7 @@ function PUI.Refresh()
 		table.insert(lines, T.Color("accent", e.date:sub(6)) .. "  " .. e.name .. (e.hint and T.Color("muted", "\n      " .. e.hint) or ""))
 	end
 	p.upcoming:SetText(#lines > 0 and table.concat(lines, "\n") or T.Color("muted", "Nothing in the game calendar. Add your own: /aiq event 2026-12-01 Season 2 starts"))
-	p.crafts:SetText(CH.UI.CraftingText())
+	p.crafts:SetText(AuctionIQ.UI.CraftingText())
 	p.crafts:GetParent():SetHeight(p.crafts:GetStringHeight() + 10)
 	return rows
 end
@@ -118,20 +118,20 @@ local function q(x, share)
 end
 
 local function planRows(ctx)
-	local T, LUI = CH.Theme, CH.LedgerUI
+	local T, LUI = AuctionIQ.Theme, AuctionIQ.LedgerUI
 	local out, notes = {}, {}
-	for _, sum in pairs(CH.db.plans or {}) do
+	for _, sum in pairs(AuctionIQ.db.plans or {}) do
 		local gain = (sum.final or 0) - (sum.start or 0)
 		table.insert(notes, string.format("%s %s (%s, %d points): %s to %s a day", sum.char or "?", sum.profName or "?", sum.label or "?",
-			sum.budget or 0, CH.FormatMoney(sum.start or 0), CH.FormatMoney(sum.final or 0)) .. T.Color(gain >= 0 and "ok" or "bad", string.format(" (%s%s)", gain >= 0 and "+" or "", CH.FormatMoney(gain))))
+			sum.budget or 0, AuctionIQ.FormatMoney(sum.start or 0), AuctionIQ.FormatMoney(sum.final or 0)) .. T.Color(gain >= 0 and "ok" or "bad", string.format(" (%s%s)", gain >= 0 and "+" or "", AuctionIQ.FormatMoney(gain))))
 		for _, r in ipairs(sum.rows or {}) do
 			if ctx.keepName(r.name) then
 				local dDay = (r.toDay or 0) - (r.fromDay or 0)
 				local qual = q(r.fromQ, r.fromShare) .. " > " .. q(r.toQ, r.toShare)
 				if (r.toQ or 0) > (r.fromQ or 0) then qual = T.Color("ok", qual) end
 				table.insert(out, { id = r.id, cells = { r.name or "?", sum.profName or "?", qual, r.fromProfit and LUI.Signed(r.fromProfit) or "-",
-					r.toProfit and LUI.Signed(r.toProfit) or "-", CH.FormatMoney(r.fromDay or 0), CH.FormatMoney(r.toDay or 0),
-					T.Color(dDay > 0 and "ok" or dDay < 0 and "bad" or "muted", (dDay > 0 and "+" or "") .. CH.FormatMoney(dDay)) },
+					r.toProfit and LUI.Signed(r.toProfit) or "-", AuctionIQ.FormatMoney(r.fromDay or 0), AuctionIQ.FormatMoney(r.toDay or 0),
+					T.Color(dDay > 0 and "ok" or dDay < 0 and "bad" or "muted", (dDay > 0 and "+" or "") .. AuctionIQ.FormatMoney(dDay)) },
 					sort = { r.name or "", sum.profName or "", (r.toQ or 0) - (r.fromQ or 0), r.fromProfit or 0, r.toProfit or 0, r.fromDay or 0, r.toDay or 0, dDay } })
 			end
 		end
@@ -145,7 +145,7 @@ end
 
 -- Operations, Professions: Knowledge and Paths beside the nav, and each plan's payoff (Core/Views.lua
 -- puts them in the nav, after Compare crafts)
-CH.LedgerUI.Register("operations", {
+AuctionIQ.LedgerUI.Register("operations", {
 	professions = { label = "Weekly knowledge", page = "plan", noTime = true, cols = {} },
 	paths = { label = "Specialization", page = "paths", noTime = true, cols = {} },
 	plans = { label = "Plan payoff by recipe", sort = 8, noTime = true, rows = planRows, cols = { { "Recipe", 0, 196 }, { "Profession", 200, 84 },

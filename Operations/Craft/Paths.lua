@@ -2,10 +2,10 @@
 -- the Ledger use them), disenchanting yields (recorded as you loot), the plan shown on the trees,
 -- and loading the planner. The knowledge point planner itself, its presets, the tree view and the
 -- Paths page are their own addon, AuctionIQ_Paths, loaded the first time the page opens (P.Load).
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local P = {}
-CH.Paths = P
+AuctionIQ.Paths = P
 local SYNONYMS = { pots = "potion", pot = "potion", gems = "gem", inks = "ink", enchants = "enchant", oils = "oil",
 	phials = "phial", flasks = "flask", rings = "ring", necks = "neck", necklaces = "neck", glyphs = "glyph",
 	elixirs = "elixir", cauldrons = "cauldron", runes = "rune", contracts = "contract", treatises = "treatise",
@@ -99,7 +99,7 @@ P.MAIN = MAIN
 function P.MainGroup(text, prof)
 	text = string.lower(text or "")
 	if text:find("appendix", 1, true) then return nil end
-	for _, g in ipairs(MAIN[prof or CH.OpenProfessionID() or 2906] or MAIN[2906]) do
+	for _, g in ipairs(MAIN[prof or AuctionIQ.OpenProfessionID() or 2906] or MAIN[2906]) do
 		for _, k in ipairs(g[2]) do if text:find(k, 1, true) then return g[1] end end
 	end
 end
@@ -123,7 +123,7 @@ for _, y in pairs(YIELD) do
 end
 P.YIELD = YIELD
 
--- What your disenchanting really gives, recorded as you loot it: CH.db.yieldLog[prof][day] =
+-- What your disenchanting really gives, recorded as you loot it: AuctionIQ.db.yieldLog[prof][day] =
 -- { [itemID] = n }. Loot counts when it comes out of an item (a disenchant), not off a mob.
 local DAY, WINDOW = 86400, 14
 local lineOf = {}
@@ -134,9 +134,9 @@ for prof, y in pairs(YIELD) do
 end
 
 local function yieldLog(prof)
-	CH.db.yieldLog = CH.db.yieldLog or {}
-	CH.db.yieldLog[prof] = CH.db.yieldLog[prof] or {}
-	return CH.db.yieldLog[prof]
+	AuctionIQ.db.yieldLog = AuctionIQ.db.yieldLog or {}
+	AuctionIQ.db.yieldLog[prof] = AuctionIQ.db.yieldLog[prof] or {}
+	return AuctionIQ.db.yieldLog[prof]
 end
 
 --- Record one loot window's gathering materials (called on LOOT_OPENED).
@@ -166,7 +166,7 @@ function P.RecordLoot(now)
 		for d in pairs(log) do if d < day - 30 then log[d] = nil end end
 	end
 end
-CH.On("LOOT_OPENED", function() P.RecordLoot() end)
+AuctionIQ.On("LOOT_OPENED", function() P.RecordLoot() end)
 
 --- What you really gathered over the last two weeks: { [key] = { n = per day, share = rank 2 share } },
 --- the days it covers, or nil when nothing is recorded.
@@ -196,8 +196,8 @@ end
 function P.DailyYield(prof)
 	local y = YIELD[prof]
 	if not y then return {} end
-	CH.db.settings.paths = CH.db.settings.paths or {}
-	local set = CH.db.settings.paths[prof]
+	AuctionIQ.db.settings.paths = AuctionIQ.db.settings.paths or {}
+	local set = AuctionIQ.db.settings.paths[prof]
 	if set and set.manual then return set, "set" end
 	local seen, days = P.Observed(prof)
 	local d = {}
@@ -207,9 +207,9 @@ end
 
 --- Set what you disenchant a day by hand, or clear it (nil) to go back to what's recorded.
 function P.SetDailyYield(prof, d)
-	CH.db.settings.paths = CH.db.settings.paths or {}
+	AuctionIQ.db.settings.paths = AuctionIQ.db.settings.paths or {}
 	if d then d.manual = true end
-	CH.db.settings.paths[prof] = d
+	AuctionIQ.db.settings.paths[prof] = d
 end
 
 --- The gathering path a goal means for this profession ("disenchanting", "dust"), or nil.
@@ -237,8 +237,8 @@ end
 --- its steps, and each recipe now and planned. Research, Professions compares them.
 function P.Summary(plan)
 	if not (plan and plan.prof and plan.final) then return nil end
-	local me = CH.Me and CH.Me() or {}
-	local out = { prof = plan.prof, profName = CH.SpecData and CH.SpecData[plan.prof] and CH.SpecData[plan.prof].name or tostring(plan.prof),
+	local me = AuctionIQ.Me and AuctionIQ.Me() or {}
+	local out = { prof = plan.prof, profName = AuctionIQ.SpecData and AuctionIQ.SpecData[plan.prof] and AuctionIQ.SpecData[plan.prof].name or tostring(plan.prof),
 		label = plan.label or plan.goal, char = me.name, at = time(), budget = plan.budget, start = plan.start, final = plan.final,
 		startConc = plan.startConc, finalConc = plan.finalConc, steps = {}, rows = {} }
 	for _, s in ipairs(plan.steps or {}) do table.insert(out.steps, { name = s.name, node = s.node, from = s.from, to = s.to, cost = s.cost }) end
@@ -258,9 +258,9 @@ function P.SetCurrent(plan)
 	if plan and plan.prof then
 		P.current[plan.prof] = plan
 		local sum = P.Summary(plan)
-		if sum and CH.db then
-			CH.db.plans = CH.db.plans or {}
-			CH.db.plans[(sum.char or "?") .. ":" .. sum.prof] = sum
+		if sum and AuctionIQ.db then
+			AuctionIQ.db.plans = AuctionIQ.db.plans or {}
+			AuctionIQ.db.plans[(sum.char or "?") .. ":" .. sum.prof] = sum
 		end
 	end
 	if P.Changed then P.Changed(plan and plan.prof) end
@@ -284,14 +284,14 @@ end
 
 --- Load the planner and the Paths page (AuctionIQ_Paths) if they aren't yet. True once loaded.
 function P.Load()
-	if CH.PathsUI then return true end
+	if AuctionIQ.PathsUI then return true end
 	local load = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
 	if not load then return false end
 	local ok, loaded, why = pcall(load, "AuctionIQ_Paths")
-	if not (ok and loaded and CH.PathsUI) then
+	if not (ok and loaded and AuctionIQ.PathsUI) then
 		if not P.loadWarned then
 			P.loadWarned = true
-			CH.Print("couldn't load the Paths page (AuctionIQ_Paths: " .. tostring(why or loaded or "missing") .. "). Restart WoW after updating, and check the addon is enabled.")
+			AuctionIQ.Print("couldn't load the Paths page (AuctionIQ_Paths: " .. tostring(why or loaded or "missing") .. "). Restart WoW after updating, and check the addon is enabled.")
 		end
 		return false
 	end

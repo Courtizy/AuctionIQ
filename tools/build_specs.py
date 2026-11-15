@@ -203,8 +203,8 @@ def shared_recipes(recipes):
 def write(data):
     for name, (line, nodes, recipes) in data.items():
         lists, refs = shared_recipes(recipes)
-        body = "local CH = AuctionIQ\nCH.SpecData = CH.SpecData or {}\n" + lists
-        body += f'CH.SpecData[{line}] = {{ name = "{name}",\n recipes = {refs},\n nodes = {ser(nodes)},\n}}\n'
+        body = "local AuctionIQ = AuctionIQ\nCH.SpecData = AuctionIQ.SpecData or {}\n" + lists
+        body += f'AuctionIQ.SpecData[{line}] = {{ name = "{name}",\n recipes = {refs},\n nodes = {ser(nodes)},\n}}\n'
         (OUT / f"AuctionIQ_{name}" / "Spec.lua").write_text(HEAD + body, encoding="utf-8")
         print(f"{name}: {len(nodes)} nodes, {len(recipes)} recipes")
 

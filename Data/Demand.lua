@@ -15,18 +15,18 @@
 -- Days are UTC days (time() / 86400). Listed days are a lower bound before AuctionIQ started
 -- recording them (only sale, expiry and cancel days are known), which makes the own rate read high
 -- for older history; the text says how many listed days it rests on.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Dm = { WINDOW = 30, KEEP = 60, PRIOR_DAYS = 5, OWN_SHARE = 0.75 }
-CH.Demand = Dm
+AuctionIQ.Demand = Dm
 
 local DAY = 86400
 local function today(now) return math.floor((now or time()) / DAY) end
 
 -- AuctionIQDB.exposure = { [itemID] = { day, day, ... } } ascending, each day once, KEEP days at most
 local function store()
-	CH.db.exposure = CH.db.exposure or {}
-	return CH.db.exposure
+	AuctionIQ.db.exposure = AuctionIQ.db.exposure or {}
+	return AuctionIQ.db.exposure
 end
 Dm.version = 0
 local index -- see build() below
@@ -34,7 +34,7 @@ local index -- see build() below
 --- Note that you had an item on the AH on a day (today by default).
 function Dm.Mark(id, now)
 	id = tonumber(id)
-	if not (id and CH.db) then return end
+	if not (id and AuctionIQ.db) then return end
 	local d = today(now)
 	local s = store()
 	local days = s[id]
@@ -67,7 +67,7 @@ end
 
 --- Drop days older than KEEP and items with none left. Returns how many items went.
 function Dm.Prune(now)
-	if not CH.db or not CH.db.exposure then return 0 end
+	if not AuctionIQ.db or not AuctionIQ.db.exposure then return 0 end
 	local cut, gone = today(now) - Dm.KEEP, 0
 	for id, days in pairs(store()) do
 		local k = 0
@@ -84,7 +84,7 @@ end
 -- date change. A newly marked day updates it in place (Mark), so the AH's owned-auctions list
 -- doesn't make the next estimate walk every sale again.
 local function build(now)
-	local L = CH.Ledger
+	local L = AuctionIQ.Ledger
 	local avail = L and L.Available()
 	local sales = avail and L.Records("Sales") or nil
 	local expired = avail and L.Records("Expired") or nil
@@ -132,8 +132,8 @@ local function build(now)
 			if id and day and day >= from then listedOn(item(id), day) end
 		end
 	end
-	if CH.db and CH.db.exposure then
-		for id, days in pairs(CH.db.exposure) do
+	if AuctionIQ.db and AuctionIQ.db.exposure then
+		for id, days in pairs(AuctionIQ.db.exposure) do
 			for _, day in ipairs(days) do if day >= from and day <= d then listedOn(item(id), day) end end
 		end
 	end
@@ -153,8 +153,8 @@ function Dm.Warm(now) build(now) end
 ---   (TSM's region sold a day, uncapped), cap, capped (the region figure counted at the cap),
 ---   weight (share of the estimate that is your own record, 0 to 1) }.
 function Dm.Estimate(id, now)
-	local cap = CH.db and CH.db.settings and CH.db.settings.scan and CH.db.settings.scan.dailyCap or 10
-	local region = id and CH.Advisor and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(id) or nil
+	local cap = AuctionIQ.db and AuctionIQ.db.settings and AuctionIQ.db.settings.scan and AuctionIQ.db.settings.scan.dailyCap or 10
+	local region = id and AuctionIQ.Advisor and AuctionIQ.Advisor.SoldPerDay and AuctionIQ.Advisor.SoldPerDay(id) or nil
 	local out = { units = 0, source = "none", sold = 0, listed = 0, window = Dm.WINDOW, region = region, cap = cap, weight = 0 }
 	if not id then return out end
 	local e = build(now)[id]
@@ -203,8 +203,8 @@ Dm.SOURCE = { own = "your sales", blend = "your sales + region", region = "regio
 -- at login, items any character on this realm has up count as listed today.
 local function markTSM(now)
 	local db = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB
-	if not (db and CH.Ledger and CH.Ledger.Characters) then return end
-	for _, c in ipairs(CH.Ledger.Characters()) do
+	if not (db and AuctionIQ.Ledger and AuctionIQ.Ledger.Characters) then return end
+	for _, c in ipairs(AuctionIQ.Ledger.Characters()) do
 		local t = db["s@" .. c.key .. "@internalData@auctionQuantity"]
 		if type(t) == "table" then
 			for itemString, n in pairs(t) do
@@ -216,8 +216,8 @@ local function markTSM(now)
 end
 Dm.MarkTSM = markTSM
 
-CH.On("PLAYER_LOGIN", function()
-	if not CH.db then return end
+AuctionIQ.On("PLAYER_LOGIN", function()
+	if not AuctionIQ.db then return end
 	pcall(Dm.Prune)
 	if C_Timer then C_Timer.After(12, function() pcall(markTSM) end) else pcall(markTSM) end
 end)

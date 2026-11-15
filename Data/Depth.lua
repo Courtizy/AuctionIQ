@@ -3,10 +3,10 @@
 --   cost(q) = sum over listings i of min(q_i, q - Q_(i-1)) * p_i      (Q_i = units in listings 1..i)
 -- Listings come from the AH when you've searched the item there in the last 15 minutes, else
 -- from the last full AH search AuctionIQ saved for it (Scans.lua), else the cost is chmat x quantity.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local D = { LIVE_SECONDS = 15 * 60, SCAN_CAP = 25000 }
-CH.Depth = D
+AuctionIQ.Depth = D
 
 local live = {} -- [id] = { at = time(), rows = { { price, qty } } } from AH searches
 
@@ -50,7 +50,7 @@ end
 function D.Book(id)
 	local l = live[id]
 	if l and time() - l.at <= D.LIVE_SECONDS and l.rows[1] then return l.rows, "ah", time() - l.at end
-	local pts, at = CH.Scans.Depth(id)
+	local pts, at = AuctionIQ.Scans.Depth(id)
 	if pts then return pts, "scan", time() - at end
 	return nil
 end
@@ -63,7 +63,7 @@ function D.Cost(id, q)
 	q = math.floor(q or 0)
 	if not id or q <= 0 then return nil end
 	local rows, source, age = D.Book(id)
-	local chmat = CH.Prices.Get("chmat", "i:" .. id)
+	local chmat = AuctionIQ.Prices.Get("chmat", "i:" .. id)
 	if not rows then
 		if not chmat then return nil end
 		return { cost = chmat * q, unit = chmat, source = "chmat", short = 0, first = chmat }

@@ -11,20 +11,20 @@
 -- (nothing sells the moment it's listed). Your gold, less what you keep back, goes to the best
 -- return first, then the next, a whole craft or unit at a time, until it runs out: what's left is
 -- idle.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local Cp = { RESERVES = { 0, 0.1, 0.25, 0.5 }, MIN_DAYS = 1 }
-CH.Capital = Cp
+AuctionIQ.Capital = Cp
 
 --- The share of your gold kept back, not allocated (a setting).
 function Cp.Reserve()
-	local s = CH.db and CH.db.settings
+	local s = AuctionIQ.db and AuctionIQ.db.settings
 	return s and s.capitalReserve or 0.1
 end
 
 function Cp.SetReserve(v)
-	CH.db.settings = CH.db.settings or {}
-	CH.db.settings.capitalReserve = v
+	AuctionIQ.db.settings = AuctionIQ.db.settings or {}
+	AuctionIQ.db.settings.capitalReserve = v
 end
 
 --- Step the reserve through RESERVES (dir 1 up, -1 down, wrapping).
@@ -48,13 +48,13 @@ function Cp.Opportunities(ctx, now)
 	now = now or time()
 	ctx = ctx or { now = now, keepName = function() return true end }
 	local out = {}
-	local AV = CH.AnalyticsViews
+	local AV = AuctionIQ.AnalyticsViews
 	local ok, crafts = pcall(AV and AV.Scenarios or function() return {} end, ctx)
 	for _, x in ipairs(ok and crafts or {}) do
 		local sg = x.suggest
 		local sc = sg and sg.n and sg.n > 0 and sg.scenarios and sg.scenarios.expected
 		if sc and sc.cost > 0 and x.profit > 0 then
-			local daily = CH.Scan and CH.Scan.DailyUnits and CH.Scan.DailyUnits(x.id) or 0
+			local daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits and AuctionIQ.Scan.DailyUnits(x.id) or 0
 			local days = daily > 0 and sc.items / daily or nil
 			if days then
 				out[#out + 1] = opportunity({ kind = "craft", id = x.id, name = x.name, char = x.char, units = sg.n, cost = sc.cost,
@@ -62,7 +62,7 @@ function Cp.Opportunities(ctx, now)
 			end
 		end
 	end
-	local deals = CH.Deals and CH.Deals.Cached and CH.Deals.Cached(now) or nil
+	local deals = AuctionIQ.Deals and AuctionIQ.Deals.Cached and AuctionIQ.Deals.Cached(now) or nil
 	for _, d in ipairs(deals or {}) do
 		local units = d.demand and d.demand.units or 0
 		if units > 0 and d.cost > 0 and d.gain > 0 then

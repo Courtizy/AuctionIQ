@@ -1,10 +1,10 @@
 -- Crafting advisor panel: docked to the right of the profession window, or dragged off to stand on
 -- its own. Shows every result quality for the selected recipe, marks CraftSim-style picks.
 -- Click a row to select it; the bar under the rows queues the selected craft, as many as you set.
-local _, CH = ...
+local _, AuctionIQ = ...
 
 local AUI = {}
-CH.AdvisorUI = AUI
+AuctionIQ.AdvisorUI = AUI
 local panel, rows, notes, current
 local ROWS = 8
 local TOP = 86 -- the Next Move card under the title bar
@@ -25,9 +25,9 @@ local COLS = { { "Quality", 0, 70 }, { "Conc.", 70, 50 }, { "Cost", 120, 86 }, {
 local HOVER = { 3, 4, 5, 7 }
 local WIDTH = 540
 
-local function settings() return CH.db.settings.advisor end
+local function settings() return AuctionIQ.db.settings.advisor end
 
-local function qualityIcon(q, tiers) return CH.Window.QualityIcon(q, 18, tiers) end
+local function qualityIcon(q, tiers) return AuctionIQ.Window.QualityIcon(q, 18, tiers) end
 
 local function ownProfession()
 	local ui = C_TradeSkillUI
@@ -36,11 +36,11 @@ local function ownProfession()
 end
 
 function AUI.Place()
-	if panel then CH.Window.Place(panel) end
+	if panel then AuctionIQ.Window.Place(panel) end
 end
 
 local function build()
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	T.Sync()
 	panel = CreateFrame("Frame", "AuctionIQAdvisor", UIParent, "BackdropTemplate")
 	T.Panel(panel, "bg", 0.95)
@@ -51,9 +51,9 @@ local function build()
 	panel:EnableMouse(true)
 	panel:RegisterForDrag("LeftButton")
 	panel:Hide()
-	CH.Window.CloseOnEscape(panel, "AuctionIQAdvisor")
+	AuctionIQ.Window.CloseOnEscape(panel, "AuctionIQAdvisor")
 	-- whole screen pixels per unit, like the main window, so its borders and text are crisp
-	if CH.Window.Pixel then CH.Window.Pixel(panel) end
+	if AuctionIQ.Window.Pixel then AuctionIQ.Window.Pixel(panel) end
 
 	local bar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
 	T.Panel(bar, "panel", 1)
@@ -70,10 +70,10 @@ local function build()
 	T.BrandTitle(title, "Crafting Advisor")
 	local close = T.Button(bar, "x", 18, 18)
 	close:SetPoint("RIGHT", -4, 0)
-	close:SetScript("OnClick", function() settings().hide = true; panel:Hide(); CH.Print("advisor hidden. /aiq advisor brings it back.") end)
+	close:SetScript("OnClick", function() settings().hide = true; panel:Hide(); AuctionIQ.Print("advisor hidden. /aiq advisor brings it back.") end)
 	local queue = T.Button(bar, "Queue", 56, 18)
 	queue:SetPoint("RIGHT", close, "LEFT", -4, 0)
-	queue:SetScript("OnClick", function() CH.QueueUI.Toggle() end)
+	queue:SetScript("OnClick", function() AuctionIQ.QueueUI.Toggle() end)
 	panel.queue = queue
 
 	-- A shaded card: black over the panel, with an accent line along the top for the main one
@@ -99,27 +99,27 @@ local function build()
 	nx:SetSize(WIDTH - 12, TOP - 6)
 	panel.next = nx
 	panel.nextCard = card(-32, TOP - 6, true)
-	nx.label = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 10, -8, 120, "LEFT", "GameFontNormalSmall")), 9, "bold")
+	nx.label = T.TitleFont(AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(nx, 10, -8, 120, "LEFT", "GameFontNormalSmall")), 9, "bold")
 	nx.label:SetText(T.Color("accent", "NEXT MOVE"))
-	nx.head = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, 10, -20, WIDTH - 32, "LEFT", "GameFontNormalLarge")), 16)
-	nx.sub = CH.Window.OneLine(CH.Window.Text(nx, 10, -39, WIDTH - 32, "LEFT", "GameFontDisableSmall"))
+	nx.head = T.TitleFont(AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(nx, 10, -20, WIDTH - 32, "LEFT", "GameFontNormalLarge")), 16)
+	nx.sub = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(nx, 10, -39, WIDTH - 32, "LEFT", "GameFontDisableSmall"))
 	nx.stats = {}
 	-- short labels; each figure's hover says what it means and how it was reached
 	local hit = CreateFrame("Button", nil, nx)
 	hit:SetPoint("TOPLEFT", 0, 0)
 	hit:SetSize(WIDTH - 12, 50)
-	hit:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip()) end)
+	hit:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, AUI.NextTip()) end)
 	hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	for i, f in ipairs({ { "PROFIT", "profit" }, { "BREAK-EVEN", "breakEven" }, { "RECOVER IN A WEEK", "recover" } }) do
 		local x = 10 + (i - 1) * 140
-		local l = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -54, 136, "LEFT", "GameFontDisableSmall")), 9, "bold")
+		local l = T.TitleFont(AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(nx, x, -54, 136, "LEFT", "GameFontDisableSmall")), 9, "bold")
 		l:SetText(T.Color("muted", f[1]))
-		local v = T.TitleFont(CH.Window.OneLine(CH.Window.Text(nx, x, -64, 136, "LEFT", "GameFontHighlight")), 14)
+		local v = T.TitleFont(AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(nx, x, -64, 136, "LEFT", "GameFontHighlight")), 14)
 		nx.stats[i] = v
 		local h = CreateFrame("Button", nil, nx)
 		h:SetPoint("TOPLEFT", x - 4, -50)
 		h:SetSize(i == 3 and (WIDTH - 12 - x) or 140, 30) -- Recover takes in the bar beside it
-		h:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, AUI.NextTip(f[2])) end)
+		h:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, AUI.NextTip(f[2])) end)
 		h:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	end
 	nx.back = nx:CreateTexture(nil, "ARTWORK")
@@ -136,7 +136,7 @@ local function build()
 	panel.recipe:SetPoint("TOPLEFT", 12, -34 - TOP)
 	panel.recipe:SetWidth(WIDTH - 24)
 	panel.recipe:SetJustifyH("LEFT")
-	CH.Window.OneLine(panel.recipe)
+	AuctionIQ.Window.OneLine(panel.recipe)
 
 	local y = -56 - TOP
 	panel.tableCard = card(-30 - TOP, 26 + (ROWS + 1) * 20, false)
@@ -165,7 +165,7 @@ local function build()
 			fs:SetPoint("TOPLEFT", 12 + c[2], y - i * 20)
 			fs:SetWidth(c[3])
 			fs:SetJustifyH(j == 1 and "LEFT" or "RIGHT")
-			r.cells[j] = CH.Window.OneLine(fs)
+			r.cells[j] = AuctionIQ.Window.OneLine(fs)
 		end
 		local click = CreateFrame("Button", nil, panel)
 		click:SetPoint("TOPLEFT", 6, y - 4 - i * 20)
@@ -192,12 +192,12 @@ local function build()
 	act:SetPoint("TOPLEFT", 0, ay)
 	act:SetSize(WIDTH, 22)
 	panel.act = act
-	act.label = CH.Window.OneLine(CH.Window.Text(act, 12, -4, 236))
+	act.label = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(act, 12, -4, 236))
 	local function aButton(label, w, x, fn, tip)
 		local b = T.Button(act, label, w, 18)
 		b:SetPoint("TOPRIGHT", x, -1)
 		b:SetScript("OnClick", fn)
-		b:SetScript("OnEnter", function(self) CH.Window.Tooltip(self, tip(self)) end)
+		b:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, tip(self)) end)
 		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		return b
 	end
@@ -209,17 +209,17 @@ local function build()
 		function() return { { "As many as you can make now" }, { T.Color("muted", "From bags, banks and the warband bank, and your Concentration.") } } end)
 	act.plus = aButton("+", 20, -184, function() AUI.SetQty(selQty + (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
 		function() return { { "One more" }, { T.Color("muted", "Shift-click for 10.") } } end)
-	act.qty = CH.Window.OneLine(CH.Window.Text(act, WIDTH - 206 - 34, -4, 32, "CENTER", "GameFontHighlight"))
+	act.qty = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(act, WIDTH - 206 - 34, -4, 32, "CENTER", "GameFontHighlight"))
 	act.minus = aButton("-", 20, -242, function() AUI.SetQty(selQty - (IsShiftKeyDown and IsShiftKeyDown() and 10 or 1)) end,
 		function() return { { "One fewer" }, { T.Color("muted", "Shift-click for 10.") } } end)
-	CH.Window.OneLine(CH.Window.Text(act, WIDTH - 262 - 24, -4, 22, "RIGHT")):SetText("Qty")
+	AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(act, WIDTH - 262 - 24, -4, 22, "RIGHT")):SetText("Qty")
 
 	-- Tabs for the area under the rows: the notes, the break-even chart or a batch analysis
 	local function paneTab(label, w, x, key, tip)
 		local b = T.Tab(panel, label, w, 20)
 		b:SetPoint("TOPLEFT", x, ay - 26)
 		b:SetScript("OnClick", function() AUI.SetPane(key) end)
-		b:SetScript("OnEnter", function(self) if not self.on then self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end; CH.Window.Tooltip(self, tip) end)
+		b:SetScript("OnEnter", function(self) if not self.on then self.text:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end; AuctionIQ.Window.Tooltip(self, tip) end)
 		return b
 	end
 	panel.notesBtn = paneTab("Notes", 60, 6, "notes", { { "Notes" },
@@ -243,10 +243,10 @@ local function build()
 	chart:SetSize(WIDTH, PANE_H)
 	chart:Hide()
 	panel.chart = chart
-	chart.title = CH.Window.OneLine(CH.Window.Text(chart, 12, 0, WIDTH - 24))
-	chart.foot = CH.Window.OneLine(CH.Window.Text(chart, 12, -(PANE_H - 14), WIDTH - 24))
+	chart.title = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(chart, 12, 0, WIDTH - 24))
+	chart.foot = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(chart, 12, -(PANE_H - 14), WIDTH - 24))
 	chart.labels = {}
-	for i = 1, 8 do chart.labels[i] = CH.Window.OneLine(CH.Window.Text(chart, 12, -16, 120)) end
+	for i = 1, 8 do chart.labels[i] = AuctionIQ.Window.OneLine(AuctionIQ.Window.Text(chart, 12, -16, 120)) end
 	chart.dots = {}
 
 	-- Top gear: equip the better set
@@ -256,8 +256,8 @@ local function build()
 	panel.equip:SetScript("OnClick", function()
 		local g = gearPick
 		if g and g.set then
-			local ok, why = CH.Gear.Equip(g.set)
-			if not ok then CH.Print("can't change gear " .. (why or "")) end
+			local ok, why = AuctionIQ.Gear.Equip(g.set)
+			if not ok then AuctionIQ.Print("can't change gear " .. (why or "")) end
 			C_Timer.After(1, function() AUI.Show() end)
 		end
 	end)
@@ -288,7 +288,7 @@ local function build()
 	panel.status:SetPoint("BOTTOMRIGHT", -10, 14)
 	panel.status:SetJustifyH("RIGHT")
 	T.Fonts(panel)
-	CH.Window.Attach("advisor", panel)
+	AuctionIQ.Window.Attach("advisor", panel)
 	AUI.Place()
 end
 
@@ -304,14 +304,14 @@ local function concNow()
 end
 
 local function money(c)
-	if not c then return CH.Theme.Color("muted", "no price") end
-	return CH.Theme.Color(c >= 0 and "ok" or "bad", CH.FormatMoney(c))
+	if not c then return AuctionIQ.Theme.Color("muted", "no price") end
+	return AuctionIQ.Theme.Color(c >= 0 and "ok" or "bad", AuctionIQ.FormatMoney(c))
 end
 
 --- Fill the panel from an Advisor result (or a reason it has none). Returns the lines it wrote, for tests.
 function AUI.Render(result, reason)
 	if not panel then build() end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	for _, r in ipairs(rows) do
 		r.bg:Hide()
 		r.sel:Hide()
@@ -336,18 +336,18 @@ function AUI.Render(result, reason)
 		-- cheaper mix it stands in for needs a rank you don't have
 		for _, x in ipairs(result.rows) do
 			if x.fromBags and x.profit and pick and (x.profit > (pick.profit or 0)
-				or (x.quality == pick.quality and pick.concentration and CH.Advisor.MaxCraftable(result, pick, concNow()) < 1)) then
+				or (x.quality == pick.quality and pick.concentration and AuctionIQ.Advisor.MaxCraftable(result, pick, concNow()) < 1)) then
 				pick = x
 			end
 		end
 		sel = pick and { quality = pick.quality, conc = pick.concentration ~= nil, bags = pick.fromBags or nil } or nil
 	end
 	local itemID = (result.best and result.best.item) or (result.bestConc and result.bestConc.item) or (result.model and result.model.output)
-	local head = CH.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
+	local head = AuctionIQ.Window.ItemIcon(itemID, 18) .. T.Color("accent", result.name or "?") .. (result.made ~= 1 and T.Color("muted", string.format("  makes %.1f", result.made)) or "")
 	if result.order then
 		local o = result.order
 		head = head .. T.Color("muted", "  order" .. (o.customer and (" for " .. o.customer) or "")
-			.. (o.minQuality and o.minQuality > 1 and ("  min Q" .. o.minQuality) or "") .. "  pays ") .. CH.FormatMoney((o.commission or 0) + (o.rewards or 0))
+			.. (o.minQuality and o.minQuality > 1 and ("  min Q" .. o.minQuality) or "") .. "  pays ") .. AuctionIQ.FormatMoney((o.commission or 0) + (o.rewards or 0))
 	elseif result.model and result.model.recraftFrom then
 		head = head .. T.Color("muted", "  recraft from Q" .. result.model.recraftFrom)
 	end
@@ -358,20 +358,20 @@ function AUI.Render(result, reason)
 		if i > ROWS then break end
 		local row = rows[i]
 		local q = qualityIcon(r.quality, result.model and result.model.maxQ) .. (r.short and T.Color("bad", " low")
-			or r.recommended and T.Color("accent", " best") or r.bestConcentration and (" " .. CH.Window.ConcIcon(13)) or "")
+			or r.recommended and T.Color("accent", " best") or r.bestConcentration and (" " .. AuctionIQ.Window.ConcIcon(13)) or "")
 		row.cells[1]:SetText(q)
 		row.cells[2]:SetText(r.concentration and tostring(r.concentration) or T.Color("muted", "-"))
 		local pct = r.profit and r.cost and r.cost > 0 and string.format(" %d%%", math.floor(r.profit / r.cost * 100 + 0.5)) or ""
-		r.max = CH.Advisor.MaxCraftable(result, r, concNow())
-		row.cells[3]:SetText(CH.FormatMoney(r.cost))
+		r.max = AuctionIQ.Advisor.MaxCraftable(result, r, concNow())
+		row.cells[3]:SetText(AuctionIQ.FormatMoney(r.cost))
 		r.post = AUI.PostCheck(result, r)
-		row.cells[4]:SetText(r.value and (r.post and T.Color("bad", CH.FormatMoney(r.value) .. " !") or CH.FormatMoney(r.value))
-			or CH.Theme.Color("muted", "no price"))
-		row.cells[5]:SetText(money(r.profit) .. (pct ~= "" and CH.Theme.Color(r.profit >= 0 and "ok" or "bad", pct) or ""))
+		row.cells[4]:SetText(r.value and (r.post and T.Color("bad", AuctionIQ.FormatMoney(r.value) .. " !") or AuctionIQ.FormatMoney(r.value))
+			or AuctionIQ.Theme.Color("muted", "no price"))
+		row.cells[5]:SetText(money(r.profit) .. (pct ~= "" and AuctionIQ.Theme.Color(r.profit >= 0 and "ok" or "bad", pct) or ""))
 		-- per point: what the points add over the plain craft (the whole profit per point is in the hover)
 		local gpp = r.gain and r.gain.perPoint or r.perPoint
 		row.cells[6]:SetText(gpp and money(gpp) or "")
-		row.cells[7]:SetText(r.max > 0 and tostring(r.max) or CH.Theme.Color("muted", "0"))
+		row.cells[7]:SetText(r.max > 0 and tostring(r.max) or AuctionIQ.Theme.Color("muted", "0"))
 		if r.recommended or r.bestConcentration then row.bg:Show() end
 		if AUI.IsSelected(r) then row.sel:Show() end
 		table.insert(out, string.format("Q%d %s cost=%s profit=%s pp=%s%s%s", r.quality, r.concentration and ("conc" .. r.concentration) or "plain",
@@ -387,7 +387,7 @@ function AUI.Render(result, reason)
 	local g = gearPick
 	panel.equip:SetShown(g ~= nil and g.set ~= nil and not result.sim)
 	if g and g.set then
-		table.insert(lines, T.Color("accent", "Top gear: ") .. CH.Gear.SwapText(g.set) .. "  " .. T.Color("ok", "+" .. CH.FormatMoney(g.gain))
+		table.insert(lines, T.Color("accent", "Top gear: ") .. AuctionIQ.Gear.SwapText(g.set) .. "  " .. T.Color("ok", "+" .. AuctionIQ.FormatMoney(g.gain))
 			.. T.Color("muted", g.mode == "conc" and " a point" or " a craft"))
 	elseif g and g.current then
 		table.insert(lines, T.Color("muted", "Top gear: you're wearing the best set for this."))
@@ -402,7 +402,7 @@ function AUI.Render(result, reason)
 	panel.simText:SetText(T.Color("accent", "Simulate: ") .. (#st > 0 and table.concat(st, ", ") or T.Color("muted", "off")))
 	if result.sim and live and live.best and result.best and live.best.profit and result.best.profit then
 		local d = result.best.profit - live.best.profit
-		panel.status:SetText("vs now: " .. T.Color(d >= 0 and "ok" or "bad", (d >= 0 and "+" or "") .. CH.FormatMoney(d)) .. " a craft")
+		panel.status:SetText("vs now: " .. T.Color(d >= 0 and "ok" or "bad", (d >= 0 and "+" or "") .. AuctionIQ.FormatMoney(d)) .. " a craft")
 	else
 		panel.status:SetText("")
 	end
@@ -415,7 +415,7 @@ local function pctText(x) return string.format("%d%%", math.floor(x * 100 + 0.5)
 --- sale price against the estimate, the downside scenario and what the sales estimate rests on, then
 --- what Concentration adds over it and how many crafts your points cover. Units on every number.
 function AUI.SummaryLines(result)
-	local T, M, Dc = CH.Theme, CH.FormatMoney, CH.Decide
+	local T, M, Dc = AuctionIQ.Theme, AuctionIQ.FormatMoney, AuctionIQ.Decide
 	local mut = function(t) return T.Color("muted", t) end
 	local lines = {}
 	local b, c = result.best, result.bestConc
@@ -437,11 +437,11 @@ function AUI.SummaryLines(result)
 			table.insert(lines, "  Downside " .. money(down) .. mut(string.format(" per craft if reagents rise %s and the price falls %s", pctText(sc.reagents), pctText(sc.price)))
 				.. mut("; sell rate: " .. basis))
 		end
-		local cs = CH.Advisor.CraftOrSell(result, b)
+		local cs = AuctionIQ.Advisor.CraftOrSell(result, b)
 		if cs and cs.gain < 0 then
 			table.insert(lines, T.Color("bad", "  Sell the reagents instead: ") .. M(cs.sell) .. mut(" for yours beats crafting by ") .. M(-cs.gain))
 		end
-		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, b.picks, b.finishing))
+		table.insert(lines, mut("  Use ") .. AuctionIQ.Advisor.PicksText(result, b.picks, b.finishing))
 	elseif result.order then
 		table.insert(lines, T.Color("bad", "No reagents reach the quality this order asks for without Concentration."))
 	end
@@ -456,7 +456,7 @@ function AUI.SummaryLines(result)
 		table.insert(lines, head .. mut(string.format("  (%d points; %s a point in all)", c.concentration or 0, M(c.perPoint or 0))))
 		local f = Dc and Dc.ConcForecastFor(c, concNow())
 		if f then table.insert(lines, mut("  " .. Dc.ConcForecastText(f) .. ".")) end
-		table.insert(lines, mut("  Use ") .. CH.Advisor.PicksText(result, c.picks, c.finishing))
+		table.insert(lines, mut("  Use ") .. AuctionIQ.Advisor.PicksText(result, c.picks, c.finishing))
 	end
 	return lines
 end
@@ -467,7 +467,7 @@ end
 --- in steps of the estimated price (factor 1 = the estimate). { lo, hi, ymin, ymax, series = { { label,
 --- color, be, estimate, points = { {f, profit} } } } }, or nil when nothing has a price.
 function AUI.ChartData(result, steps)
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	if not (Dc and result) or result.order then return nil end
 	steps = steps or 48
 	local series = {}
@@ -496,7 +496,7 @@ end
 
 --- The chart's legend lines, for its foot and the tests.
 function AUI.ChartLines(data)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out = {}
 	for _, s in ipairs(data and data.series or {}) do
 		local be = s.be
@@ -517,7 +517,7 @@ local function chartTexture(chart, i)
 end
 
 local function drawChart(chart, data)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	-- chart.cw / chart.ch: another frame's size (the Craft window's Details view)
 	local cw, chh = chart.cw, chart.ch
 	if type(cw) ~= "number" then cw = WIDTH end
@@ -543,7 +543,7 @@ local function drawChart(chart, data)
 		if s.be and s.be.factor >= data.lo and s.be.factor <= data.hi then dot(X(s.be.factor) - 3, Y(0) - 3, 7, 7, "bad") end
 	end
 	for i = n + 1, #chart.dots do chart.dots[i]:Hide() end
-	local L, M = chart.labels, CH.FormatMoney
+	local L, M = chart.labels, AuctionIQ.FormatMoney
 	local function label(i, text, x, y, wd, just)
 		local fs = L[i]
 		fs:ClearAllPoints()
@@ -604,7 +604,7 @@ function AUI.ChartHover(chart, x)
 		local d = math.abs(pl.x0 + pl.X(p[1]) - x)
 		if not bestD or d < bestD then best, bestD = i, d end
 	end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local f = s1.points[best][1]
 	local lines = { { string.format("Sale price at %s of the estimate", pctText(f)), "" } }
 	for k, s in ipairs(data.series) do
@@ -630,7 +630,7 @@ function AUI.ChartHover(chart, x)
 		chart.vline:SetPoint("TOPLEFT", chart, "TOPLEFT", math.floor(pl.x0 + pl.X(f) + 0.5), -pl.y0)
 		chart.vline:SetSize(1, math.floor(pl.h + 0.5))
 		chart.vline:Show()
-		CH.Window.Tooltip(chart.hover or chart, lines)
+		AuctionIQ.Window.Tooltip(chart.hover or chart, lines)
 	end
 	return lines
 end
@@ -653,11 +653,11 @@ end
 --- the batch pane asks for it): { inputs, suggest }, kept per craft.
 local suggestCache = {}
 function AUI.SuggestFor(result, r)
-	if not (result and r and CH.Decide) or result.order then return nil end
+	if not (result and r and AuctionIQ.Decide) or result.order then return nil end
 	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0) }, ":")
 	local hit = suggestCache[key]
 	if hit then return hit end
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	local inp = Dc.BatchInputs(result, r)
 	if not inp then return nil end
 	local cf = r.concentration and Dc.ConcForecastFor(r, concNow())
@@ -668,11 +668,11 @@ end
 
 --- Batch outcomes for the selected craft (run once per row and kept): result, row, inputs, outcomes.
 function AUI.BatchFor(result, r)
-	if not (result and r and CH.Decide) or result.order then return nil end
+	if not (result and r and AuctionIQ.Decide) or result.order then return nil end
 	local key = table.concat({ result.recipeID or 0, r.quality, r.concentration and "c" or "", math.floor(r.cost or 0), math.floor(r.price or 0) }, ":")
 	local hit = batchCache[key]
 	if hit then return hit end
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	local s = AUI.SuggestFor(result, r)
 	if not s then return nil end
 	local inp, sug = s.inputs, s.suggest
@@ -702,7 +702,7 @@ function AUI.QuantityFor(result, r)
 		tostring(gold), held, selQty, r.max or "" }, ":")
 	local hit = qtyCache[key]
 	if hit then return hit end
-	hit = CH.Decide.Quantity(b.inputs, { canMake = r.max, gold = gold, held = held, suggest = b.suggest, custom = selQty })
+	hit = AuctionIQ.Decide.Quantity(b.inputs, { canMake = r.max, gold = gold, held = held, suggest = b.suggest, custom = selQty })
 	qtyCache = { [key] = hit } -- one craft at a time: the card shows one
 	return hit
 end
@@ -710,7 +710,7 @@ end
 --- The quantity hover, in the four layers: what's observed, the analysis (each size's week), the
 --- suggestion with its assumptions and what would change it, and how to go your own way.
 function AUI.QuantityTip(q)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local mut = function(t) return T.Color("muted", t) end
 	local tip = { { "How many" } }
 	if not q then tip[2] = { mut("Needs a sale price and the reagents' prices.") }; return tip end
@@ -718,8 +718,8 @@ function AUI.QuantityTip(q)
 	tip[#tip + 1] = { T.Color("accent", "What AuctionIQ sees") }
 	tip[#tip + 1] = { "  You can make now", n(q.canMake) }
 	tip[#tip + 1] = { "  Your gold buys reagents for", q.canAfford and (q.canAfford >= 999 and "999+" or tostring(q.canAfford)) or mut("?") }
-	tip[#tip + 1] = { "  You hold", tostring(q.held) .. (q.cover and mut(string.format("  about %s of sales", CH.Decide.DaysText(q.cover))) or "") }
-	if q.demand then tip[#tip + 1] = { mut("  Sales: " .. CH.Demand.Text(q.demand)) } end
+	tip[#tip + 1] = { "  You hold", tostring(q.held) .. (q.cover and mut(string.format("  about %s of sales", AuctionIQ.Decide.DaysText(q.cover))) or "") }
+	if q.demand then tip[#tip + 1] = { mut("  Sales: " .. AuctionIQ.Demand.Text(q.demand)) } end
 	tip[#tip + 1] = { T.Color("accent", "Your week at each size") .. mut("  (modeled)") }
 	tip[#tip + 1] = { mut("  crafts: net expected · left after a week, slow / expected"), "" }
 	for _, e in ipairs(q.explore or {}) do
@@ -736,10 +736,10 @@ end
 
 --- Lines for the batch pane: one per batch size, then where the inputs come from.
 function AUI.BatchLines(b)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out = {}
 	if not b then return out end
-	local st = CH.Decide.SuggestText(b.suggest)
+	local st = AuctionIQ.Decide.SuggestText(b.suggest)
 	if st then
 		table.insert(out, st)
 		if b.suggest.n > 0 then table.insert(out, b.suggest.why) end
@@ -749,15 +749,15 @@ function AUI.BatchLines(b)
 			s.n, pctText(s.recover), M(s.spend), M(s.cashBack.p50 or 0), M(s.net.p50 or 0), math.floor((s.left or 0) + 0.5), M(s.leftValue or 0)))
 	end
 	local inp = b.inputs
-	local ev = CH.Decide.EvidenceText(inp.evidence)
+	local ev = AuctionIQ.Decide.EvidenceText(inp.evidence)
 	table.insert(out, string.format("Sales for %d days at %s. Price spread: falls %s or more in 1 run of 10 (Scenarios).",
-		CH.Decide.HORIZON, (ev.volume:gsub("^Sales: ", "")), pctText(CH.Decide.Scenario().price)))
+		AuctionIQ.Decide.HORIZON, (ev.volume:gsub("^Sales: ", "")), pctText(AuctionIQ.Decide.Scenario().price)))
 	table.insert(out, "Procs from your stats. Cash counts only what sells; unsold stock is valued apart. " .. ev.rate .. ".")
 	return out
 end
 
 local function drawBatch(chart, b)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local sizes = b and b.sizes or {}
 	local lo, hi = 0, 0
 	for _, s in ipairs(sizes) do lo, hi = math.min(lo, s.net.p10 or 0), math.max(hi, s.net.p90 or 0) end
@@ -811,7 +811,7 @@ function AUI.PaneTitle() return panel and panel.chart and panel.chart.title:GetT
 --- Draw the area under the rows for the pane that's on. Returns its text lines, for the tests.
 function AUI.RenderPane()
 	if not panel or not panel.chart then return {} end
-	local chart, T = panel.chart, CH.Theme
+	local chart, T = panel.chart, AuctionIQ.Theme
 	local function setOn(b, on)
 		if not b then return end
 		T.SetTab(b, on)
@@ -846,12 +846,12 @@ function AUI.RenderPane()
 		end
 		local sg = b.suggest
 		chart.title:SetText(sg and sg.n > 0 and (T.Color("accent", "Make " .. sg.n) .. T.Color("muted", string.format(": %s at risk if slow; %d / %d / %d left in a week (slow / expected / fast)",
-			CH.FormatMoney(sg.scenarios.slow.atRisk), math.floor(sg.scenarios.slow.left + 0.5), math.floor(sg.scenarios.expected.left + 0.5), math.floor(sg.scenarios.fast.left + 0.5))))
-			or sg and T.Color("bad", sg.why) or (T.Color("accent", "Batch, " .. CH.Decide.HORIZON .. " days") .. T.Color("muted", "  bars: net cash, middle 80% of runs")))
+			AuctionIQ.FormatMoney(sg.scenarios.slow.atRisk), math.floor(sg.scenarios.slow.left + 0.5), math.floor(sg.scenarios.expected.left + 0.5), math.floor(sg.scenarios.fast.left + 0.5))))
+			or sg and T.Color("bad", sg.why) or (T.Color("accent", "Batch, " .. AuctionIQ.Decide.HORIZON .. " days") .. T.Color("muted", "  bars: net cash, middle 80% of runs")))
 		lines = AUI.BatchLines(b)
 		local inp = b.inputs
 		chart.foot:SetText(T.Color("muted", string.format("Bars: net cash, middle 80%% of runs. Sales %s a day, price -%s in 1 of 10.",
-			inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), pctText(CH.Decide.Scenario().price))))
+			inp.daily % 1 == 0 and tostring(inp.daily) or string.format("%.1f", inp.daily), pctText(AuctionIQ.Decide.Scenario().price))))
 		drawBatch(chart, b)
 	end
 	return lines
@@ -859,16 +859,16 @@ end
 
 local function rankText(q, tiers)
 	if not q then return "" end
-	return " " .. CH.Window.QualityIcon(q, 14, tiers)
+	return " " .. AuctionIQ.Window.QualityIcon(q, 14, tiers)
 end
 
 --- One line on finishing reagents for the advisor's notes: use the one you have, buy one that pays
 --- for itself, or that none is worth it. Each option's gain is per plain craft.
 function AUI.FinishingLines(result)
-	local T, M = CH.Theme, CH.FormatMoney
-	local adv = CH.Advisor.FinishingAdvice(result)
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
+	local adv = AuctionIQ.Advisor.FinishingAdvice(result)
 	if #adv == 0 or result.order then return {} end
-	local name = CH.Advisor.ItemName
+	local name = AuctionIQ.Advisor.ItemName
 	local use, buy = nil, nil
 	for _, a in ipairs(adv) do
 		if a.verdict == "use" and not use then use = a end
@@ -894,14 +894,14 @@ end
 function AUI.ExpectLines(d)
 	local out = {}
 	if not d or not d.gross then return out end
-	local M, mut = CH.FormatMoney, function(t) return CH.Theme.Color("muted", t) end
+	local M, mut = AuctionIQ.FormatMoney, function(t) return AuctionIQ.Theme.Color("muted", t) end
 	table.insert(out, { "After 5% auction cut", M(d.gross) })
 	if d.p then
 		local b = d.belief
 		table.insert(out, { string.format("Sells %d%% of posts", math.floor(d.p * 100 + 0.5))
 			.. mut(b and b.n > 0 and string.format("  your %d day%s of posts + region", math.floor(b.n + 0.5), math.floor(b.n + 0.5) == 1 and "" or "s") or "  region rate"), "" })
 		if d.deposits >= 1 then table.insert(out, { "  Deposits lost to expiries", "-" .. M(d.deposits) }) end
-		table.insert(out, { string.format("  Gold tied up %.1f days at %s%%/day", d.days, tostring(CH.Expect.Setting("carry") * 100)), "-" .. M(d.carry) })
+		table.insert(out, { string.format("  Gold tied up %.1f days at %s%%/day", d.days, tostring(AuctionIQ.Expect.Setting("carry") * 100)), "-" .. M(d.carry) })
 		table.insert(out, { "Expected each", M(d.gross - d.deposits - d.carry) })
 	end
 	return out
@@ -911,22 +911,22 @@ end
 --- differs from the estimate: { { label, money } } (empty otherwise). c: an Advisor.CostLines entry.
 function AUI.BuyNowLines(c)
 	local out = {}
-	if not (c and c.id and not c.finishing and CH.Depth) then return out end
-	local d = CH.Depth.Cost(c.id, c.n)
+	if not (c and c.id and not c.finishing and AuctionIQ.Depth) then return out end
+	local d = AuctionIQ.Depth.Cost(c.id, c.n)
 	if not d or d.source == "chmat" then return out end
-	local from = d.source == "ah" and ("AH search " .. CH.Scans.Age(d.age) .. (d.age and d.age >= 60 and " ago" or ""))
-		or ("AH scan " .. CH.Scans.Age(d.age) .. " old")
-	local mut = function(t) return CH.Theme.Color("muted", t) end
+	local from = d.source == "ah" and ("AH search " .. AuctionIQ.Scans.Age(d.age) .. (d.age and d.age >= 60 and " ago" or ""))
+		or ("AH scan " .. AuctionIQ.Scans.Age(d.age) .. " old")
+	local mut = function(t) return AuctionIQ.Theme.Color("muted", t) end
 	-- priced from the listings already (as the shopping list does): say where from
 	if c.listed then
 		table.insert(out, { mut("   priced from your " .. from), "" })
-		if (d.short or 0) > 0 then table.insert(out, { CH.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
+		if (d.short or 0) > 0 then table.insert(out, { AuctionIQ.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
 		return out
 	end
 	local unit = math.floor(d.unit + 0.5)
 	if c.unit and math.abs(unit - c.unit) < 0.005 * c.unit then return out end
-	table.insert(out, { mut("   buy now, " .. from), mut(CH.FormatMoney(unit) .. " ea  " .. CH.FormatMoney(d.cost)) })
-	if (d.short or 0) > 0 then table.insert(out, { CH.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
+	table.insert(out, { mut("   buy now, " .. from), mut(AuctionIQ.FormatMoney(unit) .. " ea  " .. AuctionIQ.FormatMoney(d.cost)) })
+	if (d.short or 0) > 0 then table.insert(out, { AuctionIQ.Theme.Color("bad", "   only " .. (c.n - d.short) .. " listed"), "" }) end
 	return out
 end
 
@@ -934,12 +934,12 @@ end
 --- marked: { { label, money } }. Reagents you craft and finishing reagents count as they are in the row.
 function AUI.BasisLines(result, r)
 	local out = {}
-	local P, M, T = CH.Prices, CH.FormatMoney, CH.Theme
+	local P, M, T = AuctionIQ.Prices, AuctionIQ.FormatMoney, AuctionIQ.Theme
 	if not (P and P.ReagentCost) then return out end
 	local cur = P.CostBasis()
 	local totals, missing, fell = {}, {}, {}
 	for _, b in ipairs(P.BASES) do totals[b], missing[b], fell[b] = 0, false, 0 end
-	for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
+	for _, c in ipairs(AuctionIQ.Advisor.CostLines(result, r.picks, r.finishing)) do
 		for _, b in ipairs(P.BASES) do
 			local each, from
 			if c.finishing or c.crafted or not c.id then each, from = c.unit, b
@@ -948,7 +948,7 @@ function AUI.BasisLines(result, r)
 				local buy = P.ReagentCost(c.id, "replacement")
 				local own = math.min(c.n, P.Held and P.Held(c.id) or 0)
 				local v = own > 0 and P.Get("chvalue", "i:" .. c.id) or nil
-				local sell = v and v * CH.AH_CUT
+				local sell = v and v * AuctionIQ.AH_CUT
 				if buy or (own == c.n and sell) then
 					each, from = (own * (sell or buy or 0) + (c.n - own) * (buy or 0)) / c.n, (own > 0 and not sell) and "replacement" or b
 				end
@@ -974,13 +974,13 @@ end
 --- normal and max and where it would post against the freshest listings, or that it wouldn't.
 function AUI.PostingLines(item, level, price)
 	local out = {}
-	local pc = item and CH.Auction and CH.Auction.PostCheck and CH.Auction.PostCheck(item, level)
+	local pc = item and AuctionIQ.Auction and AuctionIQ.Auction.PostCheck and AuctionIQ.Auction.PostCheck(item, level)
 	if not pc then return out end
-	local M, T = CH.FormatMoney, CH.Theme
+	local M, T = AuctionIQ.FormatMoney, AuctionIQ.Theme
 	table.insert(out, { T.Color("accent", "Posting") .. T.Color("muted", "  " .. tostring(pc.op or "no operation")), "" })
 	table.insert(out, { "   Min / normal / max", string.format("%s / %s / %s", pc.min and M(pc.min) or "-", pc.normal and M(pc.normal) or "-", pc.max and M(pc.max) or "-") })
-	local from = pc.source == "ah" and ("your AH search " .. CH.Scans.Age(pc.age) .. " ago")
-		or pc.source == "scan" and ("your last AH scan, " .. CH.Scans.Age(pc.age) .. " old") or "no AH listings seen"
+	local from = pc.source == "ah" and ("your AH search " .. AuctionIQ.Scans.Age(pc.age) .. " ago")
+		or pc.source == "scan" and ("your last AH scan, " .. AuctionIQ.Scans.Age(pc.age) .. " old") or "no AH listings seen"
 	if pc.cheapest then table.insert(out, { "   Cheapest listed" .. T.Color("muted", "  " .. from), M(pc.cheapest) })
 	else table.insert(out, { T.Color("muted", "   " .. from), "" }) end
 	if pc.action == "post" then
@@ -1000,13 +1000,13 @@ end
 --- known purchases. Empty without TradeSkillMaster's accounting or for an order.
 function AUI.PaidLines(result, r)
 	local out = {}
-	if result.order or not (CH.Ledger and CH.Ledger.Available() and CH.Scan and CH.Scan.Accounts) then return out end
-	local ok, acc = pcall(CH.Scan.Accounts, result, r)
+	if result.order or not (AuctionIQ.Ledger and AuctionIQ.Ledger.Available() and AuctionIQ.Scan and AuctionIQ.Scan.Accounts) then return out end
+	local ok, acc = pcall(AuctionIQ.Scan.Accounts, result, r)
 	if not ok or not acc then return out end
-	local now = CH.Scan.CraftEach(r, result.made)
-	local paid, share = CH.Ledger.CostAtPaid(acc, CH.Ledger.Paid())
+	local now = AuctionIQ.Scan.CraftEach(r, result.made)
+	local paid, share = AuctionIQ.Ledger.CostAtPaid(acc, AuctionIQ.Ledger.Paid())
 	if not now or not paid then return out end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	table.insert(out, { T.Color("accent", "Cost per item made") .. T.Color("muted", "  after Resourcefulness and Multicraft"), "" })
 	table.insert(out, { "   Replacement, today's prices" .. T.Color("muted", "  craft another batch?"), M(now) })
 	table.insert(out, { "   At what you paid" .. T.Color("muted", "  what this batch cost you"), M(paid) })
@@ -1018,16 +1018,16 @@ end
 function AUI.BreakdownLines(result, r, col)
 	local lines = {}
 	local function add(l, rt) table.insert(lines, { l, rt }) end
-	local B = CH.Window.Book
+	local B = AuctionIQ.Window.Book
 	local function put(l) table.insert(lines, l) end
 	if col == 3 then
-		put(B.Head("Reagents", CH.Theme.Color("muted", "estimated cost")))
+		put(B.Head("Reagents", AuctionIQ.Theme.Color("muted", "estimated cost")))
 		local live
-		for _, c in ipairs(CH.Advisor.CostLines(result, r.picks, r.finishing)) do
-			local label = string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.unit and CH.Theme.Color("muted", " @ " .. CH.FormatMoney(c.unit)) or "")
-				.. (c.crafted and CH.Theme.Color("muted", "  cost to craft") or "")
-			put(c.total and B.Line(label, -c.total, true) or B.Text(label, CH.Theme.Color("bad", "no price"), "bad"))
-			for _, t in ipairs(CH.Advisor.HeldText(c)) do put(t) end
+		for _, c in ipairs(AuctionIQ.Advisor.CostLines(result, r.picks, r.finishing)) do
+			local label = string.format("%dx %s%s", c.n, c.name, rankText(c.rank, c.tiers)) .. (c.unit and AuctionIQ.Theme.Color("muted", " @ " .. AuctionIQ.FormatMoney(c.unit)) or "")
+				.. (c.crafted and AuctionIQ.Theme.Color("muted", "  cost to craft") or "")
+			put(c.total and B.Line(label, -c.total, true) or B.Text(label, AuctionIQ.Theme.Color("bad", "no price"), "bad"))
+			for _, t in ipairs(AuctionIQ.Advisor.HeldText(c)) do put(t) end
 			-- what buying them really costs, from AH listings you've seen (walking up the book)
 			for _, l in ipairs(AUI.BuyNowLines(c)) do put({ "   " .. l[1], l[2], "muted", "muted" }); live = true end
 		end
@@ -1041,23 +1041,23 @@ function AUI.BreakdownLines(result, r, col)
 		if result.order and next(result.order.providedSlots or {}) then put(B.Note("The customer provides the rest.")) end
 	elseif col == 4 then
 		local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(r.item) or ("item " .. tostring(r.item))
-		add(CH.Theme.Color("accent", name) .. rankText(r.quality, result.model and result.model.maxQ))
-		for _, src in ipairs(CH.Advisor.PriceSources(r.item)) do
+		add(AuctionIQ.Theme.Color("accent", name) .. rankText(r.quality, result.model and result.model.maxQ))
+		for _, src in ipairs(AuctionIQ.Advisor.PriceSources(r.item)) do
 			local v = src.value
-			local text = not v and CH.Theme.Color("muted", "none")
+			local text = not v and AuctionIQ.Theme.Color("muted", "none")
 				or src.kind == "rate" and string.format("%.0f%%", v <= 1 and v * 100 or v / 10) -- TSM gives 0-1 or x1000
 				or src.kind == "count" and string.format(v % 1 == 0 and "%d" or "%.1f", v)
-				or CH.FormatMoney(v)
+				or AuctionIQ.FormatMoney(v)
 			add("   " .. src.label, text)
 		end
-		local vals = CH.Prices.Values(r.item)
-		if vals.realized then add(string.format("   RZ  Realized, your %d sales", vals.n), CH.FormatMoney(vals.realized)) end
-		add("Market estimate (chvalue)", CH.FormatMoney(r.price and r.price / (r.shade or 1)))
+		local vals = AuctionIQ.Prices.Values(r.item)
+		if vals.realized then add(string.format("   RZ  Realized, your %d sales", vals.n), AuctionIQ.FormatMoney(vals.realized)) end
+		add("Market estimate (chvalue)", AuctionIQ.FormatMoney(r.price and r.price / (r.shade or 1)))
 		if r.shade then
-			add(string.format("Your record: x%.2f", r.shade) .. CH.Theme.Color("muted", "  " .. (r.shadeWhy or "")), CH.FormatMoney(r.price))
+			add(string.format("Your record: x%.2f", r.shade) .. AuctionIQ.Theme.Color("muted", "  " .. (r.shadeWhy or "")), AuctionIQ.FormatMoney(r.price))
 		end
 		for _, l in ipairs(AUI.ExpectLines(r.ev)) do add(l[1], l[2]) end
-		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), CH.FormatMoney(r.value)) end
+		if (result.made or 1) ~= 1 then add(string.format("x %.1f made", result.made), AuctionIQ.FormatMoney(r.value)) end
 		-- the operation that would post it decides separately from the estimate: show both
 		if not result.order then
 			local key = result.model and result.model.outputKeys and result.model.outputKeys[r.quality]
@@ -1065,7 +1065,7 @@ function AUI.BreakdownLines(result, r, col)
 			for _, l in ipairs(AUI.PostingLines(r.item, level, r.price)) do add(l[1], l[2]) end
 		end
 	elseif col == 5 then
-		put(B.Head("Revenue", CH.Theme.Color("muted", "average per craft")))
+		put(B.Head("Revenue", AuctionIQ.Theme.Color("muted", "average per craft")))
 		put(B.Line(result.order and "Commission and rewards" or "Expected sale value", r.value))
 		local pp = r.parts
 		if pp and pp.mc > 0 and not result.order then
@@ -1074,29 +1074,29 @@ function AUI.BreakdownLines(result, r, col)
 		put(B.Head("Costs"))
 		put(B.Line("Reagents", -(r.cost or 0), true))
 		if pp and pp.res > 0 then
-			put(B.Line(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), CH.FormatMoney(pp.saved)), pp.resGold))
+			put(B.Line(string.format("Resourcefulness  %d%% saves %s", math.floor(pp.res * 100 + 0.5), AuctionIQ.FormatMoney(pp.saved)), pp.resGold))
 		end
 		if r.oldValue then put(B.Line("The item you recraft", -r.oldValue, true)) end
 		put(B.Total("Profit", r.profit))
-		for _, l in ipairs(CH.Advisor.CraftOrSellLines(result, r)) do put(l) end
-		if r.profit and r.cost and r.cost > 0 then put(B.Text("Return on cost" .. CH.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5)))) end
+		for _, l in ipairs(AuctionIQ.Advisor.CraftOrSellLines(result, r)) do put(l) end
+		if r.profit and r.cost and r.cost > 0 then put(B.Text("Return on cost" .. AuctionIQ.Theme.Color("muted", "  profit / reagents"), string.format("%d%%", math.floor(r.profit / r.cost * 100 + 0.5)))) end
 		-- margin: profit over what the craft brings in (proceeds, Multicraft's extras included)
 		local proceeds = r.value and r.parts and (r.value + (r.parts.mcGold or 0))
 		if r.profit and proceeds and proceeds > 0 and not result.order then
-			put(B.Text("Margin" .. CH.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5))))
+			put(B.Text("Margin" .. AuctionIQ.Theme.Color("muted", "  profit / proceeds"), string.format("%d%%", math.floor(r.profit / proceeds * 100 + 0.5))))
 		end
 		if r.breakEven then
-			put(B.Text("Break-even sale price", CH.FormatMoney(r.breakEven.price) .. " per item"))
-			add(CH.Theme.Color("muted", string.format("  estimate %s per item; can fall %s", CH.FormatMoney(r.breakEven.estimate),
+			put(B.Text("Break-even sale price", AuctionIQ.FormatMoney(r.breakEven.price) .. " per item"))
+			add(AuctionIQ.Theme.Color("muted", string.format("  estimate %s per item; can fall %s", AuctionIQ.FormatMoney(r.breakEven.estimate),
 				pctText(math.max(0, r.breakEven.cushion)))), "")
 		end
 		if r.concentration then
 			local g = r.gain
 			if g then
 				add(string.format("Concentration %d points", r.concentration), "")
-				add("  Over the best plain craft" .. CH.Theme.Color("muted", g.plain > 0 and "" or "  (none pays, so over not crafting)"), money(g.gain) .. " per craft")
+				add("  Over the best plain craft" .. AuctionIQ.Theme.Color("muted", g.plain > 0 and "" or "  (none pays, so over not crafting)"), money(g.gain) .. " per craft")
 				add("  Extra per expected point", money(g.perPoint))
-				add(CH.Theme.Color("muted", "  Whole profit per point (as CraftSim)"), money(r.perPoint))
+				add(AuctionIQ.Theme.Color("muted", "  Whole profit per point (as CraftSim)"), money(r.perPoint))
 			else
 				add(string.format("Concentration %d points", r.concentration), money(r.perPoint) .. " per point")
 			end
@@ -1107,17 +1107,17 @@ function AUI.BreakdownLines(result, r, col)
 		if result.sim and live then
 			for _, lr in ipairs(live.rows) do
 				if lr.quality == r.quality and (lr.concentration ~= nil) == (r.concentration ~= nil) and lr.profit and r.profit then
-					add(CH.Theme.Color("muted", "Now, without the simulation"), money(lr.profit))
+					add(AuctionIQ.Theme.Color("muted", "Now, without the simulation"), money(lr.profit))
 					break
 				end
 			end
 		end
 	else
-		local max, have = CH.Advisor.MaxCraftable(result, r, concNow())
-		add(CH.Theme.Color("accent", "Can craft " .. max) .. CH.Theme.Color("muted", "  bags, banks and warband bank"))
+		local max, have = AuctionIQ.Advisor.MaxCraftable(result, r, concNow())
+		add(AuctionIQ.Theme.Color("accent", "Can craft " .. max) .. AuctionIQ.Theme.Color("muted", "  bags, banks and warband bank"))
 		for _, h in ipairs(have) do
 			local ok = h.have >= h.need
-			add(h.name .. rankText(h.rank, h.tiers), CH.Theme.Color(ok and "fg" or "bad", string.format("%d have, %d each", h.have, h.need)))
+			add(h.name .. rankText(h.rank, h.tiers), AuctionIQ.Theme.Color(ok and "fg" or "bad", string.format("%d have, %d each", h.have, h.need)))
 		end
 		if r.concentration then
 			add("Concentration", string.format("%s have, %d each", tostring(concNow() or "?"), r.concentration))
@@ -1140,7 +1140,7 @@ end
 function AUI.ShowBreakdown(owner, i, col)
 	local r = shown and shown.rows[i]
 	if not r then return end
-	CH.Window.Tooltip(owner, AUI.BreakdownLines(shown, r, col))
+	AuctionIQ.Window.Tooltip(owner, AUI.BreakdownLines(shown, r, col))
 end
 
 --- Update the advisor for a recipe (or the one on screen). It comes to the front unless another tab
@@ -1148,8 +1148,8 @@ end
 function AUI.Show(recipeID, force)
 	-- the old Advisor window's X turned the advisor off for good; under the two windows that would
 	-- keep the Craft window from opening, so clear it once when the two windows first load
-	if CH.db and not settings().twoWindows then settings().twoWindows = true; settings().hide = nil end
-	if not CH.db or (settings().hide and not force) or not ownProfession() then
+	if AuctionIQ.db and not settings().twoWindows then settings().twoWindows = true; settings().hide = nil end
+	if not AuctionIQ.db or (settings().hide and not force) or not ownProfession() then
 		if panel then panel:Hide() end
 		return
 	end
@@ -1163,30 +1163,30 @@ function AUI.Show(recipeID, force)
 			AUI.Render(result, reason)
 		else
 			AUI.Render(nil, "Couldn't work this recipe out.")
-			if CH.debugErrors ~= false then CH.Print("advisor error (please send this): " .. tostring(result)) end
+			if AuctionIQ.debugErrors ~= false then AuctionIQ.Print("advisor error (please send this): " .. tostring(result)) end
 		end
 	else
 		AUI.Render(nil)
 	end
 	if settings().classic then
-		if force or not CH.Window.Busy("advisor") then panel:Show() end
+		if force or not AuctionIQ.Window.Busy("advisor") then panel:Show() end
 	else
 		-- two windows, Craft and Queue: the recipe shows in the Craft window's card
 		panel:Hide()
-		if CH.ScanUI and CH.ScanUI.ShowRecipe then CH.ScanUI.ShowRecipe(current, force) end
+		if AuctionIQ.ScanUI and AuctionIQ.ScanUI.ShowRecipe then AuctionIQ.ScanUI.ShowRecipe(current, force) end
 	end
 end
 
 --- Is the old standalone Advisor window on (Settings), instead of the Craft window's card?
 --- Gold a day explained: profit per craft times how many a day you can expect to sell (Demand.lua).
 function AUI.PerDayTip(scan)
-	local function mut(t) return CH.Theme.Color("muted", t) end
+	local function mut(t) return AuctionIQ.Theme.Color("muted", t) end
 	local t = { { "Gold a day" },
 		{ mut("What this recipe could earn in a day if you only sold what the market takes: profit per craft, times the sales a day you can expect.") } }
-	local d = scan.item and CH.Demand and CH.Demand.Estimate(scan.item)
+	local d = scan.item and AuctionIQ.Demand and AuctionIQ.Demand.Estimate(scan.item)
 	if d then
-		t[#t + 1] = { "Sales a day (" .. CH.Demand.SOURCE[d.source] .. ")", CH.Demand.Rate(d.units) }
-		t[#t + 1] = { mut(CH.Demand.Text(d)) }
+		t[#t + 1] = { "Sales a day (" .. AuctionIQ.Demand.SOURCE[d.source] .. ")", AuctionIQ.Demand.Rate(d.units) }
+		t[#t + 1] = { mut(AuctionIQ.Demand.Text(d)) }
 	end
 	if scan.soldPerDay then t[#t + 1] = { "Sold a day, region", string.format(scan.soldPerDay >= 100 and "%.0f" or "%.1f", scan.soldPerDay) } end
 	if scan.perPoint then t[#t + 1] = { mut("Concentration crafts count up to what a day's refill (about 250 points) pays for.") } end
@@ -1198,8 +1198,8 @@ function AUI.Classic() return settings().classic == true end
 
 --- The Advisor tab: bring it to the front (turning it back on if it was closed).
 function AUI.Open()
-	if not CH.OpenProfessionID() and not current then
-		CH.Print("open a profession to see the Crafting Advisor.")
+	if not AuctionIQ.OpenProfessionID() and not current then
+		AuctionIQ.Print("open a profession to see the Crafting Advisor.")
 		return
 	end
 	settings().hide = false
@@ -1209,12 +1209,12 @@ end
 --- The simulated stat change for a recipe, or nil when the simulation is off.
 function AUI.SimDelta(recipeID)
 	if sim.skill == 0 and not sim.plan then return nil end
-	local d = CH.Stats.New()
+	local d = AuctionIQ.Stats.New()
 	d.skill = sim.skill
-	local prof = CH.OpenProfessionID()
+	local prof = AuctionIQ.OpenProfessionID()
 	if sim.plan and sim.plan.ranks and prof == sim.plan.prof then
-		local tree = CH.Spec.Tree(prof)
-		if tree then CH.Stats.Add(d, CH.Spec.Delta(prof, tree, sim.plan.ranks, recipeID)) end
+		local tree = AuctionIQ.Spec.Tree(prof)
+		if tree then AuctionIQ.Stats.Add(d, AuctionIQ.Spec.Delta(prof, tree, sim.plan.ranks, recipeID)) end
 	end
 	return d
 end
@@ -1225,7 +1225,7 @@ local gearCache, gearGen = {}, 0
 AUI.GEAR_AGE = 300
 function AUI.InvalidateGear() gearGen = gearGen + 1; gearCache = {} end
 for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED" }) do
-	CH.On(ev, AUI.InvalidateGear)
+	AuctionIQ.On(ev, AUI.InvalidateGear)
 end
 
 -- Each recipe's worked-out result, from the scan or the first click, kept until something it
@@ -1236,15 +1236,15 @@ local known, knownGen = {}, 0
 AUI.KNOWN_AGE = 600
 function AUI.InvalidateKnown() knownGen = knownGen + 1; known = {} end
 for _, ev in ipairs({ "PLAYER_EQUIPMENT_CHANGED", "SKILL_LINES_CHANGED", "TRAIT_CONFIG_UPDATED", "NEW_RECIPE_LEARNED" }) do
-	CH.On(ev, AUI.InvalidateKnown)
+	AuctionIQ.On(ev, AUI.InvalidateKnown)
 end
-CH.On("BAG_UPDATE_DELAYED", function()
-	if CH.Prices.CostBasis and CH.Prices.CostBasis() == "held" then AUI.InvalidateKnown() end
+AuctionIQ.On("BAG_UPDATE_DELAYED", function()
+	if AuctionIQ.Prices.CostBasis and AuctionIQ.Prices.CostBasis() == "held" then AUI.InvalidateKnown() end
 end)
 local hadShatter
-CH.On("UNIT_AURA", function(_, unit)
-	if unit ~= "player" or not (CH.Queue and CH.Queue.HasShatterBuff) then return end
-	local has = CH.Queue.HasShatterBuff()
+AuctionIQ.On("UNIT_AURA", function(_, unit)
+	if unit ~= "player" or not (AuctionIQ.Queue and AuctionIQ.Queue.HasShatterBuff) then return end
+	local has = AuctionIQ.Queue.HasShatterBuff()
 	if has ~= hadShatter then hadShatter = has; AUI.InvalidateKnown() end
 end)
 
@@ -1263,15 +1263,15 @@ local function knownFor(recipeID)
 end
 
 function AUI.Compute(recipeID)
-	local prof = CH.OpenProfessionID()
+	local prof = AuctionIQ.OpenProfessionID()
 	local opts = { professionID = prof }
 	if order and order.spellID == recipeID then
-		opts.order = CH.Orders.FromOrder(order)
+		opts.order = AuctionIQ.Orders.FromOrder(order)
 	else
-		local rc = CH.Orders and CH.Orders.RecraftContext()
+		local rc = AuctionIQ.Orders and AuctionIQ.Orders.RecraftContext()
 		if rc then opts.allocationGUID, opts.recraftQuality = rc.guid, rc.quality end
 	end
-	local M = CH.Measure
+	local M = AuctionIQ.Measure
 	local model
 	local k = not opts.order and not opts.allocationGUID and knownFor(recipeID)
 	if k then
@@ -1280,17 +1280,17 @@ function AUI.Compute(recipeID)
 		for i = #live.rows, 1, -1 do if live.rows[i].fromBags then table.remove(live.rows, i) end end
 	else
 		local reason
-		model, reason = M("advisor: read recipe", CH.Advisor.Measure, recipeID, opts)
+		model, reason = M("advisor: read recipe", AuctionIQ.Advisor.Measure, recipeID, opts)
 		if not model then return nil, reason end
-		live = M("advisor: work out", CH.Advisor.Evaluate, model)
+		live = M("advisor: work out", AuctionIQ.Advisor.Evaluate, model)
 		if not opts.order and not opts.allocationGUID then AUI.Remember(recipeID, model, live) end
 	end
 	local result = live
 	local d = AUI.SimDelta(recipeID)
-	if d then result = M("advisor: simulate", CH.Advisor.Evaluate, model, { sim = d }) end
+	if d then result = M("advisor: simulate", AuctionIQ.Advisor.Evaluate, model, { sim = d }) end
 	M("advisor: own reagents", AUI.AddHeldConc, result)
 	gearPick = nil
-	if not opts.order and CH.Gear then
+	if not opts.order and AuctionIQ.Gear then
 		-- trying each gear set is a full search per set: keep the answer per recipe until your gear,
 		-- bags or skill change (or a few minutes pass, for prices)
 		local mode = (live.bestConc and not live.best) and "conc" or nil
@@ -1303,15 +1303,15 @@ function AUI.Compute(recipeID)
 			-- milliseconds a frame, and show the answer when it's in
 			local fin, gen, t0 = live.finishingPicks, gearGen, debugprofilestop and debugprofilestop()
 			gearCache[key] = { pending = true, gen = gen, at = time() }
-			CH.Scan.Background(function() return CH.Gear.Best(model, mode, nil, fin) end, function(ok, g)
-				if t0 and CH.MeasureAdd then CH.MeasureAdd("advisor: gear (background, wall time)", debugprofilestop() - t0) end
+			AuctionIQ.Scan.Background(function() return AuctionIQ.Gear.Best(model, mode, nil, fin) end, function(ok, g)
+				if t0 and AuctionIQ.MeasureAdd then AuctionIQ.MeasureAdd("advisor: gear (background, wall time)", debugprofilestop() - t0) end
 				if gen ~= gearGen then return end
 				gearCache[key] = { gen = gen, at = time(), pick = ok and g or false }
 				if current == recipeID and not order then
 					gearPick = ok and g or nil
 					if shown and shown.recipeID == recipeID then
 						AUI.Render(shown)
-						if CH.ScanUI and CH.ScanUI.IsShown and CH.ScanUI.IsShown() then CH.ScanUI.Refresh() end
+						if AuctionIQ.ScanUI and AuctionIQ.ScanUI.IsShown and AuctionIQ.ScanUI.IsShown() then AuctionIQ.ScanUI.Refresh() end
 					end
 				end
 			end)
@@ -1325,15 +1325,15 @@ end
 --- don't hold), add the one with your own reagents: what the profession window charges when you
 --- tick Concentrate. It goes right after that rank's other Concentration row.
 function AUI.AddHeldConc(result)
-	if not (result and result.rows and CH.Advisor.HeldConcRow) or result.order or result.sim then return end
-	local ok, h = pcall(CH.Advisor.HeldConcRow, result)
+	if not (result and result.rows and AuctionIQ.Advisor.HeldConcRow) or result.order or result.sim then return end
+	local ok, h = pcall(AuctionIQ.Advisor.HeldConcRow, result)
 	if not ok or not h then return end
 	local cn = concNow()
 	local at
 	for i, r in ipairs(result.rows) do
 		if r.concentration and r.quality == h.quality then
 			-- one you can make already, or the same craft: nothing to add
-			if CH.Advisor.MaxCraftable(result, r, cn) > 0 or r.concentration == h.concentration then return end
+			if AuctionIQ.Advisor.MaxCraftable(result, r, cn) > 0 or r.concentration == h.concentration then return end
 			at = i
 		end
 	end
@@ -1353,7 +1353,7 @@ end
 function AUI.SetPlan(plan)
 	sim.plan = plan
 	if not plan then return end
-	CH.Print("simulating the " .. (plan.label or "") .. " plan in the crafting advisor. Press Off on its Simulate bar to stop.")
+	AuctionIQ.Print("simulating the " .. (plan.label or "") .. " plan in the crafting advisor. Press Off on its Simulate bar to stop.")
 	if ProfessionsFrame and ProfessionsFrame:IsShown() then AUI.Open() end
 end
 
@@ -1403,7 +1403,7 @@ end
 function AUI.RenderAction()
 	local act = panel and panel.act
 	if not act then return end
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	act.qty:SetText(tostring(selQty))
 	local r = AUI.SelectedRow()
 	if r then
@@ -1417,7 +1417,7 @@ function AUI.RenderAction()
 	setLabel(act.queue, label)
 	act.queue.off = off
 	act.queue.tip = target and (shown.sim
-		and string.format("A simulated row. This queues %d of the same quality as you can make it now: %s a craft.", selQty, CH.FormatMoney(target.profit or 0))
+		and string.format("A simulated row. This queues %d of the same quality as you can make it now: %s a craft.", selQty, AuctionIQ.FormatMoney(target.profit or 0))
 		or string.format("Adds %d x Q%d%s with the reagents in the notes below.", selQty, target.quality,
 			target.concentration and (", using " .. target.concentration .. " Concentration each") or ", no Concentration")) or nil
 	act.queue:SetAlpha(off and 0.4 or 1)
@@ -1432,7 +1432,7 @@ local nextCache = {} -- recovery chances by craft and quantity
 function AUI.NextMove()
 	local r = shown and AUI.SelectedRow()
 	if not r then return nil end
-	local Dc = CH.Decide
+	local Dc = AuctionIQ.Decide
 	local qty = selQty
 	local made = shown.made or 1
 	local per = Dc and Dc.Items(made, r.parts) or made
@@ -1461,7 +1461,7 @@ end
 function AUI.RenderNext()
 	local nx = panel and panel.next
 	if not nx then return nil end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local m = AUI.NextMove()
 	nx.lastMove = m
 	if not m then
@@ -1490,7 +1490,7 @@ end
 --- The Next Move hovers. which: nil for the craft line, "profit", "breakEven" or "recover" for a
 --- figure: what it means, then the breakdown that reaches it.
 function AUI.NextTip(which)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local mut = function(t) return T.Color("muted", t) end
 	local m = (panel and panel.next and panel.next.lastMove) or AUI.NextMove()
 	if not m then return { { "Next move" }, { mut("Click a row in the table to pick a craft, and set how many under it.") } } end
@@ -1539,10 +1539,10 @@ function AUI.NextTip(which)
 		end
 		table.insert(tip, { "Chance to recover", pctText(b.recover) })
 		table.insert(tip, { "Reagents spent", M(b.spend or 0) })
-		table.insert(tip, { "Cash back by day " .. CH.Decide.HORIZON, M(b.cashBack.p50 or 0) .. mut("  median") })
+		table.insert(tip, { "Cash back by day " .. AuctionIQ.Decide.HORIZON, M(b.cashBack.p50 or 0) .. mut("  median") })
 		table.insert(tip, { mut("  middle 80%"), M(b.cashBack.p10 or 0) .. " to " .. M(b.cashBack.p90 or 0) })
 		table.insert(tip, { "Items made", string.format("%d", math.floor((b.items or 0) + 0.5)) .. mut(string.format(", about %d unsold", math.floor((b.left or 0) + 0.5))) })
-		table.insert(tip, { mut(string.format("From %d simulated weeks: your Multicraft and Resourcefulness, the item's sales rate and price swings (Scenarios).", CH.Decide.RUNS)) })
+		table.insert(tip, { mut(string.format("From %d simulated weeks: your Multicraft and Resourcefulness, the item's sales rate and price swings (Scenarios).", AuctionIQ.Decide.RUNS)) })
 		return tip
 	end
 	local tip = { { "Next move" }, { mut(string.format("%d %s; the queue button adds them.", m.qty, m.qty == 1 and "craft" or "crafts")) } }
@@ -1558,7 +1558,7 @@ end
 function AUI.Card(n, scan)
 	local result = shown
 	if not result then return nil end
-	local T, M, W = CH.Theme, CH.FormatMoney, CH.Window
+	local T, M, W = AuctionIQ.Theme, AuctionIQ.FormatMoney, AuctionIQ.Window
 	local mut = function(t) return T.Color("muted", t) end
 	if n then selQty = math.max(1, math.min(999, math.floor(n))) end
 	local maxQ = result.model and result.model.maxQ
@@ -1574,7 +1574,7 @@ function AUI.Card(n, scan)
 		if x.fromBags then table.insert(tip, 2, { mut("With the reagents you hold, as the profession window fills them when you tick Concentrate. The cheaper mix needs a rank you don't have.") }) end
 		table.insert(tip, { mut("Click to pick it: Craft and Queue use this one.") })
 		return { label, money(x.profit), tip = tip, on = AUI.IsSelected(x),
-			run = function() AUI.RowClick(i); if CH.ScanUI then CH.ScanUI.Refresh() end end }
+			run = function() AUI.RowClick(i); if AuctionIQ.ScanUI then AuctionIQ.ScanUI.Refresh() end end }
 	end
 	-- one plain and one Concentration craft per rank: the selected one, else yours (only there when
 	-- the cheaper mix can't be made), else the one that earns more
@@ -1631,17 +1631,17 @@ function AUI.Card(n, scan)
 		on = concMode,
 		tip = { { "Concentrate" }, { mut(concMode and "On: each rank shows its Concentration craft. Click to see the plain crafts."
 			or "Off: each rank shows its plain craft. Click to see what Concentration does at each.") } },
-		run = ob and function() AUI.RowClick(other[ob]); if CH.ScanUI then CH.ScanUI.Refresh() end end or nil,
+		run = ob and function() AUI.RowClick(other[ob]); if AuctionIQ.ScanUI then AuctionIQ.ScanUI.Refresh() end end or nil,
 	} or nil
 	-- craft or sell, from today's prices of what you hold (the scan's reagents)
 	-- (not for the craft with your own reagents: the scan priced the cheaper mix, not yours)
 	local acc = scan and not (r and r.fromBags) and (r and r.concentration and scan.concAccounts or scan.accounts)
-	local cs = acc and CH.CraftOrSell(acc)
+	local cs = acc and AuctionIQ.CraftOrSell(acc)
 	-- every option side by side (craft, sell the reagents, buy and relist, keep), one basis
-	local alt = acc and CH.Decide.Alternatives(acc, { bc = scan and scan.bc, at = scan and scan.at, item = scan and scan.item })
+	local alt = acc and AuctionIQ.Decide.Alternatives(acc, { bc = scan and scan.bc, at = scan and scan.at, item = scan and scan.item })
 	local sub
 	if alt then
-		local text, color = CH.Decide.AlternativesText(alt)
+		local text, color = AuctionIQ.Decide.AlternativesText(alt)
 		sub = T.Color(color, text)
 		if cs and cs.paid and math.max(cs.sell, cs.craft) < cs.paid then
 			sub = sub .. mut(" Below what you paid: you lose " .. M(cs.paid - math.max(cs.sell, cs.craft)) .. " either way.")
@@ -1651,8 +1651,8 @@ function AUI.Card(n, scan)
 			or T.Color("bad", "Each craft loses " .. M(-(r.profit or 0)) .. " at today's prices.")
 	end
 	-- the options, the whole notes, and craft or sell's numbers, on the sentence's hover
-	local tip = alt and CH.Decide.AlternativesLines(alt) or { { "Notes" } }
-	if cs then for _, l in ipairs(CH.CraftOrSellBook(acc)) do tip[#tip + 1] = l end end
+	local tip = alt and AuctionIQ.Decide.AlternativesLines(alt) or { { "Notes" } }
+	if cs then for _, l in ipairs(AuctionIQ.CraftOrSellBook(acc)) do tip[#tip + 1] = l end end
 	local notes = AUI.SummaryLines(result)
 	for _, l in ipairs(AUI.FinishingLines(result)) do table.insert(notes, l) end
 	local src = AUI.SourceLine(result)
@@ -1664,7 +1664,7 @@ function AUI.Card(n, scan)
 		{ "PROFIT", r and money(r.profit) or mut("-"), tip = r and AUI.NextTip("profit") or nil },
 		-- per craft, as the list counts it; how many items a craft makes, so break-even (each) adds up
 		{ (function()
-			local items = r and CH.Decide.Items(result.made, r.parts)
+			local items = r and AuctionIQ.Decide.Items(result.made, r.parts)
 			if not items or math.abs(items - 1) < 0.05 then return "COST" end
 			return string.format(math.abs(items - math.floor(items + 0.5)) < 0.05 and "COST · MAKES %d" or "COST · MAKES %.1f", items)
 		end)(), r and r.cost and M(r.cost) or mut("-"), tip = r and AUI.BreakdownLines(result, r, 3) or nil },
@@ -1678,7 +1678,7 @@ function AUI.Card(n, scan)
 		if q then
 			local label = q.action == "trial" and "Suggested (thin evidence)" or "Suggested"
 			local color = (q.action == "make" and "ok") or (q.action == "trial" and "accent") or "muted"
-			rows[#rows + 1] = { label, T.Color(color, CH.Decide.QuantityLabel(q)), tip = AUI.QuantityTip(q) }
+			rows[#rows + 1] = { label, T.Color(color, AuctionIQ.Decide.QuantityLabel(q)), tip = AUI.QuantityTip(q) }
 		end
 		-- Max is a list column now; its reagent-by-reagent hover lives there
 		if scan and scan.perDay then
@@ -1707,18 +1707,18 @@ function AUI.Card(n, scan)
 	local actions = { { label = string.format("Craft %d", math.max(1, can)), off = craftOff,
 		tip = "Crafts the picked rank now, with these reagents" .. (r and r.concentration and " and Concentration" or "") .. ".",
 		run = function()
-			local ok, why = CH.Queue.CraftNow(result, r, can)
-			if not ok then CH.Print("can't craft that: " .. tostring(why)) end
+			local ok, why = AuctionIQ.Queue.CraftNow(result, r, can)
+			if not ok then AuctionIQ.Print("can't craft that: " .. tostring(why)) end
 			return ok
 		end },
 		{ label = label, off = off, tip = "Adds the picked rank to the queue, with these reagents.",
 		run = function() return AUI.QueueSelected() end } }
 	actions[3] = { label = "Details", tip = "Break-even, a price check, whether it will sell and what drives the cost.",
-		run = function() if CH.ScanUI then CH.ScanUI.SetDetails(true) end end }
+		run = function() if AuctionIQ.ScanUI then AuctionIQ.ScanUI.SetDetails(true) end end }
 	local g = gearPick
 	if g and g.set and not result.sim then
-		actions[4] = { label = "Equip top gear", tip = CH.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
-			run = function() local ok, why = CH.Gear.Equip(g.set); if not ok then CH.Print("can't change gear " .. (why or "")) end
+		actions[4] = { label = "Equip top gear", tip = AuctionIQ.Gear.SwapText(g.set) .. "  +" .. M(g.gain) .. (g.mode == "conc" and " a point" or " a craft"),
+			run = function() local ok, why = AuctionIQ.Gear.Equip(g.set); if not ok then AuctionIQ.Print("can't change gear " .. (why or "")) end
 				if C_Timer then C_Timer.After(1, function() AUI.Show() end) end end }
 	end
 	local warn = AUI.PostLines(result)
@@ -1742,7 +1742,7 @@ end
 function AUI.Details(n, scan)
 	local result = shown
 	if not result then return nil end
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local mut = function(t) return T.Color("muted", t) end
 	n = math.max(1, math.floor(n or selQty))
 	local r = AUI.SelectedRow() or result.best or result.bestConc
@@ -1750,14 +1750,14 @@ function AUI.Details(n, scan)
 	local out = { title = (result.name or "?"), chart = AUI.ChartData(result), n = n }
 	out.chartLines = AUI.ChartLines(out.chart)
 	-- 1. price check: today against its normal
-	local mk = item and CH.Prices.MarketAny and CH.Prices.MarketAny(item)
-	local scanned = item and CH.Scans and CH.Scans.Get(item)
+	local mk = item and AuctionIQ.Prices.MarketAny and AuctionIQ.Prices.MarketAny(item)
+	local scanned = item and AuctionIQ.Scans and AuctionIQ.Scans.Get(item)
 	local pr = {}
 	if mk and mk.market then pr[#pr + 1] = { "Today, your realm", M(mk.market) } end
 	if mk and mk.avg7 then pr[#pr + 1] = { string.format("Normal, %d-day average", mk.avgDays or 7), M(mk.avg7) } end
 	if mk and mk.region then pr[#pr + 1] = { "Region average", M(mk.region) } end
 	if scanned and scanned.min then pr[#pr + 1] = { "Lowest listing", M(scanned.min),
-		tip = { { "Lowest listing" }, { mut("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.") } } } end
+		tip = { { "Lowest listing" }, { mut("From your last AH scan, " .. (AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(scanned.age) or "?") .. " old.") } } } end
 	local ch = mk and mk.change7
 	local pv = not ch and mut("No average price to compare against yet.")
 		or ch >= 0.1 and T.Color("ok", string.format("%d%% above normal: a good time to sell.", math.floor(ch * 100 + 0.5)))
@@ -1765,13 +1765,13 @@ function AUI.Details(n, scan)
 		or T.Color("fg", "About its normal price.")
 	out.price = { verdict = pv, rows = pr }
 	-- 2. will it sell: the region's daily sales against what's listed plus what you'd make
-	local per = item and CH.Advisor.SoldPerDay and CH.Advisor.SoldPerDay(item)
+	local per = item and AuctionIQ.Advisor.SoldPerDay and AuctionIQ.Advisor.SoldPerDay(item)
 	local m = r and AUI.NextMove()
 	local items = m and m.qty > 0 and (m.items / m.qty * n) or n * (result.made or 1)
 	local listed = scanned and scanned.qty
 	local sr = { { "Sold a day, region", per and string.format(per >= 100 and "%.0f" or "%.1f", per) or mut("-") },
 		{ "Listed now", listed and tostring(listed) or mut("scan the AH"),
-			tip = { { "Listed now" }, { mut(listed and ("From your last AH scan, " .. (CH.Scans.Age and CH.Scans.Age(scanned.age) or "?") .. " old.")
+			tip = { { "Listed now" }, { mut(listed and ("From your last AH scan, " .. (AuctionIQ.Scans.Age and AuctionIQ.Scans.Age(scanned.age) or "?") .. " old.")
 				or "Search the item at the Auction House and AuctionIQ keeps the count.") } } },
 		{ string.format("You'd make, %d %s", n, n == 1 and "craft" or "crafts"), string.format("~%d", math.floor(items + 0.5)) } }
 	local days = per and per > 0 and ((listed or 0) + items) / per
@@ -1783,7 +1783,7 @@ function AUI.Details(n, scan)
 		or T.Color("bad", "Slow: more listed than the market takes in two weeks.")
 	out.sell = { verdict = sv, rows = sr }
 	-- 3. what drives the cost: each reagent's share, and where it comes from
-	local cl = r and CH.Advisor.CostLines(result, r.picks, r.finishing) or {}
+	local cl = r and AuctionIQ.Advisor.CostLines(result, r.picks, r.finishing) or {}
 	local total = 0
 	for _, c in ipairs(cl) do total = total + (c.total or 0) end
 	table.sort(cl, function(a, b) return (a.total or 0) > (b.total or 0) end)
@@ -1795,7 +1795,7 @@ function AUI.Details(n, scan)
 			or mut("buy")
 		local share = total > 0 and c.total and string.format("%d%%", math.floor(c.total / total * 100 + 0.5)) or "-"
 		cr[#cr + 1] = { string.format("%dx %s", c.n, c.name or "?") .. "  " .. src, (c.total and M(c.total) or T.Color("bad", "no price")) .. "  " .. mut(share),
-			tip = (function() local t = { { c.name or "?" } }; for _, l in ipairs(CH.Advisor.HeldText(c)) do t[#t + 1] = l end
+			tip = (function() local t = { { c.name or "?" } }; for _, l in ipairs(AuctionIQ.Advisor.HeldText(c)) do t[#t + 1] = l end
 				if #t == 1 then t[2] = { mut("Bought at the cheapest listing you can get.") } end; return t end)() }
 	end
 	local top = cl[1]
@@ -1823,33 +1823,33 @@ end
 --- Queue the selected craft, as many as the quantity says. Returns the queue entry, or nil and why.
 function AUI.QueueSelected()
 	local _, off, target = AUI.QueueAction()
-	if off then CH.Print("can't queue that: " .. off); return nil, off end
+	if off then AuctionIQ.Print("can't queue that: " .. off); return nil, off end
 	local e = AUI.QueueFrom(shown.sim and live or shown, target, selQty)
-	if not CH.Window.InTabs("queue") then CH.QueueUI.Show() end
+	if not AuctionIQ.Window.InTabs("queue") then AuctionIQ.QueueUI.Show() end
 	return e
 end
 
 --- Queue qty of a live result's row and save the forecast and decision behind it: what the advisor's
 --- Queue button and the Craft pane (while the profession window is open) both do. Returns the entry.
 function AUI.QueueFrom(from, target, selQty, via)
-	local e = CH.Queue.Add(from, target, selQty)
+	local e = AuctionIQ.Queue.Add(from, target, selQty)
 	-- what the simulation says about this batch, kept to check against what it really brings in
-	if CH.Decide and not from.order then
-		local inp = CH.Decide.BatchInputs(from, target)
-		local s = inp and CH.Decide.Batch(inp, { sizes = { selQty }, runs = 300 })
-		if s and s[1] then CH.Decide.SaveForecast(target.item, from.recipeID, s[1]) end
+	if AuctionIQ.Decide and not from.order then
+		local inp = AuctionIQ.Decide.BatchInputs(from, target)
+		local s = inp and AuctionIQ.Decide.Batch(inp, { sizes = { selQty }, runs = 300 })
+		if s and s[1] then AuctionIQ.Decide.SaveForecast(target.item, from.recipeID, s[1]) end
 		-- and the whole decision, so Accounting > Reports > Performance > Batch results can explain the outcome
-		if inp and CH.Forecast and CH.Forecast.SaveDecision then
-			local sc = CH.Decide.Scenarios(inp, selQty).expected
-			local ev = inp.evidence and CH.Decide.EvidenceText(inp.evidence)
-			CH.Forecast.SaveDecision({ item = target.item, recipe = from.recipeID, name = from.name, quality = target.quality,
-				conc = target.concentration and true or nil, n = selQty, itemsEach = CH.Decide.ItemsPerCraft(inp),
+		if inp and AuctionIQ.Forecast and AuctionIQ.Forecast.SaveDecision then
+			local sc = AuctionIQ.Decide.Scenarios(inp, selQty).expected
+			local ev = inp.evidence and AuctionIQ.Decide.EvidenceText(inp.evidence)
+			AuctionIQ.Forecast.SaveDecision({ item = target.item, recipe = from.recipeID, name = from.name, quality = target.quality,
+				conc = target.concentration and true or nil, n = selQty, itemsEach = AuctionIQ.Decide.ItemsPerCraft(inp),
 				costEach = sc.cost / selQty, priceEach = inp.price, netEach = sc.each, daily = inp.daily, leftWeek = sc.left,
 				profit = sc.items * sc.each - sc.cost, source = ev and ev.basis, from = via,
-				plan = CH.Decide.PlanRecord(AUI.QuantityFor(from, target)) })
+				plan = AuctionIQ.Decide.PlanRecord(AUI.QuantityFor(from, target)) })
 		end
 	end
-	CH.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
+	AuctionIQ.Print(string.format("queued %d x %s (Q%d%s)", selQty, from.name or "?", target.quality, target.concentration and ", Concentration" or ""))
 	return e
 end
 
@@ -1857,10 +1857,10 @@ end
 --- operation's min price, or an operation that doesn't post it. nil when it posts normally.
 --- { kind = "min" | "nopost", op, min, reset }.
 function AUI.PostCheck(result, r)
-	if result.order or not r.price or not r.item or not (CH.Groups and CH.Groups.Prices) then return nil end
+	if result.order or not r.price or not r.item or not (AuctionIQ.Groups and AuctionIQ.Groups.Prices) then return nil end
 	local key = result.model and result.model.outputKeys and result.model.outputKeys[r.quality]
 	local level = key and tonumber(tostring(key):match("::i(%d+)"))
-	local ok, p = pcall(CH.Groups.Prices, r.item, nil, level)
+	local ok, p = pcall(AuctionIQ.Groups.Prices, r.item, nil, level)
 	if not ok or not p then return nil end
 	if p.post == false then return { kind = "nopost", op = p.op } end
 	if p.min and r.price < p.min then return { kind = "min", op = p.op, min = p.min, reset = p.priceReset } end
@@ -1868,7 +1868,7 @@ end
 
 --- Where the proceeds come from, in one muted line for the notes.
 function AUI.SourceLine(result)
-	local T = CH.Theme
+	local T = AuctionIQ.Theme
 	if result.order then return T.Color("muted", "Expected proceeds: what the order pays, commission and rewards.") end
 	local shaded, modeled = {}, false
 	for i, r in ipairs(result.rows) do
@@ -1881,8 +1881,8 @@ function AUI.SourceLine(result)
 	text = text .. ". Hover for each step."
 	-- the evidence behind the recommended craft's estimate: source, age, and how much is yours
 	local pick = result.best or result.bestConc
-	if pick and pick.item and CH.Decide then
-		local e = CH.Decide.EvidenceText(CH.Decide.Evidence(pick.item))
+	if pick and pick.item and AuctionIQ.Decide then
+		local e = AuctionIQ.Decide.EvidenceText(AuctionIQ.Decide.Evidence(pick.item))
 		text = text .. "\n" .. e.price .. ". " .. e.rate .. ". " .. e.sales .. ". " .. e.volume .. "."
 	end
 	return T.Color("muted", text)
@@ -1891,7 +1891,7 @@ end
 --- Lines for rows whose item posting wouldn't sell at the proceeds shown (marked ! in the table),
 --- one for each quality: a plain and a Concentration row of one quality make the same item.
 function AUI.PostLines(result)
-	local T, M = CH.Theme, CH.FormatMoney
+	local T, M = AuctionIQ.Theme, AuctionIQ.FormatMoney
 	local out, seen = {}, {}
 	for i, r in ipairs(result.rows) do
 		if i > ROWS then break end
@@ -1913,7 +1913,7 @@ end
 
 function AUI.UpdateQueueButton()
 	if panel and panel.queue then
-		local n = CH.Queue.Count()
+		local n = AuctionIQ.Queue.Count()
 		local t = n > 0 and ("Queue " .. n) or "Queue"
 		if panel.queue.text then panel.queue.text:SetText(t) elseif panel.queue.SetText then panel.queue:SetText(t) end
 	end
@@ -1929,7 +1929,7 @@ function AUI.ToggleSetting()
 	local s = settings()
 	s.hide = not s.hide
 	if s.hide then AUI.Hide() elseif ProfessionsFrame and ProfessionsFrame:IsShown() then AUI.Show() end
-	CH.Print("crafting advisor " .. (s.hide and "off" or "on"))
+	AuctionIQ.Print("crafting advisor " .. (s.hide and "off" or "on"))
 end
 
 local hooked = false
@@ -1949,7 +1949,7 @@ local function hook()
 				C_Timer.After(0, function()
 					local id = pendingRecipe
 					pendingRecipe = nil
-					if id then CH.Measure("profession: craft card", AUI.Show, id) end
+					if id then AuctionIQ.Measure("profession: craft card", AUI.Show, id) end
 				end)
 			end
 		end, AUI)
@@ -1958,13 +1958,13 @@ local function hook()
 	if ProfessionsFrame and ProfessionsFrame.HookScript then
 		ProfessionsFrame:HookScript("OnHide", function()
 			AUI.Hide()
-			if CH.db.settings.advisor.docked ~= false then CH.Window.CloseTabs() end
+			if AuctionIQ.db.settings.advisor.docked ~= false then AuctionIQ.Window.CloseTabs() end
 		end)
 	end
 end
 
-CH.On("TRADE_SKILL_SHOW", function() hook(); AUI.Show() end)
-CH.On("TRADE_SKILL_CLOSE", AUI.Hide)
+AuctionIQ.On("TRADE_SKILL_SHOW", function() hook(); AUI.Show() end)
+AuctionIQ.On("TRADE_SKILL_CLOSE", AUI.Hide)
 
 -- /aiq perf: what building the Craft card spends its time on
 for _, name in ipairs({ "Card", "SummaryLines", "BreakdownLines", "NextMove", "NextTip", "FinishingLines", "SourceLine", "PerDayTip" }) do
@@ -1975,7 +1975,7 @@ for _, name in ipairs({ "Card", "SummaryLines", "BreakdownLines", "NextMove", "N
 			local out = { n = 0 }
 			local function keep(...) out.n = select("#", ...); for i = 1, out.n do out[i] = (select(i, ...)) end end
 			keep(f(...))
-			if t0 and CH.MeasureAdd then CH.MeasureAdd("card: " .. name, debugprofilestop() - t0) end
+			if t0 and AuctionIQ.MeasureAdd then AuctionIQ.MeasureAdd("card: " .. name, debugprofilestop() - t0) end
 			return unpack(out, 1, out.n)
 		end
 	end
