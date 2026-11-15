@@ -392,15 +392,20 @@ function LUI.Rows(v, opts)
 
 	if v == "perf" then
 		local made, sold, rev, exp, real, fc = 0, 0, 0, 0, 0, 0
+		local unsoldCost, est, miss = 0, 0, 0
+		local T = AuctionIQ.Theme
 		for _, e in ipairs(AuctionIQ.Forecast.Performance(opts.days and since or 0)) do
 			local text, name = LUI.ItemText(e.id)
 			if keepName(name) then
 				made, sold, rev, real, fc = made + e.made, sold + e.sold, rev + e.revenue, real + e.realized, fc + e.forecast
+				unsoldCost, est, miss = unsoldCost + (e.unsoldCost or 0), est + (e.estimated or 0), miss + (e.missing or 0)
+				-- a realized figure resting on an estimated or missing cost says so
+				local mark = (e.missing or 0) > 0 and T.Color("bad", "?") or (e.estimated or 0) > 0 and T.Color("muted", "*") or ""
 				exp = exp + (e.expectEach and e.expectEach * e.sold or 0)
 				local acc = e.accuracy and (e.accuracy - 1)
 				table.insert(out, { id = e.id, cells = { text, e.made, e.sold, money(e.expectEach), money(e.actualEach),
 					acc and AuctionIQ.Theme.Color(acc >= -0.05 and "ok" or "bad", string.format("%+d%%", math.floor(acc * 100 + 0.5))) or AuctionIQ.Theme.Color("muted", "-"),
-					e.days and string.format("%.1f", e.days) or AuctionIQ.Theme.Color("muted", "-"), signed(e.realized) },
+					e.days and string.format("%.1f", e.days) or AuctionIQ.Theme.Color("muted", "-"), signed(e.realized) .. mark },
 					sort = { name, e.made, e.sold, e.expectEach or 0, e.actualEach or 0, acc or 0, e.days or 1e9, e.realized } })
 			end
 		end
@@ -408,7 +413,11 @@ function LUI.Rows(v, opts)
 			return out, AuctionIQ.Theme.Color("muted", "Nothing yet: every craft from now on saves its forecast, and sales are matched to it oldest first.")
 		end
 		local acc = exp > 0 and string.format("%+d%%", math.floor((rev / exp - 1) * 100 + 0.5)) or "-"
-		return out, string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)", made, sold, acc, signed(real), money(fc))
+		local foot = string.format("%d made, %d sold   Sold %s vs forecast   Realized %s (forecast %s)   Unsold %d at %s cost", made, sold, acc, signed(real), money(fc),
+			made - sold, money(unsoldCost))
+		if est > 0 then foot = foot .. T.Color("muted", string.format("   * %d batch%s at an estimated cost", est, est == 1 and "" or "es")) end
+		if miss > 0 then foot = foot .. T.Color("bad", string.format("   ? %d batch%s with no cost recorded (counted as 0)", miss, miss == 1 and "" or "es")) end
+		return out, foot
 	end
 
 

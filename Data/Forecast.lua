@@ -32,13 +32,18 @@ function Fc.Record(itemID, qty, f)
 	if not itemID or not qty or qty <= 0 then return nil end
 	f = f or {}
 	local value = AuctionIQ.Prices.Get("aiqvalue", "i:" .. itemID)
-	local cost = f.cost
+	-- the cost is booked now, at the craft's own reagent prices, and never revalued: today's prices
+	-- change nothing about a batch already made. Where it came from is kept with it: "craft" (the
+	-- reagents the craft used), "estimate" (TSM's material cost for the item, when the craft's
+	-- weren't known) or none at all (cost is nil: missing, and every total that needs it says so).
+	local cost, costFrom = f.cost, f.cost and "craft" or nil
 	if not cost and AuctionIQ.Groups and AuctionIQ.Groups.CostEach then
 		local each = AuctionIQ.Groups.CostEach(itemID)
 		cost = each and each * qty
+		costFrom = cost and "estimate" or nil
 	end
 	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
-		cost = cost, costRepl = f.costRepl, expectEach = value and value * AuctionIQ.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
+		cost = cost, costFrom = costFrom, costRepl = f.costRepl, expectEach = value and value * AuctionIQ.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
 		recipe = f.recipeID, held = f.held }
 	-- the batch decision this craft fills, if you queued one for this item on this character
 	local d = Fc.OpenDecision(itemID, b.char, b.at)
@@ -260,12 +265,16 @@ function Fc.OtherSold(id) match(); return otherCache and otherCache[id] or 0 end
 function Fc.Batches(id) return match()[id] or {} end
 
 --- Per item over crafts since `since`: { id, batches, made, sold, cost, revenue, forecast, realized,
---- expectEach, actualEach, accuracy (actual / expected sale price), days (average to sell) }.
+--- expectEach, actualEach, accuracy (actual / expected sale price), days (average to sell), unsold
+--- (units still held), unsoldCost (their booked cost), estimated and missing (batches whose cost is
+--- an estimate, or unknown and counted as 0) }. Realized counts only what sold, at booked cost;
+--- unsold stock is kept apart, never in realized.
 function Fc.Performance(since)
 	since = since or 0
 	local out = {}
 	for id, list in pairs(match()) do
-		local e = { id = id, batches = 0, made = 0, sold = 0, cost = 0, soldCost = 0, revenue = 0, expected = 0, forecast = 0, saleDays = 0 }
+		local e = { id = id, batches = 0, made = 0, sold = 0, cost = 0, soldCost = 0, revenue = 0, expected = 0, forecast = 0, saleDays = 0,
+			unsold = 0, unsoldCost = 0, estimated = 0, missing = 0 }
 		for _, b in ipairs(list) do
 			if b.at >= since then
 				e.batches = e.batches + 1
@@ -278,6 +287,9 @@ function Fc.Performance(since)
 				if b.expectEach then e.expected = e.expected + b.expectEach * b.sold end
 				e.forecast = e.forecast + (b.expectEach and (b.expectEach - costEach) * b.sold or 0)
 				e.saleDays = e.saleDays + b.saleDays
+				e.unsold = e.unsold + (b.qty - b.sold)
+				e.unsoldCost = e.unsoldCost + costEach * (b.qty - b.sold)
+				if not b.cost then e.missing = e.missing + 1 elseif b.costFrom == "estimate" then e.estimated = e.estimated + 1 end
 			end
 		end
 		if e.batches > 0 then
