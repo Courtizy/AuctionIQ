@@ -32,7 +32,7 @@ AuctionIQ is an addon for **World of Warcraft Retail** that connects crafting de
 
 | Tab | What you can do |
 |---|---|
-| **Dashboard** | See your gold trend, inventory, and the next actions most worth reviewing. |
+| **Overview** | See your gold trend, inventory, and the next actions most worth reviewing. |
 | **Operations** | Compare recipes and batch sizes, check work orders, manage the craft queue and shopping list, and review how much stock to list. |
 | **Accounting** | Open the Income Statement, Balance Sheet, Cash Flow, or Ledger. Drill into results by item, profession, or batch. |
 
