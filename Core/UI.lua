@@ -276,11 +276,6 @@ local function when(t)
 	return date and date("%b %d %H:%M", t) or tostring(t)
 end
 
---- Ledger rows for a view (see LedgerUI.Rows), for tests and older callers.
-function UI.LedgerRows(view, filter)
-	return AuctionIQ.LedgerUI.Rows(view, { filter = filter })
-end
-
 -- Building ------------------------------------------------------------------------------------
 local CARDS = 4 -- Recommendations cards: two columns of two
 
@@ -613,7 +608,6 @@ function UI.SetSize(w, h)
 end
 
 function UI.SetHeight(h) local _, nh = UI.SetSize(W, h); return nh end
-function UI.Size() return W, H end
 function UI.Height() return H end
 
 --- Build the window again at the current size, on the same page, in the same place.

@@ -45,16 +45,6 @@ local function playerClass()
 	return class
 end
 
--- The player's class colour as a hex string, or nil before the game knows the class.
-function T.ClassHex(class)
-	class = class or playerClass()
-	local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-	if not c then return nil end
-	if not c.r then return c.colorStr and c.colorStr:sub(3):lower() or nil end
-	local function b(v) return math.floor(v * 255 + 0.5) end
-	return string.format("%02x%02x%02x", b(c.r), b(c.g), b(c.b))
-end
-
 local function toHex(c)
 	local function b(v) return math.floor(v * 255 + 0.5) end
 	return string.format("%02x%02x%02x", b(c[1]), b(c[2]), b(c[3]))

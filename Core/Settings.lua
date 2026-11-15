@@ -297,9 +297,3 @@ function S.DeleteSource(name)
 	c[name] = nil
 	return true
 end
-
---- What a formula gives for an item, for trying one out: copper or nil.
-function S.Try(formula, id)
-	if not AuctionIQ.Formula.Valid(formula) then return nil end
-	return AuctionIQ.Formula.Value(formula, id)
-end

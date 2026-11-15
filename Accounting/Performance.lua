@@ -34,7 +34,6 @@ function P.Step(dir)
 	return period
 end
 function P.Line() return line end
-function P.SetLine(l) line = l end
 
 --- The period's window and the one it's compared with: { from, to, pfrom, pto, label, prior }.
 function P.Windows(p, now)
@@ -250,7 +249,6 @@ end
 
 local scatter = false
 function P.ToggleScatter() scatter = not scatter; return scatter end
-function P.Scatter() return scatter end
 
 -- Capital tied up --------------------------------------------------------------------------------
 P.SLOW = 30 -- stock that takes longer than this many days to sell, at the last 30 days' rate

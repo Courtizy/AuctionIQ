@@ -136,30 +136,6 @@ function Q.Count()
 	return n
 end
 
---- Queue the best craft (by profit, without Concentration) of the top recipes in the open profession.
-function Q.FillFromBest(limit)
-	local added = 0
-	local best = AuctionIQ.Scan and AuctionIQ.Scan.Top(AuctionIQ.OpenProfessionID(), limit or 5)
-	if best and #best > 0 then
-		for _, c in ipairs(best) do
-			local ok, result = pcall(AuctionIQ.Advisor.Analyze, c.recipeID, { professionID = AuctionIQ.OpenProfessionID() })
-			if ok and result and result.best and result.best.profit and result.best.profit > 0 then
-				Q.Add(result, result.best, 1)
-				added = added + 1
-			end
-		end
-		return added
-	end
-	for _, c in ipairs(AuctionIQ.BestCrafts(limit or 5)) do
-		local ok, result = pcall(AuctionIQ.Advisor.Analyze, c.recipeID, { professionID = AuctionIQ.OpenProfessionID() })
-		if ok and result and result.best and result.best.profit and result.best.profit > 0 then
-			Q.Add(result, result.best, 1)
-			added = added + 1
-		end
-	end
-	return added
-end
-
 local function eligible(info)
 	return info and info.learned and not info.isRecraft and not info.isSalvageRecipe and not info.isGatheringRecipe
 		and not info.isDummyRecipe
