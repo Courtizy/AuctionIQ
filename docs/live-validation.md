@@ -78,3 +78,17 @@ Concentration spent matches the forecast to within Ingenuity refunds.
 
 Passing: each step moves on only after the game confirms it. The craft sends only your reagents and
 reaches the rank asked. A refused or released order goes back to Claim.
+
+## L-07: work orders after a `/reload` and after time away
+
+1. Queue two work orders from the Crafting tab. Claim one.
+2. `/reload` while the claimed order's craft is casting.
+3. Log out until one queued order expires or someone else takes it (a public order is quickest).
+4. Log back in, open the profession and its Crafting Orders tab so the board is fetched.
+
+Passing: after step 2 the claimed order's row shows Turn in (or Craft if the cast didn't finish).
+After step 4 the gone order's row says Expired or No longer listed, its reagents are off the shopping
+list, Next skips it, and its button takes it off the queue. An order still on the board is untouched,
+and a claim that timed out is back at Claim. Then type `/aiq orders` and check that the listed orders
+show an expiry time (the game's `expirationTime`); if they don't, tell me, since the Expired label
+depends on it.
