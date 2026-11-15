@@ -56,7 +56,7 @@ end
 local tsmCache, tsmByString, tsmConflicts
 -- "i:123::i645" stays as it is; any other variant ("i:123:0:2:...") is kept by its exact string too.
 local function baseID(itemString) return tonumber(tostring(itemString):match("^i:(%d+)")) end
-local function tsmPath(path) return "TSM" .. SEP .. path:gsub("`", SEP) end
+local function tsmPath(path) return path == "" and "TSM" or ("TSM" .. SEP .. path:gsub("`", SEP)) end
 local function readTSM()
 	if tsmCache then return end
 	tsmCache, tsmByString, tsmConflicts = {}, {}, {}
@@ -135,6 +135,8 @@ local function appliesHere(op)
 	end
 	return true
 end
+G.AppliesHere = appliesHere
+G.TSMProfile = tsmProfile
 
 --- Copy TSM's auctioning setup into AuctionIQ, once (TSM's data is only read):
 ---   * each Auctioning operation becomes an AuctionIQ operation of the same name with the same

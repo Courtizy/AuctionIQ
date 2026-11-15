@@ -38,7 +38,7 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 
 | Item | State |
 |---|---|
-| Read effective operations, scope, groups sharing one | ◐ (`Groups.lua` reads TSM operations) |
+| Read effective operations, scope, groups sharing one | ● (`TSMSetup.lua`, `/aiq tsm`) |
 | Post cap, duration, floor, shopping max, cancel and repost levers | ○ |
 | Record suggestion and change; like-period comparison | ○ |
 | One documented trial | ○ |

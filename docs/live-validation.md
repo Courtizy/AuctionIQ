@@ -92,3 +92,17 @@ list, Next skips it, and its button takes it off the queue. An order still on th
 and a claim that timed out is back at Claim. Then type `/aiq orders` and check that the listed orders
 show an expiry time (the game's `expirationTime`); if they don't, tell me, since the Expired label
 depends on it.
+
+## L-08: TSM setup read back (Tune TSM)
+
+1. `/reload` so TSM writes its saved data.
+2. Pick three items you post: one in a group that sets its own Auctioning operation, one in a
+   sub-group that inherits it, and one in a group with two operations where one is ignored for some
+   characters.
+3. Shift-click each into `/aiq tsm ` and compare the lines with TSM's Groups and Operations windows.
+4. Try `/aiq tsm <group path>` for one group, typed as TSM shows it (for example `Alchemy/Flasks`).
+
+Passing: the operation, where it is set (its own or from which parent), the groups sharing it and
+each saved setting match what TSM shows, and every price shown is the one TSM's operation tooltip
+gives. Anything listed under "Can't read reliably" is a real gap, not noise. Tell me any line that
+doesn't match.
