@@ -418,7 +418,7 @@ function QUI.Refresh()
 	local buyN = 0
 	for _, s in ipairs(shop) do if s.buy > 0 then buyN = buyN + 1 end end
 	shopHead:SetText(T.Color("accent", "SHOPPING LIST") .. (#shop > 0 and T.Color("muted", (total or 0) >= 1
-		and string.format("  %d to buy for %s, Shop queue at the AH", buyN, AuctionIQ.FormatMoney(total)) or "  nothing to buy: you have it all") or ""))
+		and string.format("  %d to buy for %s, with TSM's Shopping at the AH", buyN, AuctionIQ.FormatMoney(total)) or "  nothing to buy: you have it all") or ""))
 	sOffset = math.max(0, math.min(sOffset, #shopRows - SROWS))
 	sBar:Set(sOffset, SROWS, #shopRows)
 	if #shopRows > SROWS then shopHead:SetText(shopHead:GetText() .. AuctionIQ.Theme.Color("muted", string.format("  (%d-%d of %d, scroll)", sOffset + 1, math.min(#shopRows, sOffset + SROWS), #shopRows))) end

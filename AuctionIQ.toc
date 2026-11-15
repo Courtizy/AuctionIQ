@@ -30,7 +30,6 @@ Crafting\Craft\Professions.lua
 Crafting\Queue\Cooldowns.lua
 Data\Ledger.lua
 Data\Demand.lua
-Data\Deals.lua
 Data\Market.lua
 Data\Capital.lua
 Accounting\LedgerUI.lua
@@ -38,7 +37,6 @@ Operations\Trade\Par.lua
 Data\Forecast.lua
 Operations\Trade\Groups.lua
 Operations\Trade\Auction.lua
-Operations\Trade\AuctionUI.lua
 Operations\Trade\GroupsUI.lua
 Operations\Trade\TradingUI.lua
 Operations\Trade\MarketsUI.lua

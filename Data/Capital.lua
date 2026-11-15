@@ -4,8 +4,6 @@
 --   craft  a profitable craft from your saved scans, at the batch Compare crafts suggests
 --          (Decide.Suggest): gold in is the reagents for the batch, profit is the profit a craft
 --          times the crafts, and it's tied up until the batch sells at its sales rate
---   deal   a listing to buy and relist (Deals.lua): gold in is what it costs, profit its gain, tied up
---          until the units sell at their sales rate
 --
 -- Its return is profit / gold in / days tied up: gold a day for each gold in. Days are at least one
 -- (nothing sells the moment it's listed). Your gold, less what you keep back, goes to the best
@@ -42,7 +40,7 @@ local function opportunity(o)
 	return o
 end
 
---- Every opportunity: { kind ("craft" or "deal"), id, name, char, units (crafts or items), cost,
+--- Every opportunity: { kind ("craft"), id, name, char, units (crafts or items), cost,
 --- profit, days, rate, each (gold in per unit) }, best return first. Only ones that make a profit.
 function Cp.Opportunities(ctx, now)
 	now = now or time()
@@ -59,17 +57,6 @@ function Cp.Opportunities(ctx, now)
 			if days then
 				out[#out + 1] = opportunity({ kind = "craft", id = x.id, name = x.name, char = x.char, units = sg.n, cost = sc.cost,
 					profit = x.profit * sg.n, days = days, x = x })
-			end
-		end
-	end
-	local deals = AuctionIQ.Deals and AuctionIQ.Deals.Cached and AuctionIQ.Deals.Cached(now) or nil
-	for _, d in ipairs(deals or {}) do
-		local units = d.demand and d.demand.units or 0
-		if units > 0 and d.cost > 0 and d.gain > 0 then
-			local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(d.id) or ("item " .. d.id)
-			if ctx.keepName(name) then
-				out[#out + 1] = opportunity({ kind = "deal", id = d.id, name = name, units = d.buy, cost = d.cost, profit = d.gain,
-					days = d.buy / units, deal = d })
 			end
 		end
 	end

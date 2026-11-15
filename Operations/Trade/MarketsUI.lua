@@ -171,7 +171,7 @@ local function capitalRows(ctx)
 			end })
 	end
 	if not out[1] then
-		return out, T.Color("muted", "Nothing to put gold in yet: scan your professions (Compare crafts) and the AH (Deals), and crafts and deals that pay show here, best return first.")
+		return out, T.Color("muted", "Nothing to put gold in yet: scan your professions (Compare crafts), and crafts that pay show here, best return first.")
 	end
 	local foot = string.format("%s of your %s (keeping %d%% back): %s goes in, %s profit, about %s a day.", money(plan.budget), money(plan.money),
 		math.floor(Cp.Reserve() * 100 + 0.5), money(plan.spent), money(plan.gain), money(plan.perDay))

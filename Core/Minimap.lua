@@ -1,5 +1,5 @@
 -- Minimap button with the AuctionIQ icon: click opens the window, drag moves it around the
--- minimap. /ch minimap hides or shows it. No libraries, so it works without LibDBIcon.
+-- minimap. /aiq minimap hides or shows it. No libraries, so it works without LibDBIcon.
 local _, AuctionIQ = ...
 
 -- the AIQ monogram: A in white, IQ in the theme colour, as the wordmark; it follows ToxiUI/ElvUI like the window

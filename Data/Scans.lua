@@ -8,7 +8,7 @@
 local _, AuctionIQ = ...
 
 local S = { SHARE = 0.15, KEEP_DAYS = 30, POINTS = { 1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000 } }
-S.version = 0 -- counts every change, so what's worked out from the scans (Deals) knows to redo it
+S.version = 0 -- counts every change, so what's worked out from the scans knows to redo it
 AuctionIQ.Scans = S
 
 local function store()

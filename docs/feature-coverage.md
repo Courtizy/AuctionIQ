@@ -32,7 +32,7 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 | Reports › Performance: weekly profit, contributors, item, profession and batch drill-downs | ◐ |
 | Filters carried into transaction detail; opening and closing gold reconciled | ○ |
 | Forecast saved at decision time; idempotent TSM import; documented costing; one attribution per sale | ◐ (decisions and batch results exist; the costing method isn't documented) |
-| Trade tab retired (decision 2026-11-14): Market trends and stock advice move into Accounting detail; AH panel and Deals removed | ○ |
+| Trade tab retired (decision 2026-11-14): Market trends and stock advice move into Accounting detail; AH panel and Deals removed | ◐ | The AH buying panel and the deal scan are gone (TSM's Shopping covers both). Market trends and stock advice still to move |
 
 ## 3. Tune TSM
 
