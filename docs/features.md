@@ -23,7 +23,7 @@
 - **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules. You post through TSM.
 
 **Accounting**
-- **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
+- **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the transactions behind it on the statement's own period. The cash flow reconciles opening gold to closing gold: what the ledger classifies, plus the unclassified rest (transfers, mail and anything TSM didn't log), labelled as such
 - **Performance**: eight weeks of profit and what drove the change, item by item, each opening the sales or Profit drivers behind it on the same period and character (Accounting > Statements > Performance)
 - **By profession**: each profession's sales, profit, margin and the crafted stock it has made, with days to turn it, and your inventory turnover (Accounting > Statements > Performance > Profession)
 - **Companion app**: a Python script on your PC that keeps a year of your daily scanned prices, from every WoW account, and loads the last 180 days back into the game for Market trends and Risk
