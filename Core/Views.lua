@@ -919,8 +919,10 @@ AV.VIEWS.scenarios.action = {
 -- They have no sub-tab of their own: Reports > Performance (Accounting/Performance.lua) sums them up
 -- and opens each one from its charts and links.
 LUI.Register("ledger", AV.VIEWS, {})
--- Operations (the COO): Craft (what to make), Trade (what to post, hold or buy, from what you hold and
--- the market) and Queue (the work planned: crafts, shopping and what's blocking it).
+-- Crafting: Craft (what to make) and Queue (the work planned: crafts, shopping and what's blocking it).
+-- Markets (what you hold and the market around it: trends, risk, where gold earns most, what to post)
+-- explains your stock, so it sits in Accounting beside the Ledger. Old links to these views still
+-- open them there, through LedgerUI.SectionOf.
 -- Craft here is only what crosses characters: Compare crafts and Specialization. Scanning, the advisor,
 -- work orders and the queue live in the window docked beside the profession window.
 LUI.Register("operations", {}, { "scenarios", "paths" }, "Craft")
@@ -929,6 +931,6 @@ LUI.Register("operations", {}, { "scenarios", "paths" }, "Craft")
 for _, k in ipairs({ "plans", "professions" }) do
 	if LUI.ViewDef(k) then LUI.ViewDef(k).parent = "Craft" end
 end
-LUI.Register("operations", {}, { "post", "markets", "marketgroups", "risk", "capitalplan", "rules" }, "Trade")
+LUI.Register("ledger", {}, { "markets", "marketgroups", "risk", "capitalplan", "post", "rules" }, "Markets")
 LUI.Register("operations", {}, { "queue", "shopping", "restock" }, "Queue")
-LUI.Order("operations", { "Craft", "Trade", "Queue" })
+LUI.Order("operations", { "Craft", "Queue" })

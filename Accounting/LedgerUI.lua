@@ -134,7 +134,7 @@ function LUI.AddNav(sec, group, k)
 	if VIEWS[k] then VIEWS[k].parent = group end
 end
 
---- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Craft", "Trade", "Queue" }).
+--- The order of a tab's sub-tabs, by label: LUI.Order("operations", { "Craft", "Queue" }).
 --- The tab opens on the first one. Sub-tabs not listed follow, in the order they registered.
 function LUI.Order(sec, labels)
 	local list = SECTIONS[sec]

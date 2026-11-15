@@ -2145,7 +2145,7 @@ if r302.ah:
     want = max(want, gp.min or 0)
     check("trading: planned price undercuts the AH within min and max, as posting does", r302.price == want)
 run("AuctionIQ.UI.Page('operations', 'post')")
-check("old trading tab opens Operations on Ready to post", AuctionIQ.LedgerUI.View() == "post" and AuctionIQ.LedgerUI.Section() == "operations")
+check("an old link to Ready to post opens it in Accounting, Markets", AuctionIQ.LedgerUI.View() == "post" and AuctionIQ.LedgerUI.Section() == "ledger" and AuctionIQ.LedgerUI.Group() == "Markets")
 pr, pf = L.eval("AuctionIQ.LedgerUI.Rows('post', {})")
 check("trading views: rows and a summary line", len(list(pr.values())) > 0 and "to post" in plain(pf))
 # Posting advice: post now, post fewer or wait, inside the TSM operation's limits
@@ -2289,10 +2289,10 @@ check("ledger and briefing pages draw", AuctionIQ.UI.IsShown())
 LUI = AuctionIQ.LedgerUI
 run("AuctionIQ.UI.Page('ledger', 'perf')")
 check("Performance opens in Accounting, Statements", LUI.Section() == "ledger" and LUI.View() == "perf" and LUI.Group() == "Statements")
-run("AuctionIQ.UI.Page('ledger', 'post')")
-check("a view named on the wrong tab opens where it lives: Ready to post in Operations", LUI.Section() == "operations" and LUI.View() == "post" and LUI.Group() == "Trade")
+run("AuctionIQ.UI.Page('operations', 'markets')")
+check("a view named on the wrong tab opens where it lives: Market trends in Accounting", LUI.Section() == "ledger" and LUI.View() == "markets" and LUI.Group() == "Markets")
 for view, (sec, group) in {"results": ("ledger", "Statements"), "scenarios": ("operations", "Craft"), "paths": ("operations", "Craft"),
-        "post": ("operations", "Trade"), "professions": ("operations", "Craft")}.items():
+        "post": ("ledger", "Markets"), "risk": ("ledger", "Markets"), "professions": ("operations", "Craft")}.items():
     run(f"AuctionIQ.UI.Page('operations', '{view}')")
     check(f"view {view} opens {sec}, {group}", LUI.Section() == sec and LUI.View() == view and LUI.Group() == group and AuctionIQ.UI.IsShown())
 check("old tab names (research, markets, analytics) no longer open anything",
@@ -2329,10 +2329,14 @@ for cmd in ("crafting", "operations", "craft"):
     run("AuctionIQ.UI.Page('today'); SlashCmdList.AUCTIONIQ('%s')" % cmd)
     check("/aiq %s opens Crafting on Compare crafts (operations: the old name)" % cmd,
           AuctionIQ.LedgerUI.Section() == "operations" and AuctionIQ.LedgerUI.View() == "scenarios")
-run("AuctionIQ.UI.Page('operations', 'post')")
-check("operations sub-tabs: Craft, Trade, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Trade", "Queue"])
+run("AuctionIQ.UI.Page('operations', 'queue')")
+check("Crafting sub-tabs: Craft, Queue", list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Craft", "Queue"])
+run("AuctionIQ.UI.Page('ledger', 'markets')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
-check("Trade: Ready to post, Market trends, Market by group, Risk, Capital allocation and Manage rules", LUI.Group() == "Trade" and navshown == ["Ready to post", "Market trends", "Market by group", "Risk", "Capital allocation", "Manage rules"])
+check("Markets: Market trends, Market by group, Risk, Capital allocation, Ready to post and Manage rules", LUI.Group() == "Markets" and navshown == ["Market trends", "Market by group", "Risk", "Capital allocation", "Ready to post", "Manage rules"])
+for cmd in ("markets", "trade"):
+    run("AuctionIQ.UI.Page('today'); SlashCmdList.AUCTIONIQ('%s')" % cmd)
+    check("/aiq %s opens Accounting > Markets" % cmd, LUI.Section() == "ledger" and LUI.View() == "markets")
 run("AuctionIQ.UI.Page('operations', 'professions')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Craft: only Compare crafts and Specialization in the nav; the weekly checklist opens under Craft", navshown == ["Compare crafts", "Specialization"]
@@ -2448,8 +2452,8 @@ check("hand-off: clearing the filter shows everything again", plain(L.eval("Auct
 run("AuctionIQ.UI.Page('settings', 'groups')")
 check("Groups and rules lives in Settings", L.eval("AuctionIQ.UI.Pages().groups:IsShown()") is True)
 run("AuctionIQ.UI.Page('ledger', 'sales')")
-check("Accounting sub-tabs: Statements and Ledger",
-      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Statements", "Ledger"])
+check("Accounting sub-tabs: Statements, Ledger and Markets",
+      list(L.eval("AuctionIQ.UI.LayoutSubTabs()").values()) == ["Statements", "Ledger", "Markets"])
 run("AuctionIQ.UI.Page('ledger', 'expired')")
 navshown = [plain(b.text.t) for b in L.eval("AuctionIQ.UI.Pages().ledger.nav").values() if b.shown]
 check("Ledger: All, then each kind as a filter", LUI.Group() == "Ledger" and navshown == ["All", "Sales", "Other income", "Purchases", "Other expenses", "Expired", "Cancelled"])

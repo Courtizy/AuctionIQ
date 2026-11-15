@@ -13,12 +13,14 @@
 - **Work orders worth taking**: commission, rewards and knowledge points against what the reagents cost you
 - **Specialization presets and a tree calculator**: a build for each thing a profession sells (Light or Void potions, Flasks, Disenchanting...), tested against your own prices, and nodes you can click to try points of your own
 
-**Trade**
-- **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules
+**Queue**
 - **A craft queue and shopping list** for every character, with stock targets that cover a week of sales
-- **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted (Crafting > Trade)
-- **Risk**: for what you hold and have up, how far its price could fall while it sells (from its volatility) and the gold exposed and at risk (Crafting > Trade)
-- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts, with your gold split best return first (Crafting > Trade)
+
+**Markets** (in Accounting)
+- **Market trends**: trend, volatility and liquidity for every item in your groups and for each group, with each item's daily price charted
+- **Risk**: for what you hold and have up, how far its price could fall while it sells (from its volatility) and the gold exposed and at risk
+- **Capital allocation**: where your gold earns the most gold a day for the gold tied up, across profitable crafts, with your gold split best return first
+- **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules. You post through TSM.
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the sales behind it
@@ -29,8 +31,8 @@
 | | The question it answers | Inside |
 |---|---|---|
 | <img src="../Media/readme/Tab-Dashboard.png" width="28" height="28" alt=""> **Overview** | What should I do next? | Next Move, Concentration, stock and work that needs you |
-| <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Crafting** | What should I craft, buy or post? | Craft (Compare crafts, Specialization), Trade (Ready to post, rules), Queue (queue, shopping, restock) |
-| <img src="../Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger |
+| <img src="../Media/readme/Tab-Operations.png" width="28" height="28" alt=""> **Crafting** | What should I craft, and how many? | Craft (Compare crafts, Specialization), Queue (queue, shopping, restock) |
+| <img src="../Media/readme/Tab-Accounting.png" width="28" height="28" alt=""> **Accounting** | What happened, and what should I learn from it? | Statements (P&L, balance, cash flow, performance), Ledger, Markets (trends, risk, capital, ready to post) |
 
 ## Requirements
 

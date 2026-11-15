@@ -1,4 +1,4 @@
--- Operations > Trade: Market trends (each item in your groups) and Market by group (the same,
+-- Accounting > Markets: Market trends (each item in your groups) and Market by group (the same,
 -- rolled up). Trend, volatility and liquidity come from Data/Market.lua; selecting an item charts
 -- its daily price over the last 30 days beside the table.
 local _, AuctionIQ = ...

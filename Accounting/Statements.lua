@@ -383,9 +383,9 @@ local function balanceRows(ctx)
 		tip = "At your own sales rate over the last 30 days, what you hold sells in 7 days or less." })
 	table.insert(list, { string.format("Slow: 1 to 4 weeks (%d items)", b.liquid.n.slow), b.liquid.slow, kind = "sub", go = { "ledger", "inventory" },
 		tip = "At your sales rate, these take 1 to 4 weeks to sell." })
-	table.insert(list, { string.format("Dead or unsellable (%d items)", b.liquid.n.dead), b.liquid.dead, kind = "sub", go = { "operations", "post" },
+	table.insert(list, { string.format("Dead or unsellable (%d items)", b.liquid.n.dead), b.liquid.dead, kind = "sub", go = { "ledger", "post" },
 		tip = "None sold in 30 days, or over 4 weeks of stock at your sales rate. Gold you can't count on soon." })
-	table.insert(list, { "Of which listed on the auction house", b.listed.book, kind = "memo", go = { "operations", "post" }, tip = "Items on the AH now, valued the same way." })
+	table.insert(list, { "Of which listed on the auction house", b.listed.book, kind = "memo", go = { "ledger", "post" }, tip = "Items on the AH now, valued the same way." })
 	-- one item can carry most of the value: say so, with what its value rests on
 	if b.top and b.inventory > 0 and b.top.worth / b.inventory >= 0.25 then
 		local t = b.top
@@ -457,5 +457,5 @@ St.VIEWS = {
 if LUI and LUI.Register then
 	LUI.Register("ledger", St.VIEWS, {})
 	for i, k in ipairs({ "statement", "balance", "cashflow" }) do LUI.AddNavAt("ledger", "Statements", k, i) end
-	LUI.Order("ledger", { "Statements", "Ledger" })
+	LUI.Order("ledger", { "Statements", "Ledger", "Markets" })
 end
