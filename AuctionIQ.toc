@@ -38,6 +38,7 @@ Data\Forecast.lua
 Accounting\Markets\Groups.lua
 Accounting\Markets\TSMSetup.lua
 Accounting\Markets\Tune.lua
+Accounting\Markets\TuneLog.lua
 Accounting\Markets\Auction.lua
 Accounting\Markets\GroupsUI.lua
 Accounting\Markets\TradingUI.lua

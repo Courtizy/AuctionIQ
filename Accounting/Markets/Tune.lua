@@ -375,11 +375,36 @@ function T.Lines(r)
 	return out
 end
 
---- /aiq tune [n]: the n strongest suggestions (5 by default).
+--- /aiq tune [n]: the n strongest suggestions (5 by default), each recorded with a number (see
+--- TuneLog.lua). /aiq tune log, changed <n>, drop <n>, compare <n>: the record.
 function T.Command(arg)
-	local n = tonumber(arg and arg:match("%d+")) or 5
+	arg = arg or ""
+	local function say(lines) for _, l in ipairs(lines) do AuctionIQ.Print(l) end end
+	local sub, rest = arg:match("^(%a+)%s*(.*)$")
+	if sub == "log" then T.CheckChanges(); say(T.LogLines(tonumber(rest) or 10)); return end
+	if sub == "changed" or sub == "drop" then
+		local e, err = (sub == "changed" and T.MarkChanged or T.Drop)(tonumber(rest))
+		if not e then AuctionIQ.Print(err); return end
+		AuctionIQ.Print(string.format("#%d %s: %s", e.n, e.group, sub == "changed" and ("counted as changed from now; /aiq tune compare " .. e.n .. " after " .. T.MIN_COMPARE_DAYS .. " days") or "dropped"))
+		return
+	end
+	if sub == "compare" then
+		T.CheckChanges(); T.Snapshot()
+		local c, err = T.Compare(tonumber(rest))
+		if not c then AuctionIQ.Print(err); return end
+		say(T.CompareLines(c)); return
+	end
+	local n = tonumber(arg:match("%d+")) or 5
+	T.CheckChanges()
 	local list, win = T.Diagnose()
 	if #list == 0 then AuctionIQ.Print("Tune TSM: nothing to suggest from the " .. win.label .. " (a change needs " .. T.Get("minEvents") .. " sales, expiries or buys behind it; Settings, Tune TSM, to change that)"); return end
 	AuctionIQ.Print(string.format("Tune TSM, %s: %d %s with a suggestion, strongest first", win.label, #list, plural(#list, "group")))
-	for i = 1, math.min(n, #list) do for _, l in ipairs(T.Lines(list[i])) do AuctionIQ.Print(l) end end
+	for i = 1, math.min(n, #list) do
+		local e = T.Note(list[i])
+		local lines = T.Lines(list[i])
+		if e then lines[1] = "#" .. e.n .. " " .. lines[1] end
+		say(lines)
+	end
+	T.Snapshot()
+	AuctionIQ.Print("Change one in TSM and /reload: AuctionIQ sees it and compares the days after with the days before (/aiq tune compare <n>). /aiq tune log lists them.")
 end

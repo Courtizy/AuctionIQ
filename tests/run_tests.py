@@ -2023,6 +2023,36 @@ check("tune settings: kept within bounds, and the window follows", AuctionIQ.Tun
 run("AuctionIQ.Tune.Step('expireShare'); AuctionIQ.Tune.Step('days')")
 check("tune settings: back to the defaults", AuctionIQ.Tune.Get("minEvents") == 5 and AuctionIQ.Tune.Get("days") == 30 and AuctionIQ.Tune.Get("expireShare") == 0.5)
 check("tune: copper written in TSM's syntax", TU.Money(125005) == "12g50s5c" and TU.Money(7500) == "75s" and TU.Money(0) == "0c")
+# Tune TSM's record: what was suggested, what changed, before against after
+run("AuctionIQ.db.tune = nil")
+tp = [r for r in TU.Diagnose()[0].values() if r.path == "TSM/Loot/Pets"][0]
+te = TU.Note(tp)
+check("tune log: a suggestion is recorded once, with what it was suggested from",
+      te.n == 1 and te.status == "suggested" and te["from"] == "5" and te.to == "1" and TU.Note(tp).n == 1 and len(TU.Store().log) == 1)
+check("tune log: nothing changed in TSM, nothing seen", TU.CheckChanges() == 0)
+run("""TradeSkillMasterDB["g@ @userData@sharedOperations"].Auctioning["Sell Loot"].postCap = "1" """)
+check("tune log: a change in TSM is seen, with the value TSM has", TU.CheckChanges() == 1 and te.status == "changed" and te.value == "1" and te.how == "seen")
+c0 = TU.Compare(1)
+check("tune log: too early to compare right after the change", c0.ready is False and "0 of 7 days" in c0.why)
+tnow = L.eval("time()")
+run("AuctionIQ.Tune.Snapshot(); AuctionIQ.Tune.Visit({ [301] = 2 }); AuctionIQ.Tune.Visit({ [301] = 2 }, time() + 60); AuctionIQ.Tune.Visit({ [301] = 1 }, time() + 3 * 3600); AuctionIQ.Tune.Visit({ [999] = 1 }, time() + 6 * 3600)")
+check("tune log: one posting session per AH visit with the items up, half an hour apart", len(TU.Store().visits[1]) == 2)
+c10 = TU.Compare(1, tnow + 10 * 86400)
+check("tune log: like periods, the same whole days each side, from TSM's records",
+      c10.ready and c10.days == 10 and c10.before.expired == 10 and c10.before.sold == 2 and c10.after.sold == 0 and c10.after.sessions == 2 and c10.before.sessions == 0)
+cl = list(TU.CompareLines(c10).values())
+check("tune log: measured lines are observed, the estimate stays projected",
+      any("observed net profit" in l for l in cl) and any("observed units expired: 10 before, 0 after" in l for l in cl)
+      and any("observed posting sessions" in l for l in cl) and any(l.strip().startswith("projected when suggested") for l in cl)
+      and any("gold tied up was recorded on 0 of the 10 days before" in l for l in cl))
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('tune'); SlashCmdList.AUCTIONIQ('tune log'); SlashCmdList.AUCTIONIQ('tune drop 2'); SlashCmdList.AUCTIONIQ('tune changed 99'); AuctionIQ.Print = STUB.oldPrint")
+tpr = [str(t) for t in L.globals().STUB.printed.values()]
+check("/aiq tune numbers what it shows and records it; log, drop and a wrong number answer in chat",
+      any(l.startswith("#2 ") for l in tpr) and any("#1 " in l and "changed to 1" in l for l in tpr) and any("#2 " in l and "dropped" in l for l in tpr)
+      and any("no suggestion 99" in l for l in tpr) and TU.Entry(2).status == "dropped")
+e3 = TU.MarkChanged(3) if TU.Entry(3) else None
+check("tune log: marking it changed yourself counts from now", e3 is None or (e3.status == "changed" and e3.how == "marked"))
+run("""TradeSkillMasterDB["g@ @userData@sharedOperations"].Auctioning["Sell Loot"].postCap = "5"; AuctionIQ.db.tune = nil""")
 run("AuctionIQ.Ledger.Records = function() return {} end")
 check("tune: no records, nothing suggested", len(TU.Diagnose()[0]) == 0)
 run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('tune'); AuctionIQ.Print = STUB.oldPrint")
