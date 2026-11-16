@@ -129,3 +129,11 @@ Passing: the change is seen after the `/reload` (not before), the comparison use
 days on each side, the sold, expired and cancelled counts match Accounting > Ledger for the group's
 items over those days, and the posting sessions match how many times you posted them. Tell me any
 line that looks off.
+
+## L-11: item tooltip after login
+
+1. Log in, `/aiq perf reset` straight away, and hover items in your bags for a minute.
+2. `/aiq perf`.
+
+Passing: "item tooltip" worst under 8 ms. In the first seconds a tooltip may say "Sell chance and
+posting: once TSM's records are read"; that line should be gone within a few seconds.

@@ -1974,6 +1974,23 @@ check("/aiq tsm prints a group's and an item's setup, keeping the group's case",
       any("TSM setup for group TSM/Alch/Flasks" in l for l in tp_) and any("Auctioning: Flask Op (its own)" in l for l in tp_)
       and any("Minimum: 2950000 = " in l or "Auctioning minimum: 2950000 = " in l for l in tp_) and any("Can't read reliably" in l for l in tp_))
 
+# A hover never stalls on reading TSM's groups or records: until login's warm-up has read them, the
+# tooltip says so; the warm-up reads them a few milliseconds a frame
+run("AuctionIQ.Ledger.NumExpires(302); AuctionIQ.Groups.ResetTSM()")
+tw_ = [plain(l[1]) for l in AuctionIQ.TooltipLines("item:302").values()]
+check("tooltip: before TSM's groups are read, it says so and reads nothing",
+      any("Sell chance and posting" in x for x in tw_) and not any(x == "Posting" for x in tw_) and not AuctionIQ.Groups.TSMReady())
+run("STUB.wt = false; AuctionIQ.Groups.WarmTSM(function() STUB.wt = true end); for i = 1, 50 do if STUB.wt then break end; STUB.RunTimers() end")
+tw_ = [plain(l[1]) for l in AuctionIQ.TooltipLines("item:302").values()]
+check("tsm warm-up: groups read in the background, then the tooltip shows posting",
+      L.globals().STUB.wt and AuctionIQ.Groups.TSMReady() and AuctionIQ.Groups.Path(302) == "TSM/Alch/Flasks" and "Posting" in tw_)
+run("AuctionIQ.Ledger.ClearStats()")
+check("ledger: stats readiness is asked without building them", AuctionIQ.Ledger.StatsReady() is False and AuctionIQ.Ledger.StatsReady() is False)
+run("AuctionIQ.Ledger.WarmStats(); for i = 1, 200 do STUB.RunTimers() end")
+check("ledger: a hover after the records changed rebuilds the stats in the background", AuctionIQ.Ledger.StatsReady() is True)
+run("AuctionIQ.Ledger.NumExpires(302)")
+check("ledger: ready once built", AuctionIQ.Ledger.StatsReady() is True)
+
 # Tune TSM: one change per group, from the window's records, strongest evidence first
 run("""
 STUB.tune = { LA = AuctionIQ.Ledger.Available, LR = AuctionIQ.Ledger.Records, LP = AuctionIQ.Ledger.Paid, AS = AuctionIQ.Ledger.AvgSell, CE = AuctionIQ.Groups.CostEach }

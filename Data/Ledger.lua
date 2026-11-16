@@ -887,6 +887,38 @@ local function statsFresh(sales, expiredRecs)
 	return stats and statsSales == sales and statsExpired == expiredRecs and (not statsEdge or time() - 30 * DAY <= statsEdge)
 end
 
+--- Whether the per-item stats are built for TSM's records as they are now, without parsing or
+--- building anything (a tooltip asks before it shows a sell chance).
+function Lg.StatsReady()
+	local db = tsm()
+	if not db then return true end
+	for _, kind in ipairs({ "Sales", "Expired" }) do
+		local key = "r@" .. realm() .. "@internalData@csv" .. kind
+		local text = db[key]
+		if type(text) == "string" then
+			local c = parsed[key]
+			if not (c and c.text == text) then return false end
+		end
+	end
+	return statsFresh(Lg.Records("Sales"), Lg.Records("Expired")) and true or false
+end
+
+--- Rebuild the per-item stats in the background when TSM's records have changed since (a new sale
+--- or expiry): the records parsed and the stats built a few milliseconds a frame. One at a time.
+local statsWarming
+function Lg.WarmStats()
+	if statsWarming or Lg.StatsReady() or not C_Timer then return end
+	statsWarming = true
+	Lg.Warm({ "Sales", "Expired" }, function()
+		local job = Lg.StatsJob()
+		local function tick()
+			local ok, built = pcall(job.step, Lg.FRAME_MS)
+			if ok and not built then C_Timer.After(0, tick) else statsWarming = nil end
+		end
+		tick()
+	end)
+end
+
 --- Building the per-item stats as steps: job.step(budgetMs) does up to that many milliseconds (all
 --- of it without a budget) and returns the stats once built, else nil. Login's warm-up runs it a few
 --- milliseconds a frame, so the first card or price that asks for a sell chance finds it ready.

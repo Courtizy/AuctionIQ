@@ -233,7 +233,17 @@ function AuctionIQ.TooltipLines(link)
 	elseif now then
 		table.insert(lines, { "AuctionIQ buy price", m(now) })
 	end
-	for _, l in ipairs(AuctionIQ.Prices.ValueLines(itemID(link))) do table.insert(lines, l) end
+	-- the sell chance and posting rules read all of TSM's records and groups: until login's warm-up
+	-- has read them (a few seconds), say so rather than stall the game on a hover
+	local L = AuctionIQ.Ledger
+	local warm = (not (L and L.Available()) or L.StatsReady()) and (not AuctionIQ.Groups or AuctionIQ.Groups.TSMReady())
+	if warm then
+		for _, l in ipairs(AuctionIQ.Prices.ValueLines(itemID(link))) do table.insert(lines, l) end
+	else
+		table.insert(lines, { "  Sell chance and posting", AuctionIQ.Theme.Color("muted", "once TSM's records are read"), "muted", "muted" })
+		if L and L.Available() and L.WarmStats then L.WarmStats() end
+		if AuctionIQ.Groups and not AuctionIQ.Groups.TSMReady() then AuctionIQ.Groups.WarmTSM() end
+	end
 	local mk = AuctionIQ.Prices.Market(itemID(link))
 	if mk and mk.market then
 		table.insert(lines, { "Your AH scan", AuctionIQ.Theme.Color("muted", AuctionIQ.Scans.Age(mk.age) .. " old") })
@@ -256,7 +266,7 @@ function AuctionIQ.TooltipLines(link)
 	end
 	-- how AuctionIQ will post it: its group's operation and prices
 	local id = itemID(link)
-	local path = id and AuctionIQ.Groups and AuctionIQ.Groups.Path(id)
+	local path = warm and id and AuctionIQ.Groups and AuctionIQ.Groups.Path(id)
 	if path then
 		local ok, p = pcall(AuctionIQ.Groups.Prices, id)
 		if ok and p then
