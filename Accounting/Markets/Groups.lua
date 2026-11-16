@@ -57,32 +57,94 @@ local tsmCache, tsmByString, tsmConflicts
 -- "i:123::i645" stays as it is; any other variant ("i:123:0:2:...") is kept by its exact string too.
 local function baseID(itemString) return tonumber(tostring(itemString):match("^i:(%d+)")) end
 local function tsmPath(path) return path == "" and "TSM" or ("TSM" .. SEP .. path:gsub("`", SEP)) end
+-- Reading TSM's items, as steps: job.step(budgetMs) reads for up to that many milliseconds (all of
+-- it without a budget) and returns true once done. TSM's groups can hold tens of thousands of
+-- items, so login reads them a few milliseconds a frame (see the PLAYER_LOGIN handler below) and the
+-- first tooltip or window doesn't stall on it. Whatever needs them sooner finishes the read itself.
+local readJob
+local function newReadJob()
+	local db = TradeSkillMasterDB
+	local profile = type(db) == "table" and tsmProfile(db)
+	local items = profile and db["p@" .. profile .. "@userData@items"]
+	local cache, byString, conflicts = {}, {}, {}
+	local variants = {} -- [id] = path shared by every variant, or false when they differ
+	local full = {} -- TSM's path -> ours, once per group rather than once per item
+	local key, done = nil, type(items) ~= "table"
+	local job = { items = items }
+	function job.step(budget)
+		if done then
+			if not tsmCache then tsmCache, tsmByString, tsmConflicts = cache, byString, conflicts end
+			return true
+		end
+		local clock = budget and debugprofilestop
+		local t0 = clock and clock()
+		local n = 0
+		local path
+		while true do
+			key, path = next(items, key)
+			if key == nil then break end
+			local str, id = tostring(key), baseID(key)
+			if id and type(path) == "string" and path ~= "" then
+				local f = full[path]
+				if not f then f = tsmPath(path); full[path] = f end
+				byString[str] = f
+				if str == "i:" .. id then
+					cache[id] = f
+				elseif variants[id] == nil then variants[id] = f
+				elseif variants[id] ~= f then variants[id] = false end
+			end
+			n = n + 1
+			if t0 and n % 256 == 0 and clock() - t0 >= budget then return false end
+		end
+		for id, v in pairs(variants) do
+			if not cache[id] then
+				if v then cache[id] = v else conflicts[id] = true end
+			end
+		end
+		done = true
+		tsmCache, tsmByString, tsmConflicts = cache, byString, conflicts
+		readJob = nil
+		return true
+	end
+	return job
+end
+
 local function readTSM()
 	if tsmCache then return end
-	tsmCache, tsmByString, tsmConflicts = {}, {}, {}
+	-- a read under way continues where it was, unless TSM's items table was replaced meanwhile
 	local db = TradeSkillMasterDB
-	if type(db) ~= "table" then return end
-	local profile = tsmProfile(db)
+	local profile = type(db) == "table" and tsmProfile(db)
 	local items = profile and db["p@" .. profile .. "@userData@items"]
-	if type(items) ~= "table" then return end
-	local variants = {} -- [id] = path shared by every variant, or false when they differ
-	for itemString, path in pairs(items) do
-		local str, id = tostring(itemString), baseID(itemString)
-		if id and type(path) == "string" and path ~= "" then
-			local full = tsmPath(path)
-			tsmByString[str] = full
-			if str == "i:" .. id then
-				tsmCache[id] = full
-			elseif variants[id] == nil then variants[id] = full
-			elseif variants[id] ~= full then variants[id] = false end
-		end
-	end
-	for id, v in pairs(variants) do
-		if not tsmCache[id] then
-			if v then tsmCache[id] = v else tsmConflicts[id] = true end
-		end
-	end
+	if not readJob or readJob.items ~= items then readJob = newReadJob() end
+	readJob.step()
 end
+
+--- Whether TSM's groups have been read (true when they aren't used): a tooltip asks before it
+--- shows anything that would read them.
+function G.TSMReady()
+	if tsmCache then return true end
+	local s = AuctionIQ.db and AuctionIQ.db.groups
+	return (s and s.useTSM == false) or type(TradeSkillMasterDB) ~= "table"
+end
+
+--- Read TSM's groups in the background, a few milliseconds a frame; done() once read.
+local warming
+function G.WarmTSM(done)
+	if warming and not done then return end -- one read at a time; a hover just asks again later
+	warming = true
+	local function tick()
+		if tsmCache then warming = nil; if done then done() end return end
+		local db = TradeSkillMasterDB
+		local profile = type(db) == "table" and tsmProfile(db)
+		local items = profile and db["p@" .. profile .. "@userData@items"]
+		if not readJob or readJob.items ~= items then readJob = newReadJob() end
+		local ok, fin = pcall(readJob.step, AuctionIQ.Ledger and AuctionIQ.Ledger.FRAME_MS or 4)
+		if ok and not fin then C_Timer.After(0, tick) else warming = nil; if done then done() end end
+	end
+	-- from the next frame: the caller (a hover, login) never pays for it
+	if C_Timer then C_Timer.After(0, tick) else tick() end
+end
+AuctionIQ.On("PLAYER_LOGIN", function() G.WarmTSM() end)
 
 --- TSM's groups by base item: { [itemID] = "TSM/A/B" } (see readTSM for variants).
 function G.TSMGroups() readTSM(); return tsmCache end
@@ -103,7 +165,7 @@ function G.TSMPath(id, level)
 end
 
 --- Forget the TSM groups read so far (they're read once per session).
-function G.ResetTSM() tsmCache, tsmByString, tsmConflicts = nil, nil, nil end
+function G.ResetTSM() tsmCache, tsmByString, tsmConflicts, readJob = nil, nil, nil, nil end
 
 -- TSM's operation fields, copied into AuctionIQ's own operations.
 local function num(v) return tonumber(v) end

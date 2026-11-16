@@ -25,3 +25,18 @@ The budgets are draft until L-02 gives a live baseline.
 | Live: craft window redraw (`/aiq perf`, last session) | worst | 438.6 ms | needs L-02 |
 
 Every other row of `bench.py` is unchanged by this PR (same code paths).
+
+## Item tooltip, first hover after login
+
+Live (`/aiq perf`, 2026-11-16, about 3 minutes of play): the item tooltip's worst call was 72.9 ms,
+33 calls and 99 ms in all. The first hover read every item in TSM's groups and built the per-item
+sales stats in one go. The tooltip now leaves out the sell chance and posting lines until login's
+warm-up has read both, a few milliseconds a frame. It says it is waiting and nudges the warm-up.
+
+| Harness workload | Metric | Before | After |
+|---|---|---:|---:|
+| First tooltip, 30,000 TSM grouped items, 50,000 sales | time | 78–89 ms | 0.1 ms |
+| Reading TSM's groups at login (same) | worst frame | 68–97 ms (one frame) | 4.5 ms over 13 frames |
+
+Needs a live check: `/aiq perf reset` after login, hover items for a minute, then `/aiq perf`. The
+item tooltip's worst should be under 8 ms.
