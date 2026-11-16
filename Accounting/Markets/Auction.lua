@@ -84,6 +84,8 @@ function A.RecordOwned(list)
 	store()[me()] = { at = time(), items = items, realm = realm() }
 	-- what's up today counts as a listed day for the demand estimate
 	if AuctionIQ.Demand then AuctionIQ.Demand.MarkAll(items) end
+	-- and a posting session for any Tune TSM change being followed
+	if AuctionIQ.Tune and AuctionIQ.Tune.Visit and AuctionIQ.db.tune then pcall(AuctionIQ.Tune.Visit, items) end
 end
 
 -- Results: { { price (each), qty, mine } }, mine = yours or any character on your account.

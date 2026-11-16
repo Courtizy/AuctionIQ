@@ -40,7 +40,7 @@ Tracked against the 2026-11-14 brief. ✓ done and tested, ◐ partly there, ○
 |---|---|
 | Read effective operations, scope, groups sharing one | ● (`TSMSetup.lua`, `/aiq tsm`) |
 | Post cap, duration, floor, shopping max, cancel and repost levers | ● (`Tune.lua`, `/aiq tune`) |
-| Record suggestion and change; like-period comparison | ○ |
+| Record suggestion and change; like-period comparison | ● (`TuneLog.lua`, `/aiq tune log`, `/aiq tune compare`) |
 | One documented trial | ○ |
 
 ## 4. Architecture and docs

@@ -23,6 +23,7 @@
 - **Ready to post**: what you hold across the Warband, what's already up and how many to post under each group's rules. You post through TSM.
 - **Your TSM setup, read back**: for an item or a TSM group, the Auctioning, Crafting and Shopping operation that applies, whether the group sets it or inherits it, every setting as TSM saved it and what it comes to for the item now, which other groups use the same operation, and what AuctionIQ can't read reliably (`/aiq tsm`)
 - **Tune TSM suggestions**: for each TSM group, the one change to its operation with the strongest evidence from your last 30 days (post cap, duration, auctioning minimum, shopping maximum, or cancel and repost), with the numbers behind it, a value to copy into TSM, and its effect marked as projected (`/aiq tune`). Its thresholds are yours to change in Settings, Tune TSM
+- **What you changed, and what it did**: each suggestion is recorded; a change you make in TSM is seen at the next load, and the days after it are compared with as many days before on net profit, units sold, expirations, gold tied up and posting sessions, observed beside projected (`/aiq tune log`, `/aiq tune compare <n>`)
 
 **Accounting**
 - **Income statement, balance sheet and cash flow** from TSM's records, with every line opening the transactions behind it on the statement's own period. The cash flow reconciles opening gold to closing gold: what the ledger classifies, plus the unclassified rest (transfers, mail and anything TSM didn't log), labelled as such
@@ -82,7 +83,7 @@
 `/aiq prune 365` - remove AuctionIQ history older than 365 days, after showing what goes and asking<br>
 `/aiq orders` - what the advisor makes of each crafting order, kept in the saved variables for a bug report<br>
 `/aiq tsm <item link, item ID or TSM group>` - how TSM is set up for it, e.g. `/aiq tsm Alchemy/Flasks`<br>
-`/aiq tune` - the strongest suggested change for each TSM group, e.g. `/aiq tune 10` for ten<br>
+`/aiq tune` - the strongest suggested change for each TSM group, e.g. `/aiq tune 10` for ten; `/aiq tune log`, `compare <n>`, `changed <n>`, `drop <n>` for the record<br>
 `/aiq perf` - memory and time per event, for reporting slowness
 
 ## FAQ

@@ -117,3 +117,15 @@ doesn't match.
 Passing: every current value matches TSM, the evidence counts match the ledger within a unit or two
 (TSM can split one stack into several rows), and no suggestion asks for a change you think would lose
 gold. Tell me any that looks wrong and why, since that's what the thresholds get tuned on.
+
+## L-10: Tune TSM record and comparison
+
+1. `/aiq tune`, note one suggestion's number (#n) and make that change in TSM.
+2. `/reload`, then `/aiq tune log`: #n should say "changed to" the value you set.
+3. Visit the AH and post as usual over the next days.
+4. After 7 days, `/aiq tune compare n`.
+
+Passing: the change is seen after the `/reload` (not before), the comparison uses the same number of
+days on each side, the sold, expired and cancelled counts match Accounting > Ledger for the group's
+items over those days, and the posting sessions match how many times you posted them. Tell me any
+line that looks off.
