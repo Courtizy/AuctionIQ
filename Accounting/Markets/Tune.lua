@@ -19,8 +19,46 @@ local T = {}
 AuctionIQ.Tune = T
 
 local DAY = 86400
-T.DAYS = 30
-T.MIN_EVENTS = 5 -- fewer sales, expiries or buys than this and a lever isn't suggested
+-- The thresholds, yours to change in Settings (Tune TSM): { key, label, default, step, min, max,
+-- how to show it, what it does, short label }.
+T.SETTINGS = {
+	{ "days", "Evidence window (days)", 30, 1, 7, 90, function(v) return tostring(v) end,
+		"How many days of your TSM records each suggestion looks at.", "Days" },
+	{ "minEvents", "Events behind a change", 5, 1, 1, 50, function(v) return tostring(v) end,
+		"The fewest sales, expiries, buys or sales under cost a change needs behind it. Cancels need twice this.", "Events" },
+	{ "minGold", "Or gold at stake", 100, 25, 0, 10000, function(v) return v .. "g" end,
+		"A minimum or shopping change with fewer events is still suggested when this much gold is at stake.", "Or gold" },
+	{ "expireShare", "Cap down when sold under", 0.5, 0.05, 0.1, 0.9, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+		"Post cap down and duration are suggested when less than this share of units posted sold.", "Sold <" },
+	{ "sellShare", "Cap up when sold from", 0.8, 0.05, 0.5, 1, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+		"Post cap up is suggested when at least this share of units posted sold.", "Sold >=" },
+	{ "cancelRatio", "Cancels per sale", 2, 0.5, 1, 10, function(v) return (v % 1 == 0) and (v .. "x") or string.format("%.1fx", v) end,
+		"Cancel and repost changes are suggested when cancels are at least this many times the sales.", "Cancels" },
+}
+
+--- A threshold's value (yours, else its default).
+function T.Get(key)
+	local mine = AuctionIQ.db and AuctionIQ.db.settings and AuctionIQ.db.settings.tune
+	if mine and mine[key] ~= nil then return mine[key] end
+	for _, d in ipairs(T.SETTINGS) do if d[1] == key then return d[3] end end
+end
+
+--- Step a threshold by `delta` steps within its bounds (or reset it with delta = nil): value, shown.
+function T.Step(key, delta)
+	for _, d in ipairs(T.SETTINGS) do
+		if d[1] == key then
+			local st = AuctionIQ.db.settings
+			st.tune = st.tune or {}
+			if delta then
+				local v = math.max(d[5], math.min(d[6], T.Get(key) + delta * d[4]))
+				v = math.floor(v / d[4] + 0.5) * d[4]
+				st.tune[key] = v ~= d[3] and v or nil
+			else st.tune[key] = nil end
+			local v = T.Get(key)
+			return v, d[7](v)
+		end
+	end
+end
 
 -- Copper in TSM's syntax, for pasting: "12g50s", "75s", "3c".
 local function tsmMoney(c)
@@ -39,7 +77,7 @@ local function plural(n, one, many) return n == 1 and one or (many or (one .. "s
 
 --- The window: the last `days` days to now: { from, to, days, label }.
 function T.Window(now, days)
-	now, days = now or time(), days or T.DAYS
+	now, days = now or time(), days or T.Get("days")
 	return { from = now - days * DAY, to = now, days = days, label = "last " .. days .. " days" }
 end
 
@@ -113,6 +151,8 @@ local function candidates(path, ids, by, win, setup)
 	local out = {}
 	local a = setup.Auctioning
 	local hasAuc = a and a.op
+	local minEvents, minGold = T.Get("minEvents"), T.Get("minGold") * 10000
+	local expireShare, sellShare, cancelRatio = T.Get("expireShare"), T.Get("sellShare"), T.Get("cancelRatio")
 	local days = win.days
 	local capS, durS = setting(a, "postCap"), setting(a, "duration")
 	local cap = capS and tonumber(capS.raw) or nil
@@ -136,7 +176,7 @@ local function candidates(path, ids, by, win, setup)
 	local need = median(needs)
 	local share = (sold + expired) > 0 and sold / (sold + expired) or nil
 
-	if hasAuc and cap and cap > 0 and share and share < 0.5 and expRows >= T.MIN_EVENTS then
+	if hasAuc and cap and cap > 0 and share and share < expireShare and expRows >= minEvents then
 		local to = math.max(1, need or 1)
 		if to < cap then
 			local lost = lostDeposits("expired")
@@ -155,7 +195,7 @@ local function candidates(path, ids, by, win, setup)
 		end
 	end
 
-	if hasAuc and cap and cap > 0 and share and share >= 0.8 and saleRows >= T.MIN_EVENTS and need and need > cap then
+	if hasAuc and cap and cap > 0 and share and share >= sellShare and saleRows >= minEvents and need and need > cap then
 		local held = 0
 		for _, id in ipairs(ids) do held = held + (AuctionIQ.Par and AuctionIQ.Par.Held(id) or 0) end
 		if held > cap then
@@ -172,7 +212,7 @@ local function candidates(path, ids, by, win, setup)
 		end
 	end
 
-	if hasAuc and dur < 3 and share and share < 0.5 and expRows >= T.MIN_EVENTS then
+	if hasAuc and dur < 3 and share and share < expireShare and expRows >= minEvents then
 		local saved = math.floor(expRows / 2 + 0.5)
 		table.insert(out, { lever = "duration", key = "duration", setting = "Duration", current = durS and durS.raw or "2", suggest = tostring(dur + 1),
 			gold = 0, actions = saved, strength = expRows,
@@ -202,7 +242,7 @@ local function candidates(path, ids, by, win, setup)
 			end
 		end
 		local minS = setting(a, "minPrice")
-		if rows >= T.MIN_EVENTS or (rows > 0 and lost >= 100 * 10000) then
+		if rows >= minEvents or (rows > 0 and minGold > 0 and lost >= minGold) then
 			local cur = minS and minS.saved and tostring(minS.raw) or nil
 			-- the minimum that covers cost after the 5% cut, with TSM's own cost source
 			local floor = "106% " .. (basis or "crafting")
@@ -232,7 +272,7 @@ local function candidates(path, ids, by, win, setup)
 				end
 			end
 		end
-		if rows >= T.MIN_EVENTS or (rows > 0 and over >= 100 * 10000) then
+		if rows >= minEvents or (rows > 0 and minGold > 0 and over >= minGold) then
 			local mx = setting(sh, "maxPrice")
 			local cur = mx and mx.saved and tostring(mx.raw) or nil
 			local cap = basis == "avgsell" and "90% avgsell" or "100% dbmarket"
@@ -245,7 +285,7 @@ local function candidates(path, ids, by, win, setup)
 		end
 	end
 
-	if hasAuc and cancels >= 2 * T.MIN_EVENTS and cancels >= 2 * math.max(1, saleRows) then
+	if hasAuc and cancels >= 2 * minEvents and cancels >= cancelRatio * math.max(1, saleRows) then
 		local lost = lostDeposits("cancelled")
 		local cr, th = setting(a, "cancelRepost"), setting(a, "cancelRepostThreshold")
 		local lever, key, cur, sug
@@ -339,7 +379,7 @@ end
 function T.Command(arg)
 	local n = tonumber(arg and arg:match("%d+")) or 5
 	local list, win = T.Diagnose()
-	if #list == 0 then AuctionIQ.Print("Tune TSM: nothing to suggest from the " .. win.label .. " (a lever needs " .. T.MIN_EVENTS .. " sales, expiries or buys behind it)"); return end
+	if #list == 0 then AuctionIQ.Print("Tune TSM: nothing to suggest from the " .. win.label .. " (a change needs " .. T.Get("minEvents") .. " sales, expiries or buys behind it; Settings, Tune TSM, to change that)"); return end
 	AuctionIQ.Print(string.format("Tune TSM, %s: %d %s with a suggestion, strongest first", win.label, #list, plural(#list, "group")))
 	for i = 1, math.min(n, #list) do for _, l in ipairs(T.Lines(list[i])) do AuctionIQ.Print(l) end end
 end

@@ -206,14 +206,14 @@ function SUI.Build(p, fs, panel)
 	p.tryBox:SetScript("OnEnterPressed", function(self) self:ClearFocus(); SUI.Refresh() end)
 
 	-- Price sources ------------------------------------------------------------------------------------
-	local src = panel(p, 292, -372, 604, 180)
-	fs(src, 12, -10, 120, "LEFT", "GameFontNormal"):SetText("Price sources")
-	fs(src, 130, -12, 460, "LEFT", "GameFontDisableSmall"):SetText("Your own names for formulas, usable in any operation.")
+	local src = panel(p, 292, -372, 444, 180)
+	fs(src, 12, -10, 96, "LEFT", "GameFontNormal"):SetText("Price sources")
+	fs(src, 108, -12, 326, "LEFT", "GameFontDisableSmall"):SetText("Your own names for formulas, usable in any operation.")
 	p.sources = {}
 	for i = 1, SRC_ROWS do
 		local y = -34 - (i - 1) * 22
-		local r = { name = fs(src, 12, y - 3, 120, "LEFT") }
-		r.box = box(src, 136, y, 400)
+		local r = { name = fs(src, 12, y - 3, 96, "LEFT") }
+		r.box = box(src, 112, y, 300)
 		r.box:SetScript("OnEnterPressed", function(self)
 			self:ClearFocus()
 			if not r.key then return end
@@ -221,7 +221,7 @@ function SUI.Build(p, fs, panel)
 			if ok then say(r.key .. " saved.") else say("That formula doesn't read: " .. tostring(err), true) end
 			SUI.Refresh()
 		end)
-		r.del = T.Button(src, "x", 18, 18); r.del:SetPoint("TOPLEFT", 556, y)
+		r.del = T.Button(src, "x", 18, 18); r.del:SetPoint("TOPLEFT", 420, y)
 		r.del:SetScript("OnClick", function()
 			if not r.key then return end
 			local ok, why = S.DeleteSource(r.key)
@@ -232,9 +232,9 @@ function SUI.Build(p, fs, panel)
 	end
 	AuctionIQ.Window.Wheel(src, SRC_ROWS, function() return srcOffset end, function(v) srcOffset = v end, function() return #S.Sources() end, SUI.Refresh)
 	local ay = -34 - SRC_ROWS * 22 - 8
-	p.newName = box(src, 6, ay, 120)
-	p.newFormula = box(src, 136, ay, 400)
-	local add = T.Button(src, "Add", 40, 18); add:SetPoint("TOPLEFT", 552, ay)
+	p.newName = box(src, 6, ay, 96)
+	p.newFormula = box(src, 112, ay, 276)
+	local add = T.Button(src, "Add", 40, 18); add:SetPoint("TOPLEFT", 396, ay)
 	local function addSource()
 		local ok, err = S.SetSource(p.newName:GetText(), p.newFormula:GetText())
 		if ok then say("Added " .. p.newName:GetText():lower() .. "."); p.newName:SetText(""); p.newFormula:SetText("") else say(tostring(err), true) end
@@ -242,6 +242,27 @@ function SUI.Build(p, fs, panel)
 	end
 	add:SetScript("OnClick", addSource)
 	p.newFormula:SetScript("OnEnterPressed", function(self) self:ClearFocus(); addSource() end)
+
+	-- Tune TSM: the thresholds behind /aiq tune's suggestions ------------------------------------------
+	local tune = panel(p, 748, -372, 148, 180)
+	fs(tune, 12, -10, 124, "LEFT", "GameFontNormal"):SetText("Tune TSM")
+	p.tune = {}
+	for i, d in ipairs(AuctionIQ.Tune.SETTINGS) do
+		local y = -34 - (i - 1) * 22
+		local l = fs(tune, 10, y - 3, 52, "LEFT")
+		l:SetText(d[9])
+		local mm = T.Button(tune, "-", 18, 18); mm:SetPoint("TOPLEFT", 62, y)
+		local v = fs(tune, 80, y - 3, 44, "CENTER")
+		local mp = T.Button(tune, "+", 18, 18); mp:SetPoint("TOPLEFT", 124, y)
+		mm:SetScript("OnClick", function() AuctionIQ.Tune.Step(d[1], -1); SUI.Refresh() end)
+		mp:SetScript("OnClick", function() AuctionIQ.Tune.Step(d[1], 1); SUI.Refresh() end)
+		for _, b in ipairs({ mm, mp }) do
+			b:SetScript("OnEnter", function(self) AuctionIQ.Window.Tooltip(self, { { d[2] }, { d[8] },
+				{ "Default " .. d[7](d[3]) .. "." } }) end)
+			b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		end
+		p.tune[i] = { key = d[1], value = v }
+	end
 
 	p.status = fs(gen, 12, -528, 256, "LEFT", "GameFontDisableSmall")
 end
@@ -255,6 +276,7 @@ function SUI.Refresh()
 	for _, g in ipairs(p.general) do label(g.b, on(S.Get(g.key))) end
 	p.cap:SetText(tostring(S.DailyCap()))
 	for _, m in ipairs(p.model or {}) do m.value:SetText(select(2, S.Model(m.key))) end
+	for _, t in ipairs(p.tune or {}) do t.value:SetText(select(2, AuctionIQ.Tune.Step(t.key, 0))) end
 	label(p.useTSM, on(S.UseTSM()))
 	label(p.preferTSM, on(S.PreferTSM()))
 
