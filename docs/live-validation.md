@@ -106,3 +106,14 @@ Passing: the operation, where it is set (its own or from which parent), the grou
 each saved setting match what TSM shows, and every price shown is the one TSM's operation tooltip
 gives. Anything listed under "Can't read reliably" is a real gap, not noise. Tell me any line that
 doesn't match.
+
+## L-09: Tune TSM suggestions
+
+1. `/reload`, then `/aiq tune 10`.
+2. For two of the suggestions, open the group in TSM and check the "now" value matches the operation.
+3. Open Accounting > Ledger on the last 30 days, filtered to one suggested group's items, and check
+   the evidence counts (sold, expired, cancelled, bought) against the lines.
+
+Passing: every current value matches TSM, the evidence counts match the ledger within a unit or two
+(TSM can split one stack into several rows), and no suggestion asks for a change you think would lose
+gold. Tell me any that looks wrong and why, since that's what the thresholds get tuned on.

@@ -1973,6 +1973,54 @@ tp_ = [str(t) for t in L.globals().STUB.printed.values()]
 check("/aiq tsm prints a group's and an item's setup, keeping the group's case",
       any("TSM setup for group TSM/Alch/Flasks" in l for l in tp_) and any("Auctioning: Flask Op (its own)" in l for l in tp_)
       and any("Minimum: 2950000 = " in l or "Auctioning minimum: 2950000 = " in l for l in tp_) and any("Can't read reliably" in l for l in tp_))
+
+# Tune TSM: one change per group, from the window's records, strongest evidence first
+run("""
+STUB.tune = { LA = AuctionIQ.Ledger.Available, LR = AuctionIQ.Ledger.Records, LP = AuctionIQ.Ledger.Paid, AS = AuctionIQ.Ledger.AvgSell, CE = AuctionIQ.Groups.CostEach }
+local now = time()
+local recs = { Sales = {}, Expired = {}, Cancelled = {}, Buys = {}, Income = {}, Expense = {} }
+local function add(kind, id, h, q, amount, src) table.insert(recs[kind], { id = id, time = now - h * 3600, quantity = q, amount = amount, price = q > 0 and amount / q or 0, source = src }) end
+-- 301 posts 5 at a time and mostly expires
+for i = 1, 2 do add("Sales", 301, i * 20, 1, 50000, "Auction") end
+for i = 1, 12 do add("Expired", 301, i * 24, 1, 0) end
+-- 302 sells below what it costs to make, and is canceled far more than it sells
+for i = 1, 6 do add("Sales", 302, i * 30, 1, 2000000, "Auction") end
+for i = 1, 12 do add("Cancelled", 302, i * 10, 1, 0) end
+-- 205 is bought above what it resells for
+for i = 1, 6 do add("Buys", 205, i * 12, 10, 5000) end
+-- outside the window: not counted
+add("Expired", 302, 40 * 24, 1, 0)
+AuctionIQ.Ledger.Available = function() return true end
+AuctionIQ.Ledger.Records = function(kind) return recs[kind] or {} end
+AuctionIQ.Ledger.Paid = function() return {} end
+AuctionIQ.Ledger.AvgSell = function(id) return id == 205 and 200 or nil end
+AuctionIQ.Groups.CostEach = function(id) return id == 302 and 3000000 or nil end
+""")
+TU = AuctionIQ.Tune
+tl, tw = TU.Diagnose(None, None, True)[0], TU.Diagnose(None, None, True)[1]
+tg = {r.path: r for r in tl.values()}
+t301, t302, t205 = tg["TSM/Loot/Pets"].suggest, tg["TSM/Alch/Flasks"].suggest, tg["TSM/Mats"].suggest
+check("tune: mostly expiring, the post cap comes down to what a listing's duration sells",
+      t301.lever == "post cap down" and t301.current == "5" and t301.suggest == "1" and t301.actions == 10
+      and any(o.lever == "duration" for o in tg["TSM/Loot/Pets"].others.values()))
+check("tune: sales below cost put the minimum at cost, with TSM's own source to copy",
+      t302.lever == "auctioning minimum" and t302.suggest == "max(2950000, 106% crafting)" and t302.gold == 6 * (3000000 - 1900000))
+check("tune: the weaker lever on the same group is kept, not suggested",
+      any(o.lever == "repost threshold" and o.suggest == "20g" for o in tg["TSM/Alch/Flasks"].others.values()))
+check("tune: buying above resale lowers the shopping maximum", t205.lever == "shopping maximum" and t205.suggest == "min(1s, 90% avgsell)"
+      and tg["TSM/Mats"].op == "Cheap Mats" and abs(t205.gold - 6 * 10 * (500 - 190)) < 1)
+check("tune: strongest first, by gold over the window", tl[1].path == "TSM/Alch/Flasks" and tw.days == 30)
+ll = list(TU.Lines(tg["TSM/Loot/Pets"]).values())
+check("tune: each suggestion shows the window, the evidence, that the effect is projected, and where else the operation applies",
+      "Post cap 5 -> 1" in ll[0] and any("last 30 days" in l for l in ll) and any("12 expired" in l for l in ll)
+      and any("projected, not observed" in l for l in ll) and any("set on TSM/Loot" in l for l in ll))
+check("tune: copper written in TSM's syntax", TU.Money(125005) == "12g50s5c" and TU.Money(7500) == "75s" and TU.Money(0) == "0c")
+run("AuctionIQ.Ledger.Records = function() return {} end")
+check("tune: no records, nothing suggested", len(TU.Diagnose()[0]) == 0)
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('tune'); AuctionIQ.Print = STUB.oldPrint")
+check("/aiq tune says when there's nothing to suggest", any("nothing to suggest" in str(t) for t in L.globals().STUB.printed.values()))
+run("""local t = STUB.tune
+AuctionIQ.Ledger.Available, AuctionIQ.Ledger.Records, AuctionIQ.Ledger.Paid, AuctionIQ.Ledger.AvgSell, AuctionIQ.Groups.CostEach = t.LA, t.LR, t.LP, t.AS, t.CE""")
 run("AuctionIQ.Queue.Clear()")
 AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
 run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 50 } })")
