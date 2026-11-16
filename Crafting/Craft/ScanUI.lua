@@ -1466,7 +1466,15 @@ local function bestPick(r)
 	return useConc
 end
 
+local workRowNow
+-- each row timed on its own, so /aiq perf's worst shows the slowest single row
 local function workRow(saved, current, concNow)
+	local t0 = debugprofilestop and debugprofilestop()
+	local r = workRowNow(saved, current, concNow)
+	if t0 and AuctionIQ.MeasureAdd then AuctionIQ.MeasureAdd("craft redraw: one row", debugprofilestop() - t0) end
+	return r
+end
+function workRowNow(saved, current, concNow)
 	if not saved.line then saved.line, saved.expansion = AuctionIQ.Scan.Expansion(saved.recipeID) end
 	-- today's prices, the same the hovers use; the saved row keeps the scan's
 	local r = AuctionIQ.Scan.Live(saved)
@@ -1691,15 +1699,27 @@ SUI.ExpansionChanged = expansionChanged
 AuctionIQ.On("TRADE_SKILL_LIST_UPDATE", expansionChanged)
 AuctionIQ.On("TRADE_SKILL_DATA_SOURCE_CHANGED", expansionChanged)
 
---- How many of the Concentration craft with your own reagents you can make, for the recipe open in
---- the card (the scan doesn't price that mix), or nil.
--- Held-reagent Concentration crafts per recipe, worked out once and kept until your bags or
+-- How many of the Concentration craft with your own reagents you can make (the scan doesn't price
+-- that mix). Held-reagent Concentration crafts per recipe, worked out once and kept until your bags or
 -- Concentration change: { [recipeID] = max }. false when there's none.
-local heldCache, heldConc = {}, nil
+local heldCache, heldConc, heldPending, heldGen = {}, nil, {}, 0
+local heldRedraw
+
+-- Working out the craft with your own reagents is a full advisor analysis of the recipe, which can
+-- take hundreds of milliseconds on a big recipe: done once per recipe, then kept.
+local function heldMaxNow(recipeID, prof, concNow)
+	local Adv = AuctionIQ.Advisor
+	local ok, r = pcall(Adv.Analyze, recipeID, { professionID = prof })
+	local okH, h = false, nil
+	if ok and r then okH, h = pcall(Adv.HeldConcRow, r) end
+	return okH and h and Adv.MaxCraftable(r, h, concNow) or nil
+end
 
 --- How many of a recipe's Concentration craft with your own reagents you can make now (as the game
 --- fills the slots when you tick Concentrate): for the open recipe from its card, for the rest from
---- the advisor on demand. nil when there's no such craft or no profession open.
+--- the advisor. The advisor's answer is worked out in the background (Scan.Later), a few
+--- milliseconds a frame, so a redraw never waits on it: until it's in, nil, and the row is drawn
+--- again once it is. nil when there's no such craft or no profession open.
 function SUI.HeldMax(recipeID, concNow)
 	local A = AuctionIQ.AdvisorUI
 	local res = A and A.Current and A.Current()
@@ -1708,20 +1728,37 @@ function SUI.HeldMax(recipeID, concNow)
 			if x.fromBags then return x.max end
 		end
 	end
-	if concNow ~= heldConc then heldCache, heldConc = {}, concNow end
+	if concNow ~= heldConc then heldCache, heldConc, heldPending, heldGen = {}, concNow, {}, heldGen + 1 end
 	local hit = heldCache[recipeID]
 	if hit ~= nil then return hit or nil end
 	local Adv = AuctionIQ.Advisor
 	local prof = AuctionIQ.OpenProfessionID and AuctionIQ.OpenProfessionID()
 	if not (prof and Adv and Adv.HeldConcRow and Adv.MaxCraftable) then return nil end
-	local ok, r = pcall(Adv.Analyze, recipeID, { professionID = prof })
-	local okH, h = false, nil
-	if ok and r then okH, h = pcall(Adv.HeldConcRow, r) end
-	local max = okH and h and Adv.MaxCraftable(r, h, concNow) or nil
-	heldCache[recipeID] = max or false
-	return max
+	local Sc = AuctionIQ.Scan
+	if not (SUI.background and C_Timer and Sc and Sc.Later) then
+		local max = heldMaxNow(recipeID, prof, concNow)
+		heldCache[recipeID] = max or false
+		return max
+	end
+	if heldPending[recipeID] then return nil end
+	heldPending[recipeID] = true
+	local gen, t0 = heldGen, debugprofilestop and debugprofilestop()
+	Sc.Later(function() return heldMaxNow(recipeID, prof, concNow) end, function(ok, max)
+		if t0 and AuctionIQ.MeasureAdd then AuctionIQ.MeasureAdd("craft redraw: own reagents (background, wall time)", debugprofilestop() - t0) end
+		if gen ~= heldGen then return end -- bags or Concentration changed meanwhile: asked again
+		heldPending[recipeID] = nil
+		heldCache[recipeID] = ok and max or false
+		if not (ok and max) then return end
+		-- that recipe's row is worked out again; one redraw for every answer in the same quarter second
+		for saved in pairs(rowCache.rows) do if saved.recipeID == recipeID then rowCache.rows[saved] = nil end end
+		if not heldRedraw then
+			heldRedraw = true
+			C_Timer.After(0.25, function() heldRedraw = nil; if SUI.IsShown() then SUI.Refresh() end end)
+		end
+	end)
+	return nil
 end
-AuctionIQ.On("BAG_UPDATE_DELAYED", function() heldCache = {} end)
+AuctionIQ.On("BAG_UPDATE_DELAYED", function() heldCache, heldPending, heldGen = {}, {}, heldGen + 1 end)
 
 function SUI.DetailsChart() return details and details.chart end
 

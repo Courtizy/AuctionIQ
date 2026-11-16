@@ -282,6 +282,29 @@ function Sc.Yield()
 	end
 end
 
+--- Run fn() in the background after the job running now, if any (Background), in turn: for work
+--- that shouldn't replace another, like each recipe's own-reagent craft. A Later job that a newer
+--- Background replaces goes back to the front of the line. Without timers it runs at once.
+local later = {}
+local function nextLater()
+	if bg or #later == 0 then return end
+	local j = table.remove(later, 1)
+	Sc.Background(j.fn, function(ok, r)
+		if j.onDone then j.onDone(ok, r) end
+		nextLater()
+	end)
+	bg.later = j
+end
+function Sc.Later(fn, onDone)
+	if not (C_Timer and clock) then
+		local ok, r = pcall(fn)
+		if onDone then onDone(ok, r) end
+		return
+	end
+	table.insert(later, { fn = fn, onDone = onDone })
+	nextLater()
+end
+
 --- Run fn() in the background, a few milliseconds a frame (pausing wherever the advisor calls
 --- Sc.Yield), then onDone(ok, result). One job at a time: a new one replaces the one running.
 --- Without timers (tests) it runs at once.
@@ -291,6 +314,8 @@ function Sc.Background(fn, onDone)
 		if onDone then onDone(ok, r) end
 		return
 	end
+	-- a Later job this replaces goes back to the front of the line
+	if bg and bg.later then table.insert(later, 1, bg.later) end
 	local job = { co = coroutine.create(fn), onDone = onDone }
 	bg = job
 	local function step()
@@ -301,6 +326,8 @@ function Sc.Background(fn, onDone)
 		if coroutine.status(job.co) ~= "dead" then return C_Timer.After(0, step) end
 		bg = nil
 		if job.onDone then job.onDone(ok, r) end
+		-- the next job in line, unless onDone started one (a Later job starts its own next)
+		if not job.later and not bg then nextLater() end
 	end
 	C_Timer.After(0, step)
 end
