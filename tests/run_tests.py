@@ -1927,6 +1927,52 @@ check("restock: nothing under the operation's minimum profit", not any(e.item ==
 run("AuctionIQ.Groups.Store().craftOps['Restock Flasks'].minProfit = '1c'")
 sr205 = AuctionIQ.Groups.ShopRule(205)
 check("shopping rule: the operation's max price", sr205.op == "Cheap Mats" and sr205.maxPrice == 100)
+
+# Tune TSM: how TSM itself is set up for an item or group, read from its saved data
+TS = AuctionIQ.TSMSetup
+su = TS.Item(302)
+a = su.Auctioning
+check("tsm setup: the item's group, its own operation and the one skipped for this character",
+      su.group == "TSM/Alch/Flasks" and a.op == "Flask Op" and a.own and list(a.skipped.values()) == ["Alt Only"])
+sv = {s.key: s for s in a.settings.values()}
+check("tsm setup: each setting as TSM saved it and what it comes to now",
+      sv["postCap"].raw == "2" and sv["minPrice"].value == 2950000 and sv["duration"].text == "24 hours" and sv["cancelRepost"].text == "on"
+      and sv["undercut"].value == 100 and not sv["keepQuantity"].saved)
+check("tsm setup: other groups setting the same operation", list(a.shared.values()) == ["TSM/Alch", "TSM/Alch/Flasks"])
+lim = list(a.limits.values()) + list(su.limits.values())
+check("tsm setup: what can't be read reliably (bid, blacklist, per character, defaults, saved-data age)",
+      any("bid" in l for l in lim) and any("blacklist" in l for l in lim) and any("Seyko" in l for l in lim)
+      and any("defaults apply" in l for l in lim) and any("/reload" in l for l in lim))
+check("tsm setup: crafting from the group, no shopping operation", su.Crafting.op == "Restock Flasks" and su.Shopping.op is None)
+run("""TradeSkillMasterDB["p@Warband@userData@items"]["i:301"] = "Loot`Pets"; AuctionIQ.Groups.ResetTSM()
+TradeSkillMasterDB["g@ @userData@sharedOperations"].Auctioning["Sell Loot"] = { minPrice = "1g", normalPrice = "5g", maxPrice = "10g", postCap = "5" }""")
+su = TS.Item(301)
+check("tsm setup: a group without its own operations uses its parent's",
+      su.group == "TSM/Loot/Pets" and su.Auctioning.op == "Sell Loot" and not su.Auctioning.own and getattr(su.Auctioning, "from") == "TSM/Loot"
+      and list(su.Auctioning.shared.values()) == ["TSM", "TSM/Loot"])
+gm = TS.Group("TSM/Mats")
+check("tsm setup: a group alone shows formulas as saved, not worked out",
+      gm.Shopping.op == "Cheap Mats" and gm.Shopping.settings[1].raw == "1s" and gm.Shopping.settings[1].value is None)
+check("tsm setup: the base group has no crafting or shopping", TS.Group("TSM").Crafting is None and TS.Group("TSM").Auctioning.op == "Sell Loot")
+run("AuctionIQ.Groups.Store().ops['Flask Op'].cap = 3")
+check("tsm setup: says where AuctionIQ's copy differs from TSM", any("Post cap: TSM has 2" in l for l in TS.Item(302).differs.values()))
+run("AuctionIQ.Groups.Store().ops['Flask Op'].cap = 2")
+check("tsm setup: no differences when the copy matches", len(TS.Item(302).differs) == 0)
+run("""local ops = TradeSkillMasterDB["g@ @userData@sharedOperations"].Auctioning
+STUB.fn = ops["Flask Op"].normalPrice; ops["Flask Op"].normalPrice = "2 * nosuchsource"
+TradeSkillMasterDB["p@Warband@userData@groups"]["Loot`Pets"] = { Auctioning = { "Gone Op", override = true } }""")
+su = TS.Item(302)
+check("tsm setup: a price with no value now is named", any("Normal price" in l and "no value" in l for l in su.Auctioning.limits.values()))
+su = TS.Item(301)
+check("tsm setup: an operation named on a group but not saved is named", su.Auctioning.op is None and any("Gone Op" in l for l in su.Auctioning.limits.values()))
+run("""TradeSkillMasterDB["g@ @userData@sharedOperations"].Auctioning["Flask Op"].normalPrice = STUB.fn
+TradeSkillMasterDB["p@Warband@userData@groups"]["Loot`Pets"] = nil""")
+check("tsm setup: an item outside TSM's groups falls to the base group", any("isn't in a TSM group" in l for l in TS.Item(999999).limits.values()))
+run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('tsm Alch/Flasks'); SlashCmdList.AUCTIONIQ('tsm 302'); AuctionIQ.Print = STUB.oldPrint")
+tp_ = [str(t) for t in L.globals().STUB.printed.values()]
+check("/aiq tsm prints a group's and an item's setup, keeping the group's case",
+      any("TSM setup for group TSM/Alch/Flasks" in l for l in tp_) and any("Auctioning: Flask Op (its own)" in l for l in tp_)
+      and any("Minimum: 2950000 = " in l or "Auctioning minimum: 2950000 = " in l for l in tp_) and any("Can't read reliably" in l for l in tp_))
 run("AuctionIQ.Queue.Clear()")
 AuctionIQ.Queue.FillPlan(2906, L.eval("{ budget = 0 }"))
 run("AuctionIQ.Depth.Remember(205, { { price = 15000, qty = 50 } })")
