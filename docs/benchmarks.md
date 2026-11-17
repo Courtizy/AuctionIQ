@@ -40,3 +40,18 @@ warm-up has read both, a few milliseconds a frame. It says it is waiting and nud
 
 Needs a live check: `/aiq perf reset` after login, hover items for a minute, then `/aiq perf`. The
 item tooltip's worst should be under 8 ms.
+
+## Profession window, first redraw
+
+Live (`/aiq perf`, 2026-11-16, build `e5ff013`, about 3 minutes): opening a profession froze the game
+for 614 ms (TRADE_SKILL_DATA_SOURCE_CHANGED, craft window redraw, "rows (worked out)" 612 ms), and
+the background row job hit 224 ms in one frame against its 4 ms budget. Each row is checked against
+the budget before it starts, so one slow row overran it. The likely slow row is the Concentration
+craft with your own reagents: for a recipe whose best mix needs a rank you don't hold, the row ran a
+full advisor analysis inside the redraw. That analysis now runs in the background, a few
+milliseconds a frame, behind any other background job, and the row is drawn again when it's in.
+
+`/aiq perf` now also shows "craft redraw: one row" (its worst is the slowest single row) and "craft
+redraw: own reagents (background, wall time)", so the next live run confirms or rules this out.
+Live check: open a profession, then `/aiq perf`. The craft window redraw's worst should be under
+16 ms. If "one row" is still high, the cause is elsewhere in the row and the perf line says so.

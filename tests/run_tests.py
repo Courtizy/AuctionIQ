@@ -1522,6 +1522,21 @@ hm = L.eval("""(function()
   A.Current, AuctionIQ.OpenProfessionID = cur, oldP
   return { want = want, got = got } end)()""")
 check("Max: any recipe's Concentration craft with your own reagents, not only the one on the card", hm.want == hm.got and hm.got == 1)
+hb = L.eval("""(function()
+  local A = AuctionIQ.AdvisorUI; local cur = A.Current; A.Current = function() return nil end
+  local oldP = AuctionIQ.OpenProfessionID; AuctionIQ.OpenProfessionID = function() return 2906 end
+  local S = AuctionIQ.ScanUI; S.background = true
+  local first = S.HeldMax(10, 1001)
+  -- a newer background job (the card's gear search) mustn't lose it
+  local gearDone = false
+  AuctionIQ.Scan.Background(function() return 1 end, function() gearDone = true end)
+  for i = 1, 50 do STUB.RunTimers() end
+  local after = S.HeldMax(10, 1001)
+  S.background = false
+  A.Current, AuctionIQ.OpenProfessionID = cur, oldP
+  return { first = first, after = after, gear = gearDone } end)()""")
+check("craft window: the own-reagent craft is worked out in the background, not in the redraw, and a newer job doesn't drop it",
+      hb.first is None and hb.after == 1 and hb.gear)
 
 # Dashboard and Ledger from TSM's saved data (read only)
 run(r"""
