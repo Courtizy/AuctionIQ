@@ -974,9 +974,11 @@ function A.HeldLine(l, model)
 	return l
 end
 
---- A reagent line's prices for its hover, as { label, value } rows: the opportunity cost of the
---- units you hold, then what you paid, the current lowest listing and what you'd list it at, and
---- what the rest cost to buy. Empty off the held basis or when you hold none.
+--- A reagent line's prices for its hover, as { label, value } rows, laid out as the sum that gives
+--- the opportunity cost of the units you hold: what one sells for, less the AH cut, less the
+--- deposits and the wait for a slow seller, equals what one is worth to you. Then, apart and not in
+--- that sum, what you paid, the lowest listing now and your stock, and what the rest cost to buy.
+--- Empty off the held basis or when you hold none.
 function A.HeldText(l)
 	local out = {}
 	if not (l and l.own and l.own > 0) then return out end
@@ -986,17 +988,27 @@ function A.HeldText(l)
 	local list = AuctionIQ.Prices.Get("aiqvalue", "i:" .. l.id)
 	local lowest = AuctionIQ.Prices.Raw and AuctionIQ.Prices.Raw("dbminbuyout", l.id) or l.buy
 	out[#out + 1] = B.Sub(string.format("Opportunity cost (%d yours)", l.own), m(l.ownEach))
-	out[#out + 1] = B.Sub("   Stock", tostring(l.stock or l.own))
-	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
-	out[#out + 1] = B.Sub("   Current price", m(lowest))
-	out[#out + 1] = B.Sub("   Sell price", m(list))
-	-- what selling them would really leave you: the cut, plus deposits and waiting for a slow seller
 	if list and l.ownEach and l.sell then
-		local _, how = AuctionIQ.Prices.SellValue(l.id)
-		local days = how and how.days
-		out[#out + 1] = B.Sub(days and days >= 0.5 and string.format("   Cut, deposits, ~%.0f days to sell", days) or "   Cut, deposits, wait",
-			"-" .. M(math.max(0, list - l.ownEach)))
+		-- the sum: sale price, less the cut, less deposits and waiting, is what one is worth to you
+		local cut = list * (1 - AuctionIQ.AH_CUT)
+		local rest = math.max(0, list * AuctionIQ.AH_CUT - l.ownEach)
+		out[#out + 1] = B.Sub("   Sell price", m(list))
+		out[#out + 1] = B.Sub(string.format("   less the AH cut (%d%%)", math.floor((1 - AuctionIQ.AH_CUT) * 100 + 0.5)), "-" .. M(cut))
+		if rest >= 1 then
+			local _, how = AuctionIQ.Prices.SellValue(l.id)
+			local days = how and how.days
+			out[#out + 1] = B.Sub(days and days >= 0.5 and string.format("   less deposits and ~%.0f days to sell", days) or "   less deposits and the wait to sell",
+				"-" .. M(rest))
+		end
+		out[#out + 1] = B.Sub("   = what one is worth to you", m(l.ownEach))
+	else
+		-- no sale price: yours are valued at what buying one costs today
+		out[#out + 1] = B.Sub("   no sale price, so today's price to buy", m(l.ownEach))
 	end
+	out[#out + 1] = B.Sub("Not in the cost, to compare", "")
+	out[#out + 1] = B.Sub("   Paid price", m(l.paidEach))
+	out[#out + 1] = B.Sub("   Lowest listing now", m(lowest))
+	out[#out + 1] = B.Sub("   In stock", tostring(l.stock or l.own))
 	if (l.buyN or 0) > 0 then out[#out + 1] = B.Sub(string.format("To buy (%d)", l.buyN), m(l.buy)) end
 	return out
 end

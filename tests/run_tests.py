@@ -2123,8 +2123,20 @@ check("replacement basis: every unit at today's price", L.eval("AuctionIQ.Adviso
 run("AuctionIQ.Prices.CostBasis('held')")
 hl = L.eval("AuctionIQ.Advisor.HeldLine({ id = 205, n = 8, buy = 10000 }, { heldCache = { [205] = { n = 5, each = 4000 } } })")
 ht = [plain(x[1]).strip() for x in AuctionIQ.Advisor.HeldText(hl).values()]
-check("held basis: the hover is short rows: opportunity cost, paid, current, sell, to buy", hl.own == 5 and hl.buyN == 3
-      and ht == ["Opportunity cost (5 yours)", "Stock", "Paid price", "Current price", "Sell price", "To buy (3)"])
+check("held basis: the hover shows the opportunity cost as its sum, then what isn't in it, then what to buy", hl.own == 5 and hl.buyN == 3
+      and ht == ["Opportunity cost (5 yours)", "no sale price, so today's price to buy", "Not in the cost, to compare", "Paid price", "Lowest listing now", "In stock", "To buy (3)"])
+hs_ = L.eval("""(function()
+  local g = AuctionIQ.Prices.Get
+  AuctionIQ.Prices.Get = function(k, item) if k == "aiqvalue" and item == "i:205" then return 5000 end return g(k, item) end
+  local out = {}
+  for _, x in ipairs(AuctionIQ.Advisor.HeldText({ id = 205, own = 5, ownEach = 4000, sell = 4000, stock = 5, buyN = 0 })) do out[#out + 1] = { x[1], x[2] } end
+  AuctionIQ.Prices.Get = g
+  return out end)()""")
+hsl = [(plain(x[1]).strip(), plain(x[2])) for x in hs_.values()]
+check("held basis: the opportunity cost reads as a sum: sell price, less the cut, less deposits and waiting, = what one is worth",
+      [a for a, _ in hsl[:5]] == ["Opportunity cost (5 yours)", "Sell price", "less the AH cut (5%)", hsl[3][0], "= what one is worth to you"]
+      and hsl[3][0].startswith("less deposits") and hsl[1][1] == "50s" and hsl[2][1] == "-2s" and hsl[3][1] == "-7s" and hsl[4][1] == "40s"
+      and hsl[5][0] == "Not in the cost, to compare")
 check("held basis: a held reagent is worth its sale price less the cut, deposits and waiting (Expect.Value)",
       L.eval("(function() local v = AuctionIQ.Prices.SellValue(201); local c = AuctionIQ.Prices.Get('aiqvalue', 'i:201'); return v and c and v <= c * AuctionIQ.AH_CUT + 0.5 end)()") is not False)
 run("STUB.oldHeld = AuctionIQ.Prices.Held; AuctionIQ.Prices.Held = function(id) if id == 205 then return 4 end return 0 end")
@@ -2155,7 +2167,7 @@ rb = L.eval("""(function()
 rbl = [plain(l[1]).strip() for l in rb.lines.values()]
 v205 = AuctionIQ.Prices.Get("aiqvalue", "i:205")
 check("reagent breakdown: yours at what they'd sell for after the cut, the rest at the buy price, under one total",
-      rbl[0] == "Reagents" and rbl[-1] == "Total reagents" and "Opportunity cost (2 yours)" in rbl and "Stock" in rbl
+      rbl[0] == "Reagents" and rbl[-1] == "Total reagents" and "Opportunity cost (2 yours)" in rbl and "In stock" in rbl
       and abs(rb.total - (2 * (v205 * AuctionIQ.AH_CUT if v205 else 10000) + 30000)) < 1)
 rbs = [plain(l[1]).strip() for l in rb.short.values()]
 check("reagent breakdown, short: one row for yours under the reagent", "2 yours, at sell price" in rbs and "Opportunity cost (2 yours)" not in rbs)
