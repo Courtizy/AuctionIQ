@@ -249,6 +249,43 @@ end
 
 local scatter = false
 function P.ToggleScatter() scatter = not scatter; return scatter end
+-- chart 2 by cause (the profit waterfall) instead of by item
+local causes = false
+function P.ToggleCauses() causes = not causes; return causes end
+
+--- The change in profit split by cause, a waterfall from the period before to this one: { start
+--- (profit before), finish (profit now), steps = { { key, label, change, from, to, tip } } }. Volume,
+--- sale price and input cost add up each item's split (P.Compare); fees are expenses and lost
+--- deposits; unexplained is sales TSM logged without an item plus any rounding left. The steps
+--- add up to the change exactly. Yield isn't apart: a craft that made more or fewer shows in the
+--- cost of each one sold.
+function P.Waterfall(r)
+	local sum = { volume = 0, price = 0, cost = 0, fees = 0, income = 0, other = 0 }
+	for _, x in ipairs(r.list) do
+		if x.kind == "item" then sum.volume, sum.price, sum.cost = sum.volume + x.volume, sum.price + x.price, sum.cost + x.cost
+		elseif x.kind == "expenses" then sum.fees = sum.fees + x.change
+		elseif x.kind == "income" then sum.income = sum.income + x.change
+		else sum.other = sum.other + x.change end
+	end
+	local known = sum.volume + sum.price + sum.cost + sum.fees + sum.income + sum.other
+	sum.other = sum.other + (r.change - known)
+	local defs = {
+		{ "volume", "Volume", "How many sold, at the old margin each." },
+		{ "price", "Sale price", "What each sold for, at this period's volume." },
+		{ "cost", "Input cost", "What each cost to make or buy, at this period's volume. A craft that yielded more or less shows here." },
+		{ "fees", "Fees and deposits", "Expenses and the deposits lost to expired auctions." },
+		{ "income", "Other income", "Income that isn't a sale: mail, quests and the like." },
+		{ "other", "Unexplained", "Sales TSM logged without an item, and anything left over." },
+	}
+	local out = { start = r.prior, finish = r.profit, steps = {} }
+	local run = r.prior
+	for _, d in ipairs(defs) do
+		local c = sum[d[1]]
+		table.insert(out.steps, { key = d[1], label = d[2], change = c, from = run, to = run + c, tip = d[3] })
+		run = run + c
+	end
+	return out
+end
 
 -- Capital tied up --------------------------------------------------------------------------------
 P.SLOW = 30 -- stock that takes longer than this many days to sell, at the last 30 days' rate
@@ -372,6 +409,8 @@ function P.Build(p, fs)
 	p.capHit:SetScript("OnLeave", untip)
 	p.fcButton = button(p, 120, "Forecast chart", function() P.ToggleScatter(); AuctionIQ.UI.Refresh() end)
 	p.fcButton:SetPoint("TOPRIGHT", p, "TOPLEFT", RW - 8, -90)
+	p.causeButton = button(p, 100, "By cause", function() P.ToggleCauses(); AuctionIQ.UI.Refresh() end)
+	p.causeButton:SetPoint("TOPRIGHT", p.fcButton, "TOPLEFT", -4, 0)
 
 	local y = Y0
 	T.Card(p, 0, y, CW, CH1 + 66)
@@ -531,43 +570,82 @@ function P.Refresh(now)
 	end
 	p.wNote:SetText(line and "Gross profit of that line. Faded: so far." or "Net income. Faded bar: this week so far.")
 
-	-- top three each way, from one middle line
+	-- top three each way, from one middle line; or, by cause, a waterfall from the period before
 	local rows = {}
-	for _, x in ipairs(r.up) do table.insert(rows, x) end
-	for i = 1, 3 - #r.up do table.insert(rows, false) end
-	for _, x in ipairs(r.down) do table.insert(rows, x) end
+	local wf = causes and P.Waterfall(r) or nil
+	if wf then
+		for _, st in ipairs(wf.steps) do table.insert(rows, st) end
+	else
+		for _, x in ipairs(r.up) do table.insert(rows, x) end
+		for i = 1, 3 - #r.up do table.insert(rows, false) end
+		for _, x in ipairs(r.down) do table.insert(rows, x) end
+	end
+	p.dTitle:SetText(wf and "Why profit changed" or "What drove the change")
+	setText(p.causeButton, causes and "By item" or "By cause")
+	p.mid:SetShown(not wf)
+	-- the waterfall's scale: every running total, from before to now
+	local wlo, whi = 0, 0
+	if wf then
+		wlo, whi = math.min(0, wf.start), math.max(0, wf.start)
+		for _, st in ipairs(wf.steps) do wlo, whi = math.min(wlo, st.to), math.max(whi, st.to) end
+	end
+	local wspan = math.max(1, whi - wlo)
 	local most = 1
 	for _, x in ipairs(rows) do if x then most = math.max(most, math.abs(x.change)) end end
 	for i, hit in ipairs(p.drivers) do
 		local x = rows[i]
-		hit:SetShown(x and true or false)
-		hit.label:SetShown(x and true or false)
-		hit.value:SetShown(x and true or false)
-		if x then
-			local w = math.max(1, math.floor(73 * math.abs(x.change) / most + 0.5))
+		if wf and x then
+			hit:Show(); hit.label:Show(); hit.value:Show()
+			-- a floating bar from the running total before this cause to the one after it, 150 wide in all
+			local a, b = math.min(x.from, x.to), math.max(x.from, x.to)
+			local left = math.floor(130 + 150 * (a - wlo) / wspan + 0.5)
+			local w = math.max(1, math.floor(150 * (b - a) / wspan + 0.5))
 			local col = x.change >= 0 and T.ok or T.bad
-			hit.bar:SetColorTexture(col[1], col[2], col[3], 0.85)
+			hit.bar:SetColorTexture(col[1], col[2], col[3], math.abs(x.change) < 1 and 0.3 or 0.85)
 			hit.bar:ClearAllPoints()
-			hit.bar:SetPoint("TOPLEFT", hit, "TOPLEFT", x.change >= 0 and 205 or (205 - w), -4)
+			hit.bar:SetPoint("TOPLEFT", hit, "TOPLEFT", left, -4)
 			hit.bar:SetSize(w, 12)
-			hit.label:SetText(short(P.Name(x), 17))
+			hit.label:SetText(x.label)
 			hit.value:SetText(T.Color(x.change >= 0 and "ok" or "bad", (x.change >= 0 and "+" or "") .. P.Compact(x.change)))
-			hit.x = x
-			local t = { { P.Name(x) }, { "Change", signed(x.change) }, { T.Color("muted", P.Explain(x)) } }
-			if x.kind == "item" then
-				table.insert(t, 3, { "Price", signed(x.price) })
-				table.insert(t, 4, { "Volume", signed(x.volume) })
-				table.insert(t, 5, { "Cost", signed(x.cost) })
-				table.insert(t, { T.Color("accent", "Click for its Profit drivers over the same windows.") })
-			else
-				table.insert(t, { T.Color("accent", "Click for the transactions.") })
-			end
-			hit.tip = t
+			hit.x = nil
+			hit.tip = { { x.label }, { "Change", signed(x.change) }, { "Running profit", (x.to < 0 and "-" or "") .. money(x.to) },
+				{ T.Color("muted", x.tip) } }
+			x = nil -- drawn
+		end
+		if wf then
+			-- drawn above (or empty)
 		else
-			hit.x, hit.tip = nil, nil
+			hit:SetShown(x and true or false)
+			hit.label:SetShown(x and true or false)
+			hit.value:SetShown(x and true or false)
+			if x then
+				local w = math.max(1, math.floor(73 * math.abs(x.change) / most + 0.5))
+				local col = x.change >= 0 and T.ok or T.bad
+				hit.bar:SetColorTexture(col[1], col[2], col[3], 0.85)
+				hit.bar:ClearAllPoints()
+				hit.bar:SetPoint("TOPLEFT", hit, "TOPLEFT", x.change >= 0 and 205 or (205 - w), -4)
+				hit.bar:SetSize(w, 12)
+				hit.label:SetText(short(P.Name(x), 17))
+				hit.value:SetText(T.Color(x.change >= 0 and "ok" or "bad", (x.change >= 0 and "+" or "") .. P.Compact(x.change)))
+				hit.x = x
+				local t = { { P.Name(x) }, { "Change", signed(x.change) }, { T.Color("muted", P.Explain(x)) } }
+				if x.kind == "item" then
+					table.insert(t, 3, { "Price", signed(x.price) })
+					table.insert(t, 4, { "Volume", signed(x.volume) })
+					table.insert(t, 5, { "Cost", signed(x.cost) })
+					table.insert(t, { T.Color("accent", "Click for its Profit drivers over the same windows.") })
+				else
+					table.insert(t, { T.Color("accent", "Click for the transactions.") })
+				end
+				hit.tip = t
+			else
+				hit.x, hit.tip = nil, nil
+			end
 		end
 	end
-	p.dNote:SetText(#r.list == 0 and "Nothing sold in either window yet." or ("Against " .. r.w.prior .. "."))
+	p.dNote:SetText(#r.list == 0 and "Nothing sold in either window yet."
+		or wf and string.format("From %s %s to %s now.", (r.prior < 0 and "-" or "") .. money(r.prior), r.w.prior, (r.profit < 0 and "-" or "") .. money(r.profit))
+		or ("Against " .. r.w.prior .. "."))
 
 	-- forecasts and capital
 	local fl = P.Forecasts(now, char)
@@ -587,7 +665,8 @@ function P.Refresh(now)
 	setText(p.fcButton, scatter and "Drivers chart" or "Forecast chart")
 
 	-- chart 2's place: the drivers, or forecast vs actual
-	p.dTitle:SetShown(not scatter); p.mid:SetShown(not scatter); p.dNote:SetShown(not scatter)
+	p.dTitle:SetShown(not scatter); p.mid:SetShown(not scatter and not wf); p.dNote:SetShown(not scatter)
+	p.causeButton:SetShown(not scatter)
 	for _, hit in ipairs(p.drivers) do
 		if scatter then hit:Hide(); hit.label:Hide(); hit.value:Hide() end
 	end
@@ -626,7 +705,7 @@ function P.Refresh(now)
 	end
 	p.sAxis:SetText(string.format("Across: forecast. Up: actual. %s to %s.", P.Compact(lo), P.Compact(hi)))
 	p.sNote:SetText(#fl == 0 and "No batch can be checked yet." or "Green: within range. Faded: shares sales.")
-	return { compare = r, weekly = weeks, forecasts = fl, capital = cap }
+	return { compare = r, weekly = weeks, forecasts = fl, capital = cap, waterfall = wf }
 end
 
 -- The detail views live under Reports now, opened from this page rather than a sub-tab of their own.
