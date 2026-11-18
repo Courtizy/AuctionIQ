@@ -298,7 +298,7 @@ end
 
 -- A flat text button that turns gold on hover (ElvUI: its button skin, or its close button for "x").
 -- Button lettering in the theme colour (ElvUI's buttons use the game's gold font otherwise): one
--- font object each for normal, hover and the dark label on a main button's fill, recoloured when
+-- font object each for normal, hover and the white label on a main button's fill, recoloured when
 -- the theme colour changes.
 function T.ButtonFonts()
 	if not CreateFont then return nil end
@@ -309,7 +309,7 @@ function T.ButtonFonts()
 	if btnFonts.normal.SetTextColor then
 		btnFonts.normal:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
 		btnFonts.hover:SetTextColor(T.fg[1], T.fg[2], T.fg[3])
-		btnFonts.dark:SetTextColor(0.03, 0.03, 0.04)
+		btnFonts.dark:SetTextColor(1, 1, 1) -- the label on an accent-filled button (T.Primary): white
 	end
 	return btnFonts
 end
@@ -341,14 +341,14 @@ function T.Button(parent, label, w, h)
 	fs:SetPoint("CENTER", 0, 1)
 	fs:SetText(label)
 	b.text = fs
-	-- hover: the accent border and text; a main action (T.Primary) keeps its dark label on the fill
+	-- hover: the accent border and text; a main action (T.Primary) keeps its white label on the fill
 	b:SetScript("OnEnter", function(self)
 		self:SetBackdropBorderColor(T.accent[1], T.accent[2], T.accent[3], 1)
 		if not self.aiqPrimary then fs:SetTextColor(T.fg[1], T.fg[2], T.fg[3]) end
 	end)
 	b:SetScript("OnLeave", function(self)
 		self:SetBackdropBorderColor(T.line[1], T.line[2], T.line[3], 1)
-		if self.aiqPrimary then fs:SetTextColor(0.03, 0.03, 0.04) else fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end
+		if self.aiqPrimary then fs:SetTextColor(1, 1, 1) else fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3]) end
 	end)
 	fs:SetTextColor(T.accent[1], T.accent[2], T.accent[3])
 	return b
@@ -372,7 +372,7 @@ function T.Card(parent, x, y, w, h, accent)
 end
 
 --- The main action of a panel, as the design draws it: the button filled solid with the accent
---- colour, its label dark and bold. Hovering brightens it instead of recolouring the label.
+--- colour, its label white and bold. Hovering brightens it instead of recolouring the label.
 function T.Primary(b)
 	if not b or not b.CreateTexture then return b end
 	local t = type(b.aiqFill) == "table" and b.aiqFill or b:CreateTexture(nil, "BORDER")
@@ -386,7 +386,7 @@ function T.Primary(b)
 	local fs = b.text or (b.GetFontString and b:GetFontString())
 	if fs and fs.SetTextColor then
 		T.TitleFont(fs, nil, "bold")
-		fs:SetTextColor(0.03, 0.03, 0.04)
+		fs:SetTextColor(1, 1, 1)
 	end
 	return b
 end
