@@ -642,6 +642,11 @@ function D.Quantity(inp, opts)
 		out.changes = binding == "afford" and "more gold, or cheaper reagents"
 			or string.format("selling slower than about %s a day, or the price falling more than %d%%", D.RateText(daily / 2), math.floor(D.Scenario().price * 100 + 0.5))
 	end
+	-- restock by timing: the batch for your next session, an option beside the week's suggestion
+	if AuctionIQ.Restock and out.action ~= "unknown" then
+		local ok, t = pcall(AuctionIQ.Restock.Plan, inp, { held = held, demand = demand, cap = opts.concCrafts })
+		out.timing = ok and t or nil
+	end
 	if opts.noExplore then return out end
 	-- explore: the same scenarios for a few sizes and your own
 	local sizes, seen = {}, {}

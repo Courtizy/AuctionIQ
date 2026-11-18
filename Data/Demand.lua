@@ -202,6 +202,7 @@ function Dm.Estimate(id, now)
 		shape, rate = sold, x
 	end
 	if shape and shape > 0 then
+		out.shape, out.rate = shape, rate
 		local P = AuctionIQ.Prob
 		local tail = (1 - Dm.RANGE) / 2
 		out.low, out.high, out.range = P.GammaInv(tail, shape, rate), P.GammaInv(1 - tail, shape, rate), Dm.RANGE
