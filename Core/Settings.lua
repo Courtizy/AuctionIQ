@@ -54,6 +54,7 @@ S.MODEL = {
 	{ "service", "Stock target service", 0.01, 0.5, 0.99, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end },
 	{ "cover", "Stock covers (days)", 1, 1, 30, function(v) return tostring(v) end },
 	{ "carry", "Gold tied up, a day", 0.0025, 0, 0.05, function(v) return string.format("%.2f%%", v * 100) end },
+	{ "session", "Days to next session", 0.5, 0, 14, function(v) return v == 0 and "learn" or (v % 1 == 0 and tostring(v) or string.format("%.1f", v)) end },
 }
 
 --- A math setting's value, or with `delta`, step it within its bounds and return the new value.

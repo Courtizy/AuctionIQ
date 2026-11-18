@@ -4943,6 +4943,57 @@ check("production vs sales: the item card draws made and sold bars with the stoc
 check("production vs sales: nothing made or sold, no chart", fl.none)
 gi = L.eval("{ AuctionIQ.Prob.GammaInv(0.5, 100, 1), AuctionIQ.Prob.GammaInv(0.1, 100, 1), AuctionIQ.Prob.GammaInv(0.9, 100, 1), AuctionIQ.Prob.GammaInv(0.5, 0, 1) }")
 check("Gamma quantiles: median, 10% and 90% of Gamma(100, 1) within a percent", abs(gi[1] - 99.67) < 1 and abs(gi[2] - 87.4) < 1 and abs(gi[3] - 112.8) < 1 and gi[4] == 0)
+# restock by timing: days to the next session, demand over it, and the batch that pays most by then
+rs = L.eval("""(function()
+  local R, E = AuctionIQ.Restock, AuctionIQ.Expect
+  local old = AuctionIQ.db.batches
+  local out = {}
+  local po = R.Demand({ units = 2 }, 1)
+  out.poisson = { po.mean, po.tail[1] }
+  local nb = R.Demand({ units = 2, shape = 20, rate = 10 }, 2)
+  out.nb = { nb.mean, nb.low, nb.high }
+  AuctionIQ.db.batches = {}
+  local now = STUB.now
+  for k = 0, 5 do
+    table.insert(AuctionIQ.db.batches, { at = now - k * 2 * 86400 - 3600, id = 1, qty = 1 })
+    table.insert(AuctionIQ.db.batches, { at = now - k * 2 * 86400 - 1800, id = 1, qty = 1 }) -- same session
+  end
+  local saved = AuctionIQ.db.avail; AuctionIQ.db.avail = nil
+  out.learned = { R.Days(now) }
+  E.Set("session", 3); out.set = { R.Days(now) }; E.Set("session", 0)
+  AuctionIQ.db.batches = { { at = now - 3600, id = 1, qty = 1 } }
+  out.default = { R.Days(now) }
+  AuctionIQ.db.batches, AuctionIQ.db.avail = old, saved
+  local e = { units = 2, shape = 200, rate = 100, source = "own", listed = 30, sold = 60, exposure = 30, window = 30, weight = 1, low = 1.8, high = 2.2, range = 0.8 }
+  local inp = { item = 880007, made = 1, mc = 0, maxExtra = 1, res = 0, saved = 0, price = 1000000, deposit = 0, unit = 950000,
+    reagents = { { n = 1, unit = 400000, finishing = true } }, daily = 2, evidence = { demand = e },
+    have = function() return 0 end }
+  local a = R.Plan(inp, { held = 0, days = 2, demand = e, decline = 0 })
+  local full = R.Plan(inp, { held = 20, days = 2, demand = e, decline = 0 })
+  E.Set("carry", 0.2)
+  local dear = R.Plan(inp, { held = 0, days = 2, demand = e, decline = 0 })
+  E.Set("carry", nil)
+  out.plan = { a.n, a.profit, a.left, a.text, a.ratio, a.demand.low, a.demand.high }
+  out.full = { full.n, full.text }
+  out.dear = dear.n
+  local q = AuctionIQ.Decide.Quantity(inp, { held = 0, canMake = 50, noExplore = true })
+  local tip = {}
+  for _, l in ipairs(AuctionIQ.AdvisorUI.QuantityTip(q)) do tip[#tip + 1] = tostring(l[1]) .. " " .. tostring(l[2] or "") end
+  out.tip = table.concat(tip, " | ")
+  out.qn = q.timing and q.timing.n
+  return out
+end)()""")
+check("restock: a Poisson at 2 a day has a mean of 2 over a day", abs(rs.poisson[1] - 2) < 1e-3 and abs(rs.poisson[2] - (1 - math.exp(-2))) < 1e-9)
+check("restock: a Gamma(20, 10) rate over 2 days averages 4 units, with an 80% range around it", abs(rs.nb[1] - 4) < 1e-3 and rs.nb[2] < 4 < rs.nb[3])
+check("restock: learns the usual gap between sessions (every 2 days; crafts half an hour apart are one session)",
+      rs.learned[2] == "learned" and abs(rs.learned[1] - 2) < 1e-6 and rs.learned[3] == 5)
+check("restock: the days you set win; too few sessions use the default", tuple(rs.set.values())[:2] == (3, "set") and rs.default[2] == "default" and rs.default[1] == 2)
+check("restock: makes more than the 4 expected to sell, since a leftover costs little next to the margin",
+      5 <= rs.plan[1] <= 10 and rs.plan[2] > 0 and rs.plan[3] > 0 and rs.plan[5] < 0.05 and "before your next session in about 2 days" in rs.plan[4])
+check("restock: holding 20 already, make none until then", rs.full[1] == 0 and "your 20 should last" in rs.full[2])
+check("restock: when leftovers cost more (gold tied up 20% a day), make fewer", rs.dear < rs.plan[1])
+check("restock: the How many hover shows the batch for your next session, marked optional",
+      rs.qn == rs.plan[1] and "By your next session" in rs.tip and "(optional)" in rs.tip and "Expected profit by then" in rs.tip)
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
 e = E(880002)

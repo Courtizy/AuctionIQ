@@ -730,6 +730,14 @@ function AUI.QuantityTip(q)
 	tip[#tip + 1] = { "  " .. q.text }
 	for _, a in ipairs(q.assumptions or {}) do tip[#tip + 1] = { mut("  Assumes " .. a:sub(1, 1):lower() .. a:sub(2)) } end
 	if q.changes then tip[#tip + 1] = { mut("  Would change with " .. q.changes .. ".") } end
+	local t = q.timing
+	if t then
+		tip[#tip + 1] = { T.Color("accent", "By your next session") .. mut("  (optional)") }
+		tip[#tip + 1] = { "  " .. t.text }
+		if t.n > 0 then tip[#tip + 1] = { "  Expected profit by then", M(t.profit) } end
+		tip[#tip + 1] = { mut(string.format("  A unit left over costs %s until then (gold tied up%s); one more is worth making while its chance of selling by then is over %d%%.",
+			M(t.hold), (t.decline or 0) > 0 and ", and the price falling" or "", math.floor((t.ratio or 0) * 100 + 0.5))) }
+	end
 	tip[#tip + 1] = { mut("Set any number with the stepper and Queue it: the suggestion is optional.") }
 	return tip
 end

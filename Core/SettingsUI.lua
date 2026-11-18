@@ -72,7 +72,7 @@ function SUI.Build(p, fs, panel)
 	fs(gen, 12, my, 256, "LEFT", "GameFontNormal"):SetText("Math")
 	p.model = {}
 	for i, m in ipairs(S.MODEL) do
-		local y = my - 24 - (i - 1) * 24
+		local y = my - 24 - (i - 1) * 19
 		fs(gen, 12, y - 3, 170, "LEFT"):SetText(m[2])
 		local mm = T.Button(gen, "-", 18, 18); mm:SetPoint("TOPLEFT", 186, y)
 		local v = fs(gen, 204, y - 3, 42, "CENTER")
@@ -82,7 +82,7 @@ function SUI.Build(p, fs, panel)
 		p.model[i] = { key = m[1], value = v }
 	end
 	-- Saved data: the cleanup that only frees speed caches, and the prune that asks first
-	local dy = my - 24 - #S.MODEL * 24 - 4
+	local dy = my - 24 - #S.MODEL * 19 - 4
 	fs(gen, 12, dy - 3, 70, "LEFT"):SetText("Saved data")
 	p.cleanup = T.Button(gen, "Clean up", 76, 18); p.cleanup:SetPoint("TOPLEFT", 82, dy)
 	p.cleanup:SetScript("OnClick", function()
@@ -103,7 +103,7 @@ function SUI.Build(p, fs, panel)
 		{ "Crafting records stay: as in CraftSim, they go only when you drop the profession." } }) end)
 	p.prune:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	-- About: the logo, the version and where it lives
-	local ay0 = my - 24 - #S.MODEL * 24 - 26
+	local ay0 = my - 24 - #S.MODEL * 19 - 26
 	local logo = gen:CreateTexture(nil, "ARTWORK")
 	logo:SetTexture("Interface\\AddOns\\AuctionIQ\\Media\\Logo-Branded")
 	logo:SetTexCoord(0, 1, 0, 193 / 256)
@@ -113,8 +113,8 @@ function SUI.Build(p, fs, panel)
 	p.about = {}
 	local ver = tostring(AuctionIQ.version or "dev")
 	if ver:find("^@") then ver = "dev build" end -- unpackaged: the toc still says @project-version@
-	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 16 }, { "crafters and traders.", 28 },
-		{ "On GitHub:", 42 }, { "Courtizy/AuctionIQ", 54 } }) do
+	for i, t in ipairs({ { "Version " .. ver, 0 }, { "Gold-making for", 14 }, { "crafters and traders.", 26 },
+		{ "On GitHub:", 38 }, { "Courtizy/AuctionIQ", 50 } }) do
 		p.about[i] = fs(gen, 138, ay0 - 6 - t[2], 130, "LEFT", "GameFontDisableSmall")
 		t = t[1]
 		p.about[i]:SetText(t)

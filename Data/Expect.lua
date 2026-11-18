@@ -7,13 +7,14 @@
 --   D      deposit per unit: 15% of the vendor price per 12 hours listed
 --
 -- Settings (AuctionIQ.db.settings.model): service (stock target service level), carry (gold a day it
--- costs to have gold tied up, 0.01 = 1%), cover (days of sales a stock target covers).
+-- costs to have gold tied up, 0.01 = 1%), cover (days of sales a stock target covers), session (days
+-- to your next session for restock by timing, 0 = learn it from your sessions).
 local _, AuctionIQ = ...
 
 local E = {}
 AuctionIQ.Expect = E
 
-E.DEFAULTS = { service = 0.9, carry = 0.01, cover = 7 }
+E.DEFAULTS = { service = 0.9, carry = 0.01, cover = 7, session = 0 }
 E.HOURS = { 12, 24, 48 }   -- operation durations 1, 2, 3
 E.MIN_P = 0.05
 
