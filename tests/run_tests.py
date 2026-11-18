@@ -4897,6 +4897,34 @@ AuctionIQ.Availability.Observe("Me-Realm", { [880001] = 5 }, d0 + 15 * 3600)""")
 check("demand: posted again the same day, the day isn't cut short", E(880001).outs == 0 and abs(E(880001).exposure - 20) < 1e-9)
 run("AuctionIQ.db.avail = nil; AuctionIQ.Demand.Clear()")
 check("demand: a thin record says so", "few days to go on" in AuctionIQ.Demand.Text(E(880002)) or E(880002).listed == 0)
+# production vs sales: made, sold and stock left week by week, and the chart for the item card
+fl = L.eval("""(function()
+  local old = { batches = AuctionIQ.db.batches, held = AuctionIQ.Par.Held, listed = AuctionIQ.Auction.Listed }
+  local day = function(k) return STUB.dmDay(k) end
+  AuctionIQ.db.batches = {}
+  for k = 0, 7 do table.insert(AuctionIQ.db.batches, { at = day(k * 7), id = 880005, qty = 10 }) end
+  local sales = {}
+  for k = 0, 7 do sales[#sales + 1] = { day(k * 7 + 1), nil, nil, nil, 880005, 4 } end
+  STUB.dmSet('Sales', sales)
+  AuctionIQ.Par.Held = function(id) return id == 880005 and 40 or 0 end
+  AuctionIQ.Auction.Listed = function(id) return id == 880005 and 8 or 0 end
+  local f = AuctionIQ.Flow.Weekly(880005)
+  local c = AuctionIQ.Flow.Chart(880005)
+  local det = AuctionIQ.Window.SidePanel(AuctionIQ.UI.Pages().ledger.body, 260, 420, { rows = 7, srows = 6 })
+  AuctionIQ.Window.DrawSidePanel(det, { title = "Flask", rows = {}, chart = c }, "")
+  local bars = 0
+  for _, b in ipairs(det.chartBars) do if b.shown ~= false then bars = bars + 1 end end
+  local none = AuctionIQ.Flow.Chart(880099)
+  AuctionIQ.db.batches, AuctionIQ.Par.Held, AuctionIQ.Auction.Listed = old.batches, old.held, old.listed
+  STUB.dmSet('Sales', {})
+  return { made = f.made, sold = f.sold, now = f.stockNow, last = f.weeks[8].stock, first = f.weeks[1].stock, verdict = f.verdict,
+    text = f.text, kind = c and c.kind, nbars = c and #c.bars, drawn = det.chartShown, bars = bars, none = none == nil }
+end)()""")
+check("production vs sales: 80 made and 32 sold over 8 weeks, stock worked back from today's 48",
+      fl.made == 80 and fl.sold == 32 and fl.now == 48 and fl.last == 48 and fl.first < fl.last)
+check("production vs sales: says when you're making faster than it sells", fl.verdict == "faster" and "making faster than it sells" in fl.text)
+check("production vs sales: the item card draws made and sold bars with the stock line", fl.kind == "bars" and fl.nbars == 8 and fl.drawn and fl.bars == 16)
+check("production vs sales: nothing made or sold, no chart", fl.none)
 gi = L.eval("{ AuctionIQ.Prob.GammaInv(0.5, 100, 1), AuctionIQ.Prob.GammaInv(0.1, 100, 1), AuctionIQ.Prob.GammaInv(0.9, 100, 1), AuctionIQ.Prob.GammaInv(0.5, 0, 1) }")
 check("Gamma quantiles: median, 10% and 90% of Gamma(100, 1) within a percent", abs(gi[1] - 99.67) < 1 and abs(gi[2] - 87.4) < 1 and abs(gi[3] - 112.8) < 1 and gi[4] == 0)
 # a sale, an expiry or a cancel is a listed day too

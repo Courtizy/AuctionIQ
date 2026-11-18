@@ -663,6 +663,7 @@ function W.SidePanel(parent, width, height, opts)
 	det.chartFrom = text(IW, "LEFT", "GameFontDisableSmall")
 	det.chartTo = text(IW, "RIGHT", "GameFontDisableSmall")
 	det.chartLines = {}
+	det.chartBars = {}
 	det.noteHit = tipHit()
 	det.said = W.Text(det, 12, 0, IW, "LEFT", "GameFontHighlightSmall")
 	if det.said.SetMaxLines then det.said:SetWordWrap(true); det.said:SetMaxLines(2) end
@@ -823,22 +824,60 @@ function W.DrawSidePanel(det, d, said)
 		det.cardPrices:Place(0, secTop, det.width, secTop - y)
 		y = y - 6
 	end
-	-- or, with no section, a line chart on that card: d.chart = { head, values, lo, hi, from, to }
-	local ch = not sec and d.chart and d.chart.values and #d.chart.values >= 2 and d.chart or nil
+	-- or, with no section, a chart on that card: a line, d.chart = { head, values, lo, hi, from, to },
+	-- or weekly bars with a line over them on one axis from 0, d.chart = { kind = "bars", bars =
+	-- { { a, b }, ... }, values (the line), hi, from, to } (Flow.Chart: made, sold, stock left)
+	local isBars = d.chart and d.chart.kind == "bars" and d.chart.bars and #d.chart.bars >= 1
+	local ch = not sec and d.chart and (isBars or (d.chart.values and #d.chart.values >= 2)) and d.chart or nil
 	for _, l in pairs(det.chartLines) do if l then l:Hide() end end
+	for _, b in ipairs(det.chartBars) do b:Hide() end
 	for _, fs in ipairs({ det.chartHead, det.chartRange, det.chartFrom, det.chartTo }) do fs:SetText("") end
 	if ch then
 		local top = y
 		at(det.chartHead, 12, y - 6); det.chartHead:SetText(T.Color("accent", ch.head or ""))
 		at(det.chartRange, 12, y - 6)
 		local M = AuctionIQ.FormatMoney
-		det.chartRange:SetText(ch.lo and ch.hi and (M(ch.lo, true) .. " - " .. M(ch.hi, true)) or "")
+		local bars = ch.kind == "bars" and ch.bars or nil
+		if bars then
+			-- the legend, in the bars' own colours
+			det.chartRange:SetText(T.Color("accent", "made") .. T.Color("muted", " / ") .. T.Color("ok", "sold")
+				.. T.Color("muted", " / stock"))
+		else
+			det.chartRange:SetText(ch.lo and ch.hi and (M(ch.lo, true) .. " - " .. M(ch.hi, true)) or "")
+		end
 		local PH, plotTop = 60, y - 24
 		local lo, hi = ch.lo or math.huge, ch.hi or 0
-		if not (ch.lo and ch.hi) then for _, v in ipairs(ch.values) do lo, hi = math.min(lo, v), math.max(hi, v) end end
+		if bars then lo = 0; hi = math.max(1, ch.hi or 0)
+		elseif not (ch.lo and ch.hi) then for _, v in ipairs(ch.values) do lo, hi = math.min(lo, v), math.max(hi, v) end end
 		if hi <= lo then hi, lo = lo + 1, lo - 1 end
-		local n = #ch.values
-		local function px(i) return 12 + det.IW * (i - 1) / (n - 1), plotTop - PH * (1 - (ch.values[i] - lo) / (hi - lo)) end
+		local n = #(ch.values or {})
+		local slot = bars and det.IW / #bars or nil
+		local function px(i)
+			local x = bars and (12 + slot * (i - 0.5)) or (12 + det.IW * (i - 1) / (n - 1))
+			return x, plotTop - PH * (1 - (ch.values[i] - lo) / (hi - lo))
+		end
+		if bars then
+			local colors = { T.accent, T.ok or T.accent }
+			local bw = math.max(1, math.floor(slot / 3))
+			local k = 0
+			for i, pair in ipairs(bars) do
+				for j = 1, 2 do
+					local v = pair[j] or 0
+					if v > 0 then
+						k = k + 1
+						local b = det.chartBars[k]
+						if not b then b = det:CreateTexture(nil, "ARTWORK"); det.chartBars[k] = b end
+						local c = colors[j]
+						local h = math.max(1, math.floor(PH * v / hi + 0.5))
+						b:SetColorTexture(c[1], c[2], c[3], j == 1 and 0.9 or 0.7)
+						b:ClearAllPoints()
+						b:SetPoint("BOTTOMLEFT", det, "TOPLEFT", math.floor(12 + slot * (i - 1) + slot / 2 - bw + (j - 1) * bw), plotTop - PH)
+						b:SetSize(bw - 1, h)
+						b:Show()
+					end
+				end
+			end
+		end
 		for i = 2, n do
 			local l = det.chartLines[i]
 			if l == nil and det.CreateLine then l = det:CreateLine(nil, "ARTWORK"); det.chartLines[i] = l or false end
@@ -846,7 +885,8 @@ function W.DrawSidePanel(det, d, said)
 				local x0, y0 = px(i - 1)
 				local x1, y1 = px(i)
 				l:SetThickness(2)
-				l:SetColorTexture(T.accent[1], T.accent[2], T.accent[3], 1)
+				local lc = bars and (T.fg or T.muted) or T.accent
+				l:SetColorTexture(lc[1], lc[2], lc[3], 1)
 				l:SetStartPoint("TOPLEFT", det, x0, y0)
 				l:SetEndPoint("TOPLEFT", det, x1, y1)
 				l:Show()

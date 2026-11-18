@@ -119,9 +119,12 @@ function MUI.ItemDetail(d)
 		note = string.format("%d of %d days scanned: search it at the AH on more days for a trend and volatility of its own.", x.days or 0, Mk.MIN_DAYS)
 			.. (x.trend and string.format(" TSM's market is %s its 60-day price.", Mk.TrendText(x)) or "")
 	end
+	-- an item you craft: made, sold and stock left week by week answers more than its price line
+	local flow = AuctionIQ.Flow and AuctionIQ.Flow.Chart(x.id)
+	if flow then note = flow.flow.text .. " " .. note end
 	return { kicker = "MARKET", title = name, item = x.id, sub = T.Color(Mk.READ_COLOR[x.read] or "fg", x.read),
 		figures = { { "PRICE", money(x.price) }, { "TREND", Mk.TrendText(x) }, { "VOLATILITY", Mk.VolText(x) } },
-		rows = rows, chart = MUI.Chart(x), note = note }
+		rows = rows, chart = flow or MUI.Chart(x), note = note }
 end
 
 function MUI.GroupDetail(d)
