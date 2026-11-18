@@ -8,7 +8,14 @@ To refresh after a patch: `python3 tools/build_specs.py` (or `--offline` to rebu
 tables).
 
 `Data/ConcentrationCurves.lua` (Concentration cost curves) and `AuctionIQ_Enchanting/EnchantScrolls.lua` (each enchant's scroll
-item per quality) come from
-[CraftSim](https://github.com/derfloh205/CraftSim) (converted from its data files), MIT licence,
-copyright (c) derfloh205. The profit, Multicraft, Resourcefulness, Ingenuity and Concentration
-formulas in `Data/Stats.lua` follow CraftSim's.
+item per quality) are built by `tools/build_crafting_data.py` from the same game tables:
+`CraftingData`, `CraftingDifficulty` and `CurvePoint` for the curves, and `CraftingDataEnchantQuality`
+for the scrolls. Refresh after a patch with `python3 tools/build_crafting_data.py` (or `--offline`).
+
+The rating each crafting stat needs per 1% is measured in game: every crafting operation reports a
+stat's rating and the chance it gives, and `Data/Stats.lua` keeps the latest reading.
+
+Still to replace: the average Multicraft yield (`St.MC_CONSTANT`), the share of reagents a
+Resourcefulness proc returns (`St.RES_SAVE`) and the share of Concentration Ingenuity refunds
+(`St.REFUND`) are community-measured constants. `Accounting/Log.lua` already records each craft's
+procs, so they can be measured from your own crafts instead.

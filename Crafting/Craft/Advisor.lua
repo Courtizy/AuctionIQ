@@ -134,7 +134,7 @@ function A.ScrollOutputs(recipeID, info)
 	local ui = C_TradeSkillUI
 	local out = {}
 	-- the game has no output item for an enchant (GetRecipeOutputItemData answers nothing useful),
-	-- so, as CraftSim does, the scroll comes from a table keyed by the recipe's craftingDataID
+	-- so the scroll comes from the game's own table keyed by the recipe's craftingDataID (EnchantScrolls)
 	if ui and ui.GetCraftingOperationInfo and AuctionIQ.EnchantScrolls then
 		local ok, op = pcall(ui.GetCraftingOperationInfo, recipeID, {}, nil, false)
 		local ids = ok and op and op.craftingDataID and AuctionIQ.EnchantScrolls[op.craftingDataID]
