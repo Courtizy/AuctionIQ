@@ -15,7 +15,7 @@ for the scrolls. Refresh after a patch with `python3 tools/build_crafting_data.p
 The rating each crafting stat needs per 1% is measured in game: every crafting operation reports a
 stat's rating and the chance it gives, and `Data/Stats.lua` keeps the latest reading.
 
-Still to replace: the average Multicraft yield (`St.MC_CONSTANT`), the share of reagents a
-Resourcefulness proc returns (`St.RES_SAVE`) and the share of Concentration Ingenuity refunds
-(`St.REFUND`) are community-measured constants. `Accounting/Log.lua` already records each craft's
-procs, so they can be measured from your own crafts instead.
+What a Resourcefulness proc returns, what Ingenuity refunds and the Multicraft constant per base
+yield are measured from your own crafts (`Data/Mechanics.lua`): each proc the game reports adds a
+sample, with the craft's perk bonuses taken out, and the measured value takes over once it rests on
+20 procs. `/aiq mechanics` shows each value and what it rests on.

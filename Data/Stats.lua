@@ -36,9 +36,22 @@ function St.Learn(key, rating, pct)
 	end
 	return d
 end
-St.RES_SAVE = 0.30 -- average share of reagents a Resourcefulness proc returns
-St.REFUND = 0.50   -- Ingenuity hands back half the Concentration before perks
-St.MC_CONSTANT = { [1] = 2.1, [2] = 1.83, [5] = 1.875, default = 2.5 }
+-- What a Resourcefulness proc returns (St.RES_SAVE), what Ingenuity refunds (St.REFUND) and the
+-- Multicraft constant per base yield (St.MC_CONSTANT[base]): measured from your own crafts once
+-- there are enough procs (Mechanics.lua), the starting values until then.
+local function mech(kind, base)
+	local Mx = AuctionIQ.Mechanics
+	if Mx then return (Mx.Value(kind, base)) end
+	if kind == "res" then return 0.30 elseif kind == "ing" then return 0.50 end
+	return ({ [1] = 2.1, [2] = 1.83, [5] = 1.875 })[base] or 2.5
+end
+St.MC_CONSTANT = setmetatable({}, { __index = function(_, base)
+	if base == "default" then return AuctionIQ.Mechanics and AuctionIQ.Mechanics.DEFAULT.mc.default or 2.5 end
+	return mech("mc", base)
+end })
+setmetatable(St, { __index = function(_, k)
+	if k == "RES_SAVE" then return mech("res") elseif k == "REFUND" then return mech("ing") end
+end })
 
 local NAMES = {
 	multicraft = { "multicraft", "ITEM_MOD_MULTICRAFT_SHORT" },
@@ -107,7 +120,7 @@ end
 
 --- Average extra items from one Multicraft proc.
 function St.MulticraftExtra(base, mcExtra)
-	local c = St.MC_CONSTANT[base] or St.MC_CONSTANT.default
+	local c = St.MC_CONSTANT[base]
 	local maxExtra = c * base * (1 + (mcExtra or 0))
 	return (1 + maxExtra) / 2
 end

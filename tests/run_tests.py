@@ -454,6 +454,32 @@ run("AuctionIQ.ConcCurves[9901] = { c = { [0] = 100, [200] = 300 }, v = { [0] = 
 # CraftSim: bracket by skill (50 is in 0..200), constant read at difficulty 150 -> 250
 check("concentration: curve constant as CraftSim reads it", St.ConcentrationCost(9901, 150, 50, 0) == 250)
 run("AuctionIQ.ConcCurves[9901] = nil")
+# Mechanics: Resourcefulness, Ingenuity and Multicraft measured from your own procs
+mx = L.eval("""(function()
+  local Mx, St = AuctionIQ.Mechanics, AuctionIQ.Stats
+  local old = AuctionIQ.db.mechanics
+  AuctionIQ.db.mechanics = nil
+  local out = { res0 = St.RES_SAVE, ing0 = St.REFUND, mc0 = St.MC_CONSTANT[1] }
+  local ctx = { base = 1, mcExtra = 0.25, resExtra = 0.1, refundExtra = 0.1, required = { [501] = 10, [502] = 10 } }
+  for i = 1, Mx.MIN_SAMPLES - 1 do
+    Mx.Note({ resourcesReturned = { { itemID = 501, quantity = 4 }, { itemID = 502, quantity = 4 } },
+      hasIngenuityProc = true, concentrationSpent = 100, ingenuityRefund = 60, multicraft = 2 }, ctx)
+  end
+  out.early = St.RES_SAVE
+  out.added = Mx.Note({ resourcesReturned = { { itemID = 501, quantity = 4 }, { itemID = 502, quantity = 4 } },
+    hasIngenuityProc = true, concentrationSpent = 100, ingenuityRefund = 60, multicraft = 2 }, ctx)
+  out.res, out.ing, out.mc = St.RES_SAVE, St.REFUND, St.MC_CONSTANT[1]
+  out.skip = Mx.Note({ resourcesReturned = { { itemID = 999, quantity = 4 } }, hasIngenuityProc = true, concentrationSpent = 100, ingenuityRefund = 500 }, ctx)
+  out.line = table.concat(Mx.Lines(), "|")
+  AuctionIQ.db.mechanics = old
+  return out
+end)()""")
+check("mechanics: the starting values until enough procs are recorded", abs(mx.res0 - 0.30) < 1e-9 and abs(mx.ing0 - 0.5) < 1e-9 and abs(mx.mc0 - 2.1) < 1e-9 and abs(mx.early - 0.30) < 1e-9)
+# 8 back of 20 required = 40%, less the 10% perk -> 0.4 / 1.1; 60 of 100 back, less the 10% perk -> 0.5;
+# 2 extra items, base 1, 25% perk -> (2 x 2 - 1) / 1.25 = 2.4
+check("mechanics: measured from your procs, perks taken out", mx.added == 3 and abs(mx.res - 0.4 / 1.1) < 1e-9 and abs(mx.ing - 0.5) < 1e-9 and abs(mx.mc - 2.4) < 1e-9)
+check("mechanics: reagents not in the recipe and impossible refunds are skipped", mx.skip == 0)
+check("/aiq mechanics: says what's measured and on how many procs", "measured from 20 of your procs" in mx.line and "Multicraft constant (makes 1): 2.40" in mx.line)
 # Stat divisors: measured from what the game reports (rating and the chance it gives)
 run("STUB.oldDiv = AuctionIQ.db.statDivisor; AuctionIQ.db.statDivisor = nil")
 check("stat divisor: the starting value until the game has reported one", St.Divisor("multicraft") == 1100)
@@ -3995,6 +4021,12 @@ AuctionIQ.Log.Clear(); AuctionIQ.db.batches = {}; AuctionIQ.Forecast.Clear()
 AuctionIQ.Log.Expect({ recipeID = 10, item = 302, cost = 100, profit = 50, name = "Test Flask" })
 AuctionIQ.Log.Started(10, 2, false, nil, nil)""")
 run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 }); STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 1 })')
+run("""STUB.mxOld = AuctionIQ.db.mechanics; AuctionIQ.db.mechanics = nil
+AuctionIQ.Log.Started(10, 1, false, nil, nil)
+AuctionIQ.Log.Pending().mech = { base = 1, mcExtra = 0, resExtra = 0, refundExtra = 0 }""")
+run('STUB.Fire("TRADE_SKILL_ITEM_CRAFTED_RESULT", { itemID = 302, quantity = 3, multicraft = 2 })')
+check("craft log: a craft's Multicraft proc is measured for /aiq mechanics", L.eval("AuctionIQ.db.mechanics.mc['1'].n") == 1)
+run("AuctionIQ.db.mechanics = STUB.mxOld")
 hb = [b.held for b in L.eval("AuctionIQ.db.batches").values()]
 check("craft log: a batch saves what you held before the run of crafts, on the first craft only", hb == [7, None])
 run("""AuctionIQ.Par.Held = STUB.oldParHeld
