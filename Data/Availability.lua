@@ -54,8 +54,11 @@ function Av.Observe(who, items, now)
 		local last = list[#list]
 		if last and last[2] == n and now - last[1] < Av.HEARTBEAT then return end
 		if last and last[1] > now then return end -- a clock step back: keep the order
+		local wasOut = last and last[2] == 0
 		list[#list + 1] = { now, n }
 		trim(list, now)
+		-- a run-out, or posting again after one, changes the demand estimate's exposure: let it rebuild
+		if (n == 0 or wasOut) and AuctionIQ.Demand then AuctionIQ.Demand.version = (AuctionIQ.Demand.version or 0) + 1 end
 	end
 	for id, n in pairs(items or {}) do
 		id = tonumber(id)
@@ -99,3 +102,34 @@ function Av.Summary(id, from, now)
 	return out
 end
 
+--- For the demand estimate: on each day in [from, to) that an item ran out, the share of that day
+--- its stock was up, { [itemID] = { [day] = share } }. The run-out time is the midpoint between
+--- the last reading with stock and the first at 0, and only when they are within OBSERVED of each
+--- other. A day it was posted again after running out isn't cut short.
+function Av.DayShares(from, to)
+	local out = {}
+	for _, mine in pairs(AuctionIQ.db and AuctionIQ.db.avail or {}) do
+		for id, list in pairs(mine) do
+			for i = 1, #list - 1 do
+				local a, b = list[i], list[i + 1]
+				if a[2] > 0 and b[2] == 0 and b[1] - a[1] <= Av.OBSERVED then
+					local t = (a[1] + b[1]) / 2
+					if t >= from and t < to then
+						local day = math.floor(t / DAY)
+						local again = false
+						for j = i + 2, #list do
+							if list[j][1] >= (day + 1) * DAY then break end
+							if list[j][2] > 0 then again = true; break end
+						end
+						if not again then
+							out[id] = out[id] or {}
+							local share = (t - day * DAY) / DAY
+							out[id][day] = math.min(out[id][day] or 1, share)
+						end
+					end
+				end
+			end
+		end
+	end
+	return out
+end

@@ -73,6 +73,17 @@ function P.NormInv(p)
 		/ (((((b[1] * r + b[2]) * r + b[3]) * r + b[4]) * r + b[5]) * r + 1)
 end
 
+--- The p quantile of a Gamma(shape, rate) belief (Wilson-Hilferty: the cube root of a Gamma is close
+--- to normal; good to a few percent from shape 0.5 up). 0 when there's no shape to speak of.
+function P.GammaInv(p, shape, rate)
+	if not (shape and rate) or shape <= 0 or rate <= 0 then return 0 end
+	local z = P.NormInv(p)
+	local c = 1 / (9 * shape)
+	local x = 1 - c + z * sqrt(c)
+	if x <= 0 then return 0 end
+	return shape * x * x * x / rate
+end
+
 --- The smallest s with P(D <= s) >= alpha for D ~ Poisson(mean).
 function P.PoissonQuantile(mean, alpha)
 	if not mean or mean <= 0 then return 0 end

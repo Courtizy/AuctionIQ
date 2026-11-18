@@ -11,13 +11,19 @@
 --   prior        the region's sold a day, counted at most your cap (/aiq cap, a rule you set)
 --   estimate     (sold + K * prior) / (listed days + K): your own rate once you have a few weeks of
 --                listed days, the capped region figure while you have none, a blend between
+--   run-outs     a listed day on which your stock ran out (Availability.lua saw it go to 0) counts
+--                only for the part of the day it was up: selling 5 and running out at noon is half a
+--                day of exposure, not a whole one. When the run-out falls between two readings, its
+--                time is the midpoint; readings too far apart to say leave the day whole.
+--   range        the estimate is the mean of a Gamma(sold + K * prior, exposure + K) belief about the
+--                daily rate; low and high are its 10% and 90% points, an 80% range
 --
 -- Days are UTC days (time() / 86400). Listed days are a lower bound before AuctionIQ started
 -- recording them (only sale, expiry and cancel days are known), which makes the own rate read high
 -- for older history; the text says how many listed days it rests on.
 local _, AuctionIQ = ...
 
-local Dm = { WINDOW = 30, KEEP = 60, PRIOR_DAYS = 5, OWN_SHARE = 0.75 }
+local Dm = { WINDOW = 30, KEEP = 60, PRIOR_DAYS = 5, OWN_SHARE = 0.75, RANGE = 0.8, MIN_EXPOSURE = 0.1, THIN_DAYS = 7 }
 AuctionIQ.Demand = Dm
 
 local DAY = 86400
@@ -54,8 +60,8 @@ function Dm.Mark(id, now)
 	-- the index is still right but for this one day: add it there instead of rebuilding
 	if current and c.day >= d and d > c.day - Dm.WINDOW then
 		local e = c.by[id]
-		if not e then e = { sold = 0, listed = 0, days = {} }; c.by[id] = e end
-		if not e.days[d] then e.days[d] = true; e.listed = e.listed + 1 end
+		if not e then e = { sold = 0, listed = 0, days = {}, exposure = 0, outs = 0 }; c.by[id] = e end
+		if not e.days[d] then e.days[d] = true; e.listed = e.listed + 1; e.exposure = (e.exposure or 0) + 1 end
 		c.version = Dm.version
 	end
 end
@@ -137,6 +143,24 @@ local function build(now)
 			for _, day in ipairs(days) do if day >= from and day <= d then listedOn(item(id), day) end end
 		end
 	end
+	-- run-outs: the share of each listed day the stock was up, where Availability can tell
+	local Av = AuctionIQ.Availability
+	for id, part in pairs(Av and Av.DayShares and Av.DayShares(from * DAY, (d + 1) * DAY) or {}) do
+		local e = by[id]
+		if e then
+			for day, share in pairs(part) do
+				if e.days[day] then
+					e.part = e.part or {}
+					e.part[day] = math.max(Dm.MIN_EXPOSURE, math.min(e.part[day] or 1, share))
+				end
+			end
+		end
+	end
+	for _, e in pairs(by) do
+		local x, outs = e.listed, 0
+		for _, share in pairs(e.part or {}) do x, outs = x - 1 + share, outs + 1 end
+		e.exposure, e.outs = x, outs
+	end
 	index = { sales = sales, expired = expired, cancelled = cancelled, version = Dm.version, day = d, by = by }
 	Dm.builds = (Dm.builds or 0) + 1
 	return by
@@ -159,20 +183,30 @@ function Dm.Estimate(id, now)
 	if not id then return out end
 	local e = build(now)[id]
 	local sold, listed = e and e.sold or 0, e and e.listed or 0
-	out.sold, out.listed = sold, listed
+	local x = e and e.exposure or listed -- listed days, less the part of run-out days stock was gone
+	out.sold, out.listed, out.exposure, out.outs = sold, listed, x, e and e.outs or 0
 	local prior = region and math.min(region, cap) or nil
 	local k = Dm.PRIOR_DAYS
+	local shape, rate
 	if prior then
 		out.capped = region > cap
-		out.weight = listed / (listed + k)
-		out.units = (sold + k * prior) / (listed + k)
+		out.weight = x / (x + k)
+		out.units = (sold + k * prior) / (x + k)
 		out.source = listed == 0 and "region" or out.weight >= Dm.OWN_SHARE and "own" or "blend"
+		shape, rate = sold + k * prior, x + k
 	elseif listed > 0 then
 		-- no region figure: your record alone, however thin (the text says how thin)
 		out.weight = 1
-		out.units = sold / listed
+		out.units = sold / x
 		out.source = "own"
+		shape, rate = sold, x
 	end
+	if shape and shape > 0 then
+		local P = AuctionIQ.Prob
+		local tail = (1 - Dm.RANGE) / 2
+		out.low, out.high, out.range = P.GammaInv(tail, shape, rate), P.GammaInv(1 - tail, shape, rate), Dm.RANGE
+	end
+	out.thin = listed > 0 and listed < Dm.THIN_DAYS or nil
 	return out
 end
 
@@ -190,9 +224,19 @@ function Dm.Text(e)
 		or string.format("the region's %s a day", rate(e.region)))
 	local own = string.format("your %d sold over %d day%s listed", e.sold, e.listed, e.listed == 1 and "" or "s")
 	if e.source == "none" then return "no sales rate: you haven't listed it and TSM has no region figure" end
-	if e.source == "region" then return string.format("%s a day: %s; you haven't listed it in %d days", rate(e.units), regionPart, e.window) end
-	if e.source == "blend" then return string.format("%s a day: %s, blended with %s", rate(e.units), own, regionPart) end
-	return string.format("%s a day: %s", rate(e.units), own) .. (regionPart and e.weight < 1 and (", a little of " .. regionPart) or "")
+	if (e.outs or 0) > 0 then own = own .. string.format(", running out on %d of them", e.outs) end
+	local text
+	if e.source == "region" then text = string.format("%s a day: %s; you haven't listed it in %d days", rate(e.units), regionPart, e.window)
+	elseif e.source == "blend" then text = string.format("%s a day: %s, blended with %s", rate(e.units), own, regionPart)
+	else text = string.format("%s a day: %s", rate(e.units), own) .. (regionPart and e.weight < 1 and (", a little of " .. regionPart) or "") end
+	return text .. Dm.RangeText(e)
+end
+
+--- "; likely 0.9 to 2.1 a day (80%)", with "few days to go on" when the record is thin. "" with no range.
+function Dm.RangeText(e)
+	if not (e and e.low and e.high) then return "" end
+	return string.format("; likely %s to %s a day (%d%%)%s", rate(e.low), rate(e.high), math.floor((e.range or Dm.RANGE) * 100 + 0.5),
+		e.thin and ", few days to go on" or "")
 end
 
 --- Short label for where the number comes from: "your sales", "your sales + region", "region".
