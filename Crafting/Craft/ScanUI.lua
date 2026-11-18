@@ -1063,6 +1063,10 @@ AuctionIQ.On("UNIT_SPELLCAST_SUCCEEDED", function(_, unit)
 end)
 
 -- Work orders and first crafts.
+-- First crafts are worked out in the background: draw once more when they are ready.
+AuctionIQ.Orders.OnFirstCrafts("scan", function()
+	if frame and frame:IsShown() and mode == "first" then SUI.Refresh() end
+end)
 local function refreshLists()
 	local T = AuctionIQ.Theme
 	local rows = showTable()
@@ -1095,8 +1099,11 @@ local function refreshLists()
 	else
 		local cost = 0
 		for _, d in ipairs(data) do if d.net and d.net < 0 then cost = cost - d.net end end
+		local working, done, total = AuctionIQ.Orders.FirstCraftsProgress()
+		local note = working and T.Color("accent", string.format("  Working out recipes... %d of %d", done, total)) or ""
 		status:SetText(#data > 0 and string.format("%d first crafts left (%s knowledge points), %s to make them all after selling what they make",
-			#data, T.Color("accent", #data), AuctionIQ.FormatMoney(cost))
+			#data, T.Color("accent", #data), AuctionIQ.FormatMoney(cost)) .. note
+			or working and note
 			or T.Color("muted", "No first crafts left in this profession, or open a profession to see them."))
 	end
 	local out = {}
