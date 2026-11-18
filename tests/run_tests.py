@@ -3844,6 +3844,7 @@ nav = [n[1] for k, n in sorted((k, n) for k, n in L.eval("AuctionIQ.LedgerUI.SEC
 rep = nav[nav.index("Statements") + 1:]
 check("Reports nav: Performance after the statements; the old Performance sub-tab is gone",
       rep[:6] == ["statement", "balance", "cashflow", "pl", "inventory", "overview"] and "Performance" not in nav and "batches" not in nav)
+run("AuctionIQ.db.avail = nil; AuctionIQ.Demand.Clear()")  # these checks are about listed days, not run-outs
 srows = list(L.eval("(AuctionIQ.LedgerUI.Rows('scenarios', {}))").values())
 made = {plain(r.cells[1]): r for r in srows if plain(r.cells[6]) != "-"}
 # Make: one listed day with no sale pulls the demand under the region's 5 a day:
@@ -4880,6 +4881,24 @@ av2 = L.eval("""(function()
   return { up = s.up / H, unobs = s.unobserved / H, outs = #s.outs }
 end)()""")
 check("availability: readings far apart leave the gap unobserved, not assumed up", av2.up == 7 and av2.unobs == 30 and av2.outs == 0)
+# run-outs: a listed day your stock ran out at noon counts as half a day of exposure
+run("""AuctionIQ.db.avail = nil
+local d0 = math.floor(STUB.now / 86400) * 86400
+AuctionIQ.Availability.Observe("Me-Realm", { [880001] = 2 }, d0 + 11 * 3600)
+AuctionIQ.Availability.Observe("Me-Realm", {}, d0 + 13 * 3600)""")
+e = E(880001)
+check("demand: a day you ran out at noon is half a day listed: (20 + 5 x 10) / (19.5 + 5)",
+      e.outs == 1 and abs(e.exposure - 19.5) < 1e-9 and e.listed == 20 and abs(e.units - 70 / 24.5) < 1e-9
+      and "running out on 1 of them" in AuctionIQ.Demand.Text(e))
+check("demand: an 80% range around the estimate, from the same evidence",
+      e.low < e.units < e.high and e.range == 0.8 and "likely" in AuctionIQ.Demand.Text(e) and "(80%)" in AuctionIQ.Demand.Text(e))
+run("""local d0 = math.floor(STUB.now / 86400) * 86400
+AuctionIQ.Availability.Observe("Me-Realm", { [880001] = 5 }, d0 + 15 * 3600)""")
+check("demand: posted again the same day, the day isn't cut short", E(880001).outs == 0 and abs(E(880001).exposure - 20) < 1e-9)
+run("AuctionIQ.db.avail = nil; AuctionIQ.Demand.Clear()")
+check("demand: a thin record says so", "few days to go on" in AuctionIQ.Demand.Text(E(880002)) or E(880002).listed == 0)
+gi = L.eval("{ AuctionIQ.Prob.GammaInv(0.5, 100, 1), AuctionIQ.Prob.GammaInv(0.1, 100, 1), AuctionIQ.Prob.GammaInv(0.9, 100, 1), AuctionIQ.Prob.GammaInv(0.5, 0, 1) }")
+check("Gamma quantiles: median, 10% and 90% of Gamma(100, 1) within a percent", abs(gi[1] - 99.67) < 1 and abs(gi[2] - 87.4) < 1 and abs(gi[3] - 112.8) < 1 and gi[4] == 0)
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
 e = E(880002)
