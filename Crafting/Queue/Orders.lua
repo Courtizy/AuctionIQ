@@ -456,24 +456,95 @@ end
 --- their cheapest craft: { recipeID, name, item, quality, cost, value (what the item sells for,
 --- after the cut), net (value less cost: negative is what the point costs you), row, result }.
 --- Cheapest point first.
-function O.FirstCrafts()
-	local ui = C_TradeSkillUI
-	local out = {}
-	if not ui or not ui.GetAllRecipeIDs then return out end
-	for _, id in ipairs(ui.GetAllRecipeIDs() or {}) do
-		local info = ui.GetRecipeInfo(id)
-		if info and info.learned and info.firstCraft and not info.isRecraft and not info.isSalvageRecipe
-			and not info.isGatheringRecipe and not info.isDummyRecipe then
-			local ok, result = pcall(AuctionIQ.Advisor.Analyze, id, { professionID = AuctionIQ.OpenProfessionID() })
-			local best
-			for _, r in ipairs(ok and result and result.rows or {}) do
-				if r.cost and not r.short and not r.concentration and (not best or r.cost < best.cost) then best = r end
-			end
-			table.insert(out, { recipeID = id, name = info.name or "?", item = best and best.item, quality = best and best.quality,
-				tiers = result and result.model and result.model.maxQ, cost = best and best.cost, value = best and best.value,
-				net = best and best.cost and ((best.value or 0) - best.cost), row = best, result = ok and result or nil })
-		end
+-- The First crafts list works each recipe out in the background, a few milliseconds a frame, and
+-- keeps the result for a minute per profession: opening the list, scrolling it or sorting it never
+-- runs the whole analysis again. A recipe made since is dropped from the kept list as it's read.
+O.FIRST_MS = 4 -- per frame
+O.FIRST_KEEP = 60 -- seconds the worked-out list is kept
+local first = { list = nil, prof = nil, at = 0, job = nil, done = {} }
+
+local function firstEligible(info)
+	return info and info.learned and info.firstCraft and not info.isRecraft and not info.isSalvageRecipe
+		and not info.isGatheringRecipe and not info.isDummyRecipe
+end
+
+local function firstEntry(id, info, prof)
+	local ok, result = pcall(AuctionIQ.Advisor.Analyze, id, { professionID = prof })
+	local best
+	for _, r in ipairs(ok and result and result.rows or {}) do
+		if r.cost and not r.short and not r.concentration and (not best or r.cost < best.cost) then best = r end
 	end
+	return { recipeID = id, name = info.name or "?", item = best and best.item, quality = best and best.quality,
+		tiers = result and result.model and result.model.maxQ, cost = best and best.cost, value = best and best.value,
+		net = best and best.cost and ((best.value or 0) - best.cost), row = best, result = ok and result or nil }
+end
+
+local function firstSort(out)
 	table.sort(out, function(a, b) return (a.net or -math.huge) > (b.net or -math.huge) end)
+	return out
+end
+
+local function clock() return GetTime and GetTime() or time() end
+
+-- One frame's worth: work out recipes until the budget is spent; the next frame carries on.
+local function firstStep(job)
+	if first.job ~= job then return end
+	local ui, t0 = C_TradeSkillUI, debugprofilestop and debugprofilestop()
+	while job.i <= #job.ids do
+		local id = job.ids[job.i]
+		job.i = job.i + 1
+		local info = ui.GetRecipeInfo(id)
+		if firstEligible(info) then table.insert(job.out, firstEntry(id, info, job.prof)) end
+		if t0 and debugprofilestop() - t0 >= O.FIRST_MS then break end
+	end
+	if job.i > #job.ids then
+		first.list, first.prof, first.at, first.job = firstSort(job.out), job.prof, clock(), nil
+		for _, fn in pairs(first.done) do pcall(fn) end
+	else
+		C_Timer.After(0, function() AuctionIQ.Measure("first crafts: work out (one frame)", firstStep, job) end)
+	end
+end
+
+--- Call fn when the First crafts list has been worked out (to draw it). One per key.
+function O.OnFirstCrafts(key, fn) first.done[key] = fn end
+
+--- Work the list out again on the next read (a recipe learned, prices changed).
+function O.FirstCraftsStale() first.at = 0 end
+
+--- Where the background work is: working (true while it runs), done and total recipes.
+function O.FirstCraftsProgress()
+	local j = first.job
+	if not j then return false, 0, 0 end
+	return true, j.i - 1, #j.ids
+end
+
+--- The open profession's recipes that still give their first-craft point, each at its cheapest
+--- reagents, best value first. Returns at once with what is worked out (the kept list, or the
+--- recipes done so far) and works the rest out in the background; sync works it all out now.
+function O.FirstCrafts(sync)
+	local ui = C_TradeSkillUI
+	if not ui or not ui.GetAllRecipeIDs then return {} end
+	local prof = AuctionIQ.OpenProfessionID()
+	if sync or not C_Timer then
+		local out = {}
+		for _, id in ipairs(ui.GetAllRecipeIDs() or {}) do
+			local info = ui.GetRecipeInfo(id)
+			if firstEligible(info) then table.insert(out, firstEntry(id, info, prof)) end
+		end
+		first.list, first.prof, first.at = firstSort(out), prof, clock()
+		return out
+	end
+	local kept = first.list and first.prof == prof
+	if not (kept and clock() - first.at < O.FIRST_KEEP) and not (first.job and first.job.prof == prof) then
+		local job = { ids = ui.GetAllRecipeIDs() or {}, i = 1, out = {}, prof = prof }
+		first.job = job
+		C_Timer.After(0, function() AuctionIQ.Measure("first crafts: work out (one frame)", firstStep, job) end)
+	end
+	-- the kept list while the new one is worked out; the first time, what's done so far
+	local src = kept and first.list or (first.job and first.job.prof == prof and firstSort({ unpack(first.job.out) })) or {}
+	local out = {}
+	for _, d in ipairs(src) do
+		if firstEligible(ui.GetRecipeInfo(d.recipeID)) then out[#out + 1] = d end
+	end
 	return out
 end
