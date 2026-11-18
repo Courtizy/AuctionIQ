@@ -294,12 +294,85 @@ function AuctionIQ.TooltipLines(link)
 	return lines
 end
 
+--- The tooltip's short form, the default: what one is worth to you, what it sells for, your own
+--- sales and your last scan, how it posts, and for a craft its profit, break-even and whether
+--- crafting beats selling the reagents. The full breakdown (TooltipLines) is on Shift.
+function AuctionIQ.TooltipShort(link)
+	local T, m = AuctionIQ.Theme, AuctionIQ.FormatMoney
+	local id = itemID(link)
+	if AuctionIQ.Unsellable(id) then
+		return { { "AuctionIQ", T.Color("muted", "bound: can't go on the AH"), nil, "accent" } }
+	end
+	local lines = { { "AuctionIQ", T.Color("muted", "Shift: full breakdown"), nil, "accent" } }
+	local L = AuctionIQ.Ledger
+	local warm = (not (L and L.Available()) or L.StatsReady()) and (not AuctionIQ.Groups or AuctionIQ.Groups.TSMReady())
+	local value = AuctionIQ.Prices.Get("aiqvalue", link)
+	local v = (warm and id) and AuctionIQ.Prices.Values(id) or {}
+	if v.ev then table.insert(lines, { "  Worth to you, after cut and wait", m(v.ev), "ok" }) end
+	if value then table.insert(lines, { "  Sells for", m(value) })
+	else
+		local now = AuctionIQ.Prices.Get("aiqbuy", link)
+		if now then table.insert(lines, { "  Buy price", m(now) }) end
+	end
+	if v.realized then
+		local ago = v.lastSale and math.floor((time() - v.lastSale) / 86400) or 0
+		table.insert(lines, { string.format("  Your sales, %d sold, last %s", v.n, ago == 0 and "today" or (ago .. "d ago")), m(v.realized), "muted" })
+	end
+	local mk = id and AuctionIQ.Prices.Market(id)
+	if mk and mk.market then
+		local trend = mk.change7 and (mk.days or 0) > 1 and string.format(", %+.0f%% in 7 days", mk.change7 * 100) or ""
+		table.insert(lines, { "  Your scan" .. trend, m(mk.market), "muted" })
+	end
+	if not warm then
+		table.insert(lines, { "  Sell chance and posting", T.Color("muted", "once TSM's records are read"), "muted", "muted" })
+		if L and L.Available() and L.WarmStats then L.WarmStats() end
+		if AuctionIQ.Groups and not AuctionIQ.Groups.TSMReady() then AuctionIQ.Groups.WarmTSM() end
+	end
+	-- how it posts
+	local path = warm and id and AuctionIQ.Groups and AuctionIQ.Groups.Path(id)
+	if path then
+		local ok, p = pcall(AuctionIQ.Groups.Prices, id)
+		if ok and p then
+			if p.post and p.normal then
+				table.insert(lines, { "Posting, " .. (p.op or "?"), "min " .. m(p.min or 0) .. ", max " .. m(p.max or p.normal), nil, "accent" })
+			else
+				table.insert(lines, { "Posting, " .. (p.op or "?"), T.Color("muted", "doesn't post"), nil, "accent" })
+			end
+		end
+	end
+	-- a craft: its profit, break-even, and craft or sell
+	local row, acc = AuctionIQ.CraftAccounts(id)
+	if row and acc and acc.profit then
+		local isConc = acc == row.concAccounts
+		table.insert(lines, { isConc and "Craft profit, with Concentration" or "Craft profit", m(acc.profit), acc.profit >= 0 and "ok" or "bad", "accent" })
+		if acc.avgConcentration and acc.avgConcentration > 0 then
+			table.insert(lines, { "  A Concentration point", m(acc.profit / acc.avgConcentration), "muted" })
+		end
+		local be = isConc and row.concBreakEven or row.breakEven
+		if be then table.insert(lines, { "  Break-even, each", m(be), "muted" }) end
+		local cs = AuctionIQ.CraftOrSell(acc)
+		if cs then
+			local say = cs.verdict == "even" and "  Craft or sell your reagents: about even"
+				or cs.verdict == "craft" and "  Crafting beats selling your reagents by"
+				or "  Selling your reagents beats crafting by"
+			table.insert(lines, { say, cs.verdict == "even" and "" or m(math.abs(cs.gain)), cs.verdict == "sell" and "bad" or "ok" })
+		end
+	else
+		local profit = AuctionIQ.Prices.CraftProfit(link)
+		if profit then table.insert(lines, { profit >= 0 and "Craft profit" or "Craft loss", m(profit), profit >= 0 and "ok" or "bad", "accent" }) end
+	end
+	-- nothing to say but the header: leave the tooltip alone
+	if #lines == 1 then return {} end
+	return lines
+end
+
 local function onItemTooltip(tooltip)
 	if not AuctionIQ.db or not AuctionIQ.db.settings.tooltip or not AuctionIQ.Prices.Available() then return end
 	if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
 	local _, link = tooltip:GetItem()
 	if not link then return end
-	local lines = AuctionIQ.TooltipLines(link)
+	local full = IsShiftKeyDown and IsShiftKeyDown()
+	local lines = full and AuctionIQ.TooltipLines(link) or AuctionIQ.TooltipShort(link)
 	for _, l in ipairs(lines) do
 		local r = AuctionIQ.Theme[l[3] or "fg"]
 		local a = AuctionIQ.Theme[l[4] or (l[1]:sub(1, 2) == "  " and "fg" or "accent")]
@@ -313,3 +386,14 @@ if TooltipDataProcessor and Enum and Enum.TooltipDataType then
 		AuctionIQ.Measure("item tooltip", pcall, onItemTooltip, tooltip)
 	end)
 end
+
+-- Pressing or letting go of Shift over an item swaps the short and full forms at once.
+AuctionIQ.On("MODIFIER_STATE_CHANGED", function(_, key)
+	if key ~= "LSHIFT" and key ~= "RSHIFT" then return end
+	if not (AuctionIQ.db and AuctionIQ.db.settings.tooltip) then return end
+	for _, tip in ipairs({ GameTooltip, ItemRefTooltip }) do
+		if tip and tip.IsShown and tip:IsShown() and tip.GetItem and select(2, tip:GetItem()) and tip.RefreshData then
+			pcall(tip.RefreshData, tip)
+		end
+	end
+end)
