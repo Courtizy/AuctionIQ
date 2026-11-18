@@ -1,5 +1,4 @@
--- Crafting stats and average profit, the way CraftSim works them out (its ProfitCalculation and
--- ProfessionStats, MIT licence):
+-- Crafting stats and average profit:
 --   * Multicraft: chance x the average extra items a proc gives, (1 + constant x base yield x (1 + perk bonus)) / 2
 --   * Resourcefulness: chance x 30% of the required reagents back on average, plus perk bonus
 --   * Ingenuity: chance x (50% + perk bonus) of the Concentration back
@@ -9,8 +8,34 @@ local _, AuctionIQ = ...
 local St = {}
 AuctionIQ.Stats = St
 
--- Rating per 100% chance (CraftSim CONST.PERCENT_DIVISION_FACTORS, Midnight)
-St.DIVISOR = { multicraft = 1100, resourcefulness = 900, ingenuity = 1000, craftingspeed = 2650 }
+-- Rating per 100% chance. Measured from the game: every crafting operation reports each stat's
+-- rating and the chance it gives (bonusStatValue, ratingPct), so rating * 100 / chance is the
+-- divisor. The latest reading per stat is saved (AuctionIQ.db.statDivisor); these starting values
+-- are used only until the first profession is opened.
+St.DEFAULT_DIVISOR = { multicraft = 1100, resourcefulness = 900, ingenuity = 1000, craftingspeed = 2650 }
+St.LEARN_MIN_RATING = 50 -- below this the reported chance is too coarse to measure from
+
+--- Rating per 100% chance for a stat: as measured in game, else the starting value.
+function St.Divisor(key)
+	local m = AuctionIQ.db and AuctionIQ.db.statDivisor
+	return m and m[key] or St.DEFAULT_DIVISOR[key]
+end
+St.DIVISOR = setmetatable({}, { __index = function(_, k) return St.Divisor(k) end })
+
+--- Measure a stat's divisor from one reading the game gave. Returns the divisor, or nil when the
+--- reading can't be used (too small, or far from any sensible value).
+function St.Learn(key, rating, pct)
+	if not (St.DEFAULT_DIVISOR[key] and rating and pct and rating >= St.LEARN_MIN_RATING and pct > 0) then return nil end
+	local d = rating * 100 / pct
+	local base = St.DEFAULT_DIVISOR[key]
+	if d < base / 3 or d > base * 3 then return nil end
+	d = math.floor(d + 0.5)
+	if AuctionIQ.db then
+		AuctionIQ.db.statDivisor = AuctionIQ.db.statDivisor or {}
+		AuctionIQ.db.statDivisor[key] = d
+	end
+	return d
+end
 St.RES_SAVE = 0.30 -- average share of reagents a Resourcefulness proc returns
 St.REFUND = 0.50   -- Ingenuity hands back half the Concentration before perks
 St.MC_CONSTANT = { [1] = 2.1, [2] = 1.83, [5] = 1.875, default = 2.5 }
@@ -46,6 +71,7 @@ function St.FromOperation(op)
 		local key = statKey(b.bonusStatName)
 		if key then
 			local rating = b.bonusStatValue
+			if rating and b.ratingPct then St.Learn(key, rating, b.ratingPct) end
 			if not rating and b.ratingPct then rating = b.ratingPct / 100 * St.DIVISOR[key] end
 			-- Multicraft is listed on recipes that can't proc it with no rating behind it
 			if key ~= "multicraft" or (rating or 0) > 0 or (b.ratingPct or 0) > 0 then
@@ -127,13 +153,13 @@ local function bracket(x, list)
 end
 
 --- Concentration to lift a craft to the next quality at this skill, from the game's curve for the
---- recipe (CraftSim's GetConcentrationCostForSkill). nil when the recipe has no known curve.
+--- recipe (Data/ConcentrationCurves.lua, from the game tables). nil when the recipe has no known curve.
 function St.ConcentrationCost(craftingDataID, difficulty, skill, reduce)
 	local curve = AuctionIQ.ConcCurves and craftingDataID and AuctionIQ.ConcCurves[craftingDataID]
 	if not curve or not difficulty or difficulty <= 0 then return nil end
 	skill = math.min(skill, difficulty)
 	local factor = skill / difficulty
-	-- as CraftSim does: the constant's bracket is found by skill, then read at the recipe's difficulty
+	-- the constant's bracket is found by skill, then read at the recipe's difficulty
 	local cc, ccNext = bracket(skill, sorted(curve.c))
 	local constant = cc and cc[2] or 0
 	if cc and ccNext and ccNext[1] ~= cc[1] then
