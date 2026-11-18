@@ -54,7 +54,11 @@ check("aiqvalue falls back to the formula when the custom source is missing", Au
 check("craft profit = value after cut - crafting cost", AuctionIQ.Prices.CraftProfit("i:100") == 5000000 * 0.95 - 1000000)
 check("no price for unknown item", AuctionIQ.Prices.Get("aiqvalue", "i:7") is None)
 
-run('STUB.tooltipLink = "|cff|Hitem:100::|h[Potion]|h|r"; STUB.tooltipFn(GameTooltip)')
+run('STUB.tooltipLink = "|cff|Hitem:100::|h[Potion]|h|r"; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip)')
+short0 = [letters(l) for l in L.globals().GameTooltip.lines.values()]
+check("tooltip, short by default: worth to you, what it sells for and the craft profit, the rest on Shift",
+      [re.sub(r"\|c\w{8}|\|r", "", x) for x in short0] == ["AuctionIQ=Shift: full breakdown", "  Worth to you, after cut and wait=475g", "  Sells for=500g", "Craft profit=375g"])
+run('STUB.shift = true; GameTooltip.lines = {}; STUB.tooltipFn(GameTooltip); STUB.shift = false')
 lines = [letters(l) for l in L.globals().GameTooltip.lines.values()]
 check("money shows coin icons by default", "UI-GoldIcon" in AuctionIQ.FormatMoney(125000) and "UI-SilverIcon" in AuctionIQ.FormatMoney(125000))
 run('AuctionIQ.db.settings.coins = false')
@@ -2460,6 +2464,21 @@ sc = AuctionIQ.Scans.Get(302)
 check("scan: one market price a day makes a 7-day average", sc.days == 2 and abs(sc.avg7 - (110000 + (90000 + 123400) / 2) / 2) < 1 and sc.change7 > 0)
 tl = [l[1] for l in AuctionIQ.TooltipLines("item:302").values()]
 check("tooltip: your last AH scan shows", "Your AH scan" in tl and any("7-day average" in x for x in tl))
+ts_ = [(plain(l[1]).strip(), plain(l[2]) if l[2] else "") for l in AuctionIQ.TooltipShort("item:302").values()]
+tsl = [a for a, _ in ts_]
+check("tooltip, short: the essentials only, the full breakdown named on Shift",
+      ts_[0] == ("AuctionIQ", "Shift: full breakdown") and "Sells for" in tsl and any(a.startswith("Your scan") for a in tsl)
+      and any(a.startswith("Craft profit") for a in tsl) and "Break-even, each" in tsl
+      and not any(a.startswith("MV") or a.startswith("RV") or a == "Oribos Exchange" or a.startswith("Reagents") for a in tsl)
+      and len(ts_) <= 12 and len(ts_) < len(tl))
+check("tooltip, short: craft or sell in one line", any("beats" in a or "about even" in a for a in tsl))
+tn = L.eval("""(function()
+  local link0, on0 = STUB.tooltipLink, AuctionIQ.db.settings.tooltip; STUB.tooltipLink = "item:302"; AuctionIQ.db.settings.tooltip = true
+  GameTooltip.lines = {}; STUB.shift = false; STUB.tooltipFn(GameTooltip); local short = #GameTooltip.lines
+  GameTooltip.lines = {}; STUB.shift = true; STUB.tooltipFn(GameTooltip); local full = #GameTooltip.lines
+  STUB.shift = false; STUB.tooltipLink = link0; AuctionIQ.db.settings.tooltip = on0
+  return { short = short, full = full } end)()""")
+check("tooltip: short by default, the full breakdown while Shift is held", tn.short > 0 and tn.full > tn.short)
 run("AuctionIQ.Scans.RecordBrowse(302, 50000, 9)")
 check("scan: a browse row doesn't replace a fresh full search", AuctionIQ.Scans.Get(302).market == 123400)
 run("AuctionIQ.Scans.RecordBrowse(303, 50000, 9)")

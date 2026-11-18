@@ -66,6 +66,10 @@ When ElvUI is loaded, AuctionIQ keeps ElvUI's structure and tints it with the pa
 | ok     | `#6cc58f` | `#6cc58f` | profit |
 | bad    | `#ef7d72` | `#ef7d72` | loss, FULL Concentration |
 
+A panel's main action (Claim, Craft, Queue) is a button filled with the accent colour, its label white and bold.
+
+The item tooltip is short by default: what one is worth to you, what it sells for, your own sales and your last scan, how it posts, and for a craft its profit, break-even and whether crafting beats selling your reagents. Holding Shift shows the full breakdown (the cut, every value type, Oribos Exchange and the per-craft statement with each reagent).
+
 ## Voice
 
 Plain words by default. A few places are in character, as a goblin clearing bank would put it:
