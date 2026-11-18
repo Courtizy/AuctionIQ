@@ -4714,6 +4714,22 @@ audit("performance forecast chart")
 # only this page's problems: other windows the earlier tests left open are audited on their own
 audit_all[_before:] = [a for a in audit_all[_before:] if "This week so far" in a or "Forecast" in a]
 PF.ToggleScatter()
+# the profit waterfall: the change split by cause, stepping from the period before to this one
+PF.ToggleCauses()
+pr3 = PF.Refresh(L.eval("STUB.now"))
+wf = pr3.waterfall
+steps = list(wf.steps.values())
+check("Performance by cause: six steps from the profit before to the profit now, adding up exactly",
+      len(steps) == 6 and abs(wf.start - pr3.compare.prior) < 1e-6 and abs(steps[-1].to - pr3.compare.profit) < 1e-6
+      and abs(sum(st.change for st in steps) - pr3.compare.change) < 1e-6
+      and [st.label for st in steps] == ["Volume", "Sale price", "Input cost", "Fees and deposits", "Other income", "Unexplained"])
+check("Performance by cause: the chart says so and each step is drawn",
+      plain(L.eval("AuctionIQ.UI.Pages().perf.dTitle:GetText()")) == "Why profit changed"
+      and len([h for h in L.eval("AuctionIQ.UI.Pages().perf.drivers").values() if h.shown is not False]) == 6)
+_before = len(audit_all)
+audit("performance waterfall")
+audit_all[_before:] = [a for a in audit_all[_before:] if "This week so far" in a or "Why profit" in a]
+PF.ToggleCauses()
 PF.Refresh(L.eval("STUB.now"))
 PF.OpenWeek(wk[-2])
 check("Performance: a week's bar opens that week's Income Statement", LUI.View() == "statement" and AuctionIQ.Statements.Period() == "custom"
