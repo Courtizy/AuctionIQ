@@ -4818,6 +4818,36 @@ check("demand: 20 listed days, 20 sold: your own pace with a little of the cappe
 before = E(880001).units
 run("AuctionIQ.Demand.Mark(880001, STUB.dmDay(45))") # outside the 30-day window
 check("demand: a listed day outside the window doesn't count", abs(E(880001).units - before) < 1e-12)
+# availability: when stock was up and when it ran out, from readings of your auctions
+av = L.eval("""(function()
+  local Av, H = AuctionIQ.Availability, 3600
+  AuctionIQ.db.avail = nil
+  local t = 1800000000
+  Av.Observe("Me-Realm", { [770001] = 5 }, t)
+  Av.Observe("Me-Realm", { [770001] = 5 }, t + H)           -- same count, inside the heartbeat: no new reading
+  Av.Observe("Me-Realm", { [770001] = 2 }, t + 2 * H)
+  Av.Observe("Me-Realm", {}, t + 4 * H)                     -- gone from the list: ran out
+  Av.Observe("Me-Realm", { [770001] = 3 }, t + 40 * H)      -- posted again after a long gap
+  local r = Av.Readings(770001)["Me-Realm"]
+  local s = Av.Summary(770001, t, t + 41 * H)
+  return { n = #r, last = r[#r][2], zero = r[3][2] == 0 and r[3][1] == t + 4 * H, up = s.up / H, outs = #s.outs,
+    after = s.outs[1] and (s.outs[1][1] - t) / H, before = s.outs[1] and (s.outs[1][2] - t) / H, unobs = s.unobserved / H }
+end)()""")
+check("availability: a reading only when the count changes, and 0 when the item leaves your auctions", av.n == 4 and av.zero and av.last == 3)
+check("availability: up 4 hours, then ran out between the 2nd and 4th hour, and the next post is up again",
+      abs(av.up - 5) < 1e-9 and av.outs == 1 and av.after == 2 and av.before == 4 and av.unobs == 0)
+av2 = L.eval("""(function()
+  local Av, H = AuctionIQ.Availability, 3600
+  AuctionIQ.db.avail = nil
+  local t = 1800000000
+  Av.Observe("Me-Realm", { [770002] = 4 }, t)
+  Av.Observe("Me-Realm", { [770002] = 4 }, t + 30 * H)      -- a heartbeat after a day: the gap was unobserved
+  Av.Observe("Me-Realm", { [770002] = 4 }, t + 37 * H)      -- a heartbeat 7 hours on: observed
+  local s = Av.Summary(770002, t, t + 37 * H)
+  AuctionIQ.db.avail = nil
+  return { up = s.up / H, unobs = s.unobserved / H, outs = #s.outs }
+end)()""")
+check("availability: readings far apart leave the gap unobserved, not assumed up", av2.up == 7 and av2.unobs == 30 and av2.outs == 0)
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
 e = E(880002)

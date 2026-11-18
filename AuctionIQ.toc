@@ -30,6 +30,7 @@ Crafting\Craft\Professions.lua
 Crafting\Queue\Cooldowns.lua
 Data\Ledger.lua
 Data\Demand.lua
+Data\Availability.lua
 Data\Market.lua
 Data\Capital.lua
 Accounting\LedgerUI.lua
