@@ -112,6 +112,14 @@ local function heldBefore(recipeID, r, q)
 	return out
 end
 
+-- What Mechanics.lua needs to measure this craft's procs: the items one craft makes and the perk
+-- bonuses on the advisor's row for it (nil when there's no row: those procs aren't measured).
+local function mechCtx(r, row)
+	local st = row and row.stats or (r and r.best and r.best.stats)
+	if not (r and st) then return nil end
+	return { base = r.made or 1, mcExtra = st.mcExtra or 0, resExtra = st.resExtra or 0, refundExtra = st.refundExtra or 0 }
+end
+
 function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 	AuctionIQ.craftSeq = (AuctionIQ.craftSeq or 0) + 1
 	local seq = AuctionIQ.craftSeq
@@ -124,7 +132,7 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		pending = { recipeID = recipeID, count = count or 1, concentrate = concentrate, expected = q.profit, cost = q.cost, name = q.name or (r and r.name),
 			held = heldBefore(recipeID, r, q), basis = q.basis or basisNow(),
 			-- the same reagents at today's price, when the advisor knows the recipe's fixed slots
-			costRepl = r and usedCost(r, reagents) or nil }
+			costRepl = r and usedCost(r, reagents) or nil, mech = mechCtx(r, nil) }
 		pending.seq = seq
 		return pending
 	end
@@ -148,7 +156,7 @@ function Lg.Started(recipeID, count, concentrate, reagents, orderID)
 		unit = row and row.unit or nil,
 		-- what the order pays you: the commission after the consortium's cut, plus patron rewards
 		orderIncome = order and ((order.commission or 0) + (order.rewards or 0)) or nil,
-		held = not order and heldBefore(recipeID, r, nil) or nil }
+		held = not order and heldBefore(recipeID, r, nil) or nil, mech = mechCtx(r, row) }
 	pending.seq = seq
 	return pending
 end
@@ -212,6 +220,12 @@ function Lg.Result(data)
 		e.concGold = (e.concGold or 0) + (income or 0) + saved - (pending and pending.cost or 0)
 	end
 	e.concRefund = e.concRefund + (data.ingenuityRefund or 0)
+	-- the procs, measured against what the game did (Mechanics.lua)
+	local mech = pending and pending.mech
+	if mech and AuctionIQ.Mechanics then
+		mech.required = mech.required or AuctionIQ.Mechanics.Required(recipeID)
+		pcall(AuctionIQ.Mechanics.Note, data, mech)
+	end
 	-- the forecast for this batch, matched to its sales later (orders go to the customer, not the AH)
 	if AuctionIQ.Forecast and data.itemID and not (pending and pending.order) then
 		-- what you held before this run of crafts: kept on its first craft only (the run's later crafts

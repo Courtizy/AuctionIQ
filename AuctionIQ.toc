@@ -21,6 +21,7 @@ Data\History.lua
 Data\Depth.lua
 Data\Compare.lua
 Data\Formula.lua
+Data\Mechanics.lua
 Data\Stats.lua
 Data\Decide.lua
 Data\ConcentrationCurves.lua
