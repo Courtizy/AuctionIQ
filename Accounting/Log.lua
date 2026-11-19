@@ -515,6 +515,52 @@ AuctionIQ.LedgerUI.Register("ledger", { results = { label = "Craft results", sor
 	cols = { { "Recipe", 0, 170 }, { "Character", 174, 80 }, { "Crafts", 258, 44 }, { "Forecast", 306, 80 }, { "Actual", 390, 84 },
 		{ "Yield", 478, 66 }, { "Realized", 548, 96 }, { "Sold", 648, 76 } } } }, {})
 
+-- Forecast calibration: each forecast part measured apart (Data/Calibration.lua) --------------
+local function calibrationRows()
+	local T, Cb = AuctionIQ.Theme, AuctionIQ.Calibration
+	local mut = function(t) return T.Color("muted", t) end
+	local sum = Cb.Summary()
+	local out = {}
+	local function row(label, group, s, first)
+		local biasColor = s.bias and math.abs(s.bias) >= 0.1 and "bad" or "fg"
+		local cov = s.coverage and T.Color(s.verdict and "bad" or "ok", string.format("%d%%", math.floor(s.coverage * 100 + 0.5))) or mut("-")
+		table.insert(out, { cells = { first and label or "", first and group or mut(group), tostring(s.n), T.Color(biasColor, Cb.Pct(s.bias)),
+			s.typical and string.format("%.0f%%", s.typical * 100) or "-", cov },
+			sort = { label, group, s.n, s.bias or 0, s.typical or 0, s.coverage or -1 },
+			tip = function()
+				return { { label .. ": " .. group },
+					{ "Checked", tostring(s.n) .. mut("  batches you queued, at least a day after their first craft") },
+					{ "Bias", Cb.BiasText(s.bias) .. mut("  the average of actual / forecast - 1") },
+					{ "Typical error", s.typical and string.format("%.0f%%", s.typical * 100) or "-", },
+					{ mut("  half the forecasts missed by less than this, half by more") },
+					{ "80% range", Cb.CoverageText(s) },
+					{ mut("  an 80% range should hold about 8 of 10 outcomes") } }
+			end })
+	end
+	local STRENGTH = { strong = "strong evidence", some = "some evidence", weak = "weak evidence", unknown = "evidence not kept" }
+	for _, m in ipairs(Cb.MEASURES) do
+		local x = sum[m[1]]
+		if x then
+			row(m[2], "all", x.all, true)
+			for _, h in ipairs(Cb.HORIZONS) do
+				if x.horizon[h[2]] then row(m[2], h[2], x.horizon[h[2]]) end
+			end
+			for _, k in ipairs({ "strong", "some", "weak", "unknown" }) do
+				if x.strength[k] then row(m[2], STRENGTH[k], x.strength[k]) end
+			end
+		end
+	end
+	if not out[1] then
+		return out, mut("Nothing to check yet: queue a batch from the Craft card, craft it, and a day later its forecasts are measured here.")
+	end
+	return out, "Each forecast behind the batches you queued, measured apart: bias (+ means the actual came in above the forecast), typical error, and how often the 80% range held."
+		.. mut("  Price and reagent ranges are the Scenarios fall and rise; sales volume's is a Poisson band.")
+end
+
+AuctionIQ.LedgerUI.Register("ledger", { calibration = { label = "Forecast calibration", sort = 3, noTime = true, rows = calibrationRows,
+	cols = { { "Forecast", 0, 120 }, { "Group", 124, 150 }, { "Checked", 278, 60 }, { "Bias", 342, 70 }, { "Typical error", 416, 90 },
+		{ "In 80% range", 510, 100 } } } }, {})
+
 --- Craft results now live in Analytics.
 function LUI.Open() if AuctionIQ.UI and AuctionIQ.UI.Page then AuctionIQ.UI.Page("ledger", "results") end end
 LUI.Toggle = LUI.Open

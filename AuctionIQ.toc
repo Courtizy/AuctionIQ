@@ -38,6 +38,7 @@ Accounting\LedgerUI.lua
 Accounting\Markets\Par.lua
 Data\Forecast.lua
 Data\Flow.lua
+Data\Calibration.lua
 Data\Restock.lua
 Accounting\Markets\Groups.lua
 Accounting\Markets\TSMSetup.lua
