@@ -5091,6 +5091,39 @@ check("sell side: Ready to post's detail shows what's likely in by expiry and wh
 check("sell side: and the same measures as Capital allocation: gold up front, when it's back, the slow case",
       "Gold needed up front" in pl and "Gold back in" in pl and "If it sells slowly" in pl)
 check("sell side: no sales rate, it says so rather than guess", sl.none[1] and "unknown" in sl.none[2])
+# forecast calibration: price, volume, yield and cost measured apart, by horizon and evidence
+cb = L.eval("""(function()
+  local Cb, Fc, now = AuctionIQ.Calibration, AuctionIQ.Forecast, STUB.now
+  local oldE, oldD = Fc.Explain, Fc.Decisions
+  local d1 = { crafts = 2, first = now - 5 * 86400, netEach = 100, daily = 2, itemsEach = 1.5, costEach = 50, paid = 110, plan = { strength = "strong" } }
+  local d2 = { crafts = 3, first = now - 10 * 86400, netEach = 100, daily = 1, itemsEach = 2, costEach = 40, paid = 0, plan = { strength = "weak" } }
+  local d3 = { crafts = 1, first = now - 3600, netEach = 100, daily = 1, itemsEach = 1 }
+  local act = { [d1] = { sold = 3, revenue = 330, made = 3 }, [d2] = { sold = 2, revenue = 140, made = 6 }, [d3] = { sold = 1, revenue = 100, made = 1 } }
+  Fc.Explain = function(d) return act[d] end
+  Fc.Decisions = function() return { d1, d2, d3 } end
+  local sum = Cb.Summary(now)
+  local p, v, y, c = sum.price, sum.volume, sum.yield, sum.cost
+  local rows, foot = AuctionIQ.LedgerUI.ViewDef("calibration").rows()
+  local empty
+  Fc.Decisions = function() return {} end
+  local _, foot0 = AuctionIQ.LedgerUI.ViewDef("calibration").rows()
+  Fc.Explain, Fc.Decisions = oldE, oldD
+  return { pn = p.all.n, pbias = p.all.bias, ptyp = p.all.typical, pcov = p.all.coverage,
+    ph = p.horizon["3 to 7 days"] and p.horizon["3 to 7 days"].n, pw = p.horizon["a week or more"] and p.horizon["a week or more"].n,
+    ps = p.strength.strong and p.strength.strong.n, pweak = p.strength.weak and p.strength.weak.n,
+    vcov = v.all.coverage, vbias = v.all.bias, yn = y.all.n, ybias = y.all.bias, ycov = y.all.coverage == nil,
+    cn = c.all.n, ccov = c.all.coverage, btext = Cb.BiasText(p.all.bias), ctext = Cb.CoverageText(p.all),
+    rows = #rows, foot = foot, foot0 = foot0 }
+end)()""")
+check("calibration: a batch under a day old isn't checked; the price is measured on its own, with bias and typical error",
+      cb.pn == 2 and abs(cb.pbias + 0.1) < 1e-9 and abs(cb.ptyp - 0.2) < 1e-9 and abs(cb.pcov - 0.5) < 1e-9 and cb.btext == "runs 10% high")
+check("calibration: grouped by horizon and by how strong the evidence was", cb.ph == 1 and cb.pw == 1 and cb.ps == 1 and cb.pweak == 1)
+check("calibration: sales volume against what was really made, its 80% band from a Poisson",
+      abs(cb.vcov - 0.5) < 1e-9 and abs(cb.vbias - (0 + (2 / 6 - 1)) / 2) < 1e-9)
+check("calibration: yield has bias and error but no range; reagent cost is only checked where it was paid",
+      cb.yn == 2 and abs(cb.ybias) < 1e-9 and cb.ycov and cb.cn == 1 and cb.ccov == 1 and "1 of 2 inside (50%)" == cb.ctext)
+check("calibration: the Performance view shows each forecast's rows, or says how to start",
+      cb.rows >= 8 and "measured apart" in plain(cb.foot) and "queue a batch" in plain(cb.foot0))
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
 e = E(880002)

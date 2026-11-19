@@ -502,7 +502,7 @@ function P.Build(p, fs)
 	p.links = {}
 	local lx = 50
 	for _, v in ipairs({ { "drivers", "Drivers" }, { "performance", "By line" }, { "batches", "Batches" }, { "perf", "Forecasts" },
-		{ "capital", "Capital" }, { "byprofession", "Profession" }, { "crafting", "Crafting" }, { "results", "Craft log" } }) do
+		{ "calibration", "Calibrate" }, { "capital", "Capital" }, { "byprofession", "Profession" }, { "crafting", "Crafting" }, { "results", "Craft log" } }) do
 		local b = button(p, 82, v[2], function() AuctionIQ.UI.Go("ledger", v[1]) end)
 		b:SetPoint("TOPLEFT", p, "TOPLEFT", lx, ly)
 		b.view = v[1]
@@ -712,7 +712,7 @@ end
 if LUI and LUI.Register then
 	P.VIEWS = { overview = { label = "Performance", page = "perf", cols = {}, noTime = true } }
 	LUI.Register("ledger", P.VIEWS, {})
-	for _, k in ipairs({ "overview", "performance", "batches", "perf", "results", "drivers", "capital", "byprofession", "crafting" }) do
+	for _, k in ipairs({ "overview", "performance", "batches", "perf", "calibration", "results", "drivers", "capital", "byprofession", "crafting" }) do
 		local d = LUI.ViewDef(k)
 		if d then d.parent, d.section = "Statements", d.section or "ledger" end
 	end
