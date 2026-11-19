@@ -1137,6 +1137,24 @@ check("recipe walk: spread over frames, a pause every 8 recipes, and the same be
 check("recipe walk: not again within a few minutes, but its cooldowns are read again", wk.again is False and wk.cd == "Phoenix Oil")
 perf = L.eval("(function() STUB.Fire('PLAYER_LOGOUT'); return AuctionIQ.db.debug and AuctionIQ.db.debug.perf end)()")
 check("perf: the costliest timings are kept in the saved variables at logout", perf is not None and len(list(perf.by.values())) >= 1)
+pm = L.eval("""(function()
+  AuctionIQ.PerfReset()
+  AuctionIQ.Measure("craft window redraw", function() end)
+  AuctionIQ.MeasureAdd("craft window redraw", 12)
+  AuctionIQ.MeasureAdd("item tooltip", 3)
+  -- three frames: 10 ms, 40 ms, 120 ms
+  STUB.printed = {}; local oldP = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end
+  for _, ms in ipairs({ 10, 40, 120 }) do AuctionIQ.PerfFrame(ms / 1000) end
+  SlashCmdList.AUCTIONIQ("perf mark Craft clicks")
+  SlashCmdList.AUCTIONIQ("perf mark")
+  AuctionIQ.Print = oldP
+  local e = AuctionIQ.db.debug.baseline["craft clicks"]
+  return { top = e.by[1].name, max = e.by[1].max, n = #e.by, frames = e.frames.n, b1 = e.frames.bands[1], b3 = e.frames.bands[3], b5 = e.frames.bands[5],
+    fmax = e.frames.max, after = next(AuctionIQ.perf.by) == nil, said = STUB.printed[1], usage = STUB.printed[2] }
+end)()""")
+check("perf mark: a workload's timings and frame times are saved under its name, slowest first, then reset",
+      pm.top == "craft window redraw" and pm.max == 12 and pm.n == 2 and pm.frames == 3 and pm.b1 == 1 and pm.b3 == 1 and pm.b5 == 1
+      and pm.fmax == 120 and pm.after and 'saved "craft clicks"' in pm.said and "1 over 50 ms" in pm.said and "/aiq perf mark <workload>" in pm.usage)
 
 # Craft results log
 AuctionIQ.AdvisorUI.Show(10)

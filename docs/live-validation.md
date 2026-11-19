@@ -27,18 +27,31 @@ reproduced in the harness from it.
 
 ## L-02: frame pacing baseline
 
-Addon timings come from `/aiq perf`. Whole-client frame times need the game's own counter. Run these
-the same way for the build before and the build after a change.
+Addon timings come from `/aiq perf`, and AuctionIQ also counts the game's own frame times while it's
+loaded (every addon included). `/aiq perf mark <name>` saves both for one workload under that name in
+`AuctionIQDB.debug.baseline`, then resets for the next. Run these the same way for the build before
+and the build after a change.
 
-1. `/aiq perf reset`, then do one workload from the list below for about 2 minutes.
-2. `/aiq perf` to print it (it's saved too), then `/reload`.
+For each workload below: `/aiq perf reset`, do the workload, then `/aiq perf mark <name>` with the
+name given. Login and reload are measured from the moment the game finishes loading, so mark them
+first thing. `/reload` once at the end so the saved variables are written.
 
-Workloads: login, `/reload`, logout, first open of each tab, switching tabs 10 times, clicking 20
-recipes in a row, a profession scan, a full scan, queue and shopping list refresh, crafting a
-batch of 10 with the Crafting window open, Accounting with a year of history, and a 30-minute
-normal session.
+| Name | Workload |
+|---|---|
+| `login` | log in, then mark straight away |
+| `reload` | `/reload`, then mark straight away |
+| `tabs` | open each AuctionIQ tab once, then switch tabs 10 times |
+| `recipes` | with a profession open, click 20 recipes in a row |
+| `profscan` | a profession scan |
+| `fullscan` | a full AH scan |
+| `queue` | refresh the queue and the shopping list |
+| `craft10` | craft a batch of 10 with the Crafting window open |
+| `accounting` | open Accounting with a year of history, and click through its views |
+| `session` | 30 minutes of normal play, then mark |
 
-Passing: no AuctionIQ entry over the budget in [benchmarks.md](benchmarks.md) for the workload.
+Passing: no AuctionIQ entry over the budget in [benchmarks.md](benchmarks.md) for the workload. The
+frame bands say how often the whole client went over 16.7, 33, 50 and 100 ms; read them beside the
+AuctionIQ timings to tell its hitches from the game's own.
 
 ## L-03: one craft, one result? (CQ-05)
 
