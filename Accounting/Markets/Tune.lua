@@ -316,6 +316,12 @@ local function better(x, y)
 end
 T.Better = better
 
+--- The common measures (Phase 5.5) for a suggestion: { gain (projected gold over the window, the
+--- same number it's ranked by), cash (0: a TSM change needs no gold), days, minutes (not measured) }.
+function T.Measures(s, win)
+	return { gain = s and s.gold or 0, cash = 0, days = win and win.days or T.Get("days"), minutes = nil }
+end
+
 --- Every TSM group with items, each with its one suggestion (the strongest lever) and the others it
 --- beat: { path, op, items, shared (other groups using the operation), suggest, others, setup,
 --- evidence (per item) }, strongest first. Groups with nothing to suggest are left out unless all.
@@ -366,6 +372,9 @@ function T.Lines(r)
 	table.insert(out, "  why: " .. s.why .. " (" .. r.window.label .. ")")
 	for _, l in ipairs(s.evidence) do table.insert(out, "  evidence: " .. l) end
 	table.insert(out, "  projected, not observed: " .. s.projected)
+	local m = T.Measures(s, r.window)
+	table.insert(out, string.format("  measures: %s expected over %d days; no gold needed; active time not measured; if it doesn't help, change it back in TSM",
+		(m.gain >= 0 and "+" or "-") .. money(math.abs(m.gain)), m.days))
 	if r.inherited then
 		table.insert(out, "  the operation is set on " .. r.inherited .. ", so the change applies there and to every group under it")
 	end

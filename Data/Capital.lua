@@ -4,6 +4,8 @@
 --   craft  a profitable craft from your saved scans, at the batch Compare crafts suggests
 --          (Decide.Suggest): gold in is the reagents for the batch, profit is the profit a craft
 --          times the crafts, and it's tied up until the batch sells at its sales rate
+--   stop   pausing a craft you're making faster than it sells: no gold in, the gold you'd have put
+--          into a week's crafts stays free, and its gain is the gold tied up you avoid
 --   flip   buying a scanned item off the AH to relist it: as many as a week's sales take while each
 --          one bought (walking the listings) costs less than relisting it brings in
 --
@@ -67,7 +69,7 @@ end
 local function opportunity(o)
 	o.days = math.max(Cp.MIN_DAYS, o.days or Cp.MIN_DAYS)
 	o.rate = o.cost > 0 and o.profit / o.cost / o.days or 0
-	o.each = o.cost / o.units
+	o.each = o.units > 0 and o.cost / o.units or 0
 	-- the common measures
 	o.gain = o.gain or o.profit
 	o.cash = o.cash or o.cost
@@ -110,6 +112,11 @@ function Cp.Opportunities(ctx, now)
 			if o then out[#out + 1] = opportunity(o) end
 		end
 	end
+	-- stop making: crafts you're making faster than they sell (Flow.lua), where pausing frees gold
+	for _, x in ipairs(ok and crafts or {}) do
+		local o = x.id and Cp.Stop(x, now)
+		if o then out[#out + 1] = opportunity(o) end
+	end
 	table.sort(out, better)
 	return out
 end
@@ -141,6 +148,31 @@ function Cp.Flip(id, row, now)
 	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or (row and row.name) or ("item " .. id)
 	return { kind = "flip", id = id, name = name, units = q, cost = cost, profit = profit, days = q / daily, cash = cost,
 		back = math.min(q, cost / bc.resell) / daily, downside = slow, against = "over not buying" }
+end
+
+--- Pausing a craft you're making faster than it sells (Flow.Weekly's verdict): for a week you don't
+--- put gold into a week's worth at your recent pace, and the stock you hold sells down. Its gain is
+--- the gold tied up you avoid (the carry setting, a day, until what you hold would have sold), the
+--- downside is the profit you'd forgo if that week's crafts would have sold after all. Needs no gold.
+function Cp.Stop(x, now)
+	local Fl = AuctionIQ.Flow
+	if not (Fl and x and x.id) then return nil end
+	local f = Fl.Weekly(x.id, nil, now)
+	if f.verdict ~= "faster" then return nil end
+	local weeks = #f.weeks
+	local made = f.made / weeks
+	local sc = x.suggest and x.suggest.scenarios and x.suggest.scenarios.expected
+	local n = x.suggest and x.suggest.n or 0
+	local perCraft = (sc and n > 0 and sc.items / n) or 1
+	local unitCost = sc and sc.items > 0 and sc.cost / sc.items or (x.row and x.row.cost and x.row.cost / perCraft) or 0
+	if made <= 0 or unitCost <= 0 then return nil end
+	local daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits and AuctionIQ.Scan.DailyUnits(x.id) or 0
+	local cover = daily > 0 and math.min(30, f.stockNow / daily) or 30
+	local carry = AuctionIQ.Expect and AuctionIQ.Expect.Setting("carry") or 0.01
+	local freed = made * unitCost
+	return { kind = "stop", id = x.id, name = x.name, char = x.char, units = 1, cost = 0, profit = freed * carry * cover, days = 7,
+		cash = 0, back = 0, downside = -(x.profit or 0) * made / perCraft, freed = freed, flow = f,
+		against = string.format("over making %.0f this week at your recent pace", made) }
 end
 
 --- Split budget over opportunities (in ranking order), whole units at a time. Each gets take
