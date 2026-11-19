@@ -160,7 +160,45 @@ function AuctionIQ.PerfLines()
 	return out
 end
 
-function AuctionIQ.PerfReset() perf.by, perf.since = {}, time() end
+-- Whole-client frame times while AuctionIQ is loaded (the game's own, everything included): how many
+-- frames fell in each band, and the slowest, since login or the last reset. A frame over 50 ms is a
+-- hitch you can feel; it isn't always AuctionIQ's, which is what the per-event timings are for.
+local FRAME_BANDS = { 16.7, 33.3, 50, 100 }
+perf.frames = { n = 0, bands = { 0, 0, 0, 0, 0 }, max = 0 }
+function AuctionIQ.PerfFrame(elapsed)
+	local f = perf.frames
+	local ms = (elapsed or 0) * 1000
+	f.n = f.n + 1
+	local k = #FRAME_BANDS + 1
+	for i, b in ipairs(FRAME_BANDS) do if ms < b then k = i; break end end
+	f.bands[k] = f.bands[k] + 1
+	if ms > f.max then f.max = ms end
+end
+frame:SetScript("OnUpdate", function(_, elapsed) AuctionIQ.PerfFrame(elapsed) end)
+AuctionIQ.FRAME_BANDS = FRAME_BANDS
+
+function AuctionIQ.PerfReset() perf.by, perf.since = {}, time(); perf.frames = { n = 0, bands = { 0, 0, 0, 0, 0 }, max = 0 } end
+
+--- Save what's been measured since the last reset as one workload of the live baseline (L-02),
+--- then reset: AuctionIQ.db.debug.baseline[name] = { at, secs, mem (KB), frames, by = { name, calls,
+--- ms, max } (every timing, slowest first) }. Returns the entry.
+function AuctionIQ.PerfMark(name)
+	if not (AuctionIQ.db and name and name ~= "") then return nil end
+	if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
+	local getMem = (C_AddOns and C_AddOns.GetAddOnMemoryUsage) or GetAddOnMemoryUsage
+	local list = {}
+	for n, p in pairs(perf.by) do list[#list + 1] = { name = n, calls = p.calls, ms = math.floor(p.ms + 0.5), max = math.floor(p.max * 10 + 0.5) / 10 } end
+	table.sort(list, function(a, b) return a.max > b.max end)
+	local f = perf.frames
+	local e = { at = time(), secs = time() - (perf.since or time()), mem = getMem and math.floor(getMem(addonName) or 0) or nil, by = list,
+		frames = { n = f.n, bands = { f.bands[1], f.bands[2], f.bands[3], f.bands[4], f.bands[5] }, max = math.floor(f.max * 10 + 0.5) / 10 },
+		build = AuctionIQ.version }
+	AuctionIQ.db.debug = AuctionIQ.db.debug or {}
+	AuctionIQ.db.debug.baseline = AuctionIQ.db.debug.baseline or {}
+	AuctionIQ.db.debug.baseline[name] = e
+	AuctionIQ.PerfReset()
+	return e
+end
 
 -- Kept in the saved variables at logout or /reload (the costliest 20), so a lag report can be read
 -- after the session that had it.
@@ -271,6 +309,16 @@ SlashCmdList.AUCTIONIQ = function(msg)
 		return
 	elseif msg == "perf reset" then
 		AuctionIQ.PerfReset(); AuctionIQ.Print("perf counters reset.")
+		return
+	elseif msg:match("^perf mark") then
+		local name = msg:match("^perf mark%s+(.+)$")
+		if not name then AuctionIQ.Print("/aiq perf mark <workload>: saves what's been measured since the last reset under that name, then resets."); return end
+		local e = AuctionIQ.PerfMark(name)
+		local top = e and e.by[1]
+		local f = e and e.frames
+		AuctionIQ.Print(string.format("saved \"%s\" (%d s): %s; frames %d, slowest %.0f ms, %d over 50 ms. /reload when you're done so it's written.",
+			name, e and e.secs or 0, top and string.format("slowest AuctionIQ work %s at %.0f ms", top.name, top.max) or "no AuctionIQ work measured",
+			f and f.n or 0, f and f.max or 0, f and (f.bands[4] + f.bands[5]) or 0))
 		return
 	elseif msg == "tooltip" then
 		AuctionIQ.db.settings.tooltip = not AuctionIQ.db.settings.tooltip
