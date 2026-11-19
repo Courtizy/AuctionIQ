@@ -159,7 +159,7 @@ local function capitalRows(ctx)
 	local out = {}
 	local function days(d) return d and string.format("%.1f", d) or "-" end
 	for _, o in ipairs(plan.list) do
-		local name = o.kind == "craft" and o.name or select(1, LUI.ItemText(o.id))
+		local name = o.kind == "craft" and o.name or (o.name or select(1, LUI.ItemText(o.id))) .. T.Color("muted", "  buy and relist")
 		local fund = o.take == o.units and T.Color("ok", "all " .. o.units) or o.take > 0 and T.Color("accent", string.format("%d of %d", o.take, o.units))
 			or T.Color("muted", "no gold left")
 		local down = o.downside and T.Color(o.downside >= 0 and "fg" or "bad", money(o.downside)) or T.Color("muted", "-")
@@ -169,10 +169,11 @@ local function capitalRows(ctx)
 				return { { o.name or "?" },
 					{ T.Color("accent", "The same measures for every opportunity") },
 					{ "Expected profit", money(o.gain) .. T.Color("muted", "  " .. (o.against or "over doing nothing")) },
-					{ "Gold needed up front", money(o.cash) .. T.Color("muted", string.format("  (%d %s)", o.units, o.kind == "craft" and "crafts, the suggested batch" or "units")) },
+					{ "Gold needed up front", money(o.cash) .. T.Color("muted", string.format("  (%d %s)", o.units, o.kind == "craft" and "crafts, the suggested batch" or "bought, walking the listings")) },
 					{ "Gold back in", string.format("%.1f days", o.back) .. T.Color("muted", "  once enough has sold to cover it, at its sales rate") },
 					{ "If it sells slowly", o.downside and money(o.downside) or "-" },
-					{ T.Color("muted", "  half the sales and the price down by the Scenarios fall, unsold stock at that price") },
+					{ T.Color("muted", o.kind == "craft" and "  half the sales and the price down by the Scenarios fall, unsold stock at that price"
+						or "  the resale price down by the Scenarios fall") },
 					{ "Active time", T.Color("muted", "not measured yet") },
 					{ T.Color("accent", "Second figures") },
 					{ "Tied up", string.format("%.1f days", o.days) .. T.Color("muted", "  until the whole batch sells") },

@@ -4,6 +4,8 @@
 --   craft  a profitable craft from your saved scans, at the batch Compare crafts suggests
 --          (Decide.Suggest): gold in is the reagents for the batch, profit is the profit a craft
 --          times the crafts, and it's tied up until the batch sells at its sales rate
+--   flip   buying a scanned item off the AH to relist it: as many as a week's sales take while each
+--          one bought (walking the listings) costs less than relisting it brings in
 --
 -- The common measures (Phase 5.5), on every opportunity:
 --   gain      expected profit over the feasible alternative. For a craft the scan already counts the
@@ -99,8 +101,46 @@ function Cp.Opportunities(ctx, now)
 			end
 		end
 	end
+	-- buy and relist: an item a scan priced, when buying it off the AH and relisting beats what it costs
+	local seen = {}
+	for _, x in ipairs(ok and crafts or {}) do
+		if x.id and not seen[x.id] then
+			seen[x.id] = true
+			local o = Cp.Flip(x.id, x.row, now)
+			if o then out[#out + 1] = opportunity(o) end
+		end
+	end
 	table.sort(out, better)
 	return out
+end
+
+--- Buying an item off the AH to relist it: as many as a week's sales take while each one bought
+--- (walking the listings) still costs less than relisting it brings in. nil when it doesn't pay or
+--- there's no sales rate. row: a scan row (for Scan.BuyOrCraft), optional.
+function Cp.Flip(id, row, now)
+	local Sc = AuctionIQ.Scan
+	local bc = Sc and Sc.BuyOrCraft and Sc.BuyOrCraft(row or { item = id })
+	if not (bc and bc.flip and bc.flip > 0 and bc.resell) then return nil end
+	local daily = Sc.DailyUnits and Sc.DailyUnits(id) or 0
+	if daily <= 0 then return nil end
+	local Dp, D = AuctionIQ.Depth, AuctionIQ.Decide
+	local week = math.max(1, math.floor(daily * (D and D.HORIZON or 7)))
+	-- one more is worth buying while its own price (the walk's added cost) is under the resale value
+	local q, cost = 0, 0
+	for n = 1, week do
+		local c = Dp and Dp.Cost(id, n)
+		local total = c and c.cost or bc.buy * n
+		if total - cost >= bc.resell then break end
+		q, cost = n, total
+	end
+	if q == 0 then return nil end
+	local profit = bc.resell * q - cost
+	local fall = D and D.Scenario().price or 0.1
+	-- slow: half the sales in the week, the price down by the Scenarios fall, the rest held at that price
+	local slow = bc.resell * (1 - fall) * q - cost
+	local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id) or (row and row.name) or ("item " .. id)
+	return { kind = "flip", id = id, name = name, units = q, cost = cost, profit = profit, days = q / daily, cash = cost,
+		back = math.min(q, cost / bc.resell) / daily, downside = slow, against = "over not buying" }
 end
 
 --- Split budget over opportunities (in ranking order), whole units at a time. Each gets take

@@ -4415,6 +4415,22 @@ check("capital: the common measures on a craft: profit, gold in, days until the 
       cp.measures[1] == 50 * 10000 and cp.measures[2] == 100 * 10000 and abs(cp.measures[3] - (100 / 15) / 2) < 1e-9
       and cp.measures[4] == 20 * 10000 and cp.measures[5])
 check("Capital allocation: the footer says which ranking", "Ranked by return" in plain(cp.rateFoot) and "Ranked by expected profit" in plain(cp.gainFoot))
+fp = L.eval("""(function()
+  local Cp, Sc, G = AuctionIQ.Capital, AuctionIQ.Scan, 10000
+  local oldB, oldD = Sc.BuyOrCraft, Sc.DailyUnits
+  Sc.BuyOrCraft = function(r) return r.item == 873 and { buy = 10 * G, resell = 14 * G, flip = 4 * G } or nil end
+  Sc.DailyUnits = function(id) return id == 873 and 1 or 0 end
+  -- 3 at 10g, 2 at 13g, then 15g (over the 14g it relists for): buy 5
+  AuctionIQ.Depth.Remember(873, { { price = 10 * G, qty = 3 }, { price = 13 * G, qty = 2 }, { price = 15 * G, qty = 10 } })
+  local o = Cp.Flip(873, { item = 873, name = "Gem" })
+  local none = Cp.Flip(874, { item = 874 })
+  AuctionIQ.Depth.Forget(873)
+  Sc.BuyOrCraft, Sc.DailyUnits = oldB, oldD
+  return { o.kind, o.units, o.cost, o.profit, o.days, o.back, o.downside, none == nil, o.against }
+end)()""")
+check("capital: buy and relist takes the listings under its resale value (5 of them), on the same measures",
+      fp[1] == "flip" and fp[2] == 5 and fp[3] == 56 * 10000 and fp[4] == 14 * 5 * 10000 - 56 * 10000 and fp[5] == 5
+      and abs(fp[6] - 4) < 1e-9 and abs(fp[7] - (14 * 0.9 * 5 - 56) * 10000) < 1e-6 and fp[8] and "not buying" in fp[9])
 check("capital: only crafts with a sales rate count, at gold a day per gold in",
       cp.n == 1 and cp.first == "craft" and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
 check("capital: the gold goes in whole crafts at a time", cp.craftTake == 8 and cp.spent == 80 * 10000 and cp.idle == 0
