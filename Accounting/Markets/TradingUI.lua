@@ -113,6 +113,10 @@ function TUI.PostLines(r, a)
 			lines[#lines + 1] = B.Text("Sold, expected", string.format("%.1f of %d", s.sold, qty))
 			lines[#lines + 1] = B.Line("Deposits lost on the rest", -s.lost, true)
 			lines[#lines + 1] = B.Total("Likely proceeds", s.proceeds)
+			-- the common measures, as Capital allocation shows them for crafts
+			lines[#lines + 1] = B.Sub("Gold needed up front", AuctionIQ.FormatMoney(s.deposit or 0) .. " in deposits")
+			lines[#lines + 1] = B.Sub("Gold back in", "as it sells, within " .. (s.hours % 24 == 0 and string.format("%d day%s", s.hours / 24, s.hours == 24 and "" or "s") or s.hours .. " hours"))
+			if s.slow then lines[#lines + 1] = B.Sub("If it sells slowly", AuctionIQ.FormatMoney(s.slow) .. string.format(" (%d sell)", s.low)) end
 			if s.demand then
 				lines[#lines + 1] = B.Sub("Sales rate", AuctionIQ.Demand.SOURCE[s.demand.source] .. ", " .. AuctionIQ.Demand.Rate(s.demand.units) .. " a day")
 			end

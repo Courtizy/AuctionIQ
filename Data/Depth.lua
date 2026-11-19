@@ -132,7 +132,8 @@ end
 
 --- Posting q at price: { q, price, hours, ahead, bookSource, bookAge, demand (the estimate), sold
 --- (expected), low, high (80% of how many sell), proceeds (expected, after the cut and lost
---- deposits), gross (all q sold), lost (deposits on what expires), text } or nil without a price.
+--- deposits), gross (all q sold), lost (deposits on what expires), deposit (paid up front), slow (proceeds
+--- when only the low end sells), text } or nil without a price.
 --- opts: hours (else the item's posting duration), demand (a Demand.Estimate), ahead (units).
 function D.Sell(id, q, price, opts)
 	opts = opts or {}
@@ -160,6 +161,9 @@ function D.Sell(id, q, price, opts)
 	out.high = math.max(0, math.min(q, d.high - a))
 	out.lost = deposit * (q - out.sold)
 	out.proceeds = each * out.sold - out.lost
+	out.deposit = deposit * q
+	-- the slow case: only the low end of the range sells
+	out.slow = each * out.low - deposit * (q - out.low)
 	out.text = D.SellText(out)
 	return out
 end

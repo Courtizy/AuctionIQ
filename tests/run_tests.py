@@ -2088,6 +2088,8 @@ ll = list(TU.Lines(tg["TSM/Loot/Pets"]).values())
 check("tune: each suggestion shows the window, the evidence, that the effect is projected, and where else the operation applies",
       "Post cap 5 -> 1" in ll[0] and any("last 30 days" in l for l in ll) and any("12 expired" in l for l in ll)
       and any("projected, not observed" in l for l in ll) and any("set on TSM/Loot" in l for l in ll))
+check("tune: and the same measures as every other opportunity: gold expected over the window, no gold needed",
+      any("measures: +" in l and "over 30 days; no gold needed; active time not measured" in l for l in ll))
 run("AuctionIQ.Tune.Step('minEvents', 10)")
 check("tune settings: raising the events a change needs drops the thinly backed ones",
       AuctionIQ.Tune.Get("minEvents") == 15 and not any(r.path == "TSM/Loot/Pets" for r in TU.Diagnose()[0].values()))
@@ -4415,6 +4417,38 @@ check("capital: the common measures on a craft: profit, gold in, days until the 
       cp.measures[1] == 50 * 10000 and cp.measures[2] == 100 * 10000 and abs(cp.measures[3] - (100 / 15) / 2) < 1e-9
       and cp.measures[4] == 20 * 10000 and cp.measures[5])
 check("Capital allocation: the footer says which ranking", "Ranked by return" in plain(cp.rateFoot) and "Ranked by expected profit" in plain(cp.gainFoot))
+fp = L.eval("""(function()
+  local Cp, Sc, G = AuctionIQ.Capital, AuctionIQ.Scan, 10000
+  local oldB, oldD = Sc.BuyOrCraft, Sc.DailyUnits
+  Sc.BuyOrCraft = function(r) return r.item == 873 and { buy = 10 * G, resell = 14 * G, flip = 4 * G } or nil end
+  Sc.DailyUnits = function(id) return id == 873 and 1 or 0 end
+  -- 3 at 10g, 2 at 13g, then 15g (over the 14g it relists for): buy 5
+  AuctionIQ.Depth.Remember(873, { { price = 10 * G, qty = 3 }, { price = 13 * G, qty = 2 }, { price = 15 * G, qty = 10 } })
+  local o = Cp.Flip(873, { item = 873, name = "Gem" })
+  local none = Cp.Flip(874, { item = 874 })
+  AuctionIQ.Depth.Forget(873)
+  Sc.BuyOrCraft, Sc.DailyUnits = oldB, oldD
+  return { o.kind, o.units, o.cost, o.profit, o.days, o.back, o.downside, none == nil, o.against }
+end)()""")
+check("capital: buy and relist takes the listings under its resale value (5 of them), on the same measures",
+      fp[1] == "flip" and fp[2] == 5 and fp[3] == 56 * 10000 and fp[4] == 14 * 5 * 10000 - 56 * 10000 and fp[5] == 5
+      and abs(fp[6] - 4) < 1e-9 and abs(fp[7] - (14 * 0.9 * 5 - 56) * 10000) < 1e-6 and fp[8] and "not buying" in fp[9])
+st = L.eval("""(function()
+  local Cp, G = AuctionIQ.Capital, 10000
+  local oldF, oldD = AuctionIQ.Flow.Weekly, AuctionIQ.Scan.DailyUnits
+  AuctionIQ.Flow.Weekly = function(id) return id == 875 and { verdict = "faster", made = 80, weeks = { 1, 2, 3, 4, 5, 6, 7, 8 }, stockNow = 40 }
+    or { verdict = "even", made = 8, weeks = { 1 }, stockNow = 0 } end
+  AuctionIQ.Scan.DailyUnits = function(id) return id == 875 and 2 or 0 end
+  -- 10 a week made at 4g of reagents an item; 40 held at 2 a day is 20 days; 1% a day carry
+  local x = { id = 875, name = "Ink", profit = 3 * G, suggest = { n = 5, scenarios = { expected = { cost = 20 * G, items = 5 } } } }
+  local o = Cp.Stop(x)
+  local none = Cp.Stop({ id = 876, name = "Even", profit = G, suggest = { n = 1, scenarios = { expected = { cost = G, items = 1 } } } })
+  AuctionIQ.Flow.Weekly, AuctionIQ.Scan.DailyUnits = oldF, oldD
+  return { o.kind, o.freed, o.profit, o.cash, o.downside, none == nil, o.against }
+end)()""")
+check("capital: stop making something made faster than it sells frees a week's reagents and avoids their carry",
+      st[1] == "stop" and st[2] == 40 * 10000 and abs(st[3] - 40 * 10000 * 0.01 * 20) < 1e-6 and st[4] == 0
+      and st[5] == -30 * 10000 and st[6] and "making 10 this week" in st[7])
 check("capital: only crafts with a sales rate count, at gold a day per gold in",
       cp.n == 1 and cp.first == "craft" and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
 check("capital: the gold goes in whole crafts at a time", cp.craftTake == 8 and cp.spent == 80 * 10000 and cp.idle == 0
@@ -5054,6 +5088,8 @@ pl = L.eval("""(function()
 end)()""")
 check("sell side: Ready to post's detail shows what's likely in by expiry and what it rests on",
       "Likely in time" in pl and "Likely proceeds" in pl and "nothing is listed below your price" in pl and "Sales rate" in pl)
+check("sell side: and the same measures as Capital allocation: gold up front, when it's back, the slow case",
+      "Gold needed up front" in pl and "Gold back in" in pl and "If it sells slowly" in pl)
 check("sell side: no sales rate, it says so rather than guess", sl.none[1] and "unknown" in sl.none[2])
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
