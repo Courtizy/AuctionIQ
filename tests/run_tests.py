@@ -2121,6 +2121,38 @@ check("tune log: measured lines are observed, the estimate stays projected",
       any("observed net profit" in l for l in cl) and any("observed units expired: 10 before, 0 after" in l for l in cl)
       and any("observed posting sessions" in l for l in cl) and any(l.strip().startswith("projected when suggested") for l in cl)
       and any("gold tied up was recorded on 0 of the 10 days before" in l for l in cl))
+check("tune log: without enough similar unchanged items, it says there's no control rather than guess",
+      any("no control:" in l and "market's own move" in l for l in cl))
+ct = L.eval("""(function(tnow)
+  local TU, G = AuctionIQ.Tune, AuctionIQ.Groups
+  local e = TU.Entry(1)
+  local oldE, oldG = TU.Evidence, G.TSMGroups
+  G.TSMGroups = function() return { [301] = e.group, [501] = "TSM/Other", [502] = "TSM/Other", [503] = "TSM/More" } end
+  local c = e.changedAt
+  TU.Evidence = function(win, want)
+    local after = win.from >= c
+    local by = {}
+    for id in pairs(want) do
+      local x = { sold = 0, net = 0, paid = 0, expired = 0, cancelRows = 0, bought = 0, saleRows = 0 }
+      if id == 301 then x.sold = after and 8 or 4; x.net = x.sold * 100
+      elseif id >= 501 then x.sold = after and 15 or 10; x.net = after and 1650 or 1000 end
+      by[id] = x
+    end
+    return by
+  end
+  local r = TU.Compare(1, tnow + 10 * 86400)
+  local lines = TU.CompareLines(r)
+  TU.Evidence, G.TSMGroups = oldE, oldG
+  local t = {}
+  for _, l in ipairs(lines) do t[#t + 1] = l end
+  return { ok = r.control.ok, nitems = r.control.items, exp = r.expectedSold, eff = r.effectSold, effRev = r.effectRevenue,
+    pm = r.priceMove, cpm = r.controlPriceMove, lines = table.concat(t, " | ") }
+end)""")(tnow)
+check("tune compare: a control of similar unchanged items says what the market did; the change is read against it",
+      ct.ok and ct.nitems == 3 and abs(ct.exp - 6) < 1e-9 and abs(ct.eff - 2) < 1e-9 and abs(ct.effRev - (800 - 400 * 1.65)) < 1e-6)
+check("tune compare: price moves are shown for both, and the lines say all of it",
+      abs(ct.pm) < 1e-9 and abs(ct.cpm - 0.1) < 1e-9 and "control: 3 similar unchanged items sold 30 before, 45 after (+50%)" in ct.lines
+      and "against the control: +2 units sold" in ct.lines and "your sale price moved +0%, the control's +10%" in ct.lines)
 run("STUB.printed = {}; STUB.oldPrint = AuctionIQ.Print; AuctionIQ.Print = function(t) table.insert(STUB.printed, t) end; SlashCmdList.AUCTIONIQ('tune'); SlashCmdList.AUCTIONIQ('tune log'); SlashCmdList.AUCTIONIQ('tune drop 2'); SlashCmdList.AUCTIONIQ('tune changed 99'); AuctionIQ.Print = STUB.oldPrint")
 tpr = [str(t) for t in L.globals().STUB.printed.values()]
 check("/aiq tune numbers what it shows and records it; log, drop and a wrong number answer in chat",

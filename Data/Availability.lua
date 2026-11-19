@@ -81,7 +81,8 @@ end
 
 --- What the readings since `from` show for an item: { up = seconds seen up, unobserved = seconds
 --- with no reading close enough to say, outs = { {after, before} } times it ran out between two
---- readings }. Each character is counted on its own.
+--- readings }. Each character is counted on its own. `now` is the end of the span (readings after it
+--- don't count), so a past span can be read too.
 function Av.Summary(id, from, now)
 	now = now or time()
 	from = from or (now - 30 * DAY)
@@ -90,12 +91,12 @@ function Av.Summary(id, from, now)
 		for i = 1, #list do
 			local a, b = list[i], list[i + 1]
 			local t0 = math.max(a[1], from)
-			local t1 = b and b[1] or now
+			local t1 = math.min(b and b[1] or now, now)
 			if t1 > t0 and a[2] > 0 then
 				if t1 - a[1] <= Av.OBSERVED then out.up = out.up + (t1 - t0)
 				else out.unobserved = out.unobserved + (t1 - t0) end
 			end
-			if b and a[2] > 0 and b[2] == 0 and b[1] >= from then table.insert(out.outs, { a[1], b[1] }) end
+			if b and a[2] > 0 and b[2] == 0 and b[1] >= from and b[1] <= now then table.insert(out.outs, { a[1], b[1] }) end
 		end
 	end
 	table.sort(out.outs, function(x, y) return x[2] < y[2] end)
