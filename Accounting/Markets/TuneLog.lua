@@ -13,7 +13,9 @@
 -- days since it, up to the evidence window), over the group's items: net profit (sales after the
 -- cut less buys), units sold, units expired, cancels, gold tied up (the average of the daily
 -- snapshots) and posting sessions. Everything measured is labelled observed; the suggestion's own
--- estimate stays labelled projected beside it.
+-- estimate stays labelled projected beside it. Beside it, what else could explain the difference:
+-- a control of similar unchanged items (the market's own move), the sale price before and after,
+-- how long stock was up, and other changes in the record over the same days.
 local _, AuctionIQ = ...
 
 local T = AuctionIQ.Tune
@@ -172,9 +174,10 @@ local function measure(e, ids, from, to)
 	local want = {}
 	for _, id in ipairs(ids) do want[id] = true end
 	local by = T.Evidence({ from = from, to = to - 1 }, want)
-	local m = { net = 0, sold = 0, expired = 0, cancels = 0, bought = 0 }
+	local m = { net = 0, sold = 0, expired = 0, cancels = 0, bought = 0, revenue = 0 }
 	for _, x in pairs(by) do
 		m.net = m.net + x.net - x.paid
+		m.revenue = m.revenue + x.net
 		m.sold, m.expired, m.cancels, m.bought = m.sold + x.sold, m.expired + x.expired, m.cancels + x.cancelRows, m.bought + x.bought
 	end
 	local st = store()
@@ -188,6 +191,63 @@ local function measure(e, ids, from, to)
 	for _, t in ipairs(st.visits[e.n] or {}) do if t >= from and t < to then visits = visits + 1 end end
 	m.sessions = visits
 	return m
+end
+
+-- The control: items in your other TSM groups that no change in the record touched over the same
+-- days, and that sold in both periods. What they did before and after says what the market did,
+-- so the changed group's after can be read against what its before would have become anyway:
+--   expected after = before x (control after / control before), effect = after - expected
+T.CONTROL_MIN_ITEMS = 3   -- fewer similar items than this and there's no control
+T.CONTROL_MIN_SOLD = 10   -- units the control must sell each side
+
+local function changedNear(e, from, to)
+	local out = {}
+	for _, x in ipairs(store().log) do
+		if x ~= e and x.status == "changed" and x.changedAt and x.changedAt >= from and x.changedAt < to then out[#out + 1] = x end
+	end
+	return out
+end
+
+local function control(e, from, c, to, others)
+	local skip = { [e.group] = true }
+	for _, x in ipairs(others) do skip[x.group] = true end
+	local want = {}
+	for id, path in pairs(AuctionIQ.Groups.TSMGroups()) do if not skip[path] then want[id] = true end end
+	local before = T.Evidence({ from = from, to = c - 1 }, want)
+	local after = T.Evidence({ from = c, to = to - 1 }, want)
+	local out = { items = 0, before = { sold = 0, revenue = 0 }, after = { sold = 0, revenue = 0 } }
+	for id, b in pairs(before) do
+		local a = after[id]
+		if b.sold > 0 and a and a.sold > 0 then
+			out.items = out.items + 1
+			out.before.sold, out.before.revenue = out.before.sold + b.sold, out.before.revenue + b.net
+			out.after.sold, out.after.revenue = out.after.sold + a.sold, out.after.revenue + a.net
+		end
+	end
+	if out.items < T.CONTROL_MIN_ITEMS or out.before.sold < T.CONTROL_MIN_SOLD or out.after.sold < T.CONTROL_MIN_SOLD then
+		out.ok = false
+		out.why = string.format("%d similar unchanged %s sold in both periods; a control needs %d, each side selling %d",
+			out.items, out.items == 1 and "item" or "items", T.CONTROL_MIN_ITEMS, T.CONTROL_MIN_SOLD)
+		return out
+	end
+	out.ok = true
+	out.soldRatio = out.after.sold / out.before.sold
+	out.revenueRatio = out.before.revenue > 0 and out.after.revenue / out.before.revenue or nil
+	out.priceBefore, out.priceAfter = out.before.revenue / out.before.sold, out.after.revenue / out.after.sold
+	return out
+end
+
+-- Seconds the items had stock up over [from, to), from the availability readings.
+local function upTime(ids, from, to)
+	local Av = AuctionIQ.Availability
+	if not Av then return nil end
+	local up, seen = 0, false
+	for _, id in ipairs(ids) do
+		local sm = Av.Summary(id, from, to)
+		if sm.up > 0 or sm.unobserved > 0 then seen = true end
+		up = up + sm.up
+	end
+	return seen and up or nil
 end
 
 --- Before and after the change, the same number of whole days each side: { days, before, after,
@@ -208,6 +268,26 @@ function T.Compare(n, now)
 	out.before = measure(e, ids, c - days * DAY, c)
 	out.after = measure(e, ids, c, c + days * DAY)
 	out.ready = true
+	-- what else could explain it: the market (a control of similar unchanged items), your prices,
+	-- how long you had stock up, and other changes in the same days
+	local from, to = c - days * DAY, c + days * DAY
+	out.others = changedNear(e, from, to)
+	local ctl = control(e, from, c, to, out.others)
+	out.control = ctl
+	local b, a = out.before, out.after
+	if ctl.ok then
+		out.expectedSold = b.sold * ctl.soldRatio
+		out.effectSold = a.sold - out.expectedSold
+		if ctl.revenueRatio and b.revenue > 0 then
+			out.expectedRevenue = b.revenue * ctl.revenueRatio
+			out.effectRevenue = a.revenue - out.expectedRevenue
+		end
+	end
+	if b.sold > 0 and a.sold > 0 then
+		out.priceMove = (a.revenue / a.sold) / (b.revenue / b.sold) - 1
+	end
+	if ctl.ok then out.controlPriceMove = ctl.priceAfter / ctl.priceBefore - 1 end
+	out.upBefore, out.upAfter = upTime(ids, from, c), upTime(ids, c, to)
 	-- gold tied up and sessions are recorded from the suggestion on: say when the before side is short
 	if (out.before.tiedDays or 0) < days then
 		out.tiedNote = string.format("gold tied up was recorded on %d of the %d days before", out.before.tiedDays or 0, days)
@@ -239,6 +319,28 @@ function T.CompareLines(c)
 	row("gold tied up (average)", b.tied, a.tied, function(v) return v and money(v) or "-" end)
 	row("posting sessions", b.sessions, a.sessions, num)
 	if c.tiedNote then table.insert(out, "  " .. c.tiedNote) end
+	-- read against what else moved in the same days
+	local ctl = c.control
+	if ctl and ctl.ok then
+		table.insert(out, string.format("  control: %d similar unchanged items sold %d before, %d after (%+.0f%%): the market's own move",
+			ctl.items, ctl.before.sold, ctl.after.sold, (ctl.soldRatio - 1) * 100))
+		table.insert(out, string.format("  against the control: %+.0f units sold%s, beyond what the market's move explains",
+			c.effectSold, c.effectRevenue and (", " .. (c.effectRevenue >= 0 and "+" or "-") .. money(math.abs(c.effectRevenue)) .. " in sales") or ""))
+	elseif ctl then
+		table.insert(out, "  no control: " .. ctl.why .. ", so before and after can't be told from the market's own move")
+	end
+	if c.priceMove then
+		table.insert(out, string.format("  your sale price moved %+.0f%%%s", c.priceMove * 100,
+			c.controlPriceMove and string.format(", the control's %+.0f%%", c.controlPriceMove * 100) or ""))
+	end
+	if c.upBefore and c.upAfter then
+		table.insert(out, string.format("  stock up: %.0f hours before, %.0f after (item-hours)", c.upBefore / 3600, c.upAfter / 3600))
+	end
+	if c.others and #c.others > 0 then
+		local ns = {}
+		for _, x in ipairs(c.others) do ns[#ns + 1] = string.format("#%d %s", x.n, x.group) end
+		table.insert(out, "  other changes in the same days: " .. table.concat(ns, ", ") .. " (left out of the control)")
+	end
 	if c.sessionNote then table.insert(out, "  " .. c.sessionNote) end
 	local p = c.projected
 	if p and p.text then table.insert(out, string.format("  projected when suggested (%d days): %s", p.days or 30, p.text)) end
