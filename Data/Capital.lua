@@ -1,17 +1,26 @@
--- Capital allocation: where your gold earns the most gold a day for the gold tied up.
+-- Capital allocation: where your gold does the most, measured the same way for every opportunity.
 --
 -- Each opportunity puts gold in now and gets it back, with a profit, as it sells:
 --   craft  a profitable craft from your saved scans, at the batch Compare crafts suggests
 --          (Decide.Suggest): gold in is the reagents for the batch, profit is the profit a craft
 --          times the crafts, and it's tied up until the batch sells at its sales rate
 --
--- Its return is profit / gold in / days tied up: gold a day for each gold in. Days are at least one
--- (nothing sells the moment it's listed). Your gold, less what you keep back, goes to the best
--- return first, then the next, a whole craft or unit at a time, until it runs out: what's left is
--- idle.
+-- The common measures (Phase 5.5), on every opportunity:
+--   gain      expected profit over the feasible alternative. For a craft the scan already counts the
+--             reagents you hold at what they'd sell for, so its profit is what it adds over selling
+--             them (or over doing nothing, when every reagent is bought)
+--   cash      the gold it needs up front
+--   back      expected days until that gold is back: the items that cover it, at the sales rate
+--   downside  the profit in the slow case (half the sales, the price down by the Scenarios fall),
+--             unsold stock valued at that price
+--   minutes   active minutes, once they're measured (not yet: shown as not measured)
+-- The return (profit / gold in / days tied up, gold a day for each gold in) stays as a second
+-- figure, never the only one. Your gold, less what you keep back, goes to the first in the ranking
+-- you pick (most profit, or best return), then the next, a whole craft at a time, until it runs out:
+-- what's left is idle.
 local _, AuctionIQ = ...
 
-local Cp = { RESERVES = { 0, 0.1, 0.25, 0.5 }, MIN_DAYS = 1 }
+local Cp = { RESERVES = { 0, 0.1, 0.25, 0.5 }, MIN_DAYS = 1, RANKS = { "gain", "rate" } }
 AuctionIQ.Capital = Cp
 
 --- The share of your gold kept back, not allocated (a setting).
@@ -33,10 +42,34 @@ function Cp.StepReserve(dir)
 	Cp.SetReserve(list[at])
 end
 
+--- How opportunities are ranked: "gain" (most expected profit, the default) or "rate" (best return).
+function Cp.Rank()
+	local s = AuctionIQ.db and AuctionIQ.db.settings
+	return s and s.capitalRank or "gain"
+end
+
+function Cp.StepRank()
+	AuctionIQ.db.settings = AuctionIQ.db.settings or {}
+	AuctionIQ.db.settings.capitalRank = Cp.Rank() == "gain" and "rate" or "gain"
+end
+
+local function better(a, b)
+	if Cp.Rank() == "rate" then
+		if a.rate ~= b.rate then return a.rate > b.rate end
+		return a.profit > b.profit
+	end
+	if a.profit ~= b.profit then return a.profit > b.profit end
+	return a.rate > b.rate
+end
+
 local function opportunity(o)
 	o.days = math.max(Cp.MIN_DAYS, o.days or Cp.MIN_DAYS)
 	o.rate = o.cost > 0 and o.profit / o.cost / o.days or 0
 	o.each = o.cost / o.units
+	-- the common measures
+	o.gain = o.gain or o.profit
+	o.cash = o.cash or o.cost
+	o.back = o.back or o.days
 	return o
 end
 
@@ -55,16 +88,22 @@ function Cp.Opportunities(ctx, now)
 			local daily = AuctionIQ.Scan and AuctionIQ.Scan.DailyUnits and AuctionIQ.Scan.DailyUnits(x.id) or 0
 			local days = daily > 0 and sc.items / daily or nil
 			if days then
+				-- the gold is back once enough items have sold to cover it, at each item's money after the cut
+				local each = sc.each or 0
+				local cover = each > 0 and math.min(sc.items, sc.cost / each) or sc.items
+				local slow = sg.scenarios.slow
 				out[#out + 1] = opportunity({ kind = "craft", id = x.id, name = x.name, char = x.char, units = sg.n, cost = sc.cost,
-					profit = x.profit * sg.n, days = days, x = x })
+					profit = x.profit * sg.n, days = days, x = x, cash = sc.cost, back = math.max(Cp.MIN_DAYS, cover / daily),
+					downside = slow and (slow.cash + slow.stockValue - slow.cost) or nil,
+					against = "over selling the reagents you hold" })
 			end
 		end
 	end
-	table.sort(out, function(a, b) if a.rate ~= b.rate then return a.rate > b.rate end return a.profit > b.profit end)
+	table.sort(out, better)
 	return out
 end
 
---- Split budget over opportunities (best return first), whole units at a time. Each gets take
+--- Split budget over opportunities (in ranking order), whole units at a time. Each gets take
 --- (units), spend and gain; returns { list, budget, spent, gain, idle, perDay }.
 function Cp.Allocate(list, budget)
 	local left, spent, gain, perDay = budget, 0, 0, 0

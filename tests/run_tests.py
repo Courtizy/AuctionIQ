@@ -4373,10 +4373,23 @@ cp = L.eval("""(function()
   local oldS, oldD, oldM = AV.Scenarios, Sc.DailyUnits, GetMoney
   -- a craft: 10 crafts at 10g of reagents each, 5g profit a craft, 2 sell a day (5 days)
   AV.Scenarios = function() return { { id = 870, name = "Flask", char = "Ann", profit = 5 * G,
-    suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10 } } } },
+    suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10, each = 15 * G },
+      slow = { cost = 100 * G, cash = 5 * 12 * G, stockValue = 5 * 12 * G } } } },
+    -- a bigger profit at a worse return: ranked first by profit, second by return
+    { id = 872, name = "Robe", char = "Ann", profit = 30 * G, suggest = { n = 2, scenarios = { expected = { cost = 200 * G, items = 2, each = 115 * G } } } },
     -- a craft with no sales rate isn't counted: there's no telling when the gold comes back
     { id = 871, name = "Odd", char = "Ann", profit = 5 * G, suggest = { n = 2, scenarios = { expected = { cost = 20 * G, items = 2 } } } } } end
-  Sc.DailyUnits = function(id) return id == 870 and 2 or 0 end
+  Sc.DailyUnits = function(id) return (id == 870 and 2) or (id == 872 and 0.2) or 0 end
+  local byGain = Cp.Opportunities()
+  out.order = { byGain[1].id, byGain[2] and byGain[2].id }
+  local f = byGain[2]
+  out.measures = { f.gain, f.cash, f.back, f.downside, byGain[1].downside == nil }
+  Cp.StepRank(); out.rank = Cp.Rank()
+  local byRate = Cp.Opportunities()
+  out.rateOrder = { byRate[1].id, byRate[2].id }
+  AV.Scenarios = function() return { { id = 870, name = "Flask", char = "Ann", profit = 5 * G,
+    suggest = { n = 10, scenarios = { expected = { cost = 100 * G, items = 10, each = 15 * G } } } },
+    { id = 871, name = "Odd", char = "Ann", profit = 5 * G, suggest = { n = 2, scenarios = { expected = { cost = 20 * G, items = 2 } } } } } end
   local list = Cp.Opportunities()
   out.n, out.first = #list, list[1] and list[1].kind
   out.craftRate, out.craftDays = list[1].rate, list[1].days
@@ -4388,10 +4401,20 @@ cp = L.eval("""(function()
   GetMoney = function() return 200 * G end
   local rows, foot = AuctionIQ.MarketsUI.VIEWS.capitalplan.rows({ now = STUB.now, keepName = function() return true end })
   out.rows, out.foot = #rows, foot
+  out.rateFoot = foot
+  Cp.StepRank(); out.rankBack = Cp.Rank()
+  local _, foot2 = AuctionIQ.MarketsUI.VIEWS.capitalplan.rows({ now = STUB.now, keepName = function() return true end })
+  out.gainFoot = foot2
   Cp.StepReserve(1); out.reserve = Cp.Reserve(); Cp.StepReserve(-1); out.back = Cp.Reserve()
   AV.Scenarios, Sc.DailyUnits, GetMoney = oldS, oldD, oldM
   return out
 end)()""")
+check("capital: ranked by expected profit by default (the 60g robes before the 50g flasks), by return when you pick it",
+      list(cp.order.values()) == [872, 870] and cp.rank == "rate" and list(cp.rateOrder.values()) == [870, 872] and cp.rankBack == "gain")
+check("capital: the common measures on a craft: profit, gold in, days until the gold is back, the slow case",
+      cp.measures[1] == 50 * 10000 and cp.measures[2] == 100 * 10000 and abs(cp.measures[3] - (100 / 15) / 2) < 1e-9
+      and cp.measures[4] == 20 * 10000 and cp.measures[5])
+check("Capital allocation: the footer says which ranking", "Ranked by return" in plain(cp.rateFoot) and "Ranked by expected profit" in plain(cp.gainFoot))
 check("capital: only crafts with a sales rate count, at gold a day per gold in",
       cp.n == 1 and cp.first == "craft" and abs(cp.craftRate - 0.1) < 1e-9 and cp.craftDays == 5)
 check("capital: the gold goes in whole crafts at a time", cp.craftTake == 8 and cp.spent == 80 * 10000 and cp.idle == 0
