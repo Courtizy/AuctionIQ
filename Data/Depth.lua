@@ -93,3 +93,87 @@ function D.Slippage(id, q)
 	if not c or not c.first or c.first <= 0 then return nil end
 	return c.unit / c.first - 1
 end
+
+-- The sell side ----------------------------------------------------------------------------------
+-- What posting q at a price is likely to bring in before the listing runs out. Buyers take the
+-- cheapest listings first, so the units others have up below your price sell before yours:
+--   ahead     units listed below your price (your AH search, else the last full AH search; your own
+--             listings are left out of a search, not always of a saved scan)
+--   demand    units bought over the listing's time: the sales estimate's belief (Demand.lua, your
+--             sales on the days you had it up blended with the region's) spread over those hours
+--   sold      E[min(q, demand - ahead)], with demand - ahead never under 0
+--   proceeds  sold x price after the cut, less the deposit lost on what expires
+-- It is an estimate and says what it rests on: where the listings come from and how old, and where
+-- the sales rate comes from.
+
+--- Units others have listed below `price`, and where that comes from: (units, source, age) or nil
+--- without a book.
+function D.Ahead(id, price)
+	local rows, source, age = D.Book(id)
+	if not (rows and price) then return nil end
+	local n = 0
+	if source == "ah" then
+		for _, r in ipairs(rows) do
+			if r[1] < price then n = n + r[2] else break end
+		end
+	else
+		-- a ladder of (units, average price) points: each step's own price is its added cost over its added units
+		local pq, pc = 0, 0
+		for _, pt in ipairs(rows) do
+			local cq, cc = pt[1], pt[1] * pt[2]
+			local step = cq > pq and (cc - pc) / (cq - pq) or pt[2]
+			if step >= price then break end
+			n = cq
+			pq, pc = cq, cc
+		end
+	end
+	return n, source, age
+end
+
+--- Posting q at price: { q, price, hours, ahead, bookSource, bookAge, demand (the estimate), sold
+--- (expected), low, high (80% of how many sell), proceeds (expected, after the cut and lost
+--- deposits), gross (all q sold), lost (deposits on what expires), text } or nil without a price.
+--- opts: hours (else the item's posting duration), demand (a Demand.Estimate), ahead (units).
+function D.Sell(id, q, price, opts)
+	opts = opts or {}
+	q = math.floor(q or 0)
+	if not (id and price and price > 0 and q > 0) then return nil end
+	local E = AuctionIQ.Expect
+	local hours = opts.hours or (E and E.Hours(id)) or 24
+	local ahead, bookSource, bookAge = opts.ahead, opts.ahead and "given" or nil, nil
+	if not ahead then ahead, bookSource, bookAge = D.Ahead(id, price) end
+	local e = opts.demand or (AuctionIQ.Demand and AuctionIQ.Demand.Estimate(id))
+	local R = AuctionIQ.Restock
+	local each = price * AuctionIQ.AH_CUT
+	local deposit = E and E.Deposit(id, hours) or 0
+	local out = { q = q, price = price, hours = hours, ahead = ahead, bookSource = bookSource, bookAge = bookAge, demand = e,
+		gross = each * q }
+	local d = R and R.Demand(e, hours / 24, math.ceil((ahead or 0) + q) + 1)
+	if not d then
+		out.text = "No sales rate for it yet, so how many sell in time is unknown."
+		return out
+	end
+	local a = ahead or 0
+	out.sold = R.Sold(d, a + q) - R.Sold(d, a)
+	-- how many sell: demand past the stock ahead, at most q (from the demand's 10% and 90% points)
+	out.low = math.max(0, math.min(q, d.low - a))
+	out.high = math.max(0, math.min(q, d.high - a))
+	out.lost = deposit * (q - out.sold)
+	out.proceeds = each * out.sold - out.lost
+	out.text = D.SellText(out)
+	return out
+end
+
+local function hoursText(h) return h % 24 == 0 and string.format("%d day%s", h / 24, h == 24 and "" or "s") or string.format("%d hours", h) end
+
+--- "Likely 2 to 4 of 5 sell in 1 day: 30 are listed below your price (your last AH scan, 2 hr old)."
+function D.SellText(s)
+	if not (s and s.sold) then return s and s.text or nil end
+	local range = s.low == s.high and tostring(s.low) or string.format("%d to %d", s.low, s.high)
+	local where = s.bookSource == "ah" and "your AH search" or s.bookSource == "scan" and "your last AH scan" or nil
+	local age = where and s.bookAge and AuctionIQ.Scans and AuctionIQ.Scans.Age and (", " .. AuctionIQ.Scans.Age(s.bookAge) .. " old") or ""
+	local ahead = s.ahead == nil and "no listings seen to compare with"
+		or s.ahead == 0 and "nothing is listed below your price" .. (where and (" (" .. where .. age .. ")") or "")
+		or string.format("%d %s listed below your price%s", s.ahead, s.ahead == 1 and "is" or "are", where and (" (" .. where .. age .. ")") or "")
+	return string.format("Likely %s of %d sell in %s: %s.", range, s.q, hoursText(s.hours), ahead)
+end
