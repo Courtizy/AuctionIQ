@@ -105,6 +105,20 @@ function TUI.PostLines(r, a)
 		lines[#lines + 1] = B.Line(string.format("%d x %s", qty, M(r.price)), r.price * qty)
 		lines[#lines + 1] = B.Line("AH cut (5%)", -(r.price * qty * (1 - AuctionIQ.AH_CUT)), true)
 		lines[#lines + 1] = B.Total("After the cut", r.price * qty * AuctionIQ.AH_CUT)
+		-- what's likely to come in before the listing runs out, against the stock listed below it
+		local s = AuctionIQ.Depth and AuctionIQ.Depth.Sell(r.id, qty, r.price)
+		if s and s.sold then
+			lines[#lines + 1] = B.Head("Likely in time")
+			lines[#lines + 1] = { T.Color("muted", s.text) }
+			lines[#lines + 1] = B.Text("Sold, expected", string.format("%.1f of %d", s.sold, qty))
+			lines[#lines + 1] = B.Line("Deposits lost on the rest", -s.lost, true)
+			lines[#lines + 1] = B.Total("Likely proceeds", s.proceeds)
+			if s.demand then
+				lines[#lines + 1] = B.Sub("Sales rate", AuctionIQ.Demand.SOURCE[s.demand.source] .. ", " .. AuctionIQ.Demand.Rate(s.demand.units) .. " a day")
+			end
+		elseif s then
+			lines[#lines + 1] = { T.Color("muted", s.text) }
+		end
 	end
 	return lines
 end

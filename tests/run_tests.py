@@ -4994,6 +4994,44 @@ check("restock: holding 20 already, make none until then", rs.full[1] == 0 and "
 check("restock: when leftovers cost more (gold tied up 20% a day), make fewer", rs.dear < rs.plan[1])
 check("restock: the How many hover shows the batch for your next session, marked optional",
       rs.qn == rs.plan[1] and "By your next session" in rs.tip and "(optional)" in rs.tip and "Expected profit by then" in rs.tip)
+# the sell side: what posting is likely to bring in before it expires, against cheaper stock
+sl = L.eval("""(function()
+  local Dp = AuctionIQ.Depth
+  Dp.Remember(880008, { { price = 9000, qty = 3 }, { price = 9500, qty = 2 }, { price = 12000, qty = 10 }, { price = 8000, qty = 4, mine = true } })
+  local e = { units = 4, shape = 400, rate = 100, source = "own", listed = 30 }
+  local out = {}
+  out.ahead = { Dp.Ahead(880008, 10000) }
+  out.bottom = Dp.Ahead(880008, 8500)
+  local cheap = Dp.Sell(880008, 5, 8500, { hours = 24, demand = e })
+  local above = Dp.Sell(880008, 5, 10000, { hours = 24, demand = e })
+  local wall = Dp.Sell(880008, 5, 13000, { hours = 24, demand = e })
+  local none = Dp.Sell(880008, 5, 10000, { hours = 24, demand = { units = 0 } })
+  out.cheap = { cheap.sold, cheap.proceeds, cheap.gross, cheap.text }
+  out.above = { above.sold, above.text }
+  out.wall = { wall.sold, wall.lost, wall.proceeds, wall.gross }
+  out.none = { none.sold == nil, none.text }
+  Dp.Forget(880008)
+  return out
+end)()""")
+check("sell side: 5 listed below 10g (your own listings left out), none below 8.5g", sl.ahead[1] == 5 and sl.ahead[2] == "ah" and sl.bottom == 0)
+check("sell side: at the bottom of the book, about 4 of 5 sell in a day at 4 a day",
+      3.5 < sl.cheap[1] < 4.5 and sl.cheap[2] < sl.cheap[3] and "nothing is listed below your price" in sl.cheap[4] and "sell in 1 day" in sl.cheap[4])
+check("sell side: behind 5 cheaper units, few of yours sell in time", sl.above[0 + 1] < 0.5 and "5 are listed below your price (your AH search" in sl.above[2])
+check("sell side: behind a wall of 15, almost nothing sells and the proceeds are next to nothing", sl.wall[1] < 0.01 and sl.wall[3] < 0.01 * sl.wall[4])
+pl = L.eval("""(function()
+  AuctionIQ.Depth.Remember(880008, { { price = 9000, qty = 3 } })
+  local old = AuctionIQ.Demand.Estimate
+  AuctionIQ.Demand.Estimate = function() return { units = 4, shape = 400, rate = 100, source = "own", listed = 30 } end
+  local ls = AuctionIQ.TradingUI.PostLines({ id = 880008, price = 8500, post = 5, up = 0, cap = 5, here = 5 }, { action = "post", qty = 5, reason = "test" })
+  AuctionIQ.Demand.Estimate = old
+  AuctionIQ.Depth.Forget(880008)
+  local t = {}
+  for _, l in ipairs(ls) do t[#t + 1] = tostring(l[1]) .. " " .. tostring(l[2] or "") end
+  return table.concat(t, " | ")
+end)()""")
+check("sell side: Ready to post's detail shows what's likely in by expiry and what it rests on",
+      "Likely in time" in pl and "Likely proceeds" in pl and "nothing is listed below your price" in pl and "Sales rate" in pl)
+check("sell side: no sales rate, it says so rather than guess", sl.none[1] and "unknown" in sl.none[2])
 # a sale, an expiry or a cancel is a listed day too
 run("""STUB.dmSet('Expired', { { STUB.dmDay(1), nil, nil, nil, 880002, 1 } }); STUB.dmSet('Cancelled', { { STUB.dmDay(2), nil, nil, nil, 880002, 1 } })""")
 e = E(880002)
