@@ -257,6 +257,25 @@ function R.Probe()
 		local fr = _G[f]
 		out.frames[f] = fr and (fr.IsShown and fr:IsShown() and "shown" or "hidden") or false
 	end
+	-- Merchant's Favor: the currency's ID, and any Waylaid Crates in the bags (their item IDs)
+	local cur = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo
+	if cur then
+		for id = 1, 4000 do
+			local ok, c = pcall(cur, id)
+			if ok and type(c) == "table" and c.name and c.name:find("Favor") then out.favor = { id = id, name = c.name, quantity = c.quantity }; break end
+		end
+	end
+	local C = C_Container
+	if C and C.GetContainerNumSlots and C.GetContainerItemInfo then
+		out.crates = {}
+		for bag = 0, 4 do
+			for slot = 1, (C.GetContainerNumSlots(bag) or 0) do
+				local ok, info = pcall(C.GetContainerItemInfo, bag, slot)
+				local link = ok and type(info) == "table" and info.hyperlink
+				if link and link:find("Crate") then out.crates[#out.crates + 1] = { id = tonumber(link:match("item:(%d+)")), name = link:match("%[(.-)%]") } end
+			end
+		end
+	end
 	AuctionIQ.db.probe = out
 	return out
 end
@@ -276,6 +295,8 @@ function R.ProbeLines(p)
 	if p.sample then
 		lines[#lines + 1] = ("first: %s makes %s, %d reagents, can make %s%s"):format(tostring(p.sample.name), tostring(p.sample.makes), p.sample.reagents, tostring(p.sample.canMake), p.sample.cooldown and (", cooldown " .. p.sample.cooldown .. "s") or "")
 	end
+	if p.favor then lines[#lines + 1] = ("Merchant's Favor: currency %d, you have %s"):format(p.favor.id, tostring(p.favor.quantity)) end
+	for _, c in ipairs(p.crates or {}) do lines[#lines + 1] = ("crate in bags: %s (item %s)"):format(tostring(c.name), tostring(c.id)) end
 	lines[#lines + 1] = "missing calls: " .. (#missing > 0 and table.concat(missing, ", ") or "none")
 	local ev = {}
 	for _, e in ipairs(R.PROBE_EVENTS) do

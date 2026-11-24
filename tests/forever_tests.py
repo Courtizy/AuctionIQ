@@ -255,9 +255,26 @@ run("P.dbmarket[7001] = 2470000; AuctionIQ.Prices.ClearCache()")
 two = L.eval("{ key = 'x', name = 'Two', item = 7001, makes = 2, reagents = { { item = 7101, qty = 1 } }, canMake = 0 }")
 m2 = C.MakeN(two)
 check("Make N counts crafts, items beside it", m2.n == 2 and m2["items"] == 4 and "try 2 crafts" in C.Reason(m2, 2))
-check("payback: a recorded recipe cost spread over the setting's crafts",
-      (run("AuctionIQ.db.settings.costs.recipeCost = { [\"cThorium Greatsword\"] = 200000 }") or True) and C.Cost(sw).payback == 4000 and C.Cost(sw).profit.full == C.Cost(sw).profit.paid - 4000)
+run("AuctionIQ.db.settings.costs.recipeCost = { [\"cThorium Greatsword\"] = 2000000 }")
+cp = C.Cost(sw)
+check("recipe cost stays out of Full and shows how many crafts pay it back",
+      cp.profit.full == cp.profit.paid and cp.recipeCost == 2000000 and cp.paybackCrafts == -(-2000000 // cp.profit.full)
+      and "pays back in ~" in A.CraftUI.PaybackText(cp))
 run("AuctionIQ.db.settings.costs.recipeCost = nil")
+
+# Merchant's Favor recipes, valued through Waylaid Crates; station and spec needs
+run("""AuctionIQ.db.settings.costs.recipeCost = nil
+AuctionIQ.ProfData.Register("Blacksmithing", { favor = { ["Thorium Greatsword"] = 120 }, station = { ["Thorium Greatsword"] = "Master Forge" }, spec = { ["Thorium Greatsword"] = "Weaponsmith" } })""")
+cf = C.Cost(sw)
+check("a Favor recipe with no crate prices shows the Favor only", cf.recipeCost is None and cf.recipeFavor == 120 and A.CraftUI.PaybackText(cf).startswith("|cff") is False or "120 Favor" in A.CraftUI.PaybackText(cf))
+run("""AuctionIQ.ProfData.RegisterCrate({ item = 7201, favor = 20, fill = { { 7101, 2 } } })
+P.dbmarket[7201] = 50000; AuctionIQ.Prices.ClearCache()""")
+cf = C.Cost(sw)
+rate = (50000 + 2 * 210000) / 20
+check("Favor in gold: (crate + fill mats) / Favor returned", cf.recipeCost == round(rate * 120) and "(120 Favor)" in A.CraftUI.PaybackText(cf))
+mr = C.MakeN(sw, cf)
+check("station and spec needs show in the reason", "Weaponsmith only" in C.Reason(mr, 1) and "needs a Master Forge" in C.Reason(mr, 1))
+run('AuctionIQ.ProfData.Register("Blacksmithing", { favor = {}, station = {}, spec = {}, cooldown = {} }); AuctionIQ.ProfData.crates = {}; AuctionIQ.Prices.ClearCache()')
 
 UI = A.CraftUI
 check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "\u221244g".replace("44", "4"), "45s", "\u2014"))

@@ -3,7 +3,10 @@
 -- Cost per craft, in three columns that differ only in what the reagents cost:
 --   Market  reagents at today's market price
 --   Paid    reagents at what you paid (Value.Paid: bought, crafted, or farmed at market or zero)
---   Full    Paid plus recipe payback
+--   Full    Paid; the recipe's own cost stays out of it (once bought it's sunk, and spreading it per
+--           craft would rank on a guess about future crafts). Payback is its own line instead:
+--           what the recipe cost in gold (or Merchant's Favor, valued through crates) and how many
+--           crafts at today's profit pay it back.
 -- All three take off the same AH cut and expected relist cost, so they compare like for like.
 -- The recipe list ranks on Full.
 --
@@ -51,17 +54,18 @@ function Craft.Relist(item)
 	return math.floor(deposit * relists + 0.5), "est."
 end
 
---- Recipe payback per craft: what the recipe cost, spread over Settings' number of crafts. 0 when
---- the cost isn't known (learned from a trainer, or not recorded).
-function Craft.Payback(r)
-	local cost = settings().recipeCost and settings().recipeCost[r.key]
-	local n = tonumber(settings().paybackCrafts) or 50
-	if not cost or cost <= 0 or n <= 0 then return 0, false end
-	return math.floor(cost / n + 0.5), true
+--- What the recipe cost: copper (nil when only Favor is known or nothing is), and Favor paid.
+--- A cost recorded in Settings wins; else the profession data's Favor price, valued through crates.
+function Craft.RecipeCost(r)
+	local gold = settings().recipeCost and settings().recipeCost[r.key]
+	if gold and gold > 0 then return gold, nil end
+	local PD = AuctionIQ.ProfData
+	if PD then return PD.FavorCost(r.profession, r.name) end
+	return nil
 end
 
 --- The numbers for one craft of r. Fields (copper): sells (each), makes, gross, cut, relist,
---- payback, reagents = { market, paid, full }, profit = { market, paid, full }, coverage (0..1),
+--- recipeCost, recipeFavor, paybackCrafts, reagents = { market, paid, full }, profit = { market, paid, full }, coverage (0..1),
 --- lines (per reagent: { item, qty, market, paid, how }), missing (reagents with no price), priced.
 function Craft.Cost(r)
 	local c = { makes = r.makes or 1, lines = {}, missing = 0, reagents = { market = 0, paid = 0 } }
@@ -85,14 +89,15 @@ function Craft.Cost(r)
 	local relist, est = Craft.Relist(r.item)
 	c.relist, c.relistKnown = math.floor(relist * c.makes + 0.5), est
 	c.fees = c.cut + c.relist
-	c.payback, c.paybackKnown = Craft.Payback(r)
+	c.recipeCost, c.recipeFavor = Craft.RecipeCost(r)
 	c.reagents.full = c.reagents.paid
 	local net = c.gross - c.fees
 	c.profit = {
 		market = net - c.reagents.market,
 		paid = net - c.reagents.paid,
-		full = net - c.reagents.paid - c.payback,
+		full = net - c.reagents.paid,
 	}
+	if c.recipeCost and c.profit.full > 0 then c.paybackCrafts = math.ceil(c.recipeCost / c.profit.full) end
 	return c
 end
 
@@ -109,6 +114,9 @@ function Craft.MakeN(r, c)
 	c = c or Craft.Cost(r)
 	local makes = c.makes > 0 and c.makes or 1
 	local out = { have = held(r.item) }
+	local PD = AuctionIQ.ProfData
+	out.station = PD and PD.Station(r.profession, r.name)
+	out.spec = PD and PD.Spec(r.profession, r.name)
 	if not c.priced then out.n, out.reason = 0, "unpriced"; return out end
 	if c.profit.full <= 0 then out.n, out.reason = 0, "loss"; return out end
 	local caps = {}
@@ -134,15 +142,18 @@ end
 --- One line saying what set Make N, for under the number.
 function Craft.Reason(m, makes)
 	local unit = (makes or 1) > 1 and " crafts" or ""
-	if m.reason == "unpriced" then return "No market price for this or a reagent yet" end
-	if m.reason == "loss" then return "Doesn't make money at today's prices" end
 	local parts = {}
+	if m.spec then parts[#parts + 1] = m.spec .. " only" end
+	if m.station then parts[#parts + 1] = "needs a " .. m.station end
 	if m.restock then parts[#parts + 1] = ("TSM restock %d · have %d"):format(m.restock, m.have) end
-	if m.reason == "stocked" then parts[#parts + 1] = "already stocked"
+	if m.reason == "unpriced" then parts[#parts + 1] = "no market price for this or a reagent yet"
+	elseif m.reason == "loss" then parts[#parts + 1] = "doesn't make money at today's prices"
+	elseif m.reason == "stocked" then parts[#parts + 1] = "already stocked"
 	elseif m.reason == "restock" then parts[#parts + 1] = "restock sets it"
 	elseif m.reason == "sales" then parts[#parts + 1] = ("no sales history yet, try %d%s"):format(m.n, unit)
 	elseif m.reason == "afford" then parts[#parts + 1] = ("you can afford %d%s"):format(m.n, unit) end
-	return table.concat(parts, " · ")
+	local line = table.concat(parts, " · ")
+	return (line:gsub("^%l", string.upper))
 end
 
 --- Rows for the recipe list: { key, name, recipe, cost, make, profit (Full per craft, nil when

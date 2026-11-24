@@ -233,6 +233,17 @@ end
 
 -- Showing ----------------------------------------------------------------------------------------
 
+--- The recipe line: "≈ 340g (120 Favor) · pays back in ~5 crafts", "120 Favor", or "—".
+function CraftUI.PaybackText(c)
+	local cost
+	if c.recipeCost and c.recipeFavor then cost = "\226\137\136 " .. CraftUI.Gold(c.recipeCost) .. " (" .. c.recipeFavor .. " Favor)"
+	elseif c.recipeCost then cost = CraftUI.Gold(c.recipeCost)
+	elseif c.recipeFavor then cost = c.recipeFavor .. " Favor" end
+	if not cost then return T.Color("muted", "cost not known · kept out of profit") end
+	if c.paybackCrafts then return cost .. T.Color("muted", " · pays back in ~" .. c.paybackCrafts .. (c.paybackCrafts == 1 and " craft" or " crafts")) end
+	return cost
+end
+
 --- Faction AH (5%) ⇄ neutral AH (15%), for every column.
 function CraftUI.ToggleHouse()
 	local c = AuctionIQ.db.settings.costs
@@ -307,8 +318,8 @@ local function showDetail(d, row, p)
 	d.reagents.v[1]:SetText(CraftUI.Gold(c.reagents.market)); d.reagents.v[2]:SetText(CraftUI.Gold(c.reagents.paid)); d.reagents.v[3]:SetText(CraftUI.Gold(c.reagents.full))
 	for i = 1, 3 do d.fees.v[i]:SetText(CraftUI.Gold(c.fees)) end
 	label(d.house, Craft.HOUSES[Craft.House()].label .. " " .. math.floor(Craft.Cut() * 100 + 0.5) .. "% \226\150\190")
-	d.payback.v[1]:SetText(T.Color("muted", "—")); d.payback.v[2]:SetText(T.Color("muted", "—"))
-	d.payback.v[3]:SetText(c.paybackKnown and CraftUI.Gold(c.payback) or T.Color("muted", "—"))
+	for i = 1, 3 do d.payback.v[i]:SetText("") end
+	d.payback.label:SetText(T.Color("muted", "Recipe ") .. CraftUI.PaybackText(c))
 	d.sells.v[1]:SetText(""); d.sells.v[2]:SetText("")
 	d.sells.v[3]:SetText(c.sells and ("~" .. CraftUI.Gold(c.sells) .. (c.makes ~= 1 and (" \195\151 " .. makes) or "")) or T.Color("muted", "no price"))
 	if c.priced then
