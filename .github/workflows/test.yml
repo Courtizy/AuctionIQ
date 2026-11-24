@@ -15,3 +15,4 @@ jobs:
           python-version: "3.13"
       - run: pip install lupa
       - run: python3 tests/run_tests.py
+      - run: python3 tests/forever_tests.py
