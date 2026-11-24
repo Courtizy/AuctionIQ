@@ -67,8 +67,9 @@ local function window(name, w, h)
 	title:SetPoint("TOPLEFT", 10, -9)
 	f.title = title
 
-	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", 2, 2)
+	-- ElvUI's own close button (ToxiUI restyles it too), so it matches the rest of the UI
+	local close = T.Button(f, "x", 18, 18)
+	close:SetPoint("TOPRIGHT", -6, -6)
 	close:SetScript("OnClick", function() f:Hide() end)
 	f.close = close
 
