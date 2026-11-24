@@ -187,6 +187,10 @@ local function build(page)
 	d.fees:SetScript("OnEnter", function(self) CraftUI.FeeTooltip(self) end)
 	d.fees:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.payback = row(-106, "Recipe payback")
+	local house = T.Button(d, "Faction AH", 110, 18)
+	house:SetPoint("TOPLEFT", 120, -85)
+	house:SetScript("OnClick", function() CraftUI.ToggleHouse() end)
+	d.house = house
 	local rule2 = d:CreateTexture(nil, "ARTWORK")
 	rule2:SetPoint("TOPLEFT", 10, -132); rule2:SetSize(DW - 20, 1); rule2:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
 	d.sells = row(-138, "Sells for")
@@ -228,6 +232,13 @@ local function build(page)
 end
 
 -- Showing ----------------------------------------------------------------------------------------
+
+--- Faction AH (5%) ⇄ neutral AH (15%), for every column.
+function CraftUI.ToggleHouse()
+	local c = AuctionIQ.db.settings.costs
+	c.house = Craft.House() == "faction" and "neutral" or "faction"
+	CraftUI.Refresh()
+end
 
 function CraftUI.NextProfession()
 	local list = R.Professions()
@@ -280,7 +291,7 @@ end
 
 local function showDetail(d, row, p)
 	local show = row ~= nil
-	for _, k in ipairs({ "icon", "name", "meta", "reagents", "fees", "payback", "sells", "profit", "cover", "bar", "reason", "make", "items", "tsm", "button" }) do
+	for _, k in ipairs({ "icon", "name", "meta", "reagents", "fees", "payback", "sells", "profit", "cover", "bar", "reason", "make", "items", "tsm", "button", "house" }) do
 		d[k]:SetShown(show)
 	end
 	d.none:SetShown(not show)
@@ -295,6 +306,7 @@ local function showDetail(d, row, p)
 	d.meta:SetText(T.Color("muted", "makes " .. makes .. (p.skill and (" · skill " .. p.skill .. "/" .. (p.max or "?")) or "")))
 	d.reagents.v[1]:SetText(CraftUI.Gold(c.reagents.market)); d.reagents.v[2]:SetText(CraftUI.Gold(c.reagents.paid)); d.reagents.v[3]:SetText(CraftUI.Gold(c.reagents.full))
 	for i = 1, 3 do d.fees.v[i]:SetText(CraftUI.Gold(c.fees)) end
+	label(d.house, Craft.HOUSES[Craft.House()].label .. " " .. math.floor(Craft.Cut() * 100 + 0.5) .. "% \226\150\190")
 	d.payback.v[1]:SetText(T.Color("muted", "—")); d.payback.v[2]:SetText(T.Color("muted", "—"))
 	d.payback.v[3]:SetText(c.paybackKnown and CraftUI.Gold(c.payback) or T.Color("muted", "—"))
 	d.sells.v[1]:SetText(""); d.sells.v[2]:SetText("")

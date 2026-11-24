@@ -27,9 +27,17 @@ local function settings()
 	return s and s.costs or {}
 end
 
---- The AH's cut on a sale (0.05 on the faction houses).
+-- Where you sell: your faction's auction house takes 5%, the neutral one (Blackwater on Forever) 15%.
+Craft.HOUSES = { faction = { cut = 0.05, label = "Faction AH" }, neutral = { cut = 0.15, label = "Neutral AH" } }
+
+--- Which house the numbers assume: "faction" or "neutral" (Settings, also switched on the Craft tab).
+function Craft.House()
+	return settings().house == "neutral" and "neutral" or "faction"
+end
+
+--- The AH's cut on a sale for that house.
 function Craft.Cut()
-	return 1 - (AuctionIQ.AH_CUT or 0.95)
+	return Craft.HOUSES[Craft.House()].cut
 end
 
 --- Expected deposits lost per item sold, and whether it's known ("est." when estimated, nil when
