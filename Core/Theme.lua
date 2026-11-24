@@ -186,7 +186,7 @@ end
 function T.Arrow(dir, size)
 	size = size or 12
 	local tex = dir == "up" and "Interface\\Buttons\\Arrow-Up-Up" or "Interface\\Buttons\\Arrow-Down-Up"
-	return ("|T%s:%d:%d:0:%d|t"):format(tex, size, size, dir == "up" and -2 or 2)
+	return ("|T%s:%d:%d:0:%d|t"):format(tex, size, size, dir == "up" and 1 or -2)
 end
 
 --- A small square dot inline in text, in a palette colour.
