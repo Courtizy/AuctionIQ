@@ -2,6 +2,7 @@
 that the Forever build starts, detects the game and opens its window without errors.
 Run: python3 tests/forever_tests.py   (needs `pip install lupa`)"""
 import sys
+abs = abs
 from pathlib import Path
 
 try:
@@ -98,6 +99,57 @@ run('SlashCmdList.AUCTIONIQ("settings")')
 check("/aiq settings opens Settings on General", A.Shell.settings.IsShown and A.Shell.settingsPage == "General")
 run('AuctionIQ.Shell.OpenSettings("About")')
 check("Settings pages switch", A.Shell.settingsPage == "About")
+
+# prices and costs (Data/Value.lua)
+run("""
+P = { dbmarket = { [1] = 500 }, dbregionmarketavg = { [2] = 400 }, smartavgbuy = { [1] = 300 },
+      crafting = { [5] = 700 }, dbregionsalerate = { [1] = 0.42 } }
+TSM_API = { GetCustomPriceValue = function(src, item) local id = tonumber(item:match("i:(%d+)")); return P[src] and P[src][id] end,
+            ToItemString = function(i) return i end, IsCustomPriceValid = function() return false end }
+OE = { [3] = { market = 250 } }
+OEMarketInfo = function(item, t) local id = tonumber(item:match("item:(%d+)")); local r = OE[id]; if r then t.market = r.market; t.region = r.region end; return t end
+Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(_, id) if id == 4 then return 150 end end } } }
+C_Item.GetItemInfo = function(id) if id == 6 or id == 1 then return "x", nil, nil, nil, nil, nil, nil, nil, nil, nil, 25 end end
+AuctionIQ.Prices.ClearCache()
+""")
+V = A.Value
+def mk(i): return V.Market(i)
+check("market: TSM realm, then TSM region", mk(1) == (500, "tsm") and mk(2) == (400, "tsm"))
+check("market: then Oribos Exchange, Auctionator, vendor", mk(3) == (250, "oe") and mk(4) == (150, "auctionator") and mk(6) == (25, "vendor"))
+check("market: nothing known is nil", mk(99) is None)
+check("market: takes item strings and links", mk("i:1")[0] == 500 and mk("|cff|Hitem:1::|h[x]|h|r")[0] == 500)
+check("sale rate from TSM", V.SaleRate(1) == 0.42 and V.SaleRate(3) is None)
+check("paid: SmartAvgBuy, then crafting cost, then farmed at market",
+      V.Paid(1) == (300, "bought") and V.Paid(5) == (700, "crafted") and V.Paid(3) == (250, "farmed"))
+A.db.settings.costs.farmedAt = "zero"
+check("paid: farmed at zero when Settings says so", V.Paid(3) == (0, "farmed"))
+A.db.settings.costs.farmedAt = "market"
+total, cov = V.Coverage(L.eval("{ { item = 1, qty = 2 }, { item = 5, qty = 1 }, { item = 3, qty = 4 } }"))
+check("coverage: share of paid value from real buys and crafts", total == 600 + 700 + 1000 and abs(cov - 1300 / 2300) < 1e-9)
+check("coverage of nothing is full", V.Coverage(L.eval("{}"))[1] == 1)
+
+run("""
+TradeSkillMasterDB = {
+  _currentProfile = { ["Seyko - Emerald Dream"] = "Main" },
+  ["p@Main@userData@items"] = { ["i:1"] = "Potions`Flasks", ["i:2"] = "Potions", ["i:3"] = "Herbs" },
+  ["p@Main@userData@groups"] = {
+    [""] = { Crafting = { "#Default", override = true } },
+    ["Potions"] = { Crafting = { "Pots", override = true } },
+    ["Potions`Flasks"] = { Crafting = { override = false } },
+    ["Herbs"] = { Crafting = { override = false } } },
+  ["p@Main@userData@operations"] = { Crafting = { Pots = { minRestock = "5", maxRestock = "40" } } },
+  ["g@ @userData@sharedOperations"] = { Crafting = { ["#Default"] = { minRestock = "10", maxRestock = "20" } } },
+}
+""")
+r1, r2, r3 = V.Restock(1), V.Restock(2), V.Restock(3)
+check("restock: a subgroup inherits its parent's Crafting operation", r1 is not None and r1.max == 40 and r1.min == 5 and r1.op == "Pots" and r1.group == "Potions`Flasks")
+check("restock: the group's own operation", r2 is not None and r2.max == 40)
+check("restock: falls through to the base group's shared operation", r3 is not None and r3.max == 20 and r3.op == "#Default")
+check("restock: an item in no group has none", V.Restock(4) is None)
+run('TradeSkillMasterDB["g@ @userData@sharedOperations"].Crafting["#Default"].maxRestock = "dbmarket"')
+check("restock: a max that isn't a number is treated as unknown", V.Restock(3) is None)
+run("TradeSkillMasterDB = 5")
+check("restock: unreadable TSM settings answer nil", V.Restock(1) is None)
 
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)

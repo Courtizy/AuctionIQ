@@ -17,5 +17,6 @@ Core\Game.lua
 Core\Theme.lua
 Data\Prices.lua
 Data\Sources.lua
+Data\Value.lua
 Screens\Table.lua
 Screens\Shell.lua

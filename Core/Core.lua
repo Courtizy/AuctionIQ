@@ -8,7 +8,7 @@ AuctionIQ.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 AuctionIQ.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
+local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 }, costs = { farmedAt = "market" } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
