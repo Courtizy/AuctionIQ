@@ -76,17 +76,34 @@ function AuctionIQ.FormatMoney(copper, plain)
 	return (neg and "-" or "") .. out
 end
 
-function AuctionIQ.CharacterKey()
-	return UnitName("player") .. "-" .. GetRealmName()
+-- The realm's name, read once while the addon loads too: on WoW: Forever, GetRealmName() answers
+-- the ruleset's name ("Roleplay") at load but an empty string later in the session. TSM keeps its
+-- data under the name read at load, so this matches TSM's keys.
+local REALM_AT_LOAD = GetRealmName and GetRealmName() or ""
+function AuctionIQ.RealmName()
+	local r = GetRealmName and GetRealmName() or ""
+	if r == "" then r = REALM_AT_LOAD end
+	if r == "" and GetNormalizedRealmName then r = GetNormalizedRealmName() or "" end
+	return r
 end
 
--- This character's record, created on first use.
+function AuctionIQ.CharacterKey()
+	return UnitName("player") .. "-" .. AuctionIQ.RealmName()
+end
+
+-- This character's record, created on first use. A record saved under an empty realm name (Forever
+-- builds before the realm fix) moves to the right key.
 function AuctionIQ.Me()
 	local key = AuctionIQ.CharacterKey()
 	local chars = AuctionIQ.db.characters
+	local blank = UnitName("player") .. "-"
+	if not chars[key] and key ~= blank and chars[blank] then
+		chars[key], chars[blank] = chars[blank], nil
+		chars[key].realm = AuctionIQ.RealmName()
+	end
 	if not chars[key] then
 		local _, class = UnitClass("player")
-		chars[key] = { name = UnitName("player"), realm = GetRealmName(), class = class, professions = {} }
+		chars[key] = { name = UnitName("player"), realm = AuctionIQ.RealmName(), class = class, professions = {} }
 	end
 	return chars[key]
 end
@@ -294,7 +311,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	-- the new window takes the commands it knows; on Forever the older screens aren't loaded at all
 	if AuctionIQ.Shell and AuctionIQ.Shell.Command(msg) then return end
 	if AuctionIQ.IsForever and AuctionIQ.IsForever() then
-		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab. /aiq game shows the game detected.")
+		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab, /aiq settings opens Settings. /aiq game shows the game and realm detected.")
 		return
 	end
 	local raw = msg or ""
