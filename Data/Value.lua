@@ -108,7 +108,7 @@ local SEP = "`" -- TSM's group path separator
 
 local function profile(db)
 	local cur = type(db._currentProfile) == "table" and db._currentProfile or {}
-	local me = (UnitName and UnitName("player") or "") .. " - " .. AuctionIQ.RealmName()
+	local me = AuctionIQ.PlayerName() .. " - " .. AuctionIQ.RealmName()
 	return cur[me] or "Default"
 end
 

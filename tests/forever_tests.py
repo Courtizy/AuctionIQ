@@ -151,5 +151,33 @@ check("restock: a max that isn't a number is treated as unknown", V.Restock(3) i
 run("TradeSkillMasterDB = 5")
 check("restock: unreadable TSM settings answer nil", V.Restock(1) is None)
 
+# saved data: version read before defaults, backup, newer-save guard (R-05, R-06)
+run("STUB_PRINTS = {}; local p = AuctionIQ.Print; AuctionIQ.Print = function(m) table.insert(STUB_PRINTS, m) end")
+raw, db = A.Load(L.eval("{ mail = { x = 1 }, ledger = { days = { 1 } } }"))
+check("an unversioned save runs every step from 2", raw.mail is None and raw.version == A.DB_VERSION)
+check("the keys the steps touch are backed up first", raw.backup is not None and raw.backup["from"] == 1 and raw.backup.data.mail.x == 1)
+check("defaults fill in after migrating", db.settings is not None and db.settings.costs.farmedAt == "market")
+raw, db = A.Load(None)
+check("a new save starts at the current version with nothing to migrate", raw.version == A.DB_VERSION and raw.backup is None)
+raw, db = A.Load(L.eval("{ version = 99, keep = { 1 } }"))
+check("a save from a newer AuctionIQ opens read-only", A.readOnly == 99 and raw.settings is None and db.settings is not None and raw.version == 99)
+run("AuctionIQ.MIGRATIONS[4] = function(db) db.mail = 'half'; error('boom') end; AuctionIQ.MIGRATION_KEYS[4] = { 'mail' }; AuctionIQ.DB_VERSION = 4")
+raw, db = A.Load(L.eval("{ version = 3, mail = { kept = true } }"))
+check("a step that fails puts the data back and says so", raw.mail.kept == True and raw.version == 3 and raw.migrationFailed is not None and raw.migrationFailed.to == 4)
+run("AuctionIQ.MIGRATIONS[4] = nil; AuctionIQ.MIGRATION_KEYS[4] = nil; AuctionIQ.DB_VERSION = 3; AuctionIQ.readOnly = nil")
+
+# character name: TSM's longer Forever name wins and old records move to it
+run("""
+UnitName = function() return "Auren" end
+GetRealmName = function() return "Roleplay" end
+TradeSkillMasterDB = { _currentProfile = { ["Auren Lightweaver - Roleplay"] = "Default", ["Aurelia - Roleplay"] = "Default" } }
+AuctionIQ.db.characters = { ["Auren-"] = { gold = 5 } }
+""")
+check("the name matches TSM's, surname included", A.PlayerName() == "Auren Lightweaver" and A.CharacterKey() == "Auren Lightweaver-Roleplay")
+me = A.Me()
+check("a record saved under the first name moves to the full name", me.gold == 5 and A.db.characters["Auren-"] is None and me.name == "Auren Lightweaver")
+run('TradeSkillMasterDB = nil')
+check("without TSM the game's name is used", A.PlayerName() == "Auren")
+
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)

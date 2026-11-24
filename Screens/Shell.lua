@@ -244,7 +244,11 @@ function Shell.Command(msg)
 	if tab and (tab ~= "orders" or AuctionIQ.IsRetail()) then Shell.Show(tab); return true end
 	if msg == "settings" or msg == "config" then Shell.OpenSettings(); return true end
 	if msg == "game" then
-		AuctionIQ.Print("game: " .. AuctionIQ.Game .. " (project " .. tostring(WOW_PROJECT_ID) .. "), realm: " .. AuctionIQ.RealmName())
+		AuctionIQ.Print("game: " .. AuctionIQ.Game .. " (project " .. tostring(WOW_PROJECT_ID) .. "), realm: " .. AuctionIQ.RealmName() .. ", version: " .. tostring(AuctionIQ.version))
+		local full = UnitFullName and table.concat({ tostring((UnitFullName("player"))), tostring(select(2, UnitFullName("player"))) }, " / ") or "?"
+		AuctionIQ.Print("character: " .. AuctionIQ.PlayerName() .. " (UnitName " .. tostring(UnitName("player")) .. ", UnitFullName " .. full .. ")")
+		if AuctionIQ.readOnly then AuctionIQ.Print("saved data is read-only: it was written by a newer AuctionIQ") end
+		if AuctionIQ.db and AuctionIQ.db.migrationFailed then AuctionIQ.Print("the last saved-data update failed and was undone: " .. tostring(AuctionIQ.db.migrationFailed.err)) end
 		return true
 	end
 	return false

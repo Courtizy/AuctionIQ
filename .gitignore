@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 tools/db2/
 tests/bench-results.json
+dist/
