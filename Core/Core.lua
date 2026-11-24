@@ -223,7 +223,7 @@ AuctionIQ.MIGRATIONS = {
 	-- 2 -> 3: day-by-day history older than a few months is rolled into months, and competition
 	-- notes are capped (Ledger.ArchiveMonths); every load after keeps it that way (Tidy)
 	[3] = function(db)
-		AuctionIQ.Ledger.ArchiveMonths(db)
+		if AuctionIQ.Ledger then AuctionIQ.Ledger.ArchiveMonths(db) end -- not loaded on Forever yet
 	end,
 }
 -- Craft records follow CraftSim's rule: no age limit (they go with the profession), only a cap on
@@ -291,6 +291,12 @@ AuctionIQ.On("PLAYER_MONEY", updateGold)
 SLASH_AUCTIONIQ1 = "/aiq"
 SLASH_AUCTIONIQ2 = "/auctioniq"
 SlashCmdList.AUCTIONIQ = function(msg)
+	-- the new window takes the commands it knows; on Forever the older screens aren't loaded at all
+	if AuctionIQ.Shell and AuctionIQ.Shell.Command(msg) then return end
+	if AuctionIQ.IsForever and AuctionIQ.IsForever() then
+		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab. /aiq game shows the game detected.")
+		return
+	end
 	local raw = msg or ""
 	msg = strtrim and strtrim(msg or ""):lower() or (msg or ""):lower()
 	if msg == "perf" then
@@ -430,5 +436,6 @@ SlashCmdList.AUCTIONIQ = function(msg)
 end
 
 function AuctionIQ_OnAddonCompartmentClick()
-	AuctionIQ.UI.Toggle()
+	local ui = AuctionIQ.Shell or AuctionIQ.UI -- the new window where it's loaded (Forever for now)
+	ui.Toggle()
 end

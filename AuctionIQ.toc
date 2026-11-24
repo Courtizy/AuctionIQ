@@ -11,6 +11,7 @@
 ## X-License: MIT
 
 Core\Core.lua
+Core\Game.lua
 Core\Theme.lua
 Core\Window.lua
 Data\Prices.lua

@@ -1,0 +1,19 @@
+## Interface: 16001
+## Title: AuctionIQ
+## Notes: Decide what to craft, how much to make, and whether it paid off. Uses TradeSkillMaster for prices and sales history.
+## Author: Courtizy
+## Version: @project-version@
+## IconTexture: Interface\AddOns\AuctionIQ\Media\Icon
+## Category-enUS: Auctions
+## SavedVariables: AuctionIQDB
+## AddonCompartmentFunc: AuctionIQ_OnAddonCompartmentClick
+## X-License: MIT
+## OptionalDeps: TradeSkillMaster, ElvUI, ElvUI_ToxiUI, OribosExchange
+
+# WoW: Forever (codename Camelot). The same code as AuctionIQ.toc without the retail-only files:
+# no Concentration, quality, specializations, crafting orders or profession data addons.
+Core\Core.lua
+Core\Game.lua
+Core\Theme.lua
+Data\Prices.lua
+Screens\Shell.lua
