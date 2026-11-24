@@ -135,7 +135,7 @@ local function start(kind) open[kind] = time() end
 local function stop(kind)
 	if not open[kind] then return end
 	local s = store()
-	table.insert(s.sessions, { kind = kind, char = UnitName and UnitName("player"), start = open[kind], stop = time() })
+	table.insert(s.sessions, { kind = kind, char = AuctionIQ.PlayerName and AuctionIQ.PlayerName() or UnitName and UnitName("player"), start = open[kind], stop = time() })
 	open[kind] = nil
 	while #s.sessions > 2000 do table.remove(s.sessions, 1) end
 end

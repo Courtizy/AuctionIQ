@@ -14,7 +14,7 @@ local DAY = 86400
 -- Records are keyed by name and realm: two characters with the same name on different realms
 -- are different sellers, and only this realm's auction house counts toward a cap here.
 local function realm() return GetRealmName and GetRealmName() or "?" end
-local function me() return (UnitName and UnitName("player") or "?") .. "-" .. realm() end
+local function me() return (AuctionIQ.PlayerName and AuctionIQ.PlayerName() or UnitName and UnitName("player") or "?") .. "-" .. realm() end
 
 local function store()
 	AuctionIQ.db.auctions = AuctionIQ.db.auctions or {}
