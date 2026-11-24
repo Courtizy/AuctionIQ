@@ -21,7 +21,7 @@ function CraftUI.Gold(copper, signed)
 		s = tostring(math.floor(a / 10000 + 0.5)):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "") .. "g"
 	elseif a >= 100 then s = math.floor(a / 100 + 0.5) .. "s"
 	else s = a .. "c" end
-	if neg then return "\226\136\146" .. s end -- −
+	if neg then return "-" .. s end
 	return (signed and "+" or "") .. s
 end
 
@@ -81,10 +81,10 @@ function CraftUI.StripText(cooldowns, below, at)
 		if #parts >= 3 then break end
 		local left = c.readyAt - at
 		if left <= 0 then
-			parts[#parts + 1] = T.Color("ok", "\226\151\143 ") .. c.name .. T.Color("muted", " ready · " .. c.char)
+			parts[#parts + 1] = T.Dot("ok") .. " " .. c.name .. T.Color("muted", " ready · " .. c.char)
 		elseif left < 24 * 3600 then
 			local h = left >= 3600 and (math.floor(left / 3600 + 0.5) .. "h") or (math.ceil(left / 60) .. "m")
-			parts[#parts + 1] = T.Color("gold", "\226\151\143 ") .. c.name .. T.Color("muted", " in " .. h .. " · " .. c.char)
+			parts[#parts + 1] = T.Dot("gold") .. " " .. c.name .. T.Color("muted", " in " .. h .. " · " .. c.char)
 		end
 	end
 	local left = #parts > 0 and table.concat(parts, "    ") or T.Color("muted", "No cooldowns coming up")
@@ -176,10 +176,10 @@ local function build(page)
 		end
 		return r
 	end
-	local head = row(-38, T.Color("muted", "Cost per craft"))
-	head.v[1]:SetText(T.Color("muted", "Market")); head.v[2]:SetText(T.Color("muted", "Paid")); head.v[3]:SetText(T.Color("accent", "Full"))
-	local rule1 = d:CreateTexture(nil, "ARTWORK")
-	rule1:SetPoint("TOPLEFT", 10, -59); rule1:SetSize(DW - 20, 1); rule1:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
+	d.head = row(-38, T.Color("muted", "Cost per craft"))
+	d.head.v[1]:SetText(T.Color("muted", "Market")); d.head.v[2]:SetText(T.Color("muted", "Paid")); d.head.v[3]:SetText(T.Color("accent", "Full"))
+	d.rule1 = d:CreateTexture(nil, "ARTWORK")
+	d.rule1:SetPoint("TOPLEFT", 10, -59); d.rule1:SetSize(DW - 20, 1); d.rule1:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
 	d.reagents = row(-62, "Reagents")
 	d.reagents:SetScript("OnEnter", function(self) CraftUI.ReagentTooltip(self) end)
 	d.reagents:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -187,8 +187,8 @@ local function build(page)
 	d.fees:SetScript("OnEnter", function(self) CraftUI.FeeTooltip(self) end)
 	d.fees:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	d.payback = row(-106, "Recipe payback")
-	local rule2 = d:CreateTexture(nil, "ARTWORK")
-	rule2:SetPoint("TOPLEFT", 10, -132); rule2:SetSize(DW - 20, 1); rule2:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
+	d.rule2 = d:CreateTexture(nil, "ARTWORK")
+	d.rule2:SetPoint("TOPLEFT", 10, -132); d.rule2:SetSize(DW - 20, 1); d.rule2:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
 	d.sells = row(-138, "Sells for")
 	local house = T.Button(d, "Faction AH", 120, 18)
 	house:SetPoint("TOPLEFT", 110, -139) -- on the Sells for line, where Market and Paid are empty
@@ -206,16 +206,16 @@ local function build(page)
 
 	d.cover = text(d, nil, "small", "LEFT")
 	d.cover:SetPoint("TOPLEFT", 12, -194)
-	local track = d:CreateTexture(nil, "ARTWORK")
-	track:SetPoint("TOPLEFT", 12, -212); track:SetSize(DW - 24, 4); track:SetColorTexture(0, 0, 0, 0.6)
+	d.track = d:CreateTexture(nil, "ARTWORK")
+	d.track:SetPoint("TOPLEFT", 12, -212); d.track:SetSize(DW - 24, 4); d.track:SetColorTexture(0, 0, 0, 0.6)
 	d.bar = d:CreateTexture(nil, "OVERLAY")
-	d.bar:SetPoint("TOPLEFT", track, "TOPLEFT")
+	d.bar:SetPoint("TOPLEFT", d.track, "TOPLEFT")
 	d.bar:SetHeight(4)
 	T.AccentTexture(d.bar)
 	d.barW = DW - 24
 
-	local rule3 = d:CreateTexture(nil, "ARTWORK")
-	rule3:SetPoint("TOPLEFT", 10, -232); rule3:SetSize(DW - 20, 1); rule3:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
+	d.rule3 = d:CreateTexture(nil, "ARTWORK")
+	d.rule3:SetPoint("TOPLEFT", 10, -232); d.rule3:SetSize(DW - 20, 1); d.rule3:SetColorTexture(T.line[1], T.line[2], T.line[3], 1)
 	d.reason = text(d, nil, "small", "LEFT")
 	d.reason:SetPoint("TOPLEFT", 12, -252)
 	d.reason:SetWidth(DW - 150)
@@ -226,7 +226,7 @@ local function build(page)
 
 	d.tsm = text(d, nil, "small", "LEFT")
 	d.tsm:SetPoint("TOPLEFT", 12, -306)
-	d.tsm:SetText(T.Color("muted", "Or queue it with TSM \226\150\184 ") .. T.Color("accent", "Restock"))
+	d.tsm:SetText(T.Color("muted", "Or queue it with TSM: ") .. T.Color("accent", "Restock"))
 	local btn = T.Button(d, "Craft", 150, 30)
 	btn:SetPoint("TOPRIGHT", -12, -296)
 	T.Primary(btn)
@@ -243,7 +243,7 @@ end
 --- The recipe line: "≈ 340g (120 Favor) · pays back in ~5 crafts", "120 Favor", or "—".
 function CraftUI.PaybackText(c)
 	local cost
-	if c.recipeCost and c.recipeFavor then cost = "\226\137\136 " .. CraftUI.Gold(c.recipeCost) .. " (" .. c.recipeFavor .. " Favor)"
+	if c.recipeCost and c.recipeFavor then cost = "~" .. CraftUI.Gold(c.recipeCost) .. " (" .. c.recipeFavor .. " Favor)"
 	elseif c.recipeCost then cost = CraftUI.Gold(c.recipeCost)
 	elseif c.recipeFavor then cost = c.recipeFavor .. " Favor" end
 	if not cost then return T.Color("muted", "cost not known · kept out of profit") end
@@ -309,7 +309,7 @@ end
 
 local function showDetail(d, row, p)
 	local show = row ~= nil
-	for _, k in ipairs({ "icon", "name", "meta", "reagents", "fees", "payback", "sells", "profit", "cover", "bar", "reason", "make", "items", "tsm", "button", "house" }) do
+	for _, k in ipairs({ "icon", "name", "meta", "reagents", "fees", "payback", "sells", "profit", "cover", "bar", "reason", "make", "items", "tsm", "button", "house", "head", "rule1", "rule2", "rule3", "track" }) do
 		d[k]:SetShown(show)
 	end
 	d.none:SetShown(not show)
@@ -324,7 +324,7 @@ local function showDetail(d, row, p)
 	d.meta:SetText(T.Color("muted", "makes " .. makes .. (p.skill and (" · skill " .. p.skill .. "/" .. (p.max or "?")) or "")))
 	d.reagents.v[1]:SetText(CraftUI.Gold(c.reagents.market)); d.reagents.v[2]:SetText(CraftUI.Gold(c.reagents.paid)); d.reagents.v[3]:SetText(CraftUI.Gold(c.reagents.full))
 	for i = 1, 3 do d.fees.v[i]:SetText(CraftUI.Gold(c.fees)) end
-	label(d.house, Craft.HOUSES[Craft.House()].label .. " " .. math.floor(Craft.Cut() * 100 + 0.5) .. "% \226\150\190")
+	label(d.house, Craft.HOUSES[Craft.House()].label .. " " .. math.floor(Craft.Cut() * 100 + 0.5) .. "% " .. T.Arrow("down"))
 	for i = 1, 3 do d.payback.v[i]:SetText("") end
 	d.payback.label:SetText(T.Color("muted", "Recipe ") .. CraftUI.PaybackText(c))
 	d.sells.v[1]:SetText(""); d.sells.v[2]:SetText("")
@@ -366,8 +366,8 @@ function CraftUI.Refresh()
 	if not S.profession or not R.Get(S.profession) then S.profession = R.open or list[1] end
 	local p = R.Get(S.profession)
 	S.rows = p and Craft.Rows(p) or {}
-	label(page.prof, (S.profession or "No profession") .. " \226\150\190")
-	label(page.show, SHOW_LABEL[S.show] .. " \226\150\190")
+	label(page.prof, (S.profession or "No profession") .. " " .. T.Arrow("down"))
+	label(page.show, SHOW_LABEL[S.show] .. " " .. T.Arrow("down"))
 	local rows = filtered(S.rows)
 	page.list.selectedKey = S.selected
 	Tbl.SetRows(page.list, rows, CraftUI.ROWS)

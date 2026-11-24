@@ -181,6 +181,22 @@ function T.Color(name, text)
 	return "|cff" .. T.hex[name] .. text .. "|r"
 end
 
+-- Game fonts have no ▾ ▲ ● ≈ −, so those are drawn with textures (or plain ASCII) instead.
+--- A small arrow inline in text: "down" (dropdowns, descending sort) or "up".
+function T.Arrow(dir, size)
+	size = size or 12
+	local tex = dir == "up" and "Interface\\Buttons\\Arrow-Up-Up" or "Interface\\Buttons\\Arrow-Down-Up"
+	return ("|T%s:%d:%d:0:%d|t"):format(tex, size, size, dir == "up" and -2 or 2)
+end
+
+--- A small square dot inline in text, in a palette colour.
+function T.Dot(name, size)
+	local c = T[name] or T.accent
+	size = size or 7
+	return ("|TInterface\\Buttons\\WHITE8X8:%d:%d:0:0:8:8:0:8:0:8:%d:%d:%d|t"):format(size, size,
+		math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end
+
 local FLAT = "Interface\\Buttons\\WHITE8X8"
 local BACKDROP = { bgFile = FLAT, edgeFile = FLAT, edgeSize = 1 }
 
@@ -279,7 +295,7 @@ function T.Tint(frame)
 		-- near-opaque graphite even under ElvUI's Transparent template: the game world behind a
 		-- table costs contrast (its own colours still apply when /aiq theme elvui is on)
 		local fade = E.media.backdropfadecolor
-		local a = frame.aiqBg == "panel" and 1 or math.max((fade and fade[4]) or 0.8, T.OPAQUE)
+		local a = frame.aiqBg == "panel" and 1 or math.max((fade and fade[4]) or 0.8, type(frame.aiqAlpha) == "number" and frame.aiqAlpha or T.OPAQUE)
 		frame:SetBackdropColor(c[1], c[2], c[3], a)
 		return
 	end

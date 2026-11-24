@@ -79,7 +79,7 @@ lo = A.Table.New(L.globals().UIParent, "losers", cols, L.eval('{ "profit", "desc
 A.Table.Link(w, lo)
 A.Table.SetRows(w, L.eval('{ { name = "a", profit = 1 }, { name = "b", profit = 3 } }'), 10)
 A.Table.SetRows(lo, L.eval('{ { name = "c", profit = -1 }, { name = "d", profit = -3 } }'), 10)
-check("table starts on its default sort", w.rows[1].name == "b" and w.heads[2].text.t.endswith("\u25bc"))
+check("table starts on its default sort", w.rows[1].name == "b" and "Arrow-Down-Up" in w.heads[2].text.t)
 A.Table.Click(w, "name")
 check("a header click sorts linked tables together, in the column's default direction",
       w.rows[1].name == "a" and lo.rows[1].name == "c" and lo.sort[1] == "name" and lo.sort[2] == "asc")
@@ -290,7 +290,7 @@ check("station and spec needs show in the reason", "Weaponsmith only" in C.Reaso
 run('AuctionIQ.ProfData.Register("Blacksmithing", { favor = {}, station = {}, spec = {}, cooldown = {} }); AuctionIQ.ProfData.crates = {}; AuctionIQ.Prices.ClearCache()')
 
 UI = A.CraftUI
-check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "\u221244g".replace("44", "4"), "45s", "\u2014"))
+check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "-4g", "45s", "\u2014"))
 cds = L.eval("{ { name = 'Transmute: Arcanite', char = 'Alynna', readyAt = 100 }, { name = 'Mooncloth', char = 'Bram', readyAt = 100 + 6 * 3600 } }")
 left, right = UI.StripText(cds, 3, 200)
 check("strip: ready and coming cooldowns, items below restock", "Arcanite" in left and "ready" in left and "in 6h" in left and "3 items below restock" in right)

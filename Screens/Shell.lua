@@ -184,6 +184,9 @@ end
 local function buildSettings()
 	local f = window("AuctionIQSettings", Shell.SETTINGS_W, Shell.SETTINGS_H)
 	T.BrandTitle(f.title, "Settings")
+	f:Hide() -- frames start shown; Settings must start hidden or the first open skips the swap
+	f.aiqAlpha = 1 -- fully opaque: nothing behind it should read through
+	T.Tint(f)
 	f:SetFrameStrata("DIALOG")
 	f:SetToplevel(true)
 	f:SetScript("OnHide", function()

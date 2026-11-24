@@ -9,7 +9,8 @@ local T = AuctionIQ.Theme
 local Tbl = { ROW_H = 20, HEAD_H = 20 }
 AuctionIQ.Table = Tbl
 
-local UP, DOWN = " \226\150\178", " \226\150\188" -- ▲ ▼
+local function UP() return " " .. T.Arrow("up", 10) end
+local function DOWN() return " " .. T.Arrow("down", 10) end
 
 --- Order rows by a column, in place. dir "asc" or "desc". Rows with `last` go after the rest, in
 --- the same order among themselves. Missing values sort after present ones both ways; ties keep
@@ -82,7 +83,7 @@ end
 function Tbl.DrawHeads(t)
 	for i, c in ipairs(t.cols) do
 		local on = t.sort[1] == c.key
-		local label = c.label .. (on and (t.sort[2] == "desc" and DOWN or UP) or "")
+		local label = c.label .. (on and (t.sort[2] == "desc" and DOWN() or UP()) or "")
 		local col = on and T.accent or T.muted
 		t.heads[i].text:SetText(label)
 		t.heads[i].text:SetTextColor(col[1], col[2], col[3])
