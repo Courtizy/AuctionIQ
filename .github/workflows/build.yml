@@ -1,0 +1,27 @@
+name: Build
+
+# A whole Forever install as a zip on every push and pull request, with the commit in its version.
+# Download it from the run's Artifacts; keep the previous one to roll back.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forever:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 tools/build_forever.py dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AuctionIQ-forever
+          path: dist/AuctionIQ/
+          retention-days: 90

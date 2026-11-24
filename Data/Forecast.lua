@@ -42,7 +42,7 @@ function Fc.Record(itemID, qty, f)
 		cost = each and each * qty
 		costFrom = cost and "estimate" or nil
 	end
-	local b = { at = time(), id = itemID, qty = qty, char = UnitName and UnitName("player") or nil,
+	local b = { at = time(), id = itemID, qty = qty, char = AuctionIQ.PlayerName and AuctionIQ.PlayerName() or (UnitName and UnitName("player")) or nil,
 		cost = cost, costFrom = costFrom, costRepl = f.costRepl, expectEach = value and value * AuctionIQ.AH_CUT, profit = f.profit, conc = f.concentration and true or nil,
 		recipe = f.recipeID, held = f.held }
 	-- the batch decision this craft fills, if you queued one for this item on this character
@@ -89,7 +89,7 @@ function Fc.SaveDecision(f, now)
 	AuctionIQ.db.decisionSeq = (AuctionIQ.db.decisionSeq or 0) + 1
 	f.key = AuctionIQ.db.decisionSeq
 	f.at = now or time()
-	f.char = f.char or (UnitName and UnitName("player")) or nil
+	f.char = f.char or (AuctionIQ.PlayerName and AuctionIQ.PlayerName()) or (UnitName and UnitName("player")) or nil
 	f.crafts, f.made, f.paid = 0, 0, 0
 	f.expDays = (f.daily or 0) > 0 and f.n * (f.itemsEach or 1) / f.daily or nil
 	list[#list + 1] = f

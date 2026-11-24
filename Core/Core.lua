@@ -8,7 +8,7 @@ AuctionIQ.AH_CUT = 0.95
 -- Concentration refills from empty to its 1,000 cap in about four days.
 AuctionIQ.CONC_PER_HOUR = 1000 / (4 * 24)
 
-local DEFAULTS = { version = 2, queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 } }, characters = {} }
+local DEFAULTS = { queue = {}, settings = { tooltip = true, coins = true, minimap = { hide = false, angle = 225 }, advisor = { hide = false, docked = true }, scan = { dailyCap = 10 }, window = { popQueue = false }, model = { service = 0.9, carry = 0.01, cover = 7 }, costs = { farmedAt = "market", paybackCrafts = 50, house = "faction" }, craft = { dock = true } }, characters = {} }
 
 local function copyDefaults(dst, src)
 	for k, v in pairs(src) do
@@ -87,24 +87,56 @@ function AuctionIQ.RealmName()
 	return r
 end
 
-function AuctionIQ.CharacterKey()
-	return UnitName("player") .. "-" .. AuctionIQ.RealmName()
+-- The character's name as TSM saves it. On WoW: Forever a character can have a surname, and TSM
+-- keeps "Auren Lightweaver" where a later UnitName("player") can answer just "Auren". So the name read
+-- at load is kept, and if TSM has a profile for a longer name that starts with it on this realm,
+-- that name wins.
+local NAME_AT_LOAD = UnitName and UnitName("player") or nil
+local function tsmName(short, realm)
+	local cur = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB._currentProfile
+	if type(cur) ~= "table" then return nil end
+	local best
+	for key in pairs(cur) do
+		local n, r = tostring(key):match("^(.-) %- (.+)$")
+		if n and r == realm and (n == short or n:sub(1, #short + 1) == short .. " ") then
+			if not best or #n > #best then best = n end
+		end
+	end
+	return best
+end
+function AuctionIQ.PlayerName()
+	local short = UnitName and UnitName("player") or ""
+	local name = short
+	if NAME_AT_LOAD and #NAME_AT_LOAD > #name and NAME_AT_LOAD:sub(1, #name) == name then name = NAME_AT_LOAD end
+	local ok, t = pcall(tsmName, name, AuctionIQ.RealmName())
+	if ok and t and #t > #name then name = t end
+	return name
 end
 
--- This character's record, created on first use. A record saved under an empty realm name (Forever
--- builds before the realm fix) moves to the right key.
+function AuctionIQ.CharacterKey()
+	return AuctionIQ.PlayerName() .. "-" .. AuctionIQ.RealmName()
+end
+
+-- This character's record, created on first use. Records saved under an older key move to the
+-- right one: an empty realm (Forever builds before the realm fix) or the first name only (before
+-- the surname fix).
 function AuctionIQ.Me()
 	local key = AuctionIQ.CharacterKey()
 	local chars = AuctionIQ.db.characters
-	local blank = UnitName("player") .. "-"
-	if not chars[key] and key ~= blank and chars[blank] then
-		chars[key], chars[blank] = chars[blank], nil
-		chars[key].realm = AuctionIQ.RealmName()
+	local short = UnitName("player")
+	if not chars[key] then
+		for _, old in ipairs({ short .. "-" .. AuctionIQ.RealmName(), short .. "-", AuctionIQ.PlayerName() .. "-" }) do
+			if old ~= key and chars[old] then
+				chars[key], chars[old] = chars[old], nil
+				break
+			end
+		end
 	end
 	if not chars[key] then
 		local _, class = UnitClass("player")
-		chars[key] = { name = UnitName("player"), realm = AuctionIQ.RealmName(), class = class, professions = {} }
+		chars[key] = { professions = {}, class = class }
 	end
+	chars[key].name, chars[key].realm = AuctionIQ.PlayerName(), AuctionIQ.RealmName()
 	return chars[key]
 end
 
@@ -247,17 +279,61 @@ AuctionIQ.MIGRATIONS = {
 -- how many, oldest first, so SavedVariables stays a safe size.
 AuctionIQ.BATCHES_MAX = 5000
 
+-- The saved keys each step changes. They're copied into db.backup before the first step runs, and
+-- put back if a step fails.
+AuctionIQ.MIGRATION_KEYS = { [2] = { "mail" }, [3] = { "ledger" } }
+
+local function deepcopy(v)
+	if type(v) ~= "table" then return v end
+	local t = {}
+	for k, x in pairs(v) do t[k] = deepcopy(x) end
+	return t
+end
+AuctionIQ.DeepCopy = deepcopy
+
+--- Brings a save up to DB_VERSION. The version is read before anything else touches the table, the
+--- keys the steps change are backed up first (one backup is kept), and a step that fails puts them
+--- back, stops, and leaves db.migrationFailed for Settings ▸ About.
 function AuctionIQ.Migrate(db)
 	local v = tonumber(db.version) or 1
+	if v >= AuctionIQ.DB_VERSION then return db end
+	local backup = { from = v, at = time and time() or 0, data = {} }
+	for to = v + 1, AuctionIQ.DB_VERSION do
+		for _, k in ipairs(AuctionIQ.MIGRATION_KEYS[to] or {}) do
+			if backup.data[k] == nil then backup.data[k] = deepcopy(db[k]) or false end
+		end
+	end
+	db.backup = backup
 	for to = v + 1, AuctionIQ.DB_VERSION do
 		local step = AuctionIQ.MIGRATIONS[to]
 		if step then
 			local ok, err = pcall(step, db)
-			if not ok then AuctionIQ.Print("couldn't update saved data to version " .. to .. ": " .. tostring(err)); return db end
+			if not ok then
+				for k, x in pairs(backup.data) do db[k] = x or nil end
+				db.migrationFailed = { to = to, err = tostring(err), at = backup.at }
+				AuctionIQ.Print("couldn't update saved data to version " .. to .. ", so it was left as it was: " .. tostring(err))
+				return db
+			end
 		end
 		db.version = to
 	end
+	db.migrationFailed = nil
 	return db
+end
+
+--- The saved table to use this session, from what WoW loaded. A save written by a newer AuctionIQ
+--- is opened read-only: the addon works on a copy, and the original goes back to disk unchanged.
+function AuctionIQ.Load(raw)
+	AuctionIQ.readOnly = nil
+	if raw == nil then
+		raw = { version = AuctionIQ.DB_VERSION }
+	elseif (tonumber(raw.version) or 1) > AuctionIQ.DB_VERSION then
+		AuctionIQ.readOnly = raw.version
+		AuctionIQ.Print("this save was written by a newer AuctionIQ (data version " .. tostring(raw.version) .. "). It's open read-only, so nothing changes on disk. Update AuctionIQ to use it fully.")
+		return raw, AuctionIQ.Tidy(copyDefaults(deepcopy(raw), DEFAULTS))
+	end
+	AuctionIQ.Migrate(raw)
+	return raw, AuctionIQ.Tidy(copyDefaults(raw, DEFAULTS))
 end
 
 --- Every load: queue entries from older builds get the fields the queue relies on (an entry that
@@ -293,8 +369,7 @@ end
 
 AuctionIQ.On("ADDON_LOADED", function(_, name)
 	if name ~= addonName then return end
-	AuctionIQDB = copyDefaults(AuctionIQDB or {}, DEFAULTS)
-	AuctionIQ.db = AuctionIQ.Tidy(AuctionIQ.Migrate(AuctionIQDB))
+	AuctionIQDB, AuctionIQ.db = AuctionIQ.Load(AuctionIQDB)
 end)
 
 AuctionIQ.On("PLAYER_LOGIN", function()

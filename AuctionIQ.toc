@@ -15,6 +15,7 @@ Core\Game.lua
 Core\Theme.lua
 Core\Window.lua
 Data\Prices.lua
+Data\Value.lua
 Data\Prob.lua
 Data\Expect.lua
 Data\Scans.lua

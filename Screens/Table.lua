@@ -152,11 +152,13 @@ function Tbl.Draw(t)
 		local l = (row or t.lines[i]) and line(t, i)
 		if l then
 			l.row = row
+			l.selected = row and t.selectedKey ~= nil and row.key == t.selectedKey or false
+			l.hl:SetShown(l.selected)
 			if row then
 				for c, col in ipairs(t.cols) do
 					local v = col.text and col.text(row) or row[col.key]
 					l.cells[c]:SetText(v == nil and "" or tostring(v))
-					local dim = row.last and T.muted or T.fg
+					local dim = (row.last or row.dim) and T.muted or T.fg
 					l.cells[c]:SetTextColor(dim[1], dim[2], dim[3])
 				end
 				l:Show()

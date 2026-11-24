@@ -43,7 +43,7 @@ G.Store = store
 local function tsmProfile(db)
 	local cur = db["_currentProfile"]
 	if type(cur) ~= "table" then return nil end
-	local me = (UnitName and UnitName("player") or "") .. " - " .. (GetRealmName and GetRealmName() or "")
+	local me = (AuctionIQ.PlayerName and AuctionIQ.PlayerName() or UnitName and UnitName("player") or "") .. " - " .. (AuctionIQ.RealmName and AuctionIQ.RealmName() or GetRealmName and GetRealmName() or "")
 	if cur[me] then return cur[me] end
 	for _, p in pairs(cur) do return p end
 end
@@ -189,8 +189,8 @@ G.Unsupported = unsupported
 local function appliesHere(op)
 	local ig = op and op.ignorePlayer
 	if type(ig) ~= "table" or not next(ig) then return true end
-	local name = UnitName and UnitName("player") or ""
-	local realm = GetRealmName and GetRealmName() or ""
+	local name = AuctionIQ.PlayerName and AuctionIQ.PlayerName() or UnitName and UnitName("player") or ""
+	local realm = AuctionIQ.RealmName and AuctionIQ.RealmName() or GetRealmName and GetRealmName() or ""
 	for key, on in pairs(ig) do
 		local k = tostring(key)
 		if on and k:find(name, 1, true) == 1 and (realm == "" or k:find(realm, 1, true)) then return false end
