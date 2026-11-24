@@ -184,6 +184,13 @@ end
 local function buildSettings()
 	local f = window("AuctionIQSettings", Shell.SETTINGS_W, Shell.SETTINGS_H)
 	T.BrandTitle(f.title, "Settings")
+	f:SetFrameStrata("DIALOG")
+	f:SetToplevel(true)
+	f:SetScript("OnHide", function()
+		local back = Shell.returnTo
+		Shell.returnTo = nil
+		if back then Shell.Show(back) end
+	end)
 	local nav = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
 	nav:SetPoint("TOPLEFT", 1, -32)
 	nav:SetPoint("BOTTOMLEFT", 1, 1)
@@ -232,6 +239,14 @@ end
 function Shell.OpenSettings(page)
 	Shell.settings = Shell.settings or buildSettings()
 	local f = Shell.settings
+	-- Settings takes the window's place: it opens where the window was, on top, and the window comes
+	-- back when Settings closes. (Two windows of the same size in one spot read as one.)
+	if Shell.IsShown() and not f:IsShown() then
+		f:ClearAllPoints()
+		f:SetPoint("TOPLEFT", Shell.frame, "TOPLEFT", 0, 0)
+		Shell.returnTo = Shell.current
+		Shell.frame:Hide()
+	end
 	page = (page and f.pages[page]) and page or Shell.settingsPage or "General"
 	Shell.settingsPage = page
 	for name, b in pairs(f.items) do
@@ -242,6 +257,7 @@ function Shell.OpenSettings(page)
 		f.pages[name]:SetShown(on)
 	end
 	f:Show()
+	if f.Raise then f:Raise() end
 end
 
 --- /aiq on the new window. Returns true when it handled the command.

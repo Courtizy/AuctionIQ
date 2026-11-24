@@ -99,6 +99,11 @@ run('SlashCmdList.AUCTIONIQ("settings")')
 check("/aiq settings opens Settings on General", A.Shell.settings.IsShown and A.Shell.settingsPage == "General")
 run('AuctionIQ.Shell.OpenSettings("About")')
 check("Settings pages switch", A.Shell.settingsPage == "About")
+run('AuctionIQSettings:Hide(); AuctionIQ.Shell.Show("craft"); AuctionIQ.Shell.OpenSettings()')
+SF = L.globals().AuctionIQSettings
+check("Settings takes the window's place, on top", SF.shown and not A.Shell.IsShown() and L.eval("AuctionIQSettings.point[2] == AuctionIQ.Shell.frame"))
+run('AuctionIQSettings:Hide()')
+check("closing Settings brings the window back on the same tab", A.Shell.IsShown() and A.Shell.current == "craft")
 
 # prices and costs (Data/Value.lua)
 run("""
@@ -176,7 +181,15 @@ AuctionIQ.db.characters = { ["Auren-"] = { gold = 5 } }
 check("the name matches TSM's, surname included", A.PlayerName() == "Auren Lightweaver" and A.CharacterKey() == "Auren Lightweaver-Roleplay")
 me = A.Me()
 check("a record saved under the first name moves to the full name", me.gold == 5 and A.db.characters["Auren-"] is None and me.name == "Auren Lightweaver")
-run('TradeSkillMasterDB = nil')
+run("""GetRealmName = function() return "" end
+AuctionIQ.db.characters = { ["Auren-"] = { gold = 7 } }""")
+check("realm blank all session: TSM's key supplies it", A.RealmName() == "Roleplay" or A.RealmName() == "Emerald Dream")
+run("TradeSkillMasterDB = { _currentProfile = { ['Auren Lightweaver - Emerald Dream'] = 'Default' } }")
+me = A.Me()
+check("the Forever save on disk (Auren-, blank realm) moves to Auren Lightweaver", A.db.characters["Auren-"] is None and me.gold == 7 and me.name == "Auren Lightweaver")
+run("TradeSkillMasterDB = { _currentProfile = { ['Auren Lightweaver - Roleplay'] = 'Default', ['Aurelia - Roleplay'] = 'Default' } }")
+check("TSM's key gives name and realm when the game gives no realm", A.TSMIdentity("Auren", "") == ("Auren Lightweaver", "Roleplay"))
+run('TradeSkillMasterDB = nil; GetRealmName = function() return "Roleplay" end')
 check("without TSM the game's name is used", A.PlayerName() == "Auren")
 
 # Craft: recipes (both readers), Market / Paid / Full, Make N, the tab
