@@ -5358,9 +5358,11 @@ exec(open(ROOT / "tests" / "acceptance.py").read())
 exec(open(ROOT / "tests" / "professions.py").read())
 # Packaging: every Lua file in the addon's folders is in its TOC (a file left out never loads, and an
 # old one left in an install folder is ignored), and every TOC line names a file that exists.
-_listed = set(files)
-_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Crafting", "Dashboard", "Data") for p in (ROOT / d).rglob("*.lua")}
-check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc", _on_disk <= _listed)
+# Forever loads AuctionIQ_Camelot.toc, a subset of the same files plus the new screens.
+_camelot = [l.strip().replace("\\", "/") for l in (ROOT / "AuctionIQ_Camelot.toc").read_text().splitlines() if l.strip().endswith(".lua")]
+_listed = set(files) | set(_camelot)
+_on_disk = {str(p.relative_to(ROOT)) for d in ("Accounting", "Core", "Crafting", "Dashboard", "Data", "Screens") for p in (ROOT / d).rglob("*.lua")}
+check("toc: every Lua file in the addon's folders is listed in AuctionIQ.toc or AuctionIQ_Camelot.toc", _on_disk <= _listed)
 check("toc: every file AuctionIQ.toc lists exists", all((ROOT / f).is_file() for f in files))
 for _d in sorted((ROOT / "Professions").glob("AuctionIQ_*")) + [ROOT / "Companion" / "AuctionIQ_History"]:
     _toc = [l.strip() for l in (_d / (_d.name + ".toc")).read_text().splitlines() if l.strip().endswith(".lua")]

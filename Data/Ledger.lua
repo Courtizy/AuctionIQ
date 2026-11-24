@@ -18,7 +18,7 @@ local function tsm() return type(TradeSkillMasterDB) == "table" and TradeSkillMa
 
 function Lg.Available() return tsm() ~= nil end
 
-local function realm() return GetRealmName and GetRealmName() or "" end
+local function realm() return AuctionIQ.RealmName() end
 
 -- "Luxaren - Alliance - Emerald Dream" -> "Luxaren", "Emerald Dream"
 local function splitChar(scope)
