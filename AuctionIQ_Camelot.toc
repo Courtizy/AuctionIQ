@@ -18,5 +18,8 @@ Core\Theme.lua
 Data\Prices.lua
 Data\Sources.lua
 Data\Value.lua
+Data\Recipes.lua
+Data\Craft.lua
 Screens\Table.lua
 Screens\Shell.lua
+Screens\Craft.lua

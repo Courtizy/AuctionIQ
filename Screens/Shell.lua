@@ -7,6 +7,8 @@ local T = AuctionIQ.Theme
 
 local Shell = { WIDTH = 780, HEIGHT = 520, SETTINGS_W = 780, SETTINGS_H = 440 }
 AuctionIQ.Shell = Shell
+--- Tab pages that are built: Shell.Pages[key] = { build = function(page), refresh = function(page) }.
+Shell.Pages = {}
 
 --- The tabs for this game, left to right: { key, label }.
 function Shell.Tabs(game)
@@ -138,6 +140,10 @@ local function build()
 		page.note = note
 		page:Hide()
 		f.pages[key] = page
+		if Shell.Pages[key] then
+			note:Hide()
+			Shell.Pages[key].build(page)
+		end
 	end
 
 	local gear = CreateFrame("Button", nil, f)
@@ -163,6 +169,8 @@ function Shell.Show(key)
 	end
 	Shell.UpdateBadge()
 	f:Show()
+	local P = Shell.Pages[key]
+	if P and P.refresh then P.refresh(f.pages[key]) end
 end
 
 function Shell.IsShown() return Shell.frame and Shell.frame:IsShown() or false end
@@ -243,6 +251,12 @@ function Shell.Command(msg)
 	local tab = ({ craft = "craft", orders = "orders", sales = "analytics", inv = "analytics", analytics = "analytics" })[msg]
 	if tab and (tab ~= "orders" or AuctionIQ.IsRetail()) then Shell.Show(tab); return true end
 	if msg == "settings" or msg == "config" then Shell.OpenSettings(); return true end
+	if msg == "probe" and AuctionIQ.Recipes then
+		AuctionIQ.Recipes.Probe()
+		for _, l in ipairs(AuctionIQ.Recipes.ProbeLines()) do AuctionIQ.Print(l) end
+		AuctionIQ.Print("saved for the next /reload")
+		return true
+	end
 	if msg == "game" then
 		AuctionIQ.Print("game: " .. AuctionIQ.Game .. " (project " .. tostring(WOW_PROJECT_ID) .. "), realm: " .. AuctionIQ.RealmName() .. ", version: " .. tostring(AuctionIQ.version))
 		local full = UnitFullName and table.concat({ tostring((UnitFullName("player"))), tostring(select(2, UnitFullName("player"))) }, " / ") or "?"

@@ -179,5 +179,120 @@ check("a record saved under the first name moves to the full name", me.gold == 5
 run('TradeSkillMasterDB = nil')
 check("without TSM the game's name is used", A.PlayerName() == "Auren")
 
+# Craft: recipes (both readers), Market / Paid / Full, Make N, the tab
+run("""
+UnitName = function() return "Bram" end
+GetRealmName = function() return "Roleplay" end
+TradeSkillMasterDB = nil
+AuctionIQ.db.characters = {}
+STUB.money = 1000 * 10000
+-- Classic-style profession: a header, the Thorium Greatsword (10 bars + 1 crystal), a cooldown
+CLASSIC = {
+  { "Weapons", "header" },
+  { "Thorium Greatsword", "optimal", 1, link = "|Hitem:7001|h", made = { 1, 1 }, reagents = { { "Thorium Bar", 10, 7101 }, { "Arcane Crystal", 1, 7102 } } },
+  { "Transmute: Arcanite", "medium", 0, link = "|Hitem:7002|h", made = { 1, 1 }, reagents = { { "Thorium Bar", 1, 7101 } }, cd = 3600 },
+}
+GetNumTradeSkills = function() return #CLASSIC end
+GetTradeSkillInfo = function(i) local r = CLASSIC[i]; if r then return r[1], r[2], r[3] or 0, true end end
+GetTradeSkillItemLink = function(i) return CLASSIC[i].link end
+GetTradeSkillNumMade = function(i) return CLASSIC[i].made[1], CLASSIC[i].made[2] end
+GetTradeSkillNumReagents = function(i) return #(CLASSIC[i].reagents or {}) end
+GetTradeSkillReagentInfo = function(i, n) local g = CLASSIC[i].reagents[n]; return g[1], nil, g[2], 0 end
+GetTradeSkillReagentItemLink = function(i, n) return "|Hitem:" .. CLASSIC[i].reagents[n][3] .. "|h" end
+GetTradeSkillCooldown = function(i) return CLASSIC[i].cd end
+GetTradeSkillLine = function() return "Blacksmithing", 295, 300 end
+DoTradeSkill = function(i, n) STUB.didCraft = { i, n } end
+C_TradeSkillUI.GetAllRecipeIDs = function() return {} end
+-- prices: sword 247g market, bars 21g market / 18.5g paid, crystal 0 (farmed at market 0? no: priced)
+P = { dbmarket = { [7001] = 2470000, [7101] = 210000, [7102] = 0 }, smartavgbuy = { [7101] = 185000 },
+      dbregionsalerate = { [7001] = 0.5 } }
+P.dbmarket[7102] = nil
+OE = {}
+Auctionator = nil
+C_Item.GetItemInfo = function(id) if id == 7001 then return "Thorium Greatsword", nil, 4, nil, nil, nil, nil, nil, nil, nil, 100000 end end
+AuctionIQ.Prices.ClearCache()
+""")
+R, C = A.Recipes, A.Craft
+check("classic reader is used when the retail-style list is empty", R.Reader() == "classic")
+p = R.Refresh()
+check("classic: recipes read, headers skipped", p is not None and len(p.recipes) == 2 and p.name == "Blacksmithing" and p.skill == 295)
+sw = p.recipes[1]
+check("classic: output, reagents and makes", sw.item == 7001 and sw.makes == 1 and len(sw.reagents) == 2 and sw.reagents[1].qty == 10 and sw.canMake == 1)
+check("classic: cooldown becomes a ready time", p.recipes[2].readyAt is not None and p.recipes[2].cooldown == 3600)
+check("the profession is kept for this character", R.Get("Blacksmithing") is not None and list(R.Professions().values()) == ["Blacksmithing"])
+c = C.Cost(sw)
+check("unpriced reagent leaves the craft unpriced", not c.priced and c.missing == 1)
+run("P.dbmarket[7102] = 0; P.dbmarket[7102] = nil; Auctionator = { API = { v1 = { GetAuctionPriceByItemID = function(_, id) if id == 7102 then return 100000 end end } } }; AuctionIQ.Prices.ClearCache()")
+c = C.Cost(sw)
+gross, cut = 2470000, 123500
+deposit = round(100000 * 0.15 * 2)
+check("all three columns take off the same cut and relist", c.priced and c.cut == cut and c.relist == deposit and c.fees == cut + deposit)
+check("Market / Paid / Full differ only by reagent cost and payback",
+      c.profit.market == gross - cut - deposit - (10 * 210000 + 100000)
+      and c.profit.paid == gross - cut - deposit - (10 * 185000 + 100000)
+      and c.profit.full == c.profit.paid)
+check("coverage: bars bought, crystal farmed", abs(c.coverage - (1850000 / 1950000)) < 1e-9)
+m = C.MakeN(sw, c)
+check("Make N without history or groups: try 2, capped by what you can afford", m.n == 2 and m.reason == "sales")
+run("STUB.money = 0")
+m = C.MakeN(sw, c)
+check("Make N: affordability sets it when gold runs out", m.n == 1 and m.reason == "afford" and "afford 1" in C.Reason(m, 1))
+run("STUB.money = 1000 * 10000")
+run("""TradeSkillMasterDB = { _currentProfile = { ["Bram - Roleplay"] = "Default" },
+  ["p@Default@userData@items"] = { ["i:7001"] = "Swords" },
+  ["p@Default@userData@groups"] = { [""] = { Crafting = { "#Default", override = true } } },
+  ["g@ @userData@sharedOperations"] = { Crafting = { ["#Default"] = { minRestock = "10", maxRestock = "1" } } } }
+STUB.bags[7001] = 0""")
+m = C.MakeN(sw, c)
+check("Make N: TSM restock sets it when the group's max is lowest", m.n == 1 and m.reason == "restock" and m.restock == 1 and "TSM restock 1" in C.Reason(m, 1))
+run("STUB.bags[7001] = 3")
+m = C.MakeN(sw, c)
+check("Make N: 0 when already stocked", m.n == 0 and m.reason == "stocked")
+run("TradeSkillMasterDB = nil; STUB.bags[7001] = 0; P.dbmarket[7001] = 150000; AuctionIQ.Prices.ClearCache()")
+m = C.MakeN(sw)
+check("Make N: 0 when it loses money", m.n == 0 and m.reason == "loss")
+run("P.dbmarket[7001] = 2470000; AuctionIQ.Prices.ClearCache()")
+two = L.eval("{ key = 'x', name = 'Two', item = 7001, makes = 2, reagents = { { item = 7101, qty = 1 } }, canMake = 0 }")
+m2 = C.MakeN(two)
+check("Make N counts crafts, items beside it", m2.n == 2 and m2["items"] == 4 and "try 2 crafts" in C.Reason(m2, 2))
+check("payback: a recorded recipe cost spread over the setting's crafts",
+      (run("AuctionIQ.db.settings.costs.recipeCost = { [\"cThorium Greatsword\"] = 200000 }") or True) and C.Cost(sw).payback == 4000 and C.Cost(sw).profit.full == C.Cost(sw).profit.paid - 4000)
+run("AuctionIQ.db.settings.costs.recipeCost = nil")
+
+UI = A.CraftUI
+check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "\u221244g".replace("44", "4"), "45s", "\u2014"))
+cds = L.eval("{ { name = 'Transmute: Arcanite', char = 'Alynna', readyAt = 100 }, { name = 'Mooncloth', char = 'Bram', readyAt = 100 + 6 * 3600 } }")
+left, right = UI.StripText(cds, 3, 200)
+check("strip: ready and coming cooldowns, items below restock", "Arcanite" in left and "ready" in left and "in 6h" in left and "3 items below restock" in right)
+run('SlashCmdList.AUCTIONIQ("craft")')
+pg = A.Shell.frame.pages.craft
+check("the Craft tab builds and lists the recipes", len(pg.list.rows) == 2 and pg.list.rows[1].key == "cThorium Greatsword")
+d = pg.detail
+check("detail shows the three columns and Make N", d.make.t is not None and "Make 2" in d.make.t and "195g" in d.reagents.v[2].t and "220g" in d.reagents.v[1].t)
+check("craft button needs the profession open", "Craft 1 of 2" in (pg.detail.button.text.t if pg.detail.button.text else ""))
+run("AuctionIQ.CraftUI.CraftOne()")
+check("Craft crafts one through the Classic call", L.eval("STUB.didCraft")[1] == 2 and L.eval("STUB.didCraft")[2] == 1 and "Craft 2 of 2" in pg.detail.button.text.t)
+run('STUB.Fire("TRADE_SKILL_CLOSE")')
+run('SlashCmdList.AUCTIONIQ("craft")')
+check("closing the profession keeps the recipes, the button says to open it", len(pg.list.rows) == 2 and "Open Blacksmithing" in pg.detail.button.text.t)
+
+# retail-style reader on Forever, if its C_TradeSkillUI answers
+run("""
+GetNumTradeSkills = function() return 0 end
+C_TradeSkillUI.GetAllRecipeIDs = function() return { 50 } end
+C_TradeSkillUI.GetRecipeInfo = function(id) return { learned = true, name = "Mooncloth", numAvailable = 3 } end
+C_TradeSkillUI.GetRecipeSchematic = function(id) return { outputItemID = 14342, quantityMin = 1, quantityMax = 1,
+  reagentSlotSchematics = { { reagentType = 1, quantityRequired = 2, reagents = { { itemID = 14256 } } } } } end
+C_TradeSkillUI.GetRecipeCooldown = function() return 86400 end
+C_TradeSkillUI.GetBaseProfessionInfo = function() return { professionName = "Tailoring", skillLevel = 300, maxSkillLevel = 300 } end
+""")
+p2 = R.ReadOpen()
+check("retail-style reader: recipe, reagents, cooldown, profession",
+      p2 is not None and p2.reader == "modern" and p2.name == "Tailoring" and p2.recipes[1].item == 14342 and p2.recipes[1].reagents[1].qty == 2 and p2.recipes[1].cooldown == 86400)
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+probe = A.Recipes.Probe()
+lines = list(A.Recipes.ProbeLines().values())
+check("probe: records the reader, calls and events", probe.reader == "modern" and probe.calls["DoTradeSkill"] == True and probe.events.TRADE_SKILL_SHOW.n >= 1 and any("Tailoring" in l for l in lines))
+
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)
