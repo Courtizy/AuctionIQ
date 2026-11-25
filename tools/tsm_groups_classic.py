@@ -1,11 +1,14 @@
-"""Build a TSM group import string covering every item worth selling in Classic (WoW: Forever).
+"""Build a TSM group import string covering every item worth selling in WoW: Forever (or Classic Era).
 
 Reads the game's own item and spell tables (DB2 exports from wago.tools for the classic_era
 product) and writes TSM's plain import text: "group:Path`Sub,i:123,i:456,group:...".
 
-Usage: python tools/tsm_groups_classic.py <db2_csv_dir> <out.txt>
+Usage: python tools/tsm_groups_classic.py <db2_csv_dir> <out.txt> [<classic_era_csv_dir>]
   The directory holds Item, ItemSparse, ItemClass, ItemSubClass, SkillLineAbility, SpellEffect,
-  SpellReagents and SkillLine as <Table>.csv (https://wago.tools/db2/<Table>/csv?product=wow_classic_era).
+  SpellReagents and SkillLine as <Table>.csv (https://wago.tools/db2/<Table>/csv?product=wowf for WoW: Forever,
+  wow_classic_era for Classic Era). Forever's own tables carry its changes, e.g. healing potions
+  under First Aid and its new recipes. Forever's ItemSparse export lacks about a third of the items
+  (mostly world-drop gear), so pass the Classic Era tables as the third argument to fill those in.
 
 Which items: tradeable (not soulbound on pickup or quest items), common to epic, vanilla IDs, no
 test or deprecated items, no white weapons or armour (vendor gear), no class spell books.
@@ -26,9 +29,7 @@ from pathlib import Path
 PROFESSIONS = {164: "Blacksmithing", 165: "Leatherworking", 171: "Alchemy", 197: "Tailoring",
                202: "Engineering", 333: "Enchanting", 185: "Cooking", 129: "First Aid", 186: "Mining"}
 CREATE_ITEM = "24"
-# Forever moved healing potions (and their recipes) from Alchemy to First Aid. Source: the Forever
-# professions research (one source, ClassicCrafting); check in game when Auren learns First Aid.
-FOREVER_FIRST_AID = re.compile(r"^(Recipe: )?(Minor |Lesser |Greater |Superior |Major )?Healing Potion$")
+MAX_ID = None
 SKIP_CLASS = {"3", "8", "10", "12", "13", "14", "18"}  # obsolete, money, quest, key, token
 BAD_NAME = re.compile(r"^(deprecated|monster|test|qa|old |\[ph\]|ph |zz|unused|npc )|\btest\b|deprecated|unused|\bOLD\b|\(old\)", re.I)
 HERB_WORDS = ("Peacebloom", "Silverleaf", "Earthroot", "Mageroyal", "Briarthorn", "Swiftthistle", "Bruiseweed",
@@ -42,15 +43,24 @@ def rows(d, t):
     return list(csv.DictReader(open(Path(d) / f"{t}.csv", encoding="utf-8")))
 
 
-def build(d):
+def build(d, era=None):
+    """d: the tables to build from. era: Classic Era tables to fill in items whose ItemSparse row the
+    Forever export leaves out (Forever's own rows win; era-only items keep the vanilla ID range)."""
     cls = {r["ClassID"]: r["ClassName_lang"].replace("(OBSOLETE)", "") for r in rows(d, "ItemClass")}
     sub = {(r["ClassID"], r["SubClassID"]): (r["VerboseName_lang"] or r["DisplayName_lang"]) for r in rows(d, "ItemSubClass")}
-    item = {r["ID"]: r for r in rows(d, "Item")}
-    sparse = {r["ID"]: r for r in rows(d, "ItemSparse")}
+    item, sparse, era_only = {}, {}, set()
+    if era:
+        item = {r["ID"]: r for r in rows(era, "Item")}
+        sparse = {r["ID"]: r for r in rows(era, "ItemSparse") if int(r["ID"]) < 25000}
+        era_only = set(sparse)
+    item.update({r["ID"]: r for r in rows(d, "Item")})
+    own = {r["ID"]: r for r in rows(d, "ItemSparse")}
+    sparse.update(own)
+    era_only -= set(own)
 
     def keep(i):
         s, it = sparse.get(i), item.get(i)
-        if not s or not it or int(i) >= 25000:
+        if not s or not it or (MAX_ID and int(i) >= MAX_ID):
             return False
         if s["Bonding"] not in ("0", "2", "3"):
             return False
@@ -109,10 +119,6 @@ def build(d):
     for i in sorted(sparse, key=int):
         if not keep(i):
             continue
-        name = sparse[i]["Display_lang"]
-        if FOREVER_FIRST_AID.search(name):  # Forever moved healing potions to First Aid
-            add("Recipes`First Aid" if item[i]["ClassID"] == "9" else "Finished Goods`First Aid", i)
-            continue
         if i in makes:
             p = sorted(makes[i], key=order.index)[0]
             add(f"Finished Goods`{p}", i)
@@ -139,7 +145,7 @@ def text(groups):
 
 
 if __name__ == "__main__":
-    groups, _ = build(sys.argv[1])
+    groups, _ = build(sys.argv[1], sys.argv[3] if len(sys.argv) > 3 else None)
     Path(sys.argv[2]).write_text(text(groups))
     for path, items in groups.items():
         print(f"{len(items):5}  {path}")
