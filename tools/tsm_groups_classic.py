@@ -11,10 +11,11 @@ Which items: tradeable (not soulbound on pickup or quest items), common to epic,
 test or deprecated items, no white weapons or armour (vendor gear), no class spell books.
 
 Layout (TSM keeps an item in one group, so the first match wins):
-  Crafted`<Profession>          what a profession makes (Mining: bars)
+  Finished Goods`<Profession>   what a profession makes (Mining: bars)
   Materials`Herbs, Ore and stone, Cloth, Leather, Enchanting, Meat and fish, Other
                                 reagents professions use and don't make
-  <Class>`<Subclass>            everything else, by the game's item class (Weapon`Daggers...)
+  Recipes`<Profession>          recipe items
+  World Drops`<Class>`<Subclass> everything else, by the game's item class (Weapon`Daggers...)
 """
 import collections
 import csv
@@ -107,7 +108,7 @@ def build(d):
             continue
         if i in makes:
             p = sorted(makes[i], key=order.index)[0]
-            add(f"Crafted`{p}", i)
+            add(f"Finished Goods`{p}", i)
             continue
         m = material(i)
         if m:
@@ -115,7 +116,10 @@ def build(d):
             continue
         c, sc = item[i]["ClassID"], item[i]["SubclassID"]
         cn, sn = cls[c], sub.get((c, sc), "Other")
-        add(cn if sn == cn else f"{cn}`{sn}", i)
+        if c == "9":
+            add(f"Recipes`{sn}", i)
+        else:
+            add("World Drops`" + (cn if sn == cn else f"{cn}`{sn}"), i)
     return collections.OrderedDict(sorted(groups.items())), sparse
 
 
