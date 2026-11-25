@@ -21,6 +21,7 @@ Data\Value.lua
 Data\Recipes.lua
 Data\Craft.lua
 Data\ProfData.lua
+Data\TSMGroups.lua
 Data\Forever\Alchemy.lua
 Data\Forever\Blacksmithing.lua
 Data\Forever\Cooking.lua

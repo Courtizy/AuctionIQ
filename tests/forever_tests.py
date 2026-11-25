@@ -328,5 +328,35 @@ probe = A.Recipes.Probe()
 lines = list(A.Recipes.ProbeLines().values())
 check("probe: records the reader, calls and events", probe.reader == "modern" and probe.calls["DoTradeSkill"] == True and probe.events.TRADE_SKILL_SHOW.n >= 1 and any("Tailoring" in l for l in lines))
 
+# TSM groups from recipes
+run("""
+GetItemInfoInstant = function(id)
+  local sub = ({ [2447] = 9, [765] = 9, [10940] = 12 })[id]
+  if sub then return id, "Trade Goods", "x", "", 0, 7, sub end
+  return id, "Misc", "x", "", 0, 0, 0
+end
+C_TradeSkillUI.GetCategoryInfo = function(id) return { name = ({ [1] = "Potions", [2] = "Elixirs" })[id] } end
+""")
+G = A.TSMGroups
+L.execute("""STUB.recipes = {
+  { item = 118, category = "Potions", reagents = { { item = 2447, qty = 1 }, { item = 765, qty = 1 }, { item = 3371, qty = 1 } } },
+  { item = 2454, category = "Elixirs", reagents = { { item = 2449, qty = 1 }, { item = 765, qty = 1 } } },
+  { item = 858, category = "Potions", reagents = { { item = 118, qty = 1 } } },
+}""")
+groups = G.Build("Alchemy", L.globals().STUB.recipes)
+text = G.Text(groups)
+check("tsm groups: a subgroup per heading, herbs once each, vendor reagents left out",
+      text == "group:Alchemy`Potions,i:118,i:858,group:Alchemy`Elixirs,i:2454,group:Alchemy`Herbs,i:2447,i:765")
+L.execute("STUB.r2 = { { item = 11 } }")
+check("tsm groups: no heading puts the item in the profession group", G.Text(G.Build("Enchanting", L.globals().STUB.r2)) == "group:Enchanting,i:11")
+run("""C_TradeSkillUI.GetRecipeInfo = function(id) return { name = "Mooncloth", learned = true, numAvailable = 0, categoryID = 1 } end""")
+p3 = R.ReadOpen()
+check("modern reader keeps the recipe's heading", p3.recipes[1].category == "Potions")
+
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+run('AuctionIQ.Shell.Command("groups")')
+box = L.eval("AuctionIQ.Shell.tsmBox")
+check("/aiq groups opens the import text to copy", box is not None and "group:Tailoring" in L.eval("AuctionIQ.Shell.tsmBox.box:GetText()") )
+
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)

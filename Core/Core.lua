@@ -396,7 +396,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	-- the new window takes the commands it knows; on Forever the older screens aren't loaded at all
 	if AuctionIQ.Shell and AuctionIQ.Shell.Command(msg) then return end
 	if AuctionIQ.IsForever and AuctionIQ.IsForever() then
-		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab, /aiq settings opens Settings. /aiq game shows the game and realm detected.")
+		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab, /aiq settings opens Settings. /aiq groups gives TSM groups to import for the professions you have opened. /aiq game shows the game and realm detected.")
 		return
 	end
 	local raw = msg or ""

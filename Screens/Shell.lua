@@ -264,6 +264,57 @@ function Shell.OpenSettings(page)
 	if f.Raise then f:Raise() end
 end
 
+-- TSM groups ---------------------------------------------------------------------------------------
+
+--- /aiq groups: the TSM import text for each profession this character has opened, in a box to copy.
+function Shell.TSMExport()
+	local G, R = AuctionIQ.TSMGroups, AuctionIQ.Recipes
+	local blocks, summary = {}, {}
+	for _, prof in ipairs(R and R.Professions() or {}) do
+		local text, groups = G.For(prof)
+		if text then
+			blocks[#blocks + 1] = text
+			local n = 0
+			for _, g in ipairs(groups) do n = n + #g.items end
+			summary[#summary + 1] = prof .. ": " .. #groups .. " groups, " .. n .. " items"
+		end
+	end
+	if #blocks == 0 then
+		AuctionIQ.Print("Open a profession once, then /aiq groups gives its TSM groups to import.")
+		return
+	end
+	local f = Shell.tsmBox
+	if not f then
+		f = window("AuctionIQTSMGroups", 520, 260)
+		Shell.tsmBox = f
+		T.BrandTitle(f.title, "TSM groups")
+		f:Hide()
+		f:SetFrameStrata("DIALOG")
+		local how = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		how:SetPoint("TOPLEFT", 12, -42)
+		how:SetPoint("TOPRIGHT", -12, -42)
+		how:SetJustifyH("LEFT")
+		f.how = how
+		local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+		scroll:SetPoint("TOPLEFT", 12, -92)
+		scroll:SetPoint("BOTTOMRIGHT", -32, 12)
+		local box = CreateFrame("EditBox", nil, scroll)
+		box:SetMultiLine(true)
+		box:SetAutoFocus(false)
+		box:SetFontObject(ChatFontNormal)
+		box:SetWidth(470)
+		box:SetScript("OnEscapePressed", function() f:Hide() end)
+		scroll:SetScrollChild(box)
+		f.box = box
+	end
+	f.how:SetText(table.concat(summary, " · ") .. "\n" .. T.Color("muted",
+		"Ctrl+C to copy, then in TSM: Groups, Import/Export, Import, paste. Set each group's Crafting restock there afterwards."))
+	f.box:SetText(table.concat(blocks, ","))
+	f:Show()
+	f.box:SetFocus()
+	f.box:HighlightText()
+end
+
 --- /aiq on the new window. Returns true when it handled the command.
 function Shell.Command(msg)
 	msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -277,6 +328,7 @@ function Shell.Command(msg)
 		AuctionIQ.Print("saved for the next /reload")
 		return true
 	end
+	if msg == "groups" then Shell.TSMExport(); return true end
 	if msg == "game" then
 		AuctionIQ.Print("game: " .. AuctionIQ.Game .. " (project " .. tostring(WOW_PROJECT_ID) .. "), realm: " .. AuctionIQ.RealmName() .. ", version: " .. tostring(AuctionIQ.version))
 		local full = UnitFullName and table.concat({ tostring((UnitFullName("player"))), tostring(select(2, UnitFullName("player"))) }, " / ") or "?"

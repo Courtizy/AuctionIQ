@@ -8,7 +8,7 @@
 --
 -- A recipe: { key, name, item (output item ID), link, makes (average items per craft), reagents =
 -- { { item, qty, have, name } }, canMake, cooldown (seconds), readyAt, source = "modern"|"classic",
--- index (Classic list position) }.
+-- index (Classic list position), category (the profession window's heading, e.g. "Potions") }.
 local _, AuctionIQ = ...
 
 local R = {}
@@ -53,6 +53,10 @@ local function modernRead()
 				local r = { key = "r" .. id, recipeID = id, name = info.name or s.name, item = s.outputItemID,
 					makes = ((s.quantityMin or 1) + (s.quantityMax or s.quantityMin or 1)) / 2,
 					canMake = info.numAvailable or 0, reagents = {}, source = "modern" }
+				if info.categoryID and ui.GetCategoryInfo then
+					local ok, cat = pcall(ui.GetCategoryInfo, info.categoryID)
+					if ok and type(cat) == "table" then r.category = cat.name end
+				end
 				for _, slot in ipairs(s.reagentSlotSchematics or {}) do
 					local first = slot.reagents and slot.reagents[1]
 					-- required reagents only (type 1 on retail); Forever has no optional or finishing slots
@@ -79,8 +83,10 @@ end
 
 local function classicRead()
 	local list = {}
+	local header
 	for i = 1, GetNumTradeSkills() do
 		local name, kind, available = GetTradeSkillInfo(i)
+		if name and (kind == "header" or kind == "subheader") then header = name end
 		if name and kind ~= "header" and kind ~= "subheader" then
 			local link = GetTradeSkillItemLink and GetTradeSkillItemLink(i)
 			local id = itemID(link)
@@ -88,7 +94,7 @@ local function classicRead()
 				local lo, hi = 1, 1
 				if GetTradeSkillNumMade then lo, hi = GetTradeSkillNumMade(i); lo = lo or 1; hi = hi or lo end
 				local r = { key = "c" .. name, name = name, item = id, link = link, makes = (lo + hi) / 2,
-					canMake = available or 0, reagents = {}, source = "classic", index = i }
+					canMake = available or 0, reagents = {}, source = "classic", index = i, category = header }
 				for n = 1, (GetTradeSkillNumReagents and GetTradeSkillNumReagents(i) or 0) do
 					local rname, _, count = GetTradeSkillReagentInfo(i, n)
 					local rid = itemID(GetTradeSkillReagentItemLink and GetTradeSkillReagentItemLink(i, n))
