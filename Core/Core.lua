@@ -80,35 +80,45 @@ end
 -- the ruleset's name ("Roleplay") at load but an empty string later in the session. TSM keeps its
 -- data under the name read at load, so this matches TSM's keys.
 local REALM_AT_LOAD = GetRealmName and GetRealmName() or ""
+local NAME_AT_LOAD = UnitName and UnitName("player") or nil
+
+-- TSM's own key for this character, "Name - Realm" in its profile list: the name (surname included)
+-- and realm TSM saved. Matches the game's name, or a longer one that starts with it, on the given
+-- realm (any realm when the game won't say). The longest such name wins.
+local function tsmIdentity(short, realm)
+	local cur = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB._currentProfile
+	if type(cur) ~= "table" or not short or short == "" then return nil end
+	local bestN, bestR
+	for key in pairs(cur) do
+		local n, r = tostring(key):match("^(.-) %- (.+)$")
+		if n and (realm == "" or r == realm) and (n == short or n:sub(1, #short + 1) == short .. " ") then
+			if not bestN or #n > #bestN then bestN, bestR = n, r end
+		end
+	end
+	return bestN, bestR
+end
+AuctionIQ.TSMIdentity = tsmIdentity
+
+--- The realm's name. On WoW: Forever GetRealmName() can answer the ruleset ("Roleplay") at load and
+--- an empty string later, or empty all along; then TSM's saved key for this character says it.
 function AuctionIQ.RealmName()
 	local r = GetRealmName and GetRealmName() or ""
 	if r == "" then r = REALM_AT_LOAD end
 	if r == "" and GetNormalizedRealmName then r = GetNormalizedRealmName() or "" end
+	if r == "" then
+		local ok, _, tr = pcall(tsmIdentity, NAME_AT_LOAD or (UnitName and UnitName("player")), "")
+		if ok and tr then r = tr end
+	end
 	return r
 end
 
--- The character's name as TSM saves it. On WoW: Forever a character can have a surname, and TSM
--- keeps "Auren Lightweaver" where a later UnitName("player") can answer just "Auren". So the name read
--- at load is kept, and if TSM has a profile for a longer name that starts with it on this realm,
--- that name wins.
-local NAME_AT_LOAD = UnitName and UnitName("player") or nil
-local function tsmName(short, realm)
-	local cur = type(TradeSkillMasterDB) == "table" and TradeSkillMasterDB._currentProfile
-	if type(cur) ~= "table" then return nil end
-	local best
-	for key in pairs(cur) do
-		local n, r = tostring(key):match("^(.-) %- (.+)$")
-		if n and r == realm and (n == short or n:sub(1, #short + 1) == short .. " ") then
-			if not best or #n > #best then best = n end
-		end
-	end
-	return best
-end
+--- The character's name as TSM saves it. On WoW: Forever a character can have a surname: TSM keeps
+--- "Auren Lightweaver" where UnitName("player") answers "Auren". The longer name wins.
 function AuctionIQ.PlayerName()
 	local short = UnitName and UnitName("player") or ""
 	local name = short
 	if NAME_AT_LOAD and #NAME_AT_LOAD > #name and NAME_AT_LOAD:sub(1, #name) == name then name = NAME_AT_LOAD end
-	local ok, t = pcall(tsmName, name, AuctionIQ.RealmName())
+	local ok, t = pcall(tsmIdentity, name, AuctionIQ.RealmName())
 	if ok and t and #t > #name then name = t end
 	return name
 end
@@ -386,7 +396,7 @@ SlashCmdList.AUCTIONIQ = function(msg)
 	-- the new window takes the commands it knows; on Forever the older screens aren't loaded at all
 	if AuctionIQ.Shell and AuctionIQ.Shell.Command(msg) then return end
 	if AuctionIQ.IsForever and AuctionIQ.IsForever() then
-		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab, /aiq settings opens Settings. /aiq game shows the game and realm detected.")
+		AuctionIQ.Print("/aiq opens the window. /aiq craft, /aiq sales or /aiq inv opens a tab, /aiq settings opens Settings. /aiq groups gives TSM groups to import for the professions you have opened. /aiq game shows the game and realm detected.")
 		return
 	end
 	local raw = msg or ""

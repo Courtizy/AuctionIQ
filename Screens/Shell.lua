@@ -67,8 +67,9 @@ local function window(name, w, h)
 	title:SetPoint("TOPLEFT", 10, -9)
 	f.title = title
 
-	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", 2, 2)
+	-- ElvUI's own close button (ToxiUI restyles it too), so it matches the rest of the UI
+	local close = T.Button(f, "x", 18, 18)
+	close:SetPoint("TOPRIGHT", -6, -6)
 	close:SetScript("OnClick", function() f:Hide() end)
 	f.close = close
 
@@ -184,6 +185,16 @@ end
 local function buildSettings()
 	local f = window("AuctionIQSettings", Shell.SETTINGS_W, Shell.SETTINGS_H)
 	T.BrandTitle(f.title, "Settings")
+	f:Hide() -- frames start shown; Settings must start hidden or the first open skips the swap
+	f.aiqAlpha = 1 -- fully opaque: nothing behind it should read through
+	T.Tint(f)
+	f:SetFrameStrata("DIALOG")
+	f:SetToplevel(true)
+	f:SetScript("OnHide", function()
+		local back = Shell.returnTo
+		Shell.returnTo = nil
+		if back then Shell.Show(back) end
+	end)
 	local nav = CreateFrame("Frame", nil, f, BackdropTemplateMixin and "BackdropTemplate" or nil)
 	nav:SetPoint("TOPLEFT", 1, -32)
 	nav:SetPoint("BOTTOMLEFT", 1, 1)
@@ -232,6 +243,14 @@ end
 function Shell.OpenSettings(page)
 	Shell.settings = Shell.settings or buildSettings()
 	local f = Shell.settings
+	-- Settings takes the window's place: it opens where the window was, on top, and the window comes
+	-- back when Settings closes. (Two windows of the same size in one spot read as one.)
+	if Shell.IsShown() and not f:IsShown() then
+		f:ClearAllPoints()
+		f:SetPoint("TOPLEFT", Shell.frame, "TOPLEFT", 0, 0)
+		Shell.returnTo = Shell.current
+		Shell.frame:Hide()
+	end
 	page = (page and f.pages[page]) and page or Shell.settingsPage or "General"
 	Shell.settingsPage = page
 	for name, b in pairs(f.items) do
@@ -242,6 +261,58 @@ function Shell.OpenSettings(page)
 		f.pages[name]:SetShown(on)
 	end
 	f:Show()
+	if f.Raise then f:Raise() end
+end
+
+-- TSM groups ---------------------------------------------------------------------------------------
+
+--- /aiq groups: the TSM import text for each profession this character has opened, in a box to copy.
+function Shell.TSMExport()
+	local G, R = AuctionIQ.TSMGroups, AuctionIQ.Recipes
+	local blocks, summary = {}, {}
+	for _, prof in ipairs(R and R.Professions() or {}) do
+		local text, groups = G.For(prof)
+		if text then
+			blocks[#blocks + 1] = text
+			local n = 0
+			for _, g in ipairs(groups) do n = n + #g.items end
+			summary[#summary + 1] = prof .. ": " .. #groups .. " groups, " .. n .. " items"
+		end
+	end
+	if #blocks == 0 then
+		AuctionIQ.Print("Open a profession once, then /aiq groups gives its TSM groups to import.")
+		return
+	end
+	local f = Shell.tsmBox
+	if not f then
+		f = window("AuctionIQTSMGroups", 520, 260)
+		Shell.tsmBox = f
+		T.BrandTitle(f.title, "TSM groups")
+		f:Hide()
+		f:SetFrameStrata("DIALOG")
+		local how = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		how:SetPoint("TOPLEFT", 12, -42)
+		how:SetPoint("TOPRIGHT", -12, -42)
+		how:SetJustifyH("LEFT")
+		f.how = how
+		local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+		scroll:SetPoint("TOPLEFT", 12, -92)
+		scroll:SetPoint("BOTTOMRIGHT", -32, 12)
+		local box = CreateFrame("EditBox", nil, scroll)
+		box:SetMultiLine(true)
+		box:SetAutoFocus(false)
+		box:SetFontObject(ChatFontNormal)
+		box:SetWidth(470)
+		box:SetScript("OnEscapePressed", function() f:Hide() end)
+		scroll:SetScrollChild(box)
+		f.box = box
+	end
+	f.how:SetText(table.concat(summary, " · ") .. "\n" .. T.Color("muted",
+		"Ctrl+C to copy, then in TSM: Groups, Import/Export, Import, paste. Set each group's Crafting restock there afterwards."))
+	f.box:SetText(table.concat(blocks, ","))
+	f:Show()
+	f.box:SetFocus()
+	f.box:HighlightText()
 end
 
 --- /aiq on the new window. Returns true when it handled the command.
@@ -257,6 +328,7 @@ function Shell.Command(msg)
 		AuctionIQ.Print("saved for the next /reload")
 		return true
 	end
+	if msg == "groups" then Shell.TSMExport(); return true end
 	if msg == "game" then
 		AuctionIQ.Print("game: " .. AuctionIQ.Game .. " (project " .. tostring(WOW_PROJECT_ID) .. "), realm: " .. AuctionIQ.RealmName() .. ", version: " .. tostring(AuctionIQ.version))
 		local full = UnitFullName and table.concat({ tostring((UnitFullName("player"))), tostring(select(2, UnitFullName("player"))) }, " / ") or "?"

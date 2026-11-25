@@ -79,7 +79,7 @@ lo = A.Table.New(L.globals().UIParent, "losers", cols, L.eval('{ "profit", "desc
 A.Table.Link(w, lo)
 A.Table.SetRows(w, L.eval('{ { name = "a", profit = 1 }, { name = "b", profit = 3 } }'), 10)
 A.Table.SetRows(lo, L.eval('{ { name = "c", profit = -1 }, { name = "d", profit = -3 } }'), 10)
-check("table starts on its default sort", w.rows[1].name == "b" and w.heads[2].text.t.endswith("\u25bc"))
+check("table starts on its default sort", w.rows[1].name == "b" and "Arrow-Down-Up" in w.heads[2].text.t)
 A.Table.Click(w, "name")
 check("a header click sorts linked tables together, in the column's default direction",
       w.rows[1].name == "a" and lo.rows[1].name == "c" and lo.sort[1] == "name" and lo.sort[2] == "asc")
@@ -99,6 +99,11 @@ run('SlashCmdList.AUCTIONIQ("settings")')
 check("/aiq settings opens Settings on General", A.Shell.settings.IsShown and A.Shell.settingsPage == "General")
 run('AuctionIQ.Shell.OpenSettings("About")')
 check("Settings pages switch", A.Shell.settingsPage == "About")
+run('AuctionIQSettings:Hide(); AuctionIQ.Shell.Show("craft"); AuctionIQ.Shell.OpenSettings()')
+SF = L.globals().AuctionIQSettings
+check("Settings takes the window's place, on top", SF.shown and not A.Shell.IsShown() and L.eval("AuctionIQSettings.point[2] == AuctionIQ.Shell.frame"))
+run('AuctionIQSettings:Hide()')
+check("closing Settings brings the window back on the same tab", A.Shell.IsShown() and A.Shell.current == "craft")
 
 # prices and costs (Data/Value.lua)
 run("""
@@ -176,7 +181,15 @@ AuctionIQ.db.characters = { ["Auren-"] = { gold = 5 } }
 check("the name matches TSM's, surname included", A.PlayerName() == "Auren Lightweaver" and A.CharacterKey() == "Auren Lightweaver-Roleplay")
 me = A.Me()
 check("a record saved under the first name moves to the full name", me.gold == 5 and A.db.characters["Auren-"] is None and me.name == "Auren Lightweaver")
-run('TradeSkillMasterDB = nil')
+run("""GetRealmName = function() return "" end
+AuctionIQ.db.characters = { ["Auren-"] = { gold = 7 } }""")
+check("realm blank all session: TSM's key supplies it", A.RealmName() == "Roleplay" or A.RealmName() == "Emerald Dream")
+run("TradeSkillMasterDB = { _currentProfile = { ['Auren Lightweaver - Emerald Dream'] = 'Default' } }")
+me = A.Me()
+check("the Forever save on disk (Auren-, blank realm) moves to Auren Lightweaver", A.db.characters["Auren-"] is None and me.gold == 7 and me.name == "Auren Lightweaver")
+run("TradeSkillMasterDB = { _currentProfile = { ['Auren Lightweaver - Roleplay'] = 'Default', ['Aurelia - Roleplay'] = 'Default' } }")
+check("TSM's key gives name and realm when the game gives no realm", A.TSMIdentity("Auren", "") == ("Auren Lightweaver", "Roleplay"))
+run('TradeSkillMasterDB = nil; GetRealmName = function() return "Roleplay" end')
 check("without TSM the game's name is used", A.PlayerName() == "Auren")
 
 # Craft: recipes (both readers), Market / Paid / Full, Make N, the tab
@@ -277,7 +290,7 @@ check("station and spec needs show in the reason", "Weaponsmith only" in C.Reaso
 run('AuctionIQ.ProfData.Register("Blacksmithing", { favor = {}, station = {}, spec = {}, cooldown = {} }); AuctionIQ.ProfData.crates = {}; AuctionIQ.Prices.ClearCache()')
 
 UI = A.CraftUI
-check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "\u221244g".replace("44", "4"), "45s", "\u2014"))
+check("gold: whole gold, silver, signs", (UI.Gold(1850000), UI.Gold(420000, True), UI.Gold(-40000), UI.Gold(4500), UI.Gold(None)) == ("185g", "+42g", "-4g", "45s", "\u2014"))
 cds = L.eval("{ { name = 'Transmute: Arcanite', char = 'Alynna', readyAt = 100 }, { name = 'Mooncloth', char = 'Bram', readyAt = 100 + 6 * 3600 } }")
 left, right = UI.StripText(cds, 3, 200)
 check("strip: ready and coming cooldowns, items below restock", "Arcanite" in left and "ready" in left and "in 6h" in left and "3 items below restock" in right)
@@ -314,6 +327,36 @@ run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
 probe = A.Recipes.Probe()
 lines = list(A.Recipes.ProbeLines().values())
 check("probe: records the reader, calls and events", probe.reader == "modern" and probe.calls["DoTradeSkill"] == True and probe.events.TRADE_SKILL_SHOW.n >= 1 and any("Tailoring" in l for l in lines))
+
+# TSM groups from recipes
+run("""
+GetItemInfoInstant = function(id)
+  local sub = ({ [2447] = 9, [765] = 9, [10940] = 12 })[id]
+  if sub then return id, "Trade Goods", "x", "", 0, 7, sub end
+  return id, "Misc", "x", "", 0, 0, 0
+end
+C_TradeSkillUI.GetCategoryInfo = function(id) return { name = ({ [1] = "Potions", [2] = "Elixirs" })[id] } end
+""")
+G = A.TSMGroups
+L.execute("""STUB.recipes = {
+  { item = 118, category = "Potions", reagents = { { item = 2447, qty = 1 }, { item = 765, qty = 1 }, { item = 3371, qty = 1 } } },
+  { item = 2454, category = "Elixirs", reagents = { { item = 2449, qty = 1 }, { item = 765, qty = 1 } } },
+  { item = 858, category = "Potions", reagents = { { item = 118, qty = 1 } } },
+}""")
+groups = G.Build("Alchemy", L.globals().STUB.recipes)
+text = G.Text(groups)
+check("tsm groups: a subgroup per heading, herbs once each, vendor reagents left out",
+      text == "group:Alchemy`Potions,i:118,i:858,group:Alchemy`Elixirs,i:2454,group:Alchemy`Herbs,i:2447,i:765")
+L.execute("STUB.r2 = { { item = 11 } }")
+check("tsm groups: no heading puts the item in the profession group", G.Text(G.Build("Enchanting", L.globals().STUB.r2)) == "group:Enchanting,i:11")
+run("""C_TradeSkillUI.GetRecipeInfo = function(id) return { name = "Mooncloth", learned = true, numAvailable = 0, categoryID = 1 } end""")
+p3 = R.ReadOpen()
+check("modern reader keeps the recipe's heading", p3.recipes[1].category == "Potions")
+
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+run('AuctionIQ.Shell.Command("groups")')
+box = L.eval("AuctionIQ.Shell.tsmBox")
+check("/aiq groups opens the import text to copy", box is not None and "group:Tailoring" in L.eval("AuctionIQ.Shell.tsmBox.box:GetText()") )
 
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)
