@@ -26,6 +26,9 @@ from pathlib import Path
 PROFESSIONS = {164: "Blacksmithing", 165: "Leatherworking", 171: "Alchemy", 197: "Tailoring",
                202: "Engineering", 333: "Enchanting", 185: "Cooking", 129: "First Aid", 186: "Mining"}
 CREATE_ITEM = "24"
+# Forever moved healing potions (and their recipes) from Alchemy to First Aid. Source: the Forever
+# professions research (one source, ClassicCrafting); check in game when Auren learns First Aid.
+FOREVER_FIRST_AID = re.compile(r"^(Recipe: )?(Minor |Lesser |Greater |Superior |Major )?Healing Potion$")
 SKIP_CLASS = {"3", "8", "10", "12", "13", "14", "18"}  # obsolete, money, quest, key, token
 BAD_NAME = re.compile(r"^(deprecated|monster|test|qa|old |\[ph\]|ph |zz|unused|npc )|\btest\b|deprecated|unused|\bOLD\b|\(old\)", re.I)
 HERB_WORDS = ("Peacebloom", "Silverleaf", "Earthroot", "Mageroyal", "Briarthorn", "Swiftthistle", "Bruiseweed",
@@ -105,6 +108,10 @@ def build(d):
         groups.setdefault(path, []).append(int(i))
     for i in sorted(sparse, key=int):
         if not keep(i):
+            continue
+        name = sparse[i]["Display_lang"]
+        if FOREVER_FIRST_AID.search(name):  # Forever moved healing potions to First Aid
+            add("Recipes`First Aid" if item[i]["ClassID"] == "9" else "Finished Goods`First Aid", i)
             continue
         if i in makes:
             p = sorted(makes[i], key=order.index)[0]
