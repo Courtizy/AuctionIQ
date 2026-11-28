@@ -12,6 +12,7 @@
 
 Core\Core.lua
 Core\Game.lua
+Core\CraftFrame.lua
 Core\Theme.lua
 Core\Window.lua
 Data\Prices.lua
