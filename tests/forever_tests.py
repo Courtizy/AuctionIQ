@@ -358,5 +358,36 @@ run('AuctionIQ.Shell.Command("groups")')
 box = L.eval("AuctionIQ.Shell.tsmBox")
 check("/aiq groups opens the import text to copy", box is not None and "group:Tailoring" in L.eval("AuctionIQ.Shell.tsmBox.box:GetText()") )
 
+# docking: beside the game's profession window, or TSM's crafting window when TSM's UI is the one up
+run("""
+STUB.tsmCB = nil
+TSM_API.RegisterUICallback = function(ui, tag, fn) if ui == "CRAFTING" then STUB.tsmCB = fn end end
+AuctionIQ.CraftFrame.Hook()
+TradeSkillFrame = CreateFrame("Frame"); TradeSkillFrame:Show()
+STUB.tsmFrame = CreateFrame("Frame")
+AuctionIQ.db.settings.craft = AuctionIQ.db.settings.craft or {}; AuctionIQ.db.settings.craft.dock = nil
+if AuctionIQ.Shell.IsShown() then AuctionIQ.Shell.frame:Hide() end
+""")
+check("TSM's crafting window callback is registered", L.eval("STUB.tsmCB") is not None)
+def dockedTo(name):
+    return L.eval("(function() local pt = AuctionIQ.Shell.frame.point; return pt ~= nil and pt[2] == " + name + " end)()")
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+check("no TSM window: the Craft tab docks beside the game's profession window",
+      A.Shell.IsShown() and dockedTo("TradeSkillFrame"))
+run('STUB.Fire("TRADE_SKILL_CLOSE")')
+check("closing the profession closes the docked tab", not A.Shell.IsShown())
+# TSM's UI on: the game's window stays shown (moved off screen), TSM opens its own
+run('STUB.tsmFrame:Show(); STUB.tsmCB(true, STUB.tsmFrame); STUB.RunTimers()')
+run('STUB.Fire("TRADE_SKILL_SHOW"); STUB.RunTimers()')
+check("TSM's crafting window up: the Craft tab docks beside it, not the off-screen game window",
+      A.Shell.IsShown() and dockedTo("STUB.tsmFrame"))
+run('STUB.tsmFrame:Hide(); STUB.tsmCB(false); STUB.RunTimers()')
+check("TSM's switch button to the game's window: the tab follows it", A.Shell.IsShown() and dockedTo("TradeSkillFrame"))
+run('STUB.tsmFrame:Show(); STUB.tsmCB(true, STUB.tsmFrame); STUB.RunTimers()')
+check("and back to TSM's window", dockedTo("STUB.tsmFrame"))
+run('STUB.Fire("TRADE_SKILL_CLOSE"); STUB.tsmFrame:Hide(); STUB.tsmCB(false); STUB.RunTimers(); TradeSkillFrame:Hide()')
+check("closing TSM's window closes the docked tab", not A.Shell.IsShown())
+run("TSM_API.RegisterUICallback = nil")
+
 print(f"\n{len(fails)} failed" if fails else "\nall Forever checks passed")
 sys.exit(1 if fails else 0)

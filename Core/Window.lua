@@ -375,14 +375,14 @@ function W.Busy(key)
 	return a ~= nil and a ~= key
 end
 
-local function profOpen() return ProfessionsFrame and ProfessionsFrame:IsShown() end
-
---- Put a tab window in the shared spot.
+--- Put a tab window in the shared spot: docked beside the profession, which is TSM's crafting
+--- window when TSM's UI is the one showing (it moves the game's window off screen).
 function W.Place(f)
 	local s = deck()
+	local prof = AuctionIQ.CraftFrame.Anchor()
 	f:ClearAllPoints()
-	if s.docked ~= false and profOpen() then
-		f:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", 2, 0)
+	if s.docked ~= false and prof then
+		f:SetPoint("TOPLEFT", prof, "TOPRIGHT", 2, 0)
 	elseif s.point then
 		f:SetPoint(s.point[1], UIParent, s.point[3], s.point[4], s.point[5])
 	else
@@ -932,3 +932,9 @@ function W.DrawSidePanel(det, d, said)
 	det:Show()
 	return d
 end
+
+-- TSM's crafting window opened or closed (its switch button, or TSM opening after the game's
+-- window): move the docked windows to whichever profession window is on screen now
+AuctionIQ.CraftFrame.OnChange(function()
+	if W.Active() then W.Arrange() end
+end)

@@ -394,9 +394,21 @@ end
 AuctionIQ.Shell.Pages.craft = { build = build, refresh = function() CraftUI.Refresh() end }
 
 -- Docking: the profession opens, the Craft tab opens beside it (Settings can turn that off), and
--- closes with it if it opened that way.
-local PROFESSION_FRAMES = { "TradeSkillFrame", "ProfessionsFrame" }
+-- closes with it if it opened that way. "Beside it" is TSM's crafting window when TSM's UI is the
+-- one showing (it hides the game's window off screen), else the game's window; switching between
+-- the two moves the tab across.
+local CF = AuctionIQ.CraftFrame
 local docked = false
+
+local function dock()
+	local Shell = AuctionIQ.Shell
+	local f = CF.Anchor()
+	if not (Shell.frame and f) then return false end
+	Shell.frame:ClearAllPoints()
+	Shell.frame:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+	return true
+end
+
 R.onRefresh = function(p)
 	local Shell = AuctionIQ.Shell
 	local craft = AuctionIQ.db.settings.craft or {}
@@ -404,14 +416,7 @@ R.onRefresh = function(p)
 	if not Shell.IsShown() and craft.dock ~= false then
 		Shell.Show("craft")
 		docked = true
-		for _, name in ipairs(PROFESSION_FRAMES) do
-			local f = _G[name]
-			if f and f.IsShown and f:IsShown() then
-				Shell.frame:ClearAllPoints()
-				Shell.frame:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
-				break
-			end
-		end
+		dock()
 	elseif Shell.IsShown() and Shell.current == "craft" then
 		CraftUI.Refresh()
 	end
@@ -426,3 +431,9 @@ R.onClose = function()
 	docked = false
 	if Shell.IsShown() and Shell.current == "craft" then CraftUI.Refresh() end
 end
+-- TSM's crafting window opened or closed (its switch button, or TSM opening after the game's
+-- window): follow whichever is on screen now
+CF.OnChange(function()
+	local Shell = AuctionIQ.Shell
+	if docked and Shell.IsShown() then dock() end
+end)

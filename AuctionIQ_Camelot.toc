@@ -14,6 +14,7 @@
 # no Concentration, quality, specializations, crafting orders or profession data addons.
 Core\Core.lua
 Core\Game.lua
+Core\CraftFrame.lua
 Core\Theme.lua
 Data\Prices.lua
 Data\Sources.lua
